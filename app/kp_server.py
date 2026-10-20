@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Конструктор КП ПНЕВМОТЕХ — HTTP-сервер: обработчик запросов (ответы, файлы, кэш, защита от чужих сайтов), запуск
-программы и фоновые задачи. Маршруты API — web_api.py, права и «Настройки» — admin.py; EXE запускается через launcher.py.
-Только стандартная библиотека Python; собирается PyInstaller в один EXE.
-"""
+"""HTTP-сервер программы: обработчик запросов (файлы, кэш, сжатие, защита), запуск и фоновые задачи."""
+
 import gzip
 import ipaddress
 import json
@@ -17,35 +14,46 @@ import webbrowser
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from config import (ALLOWED_HOSTS, APP_TITLE, BadRequest, BASE_PORT, DATA_DIR, DOCS_DIR, IMG_DIR, ROOT, SERVER_MODE, message_box, store)
-import catalog_migrate
-from data_setup import FreshBase, prepare_dirs, sync_counter_with_files
-from equipment_types import load_types, load_types_builtin
 import admin
-from version import VERSION as APP_VERSION
-import maintenance
-from defaults import SrvVal
+import catalog_migrate
 import logistics_api
+import maintenance
+from app_update import NightUpdate, StartCheck
+from config import (
+    ALLOWED_HOSTS,
+    APP_TITLE,
+    BASE_PORT,
+    DATA_DIR,
+    DOCS_DIR,
+    IMG_DIR,
+    ROOT,
+    SERVER_MODE,
+    BadRequest,
+    message_box,
+    store,
+)
+from data_setup import FreshBase, prepare_dirs, sync_counter_with_files
+from defaults import SrvVal
+from equipment_types import load_types, load_types_builtin
 from images import mark_organized, organize_existing
 from kp_templates import ensure_templates
-from web_api import IMAGES, ROUTER, cp
-from app_update import NightUpdate, StartCheck
 from server_log import ServerLog
+from version import VERSION as APP_VERSION
+from web_api import IMAGES, ROUTER, cp
 
 PAID_GET = ('/api/geo/', '/api/party', '/api/check', '/api/imgfetch', '/api/cbr')
 
 
 class GzipCache:
-    """Сжатые ответы по метке версии (ETag): сжимается один раз на версию и дальше отдаётся из памяти;
-    сверх max_n — вытесняются самые старые."""
+    """Сжатые ответы по метке версии (ETag): сжатие один раз на версию; сверх max_n — вытесняются старые."""
 
-    def __init__(self, max_n, level):
+    def __init__(self, max_n, level) -> None:
         self.max_n, self.level = max_n, level
         self.cache = {}
         self.lock = threading.Lock()
-        self.locks = {}         # метка → замок сборки: одновременные запросы новой версии ждут одну сборку, а не строят каждый свою
+        self.locks = {}  # одна сборка на метку: одновременные запросы ждут её
 
-    def building(self, tag):
+    def building(self, tag) -> threading.Lock:
         with self.lock:
             lk = self.locks.get(tag)
             if lk is None:
@@ -54,11 +62,11 @@ class GzipCache:
                     self.locks.pop(next(iter(self.locks)))
             return lk
 
-    def get(self, tag):
+    def get(self, tag) -> bytes | None:
         with self.lock:
             return self.cache.get(tag)
 
-    def put(self, tag, data):
+    def put(self, tag, data) -> bytes:
         """Сжать data, запомнить под меткой tag и вернуть сжатое."""
         hit = gzip.compress(data, self.level)
         with self.lock:
@@ -69,38 +77,36 @@ class GzipCache:
 
 
 class FileGzip:
-    """Сжатые файлы интерфейса: всего ~1,5 МБ сжатого — держится в памяти (сжатие — один раз на версию файла,
-    а не при каждой загрузке страницы)."""
-    MIN = 1024              # меньше — сжатие не окупается
-    cache = GzipCache(400, 9)   # файлов в памяти (интерфейс — ~110)
+    """Сжатые файлы интерфейса в памяти: сжатие один раз на версию файла."""
+
+    MIN = 1024  # меньше — сжатие не окупается
+    cache = GzipCache(400, 9)  # файлов в памяти (интерфейс — ~110)
 
     @classmethod
-    def get(cls, tag, data, ctype):
+    def get(cls, tag, data, ctype) -> bytes | None:
         """gzip-байты файла или None (маленький или не текст)."""
-        if len(data) < cls.MIN or not (ctype.startswith('text/') or 'javascript' in ctype or ctype.startswith('application/json')
-                                       or 'svg' in ctype):
+        if len(data) < cls.MIN or not (
+            ctype.startswith(('text/', 'application/json')) or 'javascript' in ctype or 'svg' in ctype
+        ):
             return None
         return cls.cache.get(tag) or cls.cache.put(tag, data)
 
 
-# большие справочники (каталог — 12 МБ) для send_cached: сжатые один раз на версию, готовые для всех сотрудников
 JSON_GZIP = GzipCache(8, 6)
-JSON_GZIP_MIN = 200000      # меньше — отдаётся без сжатия
-MAX_BODY = 300 * 1024 * 1024    # самый большой запрос — загрузка резервной копии базы (только «Настройки»)
+JSON_GZIP_MIN = 200000  # меньше — отдаётся без сжатия
+MAX_BODY = 300 * 1024 * 1024
 
 
 class BodyLimit:
-    """Предел тела запроса по адресу: большие загрузки (копия базы, файлы фидов, пакет обновления) — только у «Настроек»
-    (/api/admin/…), остальным хватает USER (PDF 60 МБ, файл для ИИ 40 МБ, справочный документ 25 МБ): иначе любой в сети
-    отдела мог занять память сервера несколькими запросами по 300 МБ. Пределы файлов, которые администратор поднял в
-    «Значениях программы» (справочный документ, файл для ИИ, картинка), действуют: берётся наибольший из них."""
+    """Предел тела запроса: большие загрузки — только «Настройкам», остальным — USER (память сервера)."""
+
     USER = 64 * 1024 * 1024
     FILES = ('kp.fileMB', 'cat.docMaxMB', 'kp.imgMB', 'cat.imgMaxMB')
     BIG = ('/api/admin/',)
     CHUNK = 64 * 1024
 
     @classmethod
-    def of(cls, path):
+    def of(cls, path) -> int:
         if path.startswith(cls.BIG):
             return MAX_BODY
         try:
@@ -110,70 +116,65 @@ class BodyLimit:
         return min(MAX_BODY, max(cls.USER, int((mb + 2) * 1024 * 1024)))
 
     @classmethod
-    def drain(cls, rfile, n):
+    def drain(cls, rfile, n) -> None:
         """Дочитать отклонённое тело частями — без копии в памяти целиком."""
         while n > 0:
             got = rfile.read(min(cls.CHUNK, n))
             if not got:
                 break
             n -= len(got)
-# программа запустилась и отвечает (после самопроверки обновления): сбой после этого launcher.py не считает сбоем
-# запуска обновления и прежнюю версию не возвращает
+
+
+# после самопроверки сбой — уже не сбой запуска обновления
 STARTED = False
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = 'KP/1.0'
-    sys_version = ''        # в заголовке Server — без версии Python
-    # HTTP/1.1: соединение держится между запросами (60 файлов интерфейса — без новых подключений), а браузер кэширует
-    # ответы API с меткой версии (ETag) и получает «не изменилось» (304) вместо повторной загрузки каталога.
-    # Ответы — только через send() / send_file() (всегда с Content-Length).
+    sys_version = ''  # в заголовке Server — без версии Python
+    # HTTP/1.1 с ETag; ответы — только через send() / send_file() (с Content-Length)
     protocol_version = 'HTTP/1.1'
-    # заголовки и тело уходят разными пакетами: без этого второй ждёт подтверждения первого (~40 мс на каждый ответ)
+    # без задержки Нейгла: иначе ~40 мс на ответ
     disable_nagle_algorithm = True
-    timeout = 120           # простаивающее соединение закрывается
-    # браузер закрыл соединение, не дождавшись ответа (ушёл со страницы, отменил запрос, пропала сеть), — не ошибка сервера;
-    # на Windows так же: WinError 64 «сетевое имя больше недоступно», 1236 «соединение прервано»
+    timeout = 120  # простаивающее соединение закрывается
+    # браузер закрыл соединение (и WinError 64, 1236) — не ошибка сервера
     GONE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)
     GONE_WIN = (64, 1236)
     LOCAL_NAMES = ('localhost', '127.0.0.1', '::1')
 
     @classmethod
-    def gone(cls, e):
+    def gone(cls, e) -> bool:
         return isinstance(e, cls.GONE) or getattr(e, 'winerror', None) in cls.GONE_WIN
 
-    def log_message(self, fmt, *args):  # у EXE без консоли нет stderr
+    def log_message(self, fmt, *args) -> None:  # у EXE без консоли нет stderr
         pass
 
     # --- ответы ---
-    def is_local(self):
+    def is_local(self) -> bool:
         a = (self.client_address or ('',))[0]
         return a in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or a.startswith('127.')
 
     @staticmethod
-    def file_tag(f):
+    def file_tag(f) -> str:
         """Метка версии файла (ETag): время изменения и размер."""
         st = os.stat(f)
-        return '"%x-%x"' % (st.st_mtime_ns, st.st_size)
+        return f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
 
-    def send_file(self, f, ctype, cache, csp=None, data=None):
-        """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела.
-        Интерфейс (cache='no-cache') проверяется при каждой загрузке, файлы с меткой версии в адресе — хранятся год,
-        изображения — неделю. data — готовое содержимое вместо файла (index.html с метками версий)."""
-        tag = self.file_tag(f) if data is None else '"%x"' % (zlib.crc32(data) & 0xffffffff)
+    def send_file(self, f, ctype, cache, csp=None, data=None) -> None:
+        """Файл с проверкой версии (ETag): неизменённый файл браузер берёт из своего кэша — ответ 304 без тела."""
+        tag = self.file_tag(f) if data is None else f'"{zlib.crc32(data) & 0xFFFFFFFF:x}"'
         if self.headers.get('If-None-Match') == tag:
             self.send_response(304)
             self.send_header('ETag', tag)
             self.send_header('Cache-Control', cache)
             self.end_headers()
-            return
+            return None
         extra = {'Cache-Control': cache, 'ETag': tag}
         if csp:
             extra['Content-Security-Policy'] = csp
         if data is None:
             with open(f, 'rb') as fh:
                 data = fh.read()
-        # текст интерфейса (JS, CSS, HTML) — сжатый один раз на версию файла, дальше из памяти (FileGzip)
         gz = FileGzip.get(tag, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
         if gz is not None:
             extra['Content-Encoding'] = 'gzip'
@@ -181,10 +182,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, ctype, gz, extra, compressed=True)
         return self.send(200, ctype, data, extra)
 
-    def send(self, code, ctype, body, extra=None, compressed=False):
+    def send(self, code, ctype, body, extra=None, compressed=False) -> None:
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
-        gz = not compressed and len(data) > 20000 and 'gzip' in (self.headers.get('Accept-Encoding') or '') and \
-            (ctype.startswith('application/json') or ctype.startswith('text/'))
+        gz = (
+            not compressed
+            and len(data) > 20000
+            and 'gzip' in (self.headers.get('Accept-Encoding') or '')
+            and (ctype.startswith(('application/json', 'text/')))
+        )
         if gz:
             data = gzip.compress(data, 5)
         self.send_response(code)
@@ -204,15 +209,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != 'HEAD':
             self.wfile.write(data)
 
-    def send_json(self, obj):
+    def send_json(self, obj) -> None:
         text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
         self.send(200, 'application/json; charset=utf-8', text)
 
-    def send_cached(self, tag, make):
-        """Справочник с версией: браузер хранит копию и спрашивает «изменилось ли?» (If-None-Match).
-        Не изменилось — короткий ответ 304 без данных; иначе — данные (make()) с новой меткой.
-        Большой ответ сжимается один раз на версию (JSON_GZIP)."""
-        etag = 'W/"%s-%s"' % (tag, APP_VERSION)
+    def send_cached(self, tag, make) -> None:
+        """Справочник с версией: браузер хранит копию и спрашивает «изменилось ли?» (If-None-Match)."""
+        etag = f'W/"{tag}-{APP_VERSION}"'
         extra = {'ETag': etag, 'Cache-Control': 'no-cache'}
         if etag in (self.headers.get('If-None-Match') or ''):
             return self.send(304, 'application/json; charset=utf-8', b'', extra)
@@ -222,38 +225,42 @@ class Handler(BaseHTTPRequestHandler):
         hit = JSON_GZIP.get(etag)
         if hit is None:
             with JSON_GZIP.building(etag):
-                hit = JSON_GZIP.get(etag)         # пока ждали — собрал другой запрос
+                hit = JSON_GZIP.get(etag)  # пока ждали — собрал другой запрос
                 if hit is None:
                     data = self._json_bytes(make())
                     if len(data) < JSON_GZIP_MIN:
                         return self.send(200, 'application/json; charset=utf-8', data, extra)
                     hit = JSON_GZIP.put(etag, data)
-        return self.send(200, 'application/json; charset=utf-8', hit, dict(extra, **{'Content-Encoding': 'gzip'}), compressed=True)
+        return self.send(
+            200, 'application/json; charset=utf-8', hit, dict(extra, **{'Content-Encoding': 'gzip'}), compressed=True
+        )
 
     @staticmethod
-    def _json_bytes(obj):
+    def _json_bytes(obj) -> bytes:
         return (obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)).encode('utf-8')
 
-    def base_rev(self):
+    def base_rev(self) -> int | None:
         """С какой правки записи начинали редактирование (заголовок X-KP-Rev); нет — сохранить без проверки."""
         v = (self.headers.get('X-KP-Rev') or '').strip()
         return int(v) if v.isdigit() else None
 
-    def conflict(self, e):
+    def conflict(self, e) -> None:
         return self.send(409, 'application/json; charset=utf-8', json.dumps(e.info(), ensure_ascii=False))
 
-    def attachment(self, fn, fallback='file'):
+    def attachment(self, fn, fallback='file') -> dict:
         """Заголовок «скачать как» с русским именем файла (fallback — латинское имя, если в имени нет латиницы)."""
         ascii_fn = re.sub(r'[^A-Za-z0-9._-]', '_', fn.encode('ascii', 'ignore').decode()) or fallback
-        return {'Content-Disposition': 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (ascii_fn, urllib.parse.quote(fn))}
+        return {
+            'Content-Disposition': f'attachment; filename="{ascii_fn}"; filename*=UTF-8\'\'{urllib.parse.quote(fn)}'
+        }
 
-    def not_found(self, text='not found'):
+    def not_found(self, text='not found') -> None:
         self.send(404, 'text/plain; charset=utf-8', text)
 
     NON_FINITE = re.compile(rb'(?<![A-Za-z0-9_"])-?(?:NaN|Infinity)(?![A-Za-z0-9_"])')
 
-    def body(self):
-        # тело читается один раз и запоминается: его смотрят и проверка прав / модерация (admin.py), и сам маршрут
+    def body(self) -> bytes:
+        # тело читается один раз: его смотрят и admin.py, и маршрут
         if not hasattr(self, '_body'):
             n = self.body_size()
             self._body = self.rfile.read(n) if n > 0 else b''
@@ -262,13 +269,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._body
 
     @classmethod
-    def non_finite(cls, raw):
-        """JSON с NaN / Infinity: Python их принимает и потом так же записывает, а JSON.parse в браузере на них падает —
-        один такой запрос испортил бы каталог или черновики у всех. Не JSON (файлы) — не проверяется."""
+    def non_finite(cls, raw) -> bool:
+        """JSON с NaN или Infinity отклоняется: JSON.parse в браузере на них падает."""
         if not raw or not cls.NON_FINITE.search(raw):
             return False
-        def refuse(_c):
+
+        def refuse(_c) -> None:
             raise OverflowError
+
         try:
             json.loads(raw.decode('utf-8'), parse_constant=refuse)
         except OverflowError:
@@ -277,7 +285,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
         return False
 
-    def body_size(self):
+    def body_size(self) -> int:
         try:
             return max(0, int(self.headers.get('Content-Length') or 0))
         except ValueError:
@@ -287,10 +295,8 @@ class Handler(BaseHTTPRequestHandler):
     LAN_SUFFIX = ('.local', '.lan', '.internal', '.intranet', '.corp', '.home', '.home.arpa', '.localdomain')
 
     @classmethod
-    def lan_name(cls, name):
-        """Имя сервера отдела, когда allowedHosts не задан: IP-адрес, имя компьютера (одно слово, как \\\\SERVER) или имя
-        во внутренней зоне (.local, .lan, …) и имя этого компьютера. Имя в публичной зоне (kp.example.ru) чужой сайт может
-        направить на сервер отдела (подмена DNS) — такое имя вписывается в allowedHosts (settings.json)."""
+    def lan_name(cls, name) -> bool:
+        """Допустимое имя без allowedHosts: IP, имя компьютера, внутренняя зона; публичное — только вписанное."""
         try:
             ipaddress.ip_address(name)
             return True
@@ -298,17 +304,18 @@ class Handler(BaseHTTPRequestHandler):
             pass
         if not name or '.' not in name or name.endswith(cls.LAN_SUFFIX):
             return bool(name)
-        if cls._own is None:            # имя компьютера узнаётся один раз (getfqdn может ждать DNS)
+        if cls._own is None:  # имя компьютера узнаётся один раз (getfqdn может ждать DNS)
             cls._own = (socket.gethostname().lower(), socket.getfqdn().lower())
         return name in cls._own
 
-    def request_allowed(self):
-        """Защита от чужих сайтов, открытых в браузере сотрудника: имя в адресе (подмена DNS) и источник изменяющего
-        запроса (подделка запроса). Программа и её скрипты запрос не подписывают Origin чужого сайта; curl/PowerShell — без Origin."""
+    def request_allowed(self) -> bool:
+        """Защита от чужих сайтов: имя в адресе (подмена DNS) и Origin изменяющего запроса (подделка)."""
         host = (self.headers.get('Host') or '').strip().lower()
         name = host.rsplit(':', 1)[0] if not host.endswith(']') else host
         name = name.strip('[]')
-        if name not in self.LOCAL_NAMES and not (SERVER_MODE and (name in ALLOWED_HOSTS or (not ALLOWED_HOSTS and self.lan_name(name)))):
+        if name not in self.LOCAL_NAMES and not (
+            SERVER_MODE and (name in ALLOWED_HOSTS or (not ALLOWED_HOSTS and self.lan_name(name)))
+        ):
             return False
         if self.command not in ('GET', 'HEAD'):
             origin = (self.headers.get('Origin') or '').strip().lower()
@@ -316,23 +323,21 @@ class Handler(BaseHTTPRequestHandler):
                 return False
         return True
 
-    def send_response(self, code, message=None):
+    def send_response(self, code, message=None) -> None:
         self._code = code
         super().send_response(code, message)
 
     # --- маршрутизация ---
-    # данные одного запроса: при HTTP/1.1 обработчик обслуживает несколько запросов соединения подряд — перед каждым
-    # они сбрасываются (тело, вошедший менеджер, код ответа), иначе следующий запрос увидел бы данные предыдущего
+    # данные запроса сбрасываются: соединение HTTP/1.1 обслуживает несколько запросов
     PER_REQUEST = ('_body', '_kp_user', '_kp_login', '_code')
 
-    def dispatch(self):
+    def dispatch(self) -> None:
         for a in self.PER_REQUEST:
             self.__dict__.pop(a, None)
         try:
             self._dispatch()
         finally:
-            # отказ до разбора: непрочитанное тело нельзя принять за следующий запрос, а закрыть сокет с непрочитанными
-            # данными — значит оборвать соединение (RST), и клиент может не получить уже отправленный ответ
+            # отказ до разбора: непрочитанное тело оборвало бы соединение (RST)
             if not hasattr(self, '_body') and self.body_size() > 0:
                 if self.body_size() <= BodyLimit.of(urllib.parse.urlsplit(self.path).path):
                     BodyLimit.drain(self.rfile, self.body_size())
@@ -341,56 +346,68 @@ class Handler(BaseHTTPRequestHandler):
 
     do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = dispatch
 
-    def _dispatch(self):
+    def _dispatch(self) -> None:
         try:
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
             m = 'GET' if self.command == 'HEAD' else self.command
-            if re.search(r'[\x00-\x1f\x7f]', path):      # «%0A» и др. в пути — мимо проверок прав по точному адресу
+            if re.search(r'[\x00-\x1f\x7f]', path):  # «%0A» и др. в пути — мимо проверок прав по точному адресу
                 self.close_connection = True
                 return self.send(400, 'text/plain; charset=utf-8', 'Недопустимый адрес')
             if not self.request_allowed():
                 self.close_connection = True
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: откройте программу по её адресу')
-            # запросы, которые тратят лимиты внешних сервисов (Checko, DaData, карты, курсы, скачивание картинок), — только из
-            # программы: её запросы несут заголовок X-KP-User-Id, а чужой сайт в браузере сотрудника такой заголовок не поставит
+            # платные внешние сервисы — только с заголовком программы X-KP-User-Id
             if m == 'GET' and path.startswith(PAID_GET) and 'X-KP-User-Id' not in self.headers:
                 return self.send(403, 'text/plain; charset=utf-8', 'Запрос отклонён: только из программы')
             if self.body_size() > BodyLimit.of(path):
                 self.close_connection = True
                 return self.send(413, 'text/plain; charset=utf-8', 'Слишком большой запрос')
-            # права, модерация и журнал действий (admin.py), вход по паролю — и для шаблонов и картинок: True — ответ уже отправлен, функция — записать в журнал
+            # права, модерация, журнал (admin.py): True — ответ отправлен, функция — записать в журнал
             if m in ('POST', 'PUT', 'DELETE') and path.startswith('/api/'):
-                NightUpdate.touch()          # кто-то работает: ночное обновление подождёт
+                NightUpdate.touch()  # кто-то работает: ночное обновление подождёт
             hook = admin.guard(self, store(), m, path) if path.startswith(('/api/', '/tpl/', '/img/')) else None
             if hook is True:
-                return
+                return None
             self.route()
             if callable(hook) and getattr(self, '_code', 500) < 400:
                 hook()
-        except (BadRequest, UnicodeDecodeError, json.JSONDecodeError) as e:      # недопустимый идентификатор, испорченное тело — 400
+        except (
+            BadRequest,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as e:  # недопустимый идентификатор, испорченное тело — 400
             try:
-                self.send(400, 'text/plain; charset=utf-8', str(e) if isinstance(e, BadRequest) else 'Неверный запрос: нужен JSON в кодировке UTF-8')
+                self.send(
+                    400,
+                    'text/plain; charset=utf-8',
+                    str(e) if isinstance(e, BadRequest) else 'Неверный запрос: нужен JSON в кодировке UTF-8',
+                )
             except Exception:
                 pass
         except Exception as e:
-            # пользователю — без путей и внутренностей; подробности — в журнал сервера (data/logs/kp.log, «Настройки → Система»)
+            # пользователю — без путей, подробности — в журнал сервера
             try:
-                self.send(500, 'text/plain; charset=utf-8', 'Внутренняя ошибка сервера (%s). Подробности — в журнале сервера.' % type(e).__name__)
+                self.send(
+                    500,
+                    'text/plain; charset=utf-8',
+                    f'Внутренняя ошибка сервера ({type(e).__name__}). Подробности — в журнале сервера.',
+                )
             except Exception:
-                if self.gone(e):          # браузер уже закрыл соединение — ответ не нужен, и это не ошибка сервера
+                if self.gone(e):  # браузер уже закрыл соединение — ответ не нужен, и это не ошибка сервера
                     self.close_connection = True
-                    return
-            ServerLog.failure('%s %s' % (self.command, urllib.parse.urlsplit(self.path).path[:300]), e)
+                    return None
+            ServerLog.failure(f'{self.command} {urllib.parse.urlsplit(self.path).path[:300]}', e)
 
-    def route(self):
+    def route(self) -> None:
         """Маршруты API — контроллеры разделов в web_api.py (Router: первый подходящий по пути и методу)."""
         return ROUTER.dispatch(self)
 
 
-def already_running():
+def already_running() -> bool:
     try:
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
-                'http://127.0.0.1:%d/api/ping' % BASE_PORT, timeout=2) as r:
+            f'http://127.0.0.1:{BASE_PORT}/api/ping', timeout=2
+        ) as r:
             return r.status == 200
     except Exception:
         return False
@@ -398,25 +415,23 @@ def already_running():
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
-    # на Windows SO_REUSEADDR позволил бы двум процессам занять один порт; на Linux/macOS он нужен для перезапуска
+    # на Windows SO_REUSEADDR пустил бы два процесса на один порт
     allow_reuse_address = os.name != 'nt'
-    # очередь входящих соединений: по умолчанию 5 — утром 20 браузеров по 6 соединений переполняли её, и часть запросов
-    # ждала повтора соединения 1–3 с; 128 — как у обычных веб-серверов
+    # очередь соединений 128: по умолчанию 5 переполнялась утром
     request_queue_size = 128
 
-    def handle_error(self, request, client_address):
-        """Ошибка вне обработчика запроса — в журнал сервера (по умолчанию socketserver печатал её в stderr, которого у EXE нет);
-        браузер закрыл соединение — не ошибка (Handler.gone)."""
+    def handle_error(self, request, client_address) -> None:
+        """Ошибка вне обработчика — в журнал сервера (у EXE нет stderr); закрытое браузером соединение — не ошибка."""
         e = sys.exc_info()[1]
         if not Handler.gone(e):
-            ServerLog.failure('соединение %s' % (client_address[0] if client_address else '?'), e)
+            ServerLog.failure(f'соединение {client_address[0] if client_address else "?"}', e)
 
 
 class Server6(Server):
     address_family = socket.AF_INET6
 
 
-def start_ipv6(port, main_server):
+def start_ipv6(port, main_server) -> None:
     """localhost в Windows часто означает ::1 — слушаем и его, как это делал HttpListener."""
     try:
         s6 = Server6(('::1', port), Handler)
@@ -426,9 +441,9 @@ def start_ipv6(port, main_server):
     threading.Thread(target=s6.serve_forever, daemon=True).start()
 
 
-def start_server():
+def start_server() -> tuple:
     host = '0.0.0.0' if SERVER_MODE else '127.0.0.1'
-    ports = [BASE_PORT] if SERVER_MODE else range(BASE_PORT, BASE_PORT + 40)   # у сервера отдела адрес постоянный
+    ports = [BASE_PORT] if SERVER_MODE else range(BASE_PORT, BASE_PORT + 40)  # у сервера отдела адрес постоянный
     for port in ports:
         try:
             return Server((host, port), Handler), port
@@ -437,102 +452,151 @@ def start_server():
     return None, None
 
 
-def main():
+def main() -> int:
     # один экземпляр: если программа уже работает — просто открываем её
     if already_running():
-        webbrowser.open('http://localhost:%d/' % BASE_PORT)
+        webbrowser.open(f'http://localhost:{BASE_PORT}/')
         return 0
-    log = ServerLog.install(DATA_DIR)          # журнал сервера: вывод программы и ошибки — в data/logs/kp.log
+    log = ServerLog.install(DATA_DIR)  # журнал сервера: вывод программы и ошибки — в data/logs/kp.log
     if log:
-        log.info('Запуск: версия %s%s, %s' % (APP_VERSION, ' (обновление поверх EXE %s)' % os.environ.get('KP_BASE_VERSION', '')
-                                               if os.environ.get('KP_UPDATE_DIR') else '', 'сервер отдела' if SERVER_MODE else 'программа на этом компьютере'))
+        log.info(
+            'Запуск: версия {}{}, {}'.format(
+                APP_VERSION,
+                ' (обновление поверх EXE {})'.format(os.environ.get('KP_BASE_VERSION', ''))
+                if os.environ.get('KP_UPDATE_DIR')
+                else '',
+                'сервер отдела' if SERVER_MODE else 'программа на этом компьютере',
+            )
+        )
     import importlib.util
-    if importlib.util.find_spec('sqlite3') is None:     # база данных программы; без модуля программа работать не может
-        message_box('В сборке программы нет модуля базы данных SQLite.\n\n'
-                    'Пересоберите EXE из актуального проекта (kp.spec не должен исключать sqlite3) '
-                    'или скачайте готовую сборку из GitHub Actions.')
+
+    if importlib.util.find_spec('sqlite3') is None:  # база данных программы; без модуля программа работать не может
+        message_box(
+            'В сборке программы нет модуля базы данных SQLite.\n\n'
+            'Пересоберите EXE из актуального проекта (kp.spec не должен исключать sqlite3) '
+            'или скачайте готовую сборку из GitHub Actions.'
+        )
         return 1
     try:
         prepare_dirs()
         from settings_history import SettingsHistory
-        store().kv_hook = SettingsHistory(store())     # правки настроек людьми — в историю с откатом
+
+        store().kv_hook = SettingsHistory(store())  # правки настроек людьми — в историю с откатом
         ensure_templates()
-        store().migrate_json(DATA_DIR)   # переход с версии, хранившей данные в JSON-файлах
-        admin.startup(store(), DATA_DIR)   # сброс пароля по data/admin-reset.txt, очистка корзины
+        store().migrate_json(DATA_DIR)  # переход с версии, хранившей данные в JSON-файлах
+        admin.startup(store(), DATA_DIR)  # сброс пароля по data/admin-reset.txt, очистка корзины
         from app_update import Updater
-        Updater(store(), ROOT, DATA_DIR).absorb_failures()     # обновление не запустилось — запись в «Обновления»
+
+        Updater(store(), ROOT, DATA_DIR).absorb_failures()  # обновление не запустилось — запись в «Обновления»
         # обслуживание базы: копия за сегодня, архив журнала, сжатие раз в месяц — в фоне, затем раз в сутки
-        threading.Thread(target=maintenance.Background.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start').start()
+        threading.Thread(
+            target=maintenance.Background.run, args=(store(), DATA_DIR), daemon=True, name='maintenance-start'
+        ).start()
         maintenance.Background.daily(store(), DATA_DIR)
         # отложенные проверки контрагентов: когда лимит Checko обновится (после 00:00 по Москве) — выполнить очередь
-        maintenance.Background.every(lambda: SrvVal.get(store(), 'cp.queueEveryMin') * 60, lambda: cp().run_queue(), 'очередь проверок контрагентов')
+        maintenance.Background.every(
+            lambda: SrvVal.get(store(), 'cp.queueEveryMin') * 60,
+            lambda: cp().run_queue(),
+            'очередь проверок контрагентов',
+        )
         # ставки доставки по ATI.SU: проверка раз в 3 часа, обновление — когда прошёл период из настроек тарифов доставки
         maintenance.Background.every(3 * 3600, lambda: logistics_api.auto_refresh(store()), 'ставки доставки')
         import feeds
+
         feeds.IMAGE_STORE = IMAGES
-        maintenance.Background.every(3600, lambda: feeds.auto_check(store()), 'фиды поставщиков')     # РРЦ и наличие: когда пора обновлять — решает feeds.auto_check
-        maintenance.Background.every(6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии')   # раз в сутки (Updater.auto_check)
-        from bitrix import BitrixConf, BitrixSync           # связь с Битрикс24: очередь отправки и опрос изменений
+        maintenance.Background.every(
+            3600, lambda: feeds.auto_check(store()), 'фиды поставщиков'
+        )  # РРЦ и наличие: когда пора обновлять — решает feeds.auto_check
+        maintenance.Background.every(
+            6 * 3600, lambda: Updater(store(), ROOT, DATA_DIR).auto_check(), 'проверка новой версии'
+        )  # раз в сутки (Updater.auto_check)
+        from bitrix import BitrixConf, BitrixSync  # связь с Битрикс24: очередь отправки и опрос изменений
+
         maintenance.Background.every(lambda: BitrixConf(store()).poll(), lambda: BitrixSync(store()).run(), 'Битрикс24')
-        from admin_alerts import AdminAlerts
         import config
-        maintenance.Background.every(lambda: SrvVal.get(store(), 'srv.alertsEveryMin') * 60, lambda: AdminAlerts(store(), config).check(),
-                                     'письма администратору о проблемах')
+        from admin_alerts import AdminAlerts
+
+        maintenance.Background.every(
+            lambda: SrvVal.get(store(), 'srv.alertsEveryMin') * 60,
+            lambda: AdminAlerts(store(), config).check(),
+            'письма администратору о проблемах',
+        )
         from server_task import ServerTask
-        if ServerTask.applicable(SERVER_MODE):     # задача Планировщика: без остановки через 3 дня работы и от батареи (ИБП)
+
+        if ServerTask.applicable(
+            SERVER_MODE
+        ):  # задача Планировщика: без остановки через 3 дня работы и от батареи (ИБП)
             ServerTask(store()).start(config.STARTED)
-        feeds.upgrade(store(), load_types()['types'], APP_VERSION)          # после обновления — фиды по новым правилам
+        feeds.upgrade(store(), load_types()['types'], APP_VERSION)  # после обновления — фиды по новым правилам
         fresh = FreshBase.check()
         sync_counter_with_files()
     except Exception as e:
         ServerLog.failure('запуск', e)
         if StartCheck.armed() and StartCheck.code_error(e):
-            raise          # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
+            raise  # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
         if 'malformed' in str(e) or 'not a database' in str(e):
-            message_box('Файл базы данных повреждён:\n%s\n\n%s\n\n'
-                        'Так бывает, когда kp.sqlite3 подменяют вручную при оставшихся рядом файлах kp.sqlite3-wal и kp.sqlite3-shm.\n'
-                        'Что сделать: остановить программу, удалить kp.sqlite3-wal и kp.sqlite3-shm, затем положить на место kp.sqlite3 '
-                        'копию из папки data\\backup (архивы ZIP: kp-ДАТА.zip в backup\\auto — автоматические копии, kp-…-before-….zip — '
-                        'перед изменениями; файл kp.sqlite3 — внутри архива). '
-                        'Загружать файл базы впредь лучше через «Настройки → Обслуживание → Копии и база → Файл базы целиком».'
-                        % (os.path.join(DATA_DIR, 'kp.sqlite3'), e))
+            message_box(
+                'Файл базы данных повреждён:\n{}\n\n{}\n\n'
+                'Так бывает, когда kp.sqlite3 подменяют вручную при оставшихся рядом файлах kp.sqlite3-wal и kp.sqlite3-shm.\n'
+                'Что сделать: остановить программу, удалить kp.sqlite3-wal и kp.sqlite3-shm, затем положить на место kp.sqlite3 '
+                'копию из папки data\\backup (архивы ZIP: kp-ДАТА.zip в backup\\auto — автоматические копии, kp-…-before-….zip — '
+                'перед изменениями; файл kp.sqlite3 — внутри архива). '
+                'Загружать файл базы впредь лучше через «Настройки → Обслуживание → Копии и база → Файл базы целиком».'.format(
+                    os.path.join(DATA_DIR, 'kp.sqlite3'), e
+                )
+            )
             return 1
-        message_box('Не удалось подготовить папки данных:\n%s\n\n%s' % (DATA_DIR, e))
+        message_box(f'Не удалось подготовить папки данных:\n{DATA_DIR}\n\n{e}')
         return 1
-    try:   # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
-        if fresh:   # новая база: переносить в новую структуру нечего
+    try:  # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
+        if fresh:  # новая база: переносить в новую структуру нечего
             catalog_migrate.mark_done(store())
             mark_organized(store())
-        rep = catalog_migrate.run(store(), load_types_builtin(), (store().kv_get('types') or {}).get('types', []), IMG_DIR, os.path.join(DATA_DIR, 'backup'))
-        organize_existing(store(), load_types()['types'], IMG_DIR, os.path.join(DATA_DIR, 'backup'), backup=(rep or {}).get('backup'))
+        rep = catalog_migrate.run(
+            store(),
+            load_types_builtin(),
+            (store().kv_get('types') or {}).get('types', []),
+            IMG_DIR,
+            os.path.join(DATA_DIR, 'backup'),
+        )
+        organize_existing(
+            store(), load_types()['types'], IMG_DIR, os.path.join(DATA_DIR, 'backup'), backup=(rep or {}).get('backup')
+        )
     except Exception as e:
         ServerLog.failure('обновление каталога или раскладка изображений (будут повторены при следующем запуске)', e)
     if DATA_DIR.startswith('\\\\'):
-        message_box('Папка данных указана в сети (%s).\n\nБазу данных нельзя держать в общей сетевой папке — '
-                    'при одновременной работе она может повредиться. Для работы всем отделом используйте '
-                    'сервер отдела (server-setup\\1. Установить сервер отдела.bat), а dataDir оставьте пустым.' % DATA_DIR, error=False)
+        message_box(
+            f'Папка данных указана в сети ({DATA_DIR}).\n\nБазу данных нельзя держать в общей сетевой папке — '
+            'при одновременной работе она может повредиться. Для работы всем отделом используйте '
+            'сервер отдела (server-setup\\1. Установить сервер отдела.bat), а dataDir оставьте пустым.',
+            error=False,
+        )
     httpd, port = start_server()
     if not httpd:
-        ServerLog.failure('запуск: все порты заняты (%d…)' % BASE_PORT)
+        ServerLog.failure(f'запуск: все порты заняты ({BASE_PORT}…)')
         message_box('Не удалось запустить сервер: все порты заняты.')
         return 1
-    ServerLog.note('Сервер работает: порт %d' % port)
+    ServerLog.note(f'Сервер работает: порт {port}')
     # ночное обновление (если включено в «Обновлениях»): проверка раз в полчаса, установка — и перезапуск этого сервера
     from app_update import Restarter, Updater
-    maintenance.Background.every(1800, lambda: NightUpdate(Updater(store(), ROOT, DATA_DIR)).run(
-        lambda: Restarter(SERVER_MODE).restart(httpd)), 'ночное обновление')
+
+    maintenance.Background.every(
+        1800,
+        lambda: NightUpdate(Updater(store(), ROOT, DATA_DIR)).run(lambda: Restarter(SERVER_MODE).restart(httpd)),
+        'ночное обновление',
+    )
     if not SERVER_MODE:
         start_ipv6(port, httpd)
     # адрес localhost (а не 127.0.0.1) — чтобы браузер видел черновики, сохранённые прежней версией
-    url = 'http://localhost:%d/' % port
+    url = f'http://localhost:{port}/'
 
-    def ready():
+    def ready() -> None:
         global STARTED
         STARTED = True
-        if not os.environ.get('KP_NO_BROWSER'):          # после перезапуска из «Настроек» браузер уже открыт
+        if not os.environ.get('KP_NO_BROWSER'):  # после перезапуска из «Настроек» браузер уже открыт
             webbrowser.open(url)
-    # обновление (патч) сначала отвечает на свои главные адреса — тогда открывается браузер; не ответило — сервер
-    # останавливается, и launcher.py возвращает прежнюю версию
+
+    # обновление не ответило на главные адреса — останов, launcher.py вернёт прежнюю версию
     check = StartCheck(port, httpd, ready) if StartCheck.armed() else None
     if check:
         check.start()
@@ -541,9 +605,9 @@ def main():
         opener.daemon = True
         opener.start()
     try:
-        print('%s запущен: %s\nДанные: %s\nГотовые КП: %s' % (APP_TITLE, url, DATA_DIR, DOCS_DIR), flush=True)
+        print(f'{APP_TITLE} запущен: {url}\nДанные: {DATA_DIR}\nГотовые КП: {DOCS_DIR}', flush=True)
         if SERVER_MODE:
-            print('Режим сервера отдела. Сотрудники открывают: http://%s:%d/' % (socket.gethostname(), port), flush=True)
+            print(f'Режим сервера отдела. Сотрудники открывают: http://{socket.gethostname()}:{port}/', flush=True)
     except Exception:
         pass
     try:

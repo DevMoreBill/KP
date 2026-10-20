@@ -1,11 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Текст из PDF для автозаполнения (паспорт, каталог, ТЗ) — только стандартная библиотека.
+"""Текст из «текстовых» PDF на стандартной библиотеке: потоки, ToUnicode и CID-шрифты, страницы, строки и пробелы."""
 
-Читает обычные «текстовые» PDF: потоки FlateDecode / ASCIIHex / ASCII85, потоки объектов (PDF 1.5+), шрифты с ToUnicode
-(в том числе двухбайтные CID-шрифты — так устроены почти все русские PDF из Word и САПР), простые шрифты — как cp1252/cp1251.
-Страницы — по дереву /Pages; формы (XObject Form) внутри страницы тоже читаются. Строки определяются по смене положения
-текста (Td, TD, T*, Tm), пробелы — по сдвигам в TJ. Сканы (только картинки) и защищённые паролем PDF — ValueError с пояснением.
-"""
 import base64
 import re
 import zlib
@@ -14,23 +8,22 @@ from defaults import SrvVal
 
 # наибольший файл — cat.docMaxMB («Значения программы», встроенное 40 МБ)
 MAX_TEXT = 60000
-MAX_STREAM = 64 * 1024 * 1024        # распакованный поток — не больше
+MAX_STREAM = 64 * 1024 * 1024  # распакованный поток — не больше
 
 _OBJ_RX = re.compile(rb'(\d+)\s+(\d+)\s+obj\b')
-_NUM_RX = re.compile(rb'[+-]?(\d+\.?\d*|\.\d+)')        # число (токены разбираются в цикле — выражения собраны заранее)
+_NUM_RX = re.compile(rb'[+-]?(\d+\.?\d*|\.\d+)')  # число (токены разбираются в цикле — выражения собраны заранее)
 _INT_RX = re.compile(rb'\d+')
 _REF_RX = re.compile(rb'\s+(\d+)\s+R(?=[\s/<>\[\]()%]|$)')
 _NOT_HEX = re.compile(rb'[^0-9A-Fa-f]')
-_ESC = {0x6E: 10, 0x72: 13, 0x74: 9, 0x62: 8, 0x66: 12}    # \n \r \t \b \f в строке PDF
+_ESC = {0x6E: 10, 0x72: 13, 0x74: 9, 0x62: 8, 0x66: 12}  # \n \r \t \b \f в строке PDF
 _WS = b' \t\r\n\x0c\x00'
 _DELIM = b'()<>[]{}/%'
 
 
-# ---------------------------------------------------------------- разбор объектов PDF
 class Ref:
     __slots__ = ('n',)
 
-    def __init__(self, n):
+    def __init__(self, n) -> None:
         self.n = n
 
 
@@ -43,42 +36,42 @@ class Op(str):
 
 
 class _Lexer:
-    def __init__(self, data, pos=0):
+    def __init__(self, data, pos=0) -> None:
         self.d, self.p, self.n = data, pos, len(data)
 
-    def skip(self):
+    def skip(self) -> None:
         d, n = self.d, self.n
         while self.p < n:
             c = d[self.p]
             if c in _WS:
                 self.p += 1
-            elif c == 0x25:                          # % комментарий
+            elif c == 0x25:  # % комментарий
                 while self.p < n and d[self.p] not in b'\r\n':
                     self.p += 1
             else:
                 break
 
-    def token(self):
+    def token(self) -> object:
         """Следующий объект: число, строка (bytes), Name, list, dict, Ref, Op или None в конце."""
         self.skip()
         d, n = self.d, self.n
         if self.p >= n:
             return None
         c = d[self.p]
-        if c == 0x28:                                # ( строка )
+        if c == 0x28:  # ( строка )
             return self._lit()
-        if c == 0x3C:                                # < hex > или << словарь >>
-            if d[self.p + 1:self.p + 2] == b'<':
+        if c == 0x3C:  # < hex > или << словарь >>
+            if d[self.p + 1 : self.p + 2] == b'<':
                 self.p += 2
                 return self._dict()
             e = d.find(b'>', self.p)
             e = n if e < 0 else e
-            h = _NOT_HEX.sub(b'', d[self.p + 1:e])
+            h = _NOT_HEX.sub(b'', d[self.p + 1 : e])
             self.p = e + 1
             if len(h) % 2:
                 h += b'0'
             return bytes.fromhex(h.decode('ascii'))
-        if c == 0x5B:                                # [ массив ]
+        if c == 0x5B:  # [ массив ]
             self.p += 1
             out = []
             while True:
@@ -92,12 +85,12 @@ class _Lexer:
                 if t is None:
                     return out
                 out.append(t)
-        if c == 0x2F:                                # /Имя
+        if c == 0x2F:  # /Имя
             s = self.p + 1
             self.p = s
             while self.p < n and d[self.p] not in _WS and d[self.p] not in _DELIM:
                 self.p += 1
-            raw = d[s:self.p]
+            raw = d[s : self.p]
             raw = re.sub(rb'#([0-9A-Fa-f]{2})', lambda m: bytes([int(m.group(1), 16)]), raw)
             return Name(raw.decode('latin-1'))
         if c in b')>]}':
@@ -109,11 +102,11 @@ class _Lexer:
         if self.p == s:
             self.p += 1
             return Op(chr(c))
-        w = d[s:self.p]
+        w = d[s : self.p]
         if _NUM_RX.fullmatch(w):
             # «12 0 R» — ссылка
             if _INT_RX.fullmatch(w):
-                m = _REF_RX.match(d[self.p:self.p + 24])
+                m = _REF_RX.match(d[self.p : self.p + 24])
                 if m:
                     self.p += m.end()
                     return Ref(int(w))
@@ -123,14 +116,14 @@ class _Lexer:
                 return float(w)
         return Op(w.decode('latin-1'))
 
-    def _lit(self):
+    def _lit(self) -> bytes:
         d, n = self.d, self.n
         self.p += 1
         out, depth = bytearray(), 1
         while self.p < n:
             c = d[self.p]
             self.p += 1
-            if c == 0x5C:                            # \ экранирование
+            if c == 0x5C:  # \ экранирование
                 if self.p >= n:
                     break
                 e = d[self.p]
@@ -161,13 +154,13 @@ class _Lexer:
                 out.append(c)
         return bytes(out)
 
-    def _dict(self):
+    def _dict(self) -> dict:
         out = {}
         while True:
             self.skip()
             if self.p >= self.n:
                 return out
-            if self.d[self.p:self.p + 2] == b'>>':
+            if self.d[self.p : self.p + 2] == b'>>':
                 self.p += 2
                 return out
             k = self.token()
@@ -178,14 +171,14 @@ class _Lexer:
                 out[str(k)] = v
 
 
-def _decode_stream(dic, raw):
+def _decode_stream(dic, raw) -> bytes | None:
     f = dic.get('Filter')
     fl = f if isinstance(f, list) else [f] if f else []
     data = raw
-    for x in fl:
-        x = str(x)
+    for name in fl:
+        x = str(name)
         if x in ('FlateDecode', 'Fl'):
-            # предел на поток: «сжатая бомба» в PDF не займёт всю память; повреждённый конец — берём, что распаковалось
+            # предел на поток — защита от «сжатой бомбы»; повреждённый конец — что распаковалось
             d = zlib.decompressobj()
             try:
                 data = d.decompress(data, MAX_STREAM)
@@ -199,18 +192,18 @@ def _decode_stream(dic, raw):
             s = s[2:] if s.startswith(b'<~') else s
             data = base64.a85decode(s.split(b'~>')[0] + b'~>', adobe=True) if s else b''
         else:
-            return None                              # картинки (DCT, JBIG2…) и прочее — не текст
+            return None  # картинки (DCT, JBIG2…) и прочее — не текст
     dp = dic.get('DecodeParms')
     if isinstance(dp, dict) and (dp.get('Predictor') or 1) >= 10:
         data = _png_unpredict(data, int(dp.get('Columns') or 1))
     return data
 
 
-def _png_unpredict(data, cols):
+def _png_unpredict(data, cols) -> bytes:
     """Предиктор PNG (бывает у потоков перекрёстных ссылок) — для потоков объектов не нужен, но и не мешает."""
     out, prev, row = bytearray(), bytearray(cols), cols + 1
     for i in range(0, len(data) - row + 1, row):
-        ft, line = data[i], bytearray(data[i + 1:i + row])
+        ft, line = data[i], bytearray(data[i + 1 : i + row])
         for k in range(cols):
             if ft == 2:
                 line[k] = (line[k] + prev[k]) & 255
@@ -220,7 +213,7 @@ def _png_unpredict(data, cols):
 
 
 class Doc:
-    def __init__(self, data):
+    def __init__(self, data) -> None:
         if not data.startswith(b'%PDF') and b'%PDF' not in data[:1024]:
             raise ValueError('это не PDF')
         self.data, self.objs = data, {}
@@ -233,21 +226,25 @@ class Doc:
                 continue
             if isinstance(v, dict):
                 lx.skip()
-                if data[lx.p:lx.p + 6] == b'stream':
+                if data[lx.p : lx.p + 6] == b'stream':
                     s = lx.p + 6
-                    s += 2 if data[s:s + 2] == b'\r\n' else 1 if data[s:s + 1] in b'\r\n' else 0
+                    s += 2 if data[s : s + 2] == b'\r\n' else 1 if data[s : s + 1] in b'\r\n' else 0
                     ln = v.get('Length')
-                    e = s + ln if isinstance(ln, int) and data[s + ln:s + ln + 30].lstrip().startswith(b'endstream') else data.find(b'endstream', s)
-                    v = ('stream', v, data[s:e if e > 0 else len(data)])
-            self.objs[n] = v                         # более поздняя версия объекта (инкрементальное сохранение) заменяет раннюю
-        for n, v in list(self.objs.items()):         # потоки объектов (PDF 1.5+)
+                    e = (
+                        s + ln
+                        if isinstance(ln, int) and data[s + ln : s + ln + 30].lstrip().startswith(b'endstream')
+                        else data.find(b'endstream', s)
+                    )
+                    v = ('stream', v, data[s : e if e > 0 else len(data)])
+            self.objs[n] = v  # более поздняя версия объекта (инкрементальное сохранение) заменяет раннюю
+        for v in list(self.objs.values()):  # потоки объектов (PDF 1.5+)
             if isinstance(v, tuple) and str(v[1].get('Type')) == 'ObjStm':
                 self._objstm(v)
         self.trailers = self._trailers()
         if any(isinstance(v, dict) and 'Encrypt' in v for v in self.trailers):
             raise ValueError('PDF защищён паролем — снимите защиту или скопируйте текст вручную')
 
-    def _trailers(self):
+    def _trailers(self) -> list:
         out = []
         for m in re.finditer(rb'trailer\s*<<', self.data):
             lx = _Lexer(self.data, m.end() - 2)
@@ -257,7 +254,7 @@ class Doc:
         out += [v[1] for v in self.objs.values() if isinstance(v, tuple) and str(v[1].get('Type')) == 'XRef']
         return out
 
-    def _objstm(self, v):
+    def _objstm(self, v) -> None:
         data = _decode_stream(v[1], v[2])
         if not data:
             return
@@ -276,13 +273,13 @@ class Doc:
             except (IndexError, ValueError):
                 pass
 
-    def get(self, v, depth=0):
+    def get(self, v, depth=0) -> object:
         while isinstance(v, Ref) and depth < 20:
             v = self.objs.get(v.n)
             depth += 1
         return v
 
-    def stream(self, v):
+    def stream(self, v) -> bytes:
         v = self.get(v)
         if isinstance(v, tuple):
             try:
@@ -291,7 +288,7 @@ class Doc:
                 return b''
         return b''
 
-    def pages(self):
+    def pages(self) -> list:
         root = None
         for t in self.trailers:
             if isinstance(t.get('Root'), Ref):
@@ -299,11 +296,15 @@ class Doc:
         out = []
         if isinstance(root, dict):
             self._walk(self.get(root.get('Pages')), {}, out, 0)
-        if not out:                                  # нет дерева страниц — по порядку объектов
-            out = [(v, v.get('Resources')) for n, v in sorted(self.objs.items()) if isinstance(v, dict) and str(v.get('Type')) == 'Page']
+        if not out:  # нет дерева страниц — по порядку объектов
+            out = [
+                (v, v.get('Resources'))
+                for n, v in sorted(self.objs.items())
+                if isinstance(v, dict) and str(v.get('Type')) == 'Page'
+            ]
         return out
 
-    def _walk(self, node, inh, out, depth):
+    def _walk(self, node, inh, out, depth) -> None:
         if not isinstance(node, dict) or depth > 30:
             return
         res = node.get('Resources', inh.get('Resources'))
@@ -314,17 +315,17 @@ class Doc:
             self._walk(self.get(k), {'Resources': res}, out, depth + 1)
 
 
-# ---------------------------------------------------------------- шрифты: коды → текст
-def _cmap(data):
+def _cmap(data) -> tuple:
     """ToUnicode: {код (bytes): текст}, длины кодов."""
     m, lens = {}, set()
 
-    def uni(h):
+    def uni(h) -> str:
         b = bytes.fromhex(h.decode('ascii'))
         try:
             return b.decode('utf-16-be')
         except UnicodeDecodeError:
             return ''
+
     for blk in re.findall(rb'begincodespacerange(.*?)endcodespacerange', data, re.S):
         for a in re.findall(rb'<([0-9A-Fa-f]+)>', blk):
             lens.add(len(a) // 2)
@@ -344,7 +345,13 @@ def _cmap(data):
             else:
                 base = bytes.fromhex(c[1:-1].decode('ascii'))
                 for k in range(hi - lo + 1):
-                    t = base[:-2] + (int.from_bytes(base[-2:], 'big') + k).to_bytes(2, 'big') if len(base) >= 2 else bytes([base[-1] + k & 255]) if base else b''
+                    t = (
+                        base[:-2] + (int.from_bytes(base[-2:], 'big') + k).to_bytes(2, 'big')
+                        if len(base) >= 2
+                        else bytes([base[-1] + k & 255])
+                        if base
+                        else b''
+                    )
                     try:
                         m[(lo + k).to_bytes(w, 'big')] = t.decode('utf-16-be')
                     except UnicodeDecodeError:
@@ -353,7 +360,7 @@ def _cmap(data):
 
 
 class Font:
-    def __init__(self, doc, f):
+    def __init__(self, doc, f) -> None:
         f = doc.get(f) or {}
         self.map, self.lens = {}, [1]
         tu = f.get('ToUnicode') if isinstance(f, dict) else None
@@ -370,17 +377,19 @@ class Font:
                 if isinstance(x, int):
                     code = x
                 elif isinstance(x, Name):
-                    u = _GLYPH.get(str(x)) or (chr(int(str(x)[3:7], 16)) if re.fullmatch(r'uni[0-9A-Fa-f]{4}', str(x)) else '')
+                    u = _GLYPH.get(str(x)) or (
+                        chr(int(str(x)[3:7], 16)) if re.fullmatch(r'uni[0-9A-Fa-f]{4}', str(x)) else ''
+                    )
                     if u:
                         self.diff[code] = u
                     code += 1
 
-    def text(self, b):
+    def text(self, b) -> str:
         if self.map:
             out, i, L = [], 0, self.lens
             while i < len(b):
                 for w in L:
-                    c = b[i:i + w]
+                    c = b[i : i + w]
                     if c in self.map:
                         out.append(self.map[c])
                         i += w
@@ -389,39 +398,61 @@ class Font:
                     i += L[0]
             return ''.join(out)
         if self.two:
-            return ''                                # CID-шрифт без ToUnicode — текст не восстановить
+            return ''  # CID-шрифт без ToUnicode — текст не восстановить
         if self.diff:
             return ''.join(self.diff.get(c) or bytes([c]).decode(self.cp, 'replace') for c in b)
         return b.decode(self.cp, 'replace')
 
 
-_GLYPH = {'space': ' ', 'hyphen': '-', 'period': '.', 'comma': ',', 'colon': ':', 'semicolon': ';', 'quotedbl': '"', 'quoteright': '’',
-          'parenleft': '(', 'parenright': ')', 'slash': '/', 'percent': '%', 'degree': '°', 'multiply': '×', 'endash': '–', 'emdash': '—',
-          'guillemotleft': '«', 'guillemotright': '»', 'numero': '№', 'plusminus': '±', 'bullet': '•'}
+_GLYPH = {
+    'space': ' ',
+    'hyphen': '-',
+    'period': '.',
+    'comma': ',',
+    'colon': ':',
+    'semicolon': ';',
+    'quotedbl': '"',
+    'quoteright': '’',
+    'parenleft': '(',
+    'parenright': ')',
+    'slash': '/',
+    'percent': '%',
+    'degree': '°',
+    'multiply': '×',
+    'endash': '–',
+    'emdash': '—',
+    'guillemotleft': '«',
+    'guillemotright': '»',
+    'numero': '№',
+    'plusminus': '±',
+    'bullet': '•',
+}
 _GLYPH.update({str(d): str(d) for d in range(10)})
-_GLYPH.update({n: str(d) for d, n in enumerate(['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'])})
+_GLYPH.update(
+    {n: str(d) for d, n in enumerate(['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'])}
+)
 
 
-# ---------------------------------------------------------------- содержимое страницы → строки
-def _run(doc, data, res, out, fonts, depth=0):
+def _run(doc, data, res, out, fonts, depth=0) -> None:
     res = doc.get(res) or {}
     fdict = doc.get(res.get('Font')) or {} if isinstance(res, dict) else {}
     xobj = doc.get(res.get('XObject')) or {} if isinstance(res, dict) else {}
     lx, stack, font = _Lexer(data), [], None
     line = []
     last_y = None
-    pos = {'fs': 10.0, 'run': 0}                     # размер шрифта; знаков, выведенных с последнего сдвига (Td)
+    pos = {'fs': 10.0, 'run': 0}  # размер шрифта; знаков, выведенных с последнего сдвига (Td)
 
-    def nl():
+    def nl() -> None:
         if line:
             out.append(''.join(line))
             line.clear()
 
-    def show(b):
+    def show(b) -> None:
         if font is not None and isinstance(b, bytes):
             t = font.text(b)
             line.append(t)
             pos['run'] += len(t)
+
     while True:
         try:
             t = lx.token()
@@ -435,8 +466,8 @@ def _run(doc, data, res, out, fonts, depth=0):
                 del stack[:32]
             continue
         op = str(t)
-        if op == 'BI':                               # встроенная картинка — пропустить до EI
-            e = re.search(rb'\sEI[\s]', data[lx.p:])
+        if op == 'BI':  # встроенная картинка — пропустить до EI
+            e = re.search(rb'\sEI[\s]', data[lx.p :])
             lx.p += e.end() if e else len(data)
         elif op == 'Tf' and len(stack) >= 2:
             key = str(stack[-2])
@@ -459,11 +490,14 @@ def _run(doc, data, res, out, fonts, depth=0):
             ty = stack[-1]
             if isinstance(ty, (int, float)) and abs(ty) > 0.5:
                 nl()
-            elif line and not line[-1].endswith(' ') and isinstance(stack[-2], (int, float)):
-                # сдвиг по строке: пробел, только если он заметно больше ширины уже выведенного текста
-                # (многие программы ставят Td внутри слова — между частями с разным кернингом)
-                if stack[-2] > pos['run'] * pos['fs'] * 0.62 + pos['fs'] * 0.45:
-                    line.append(' ')
+            elif (
+                line
+                and not line[-1].endswith(' ')
+                and isinstance(stack[-2], (int, float))
+                # пробел — только при сдвиге заметно больше выведенного текста: Td бывает и внутри слова (кернинг)
+                and stack[-2] > pos['run'] * pos['fs'] * 0.62 + pos['fs'] * 0.45
+            ):
+                line.append(' ')
             pos['run'] = 0
         elif op == 'Tm' and len(stack) >= 6:
             y = stack[-1]
@@ -484,12 +518,11 @@ def _run(doc, data, res, out, fonts, depth=0):
     nl()
 
 
-def text(data, need_text=True):
-    """Текст PDF (строки, страницы через пустую строку) и текст каждой страницы (per — '' у страницы без текста, скана).
-    need_text=False — PDF без текста не ошибка (дальше — распознавание скана). ValueError — понятным текстом."""
+def text(data, need_text=True) -> dict:
+    """Текст PDF и текст каждой страницы; need_text=False — PDF без текста не ошибка (дальше — OCR)."""
     mb = SrvVal.now('cat.docMaxMB')
     if len(data) > mb * 1024 * 1024:
-        raise ValueError('файл больше %d МБ' % mb)
+        raise ValueError(f'файл больше {mb} МБ')
     doc = Doc(data)
     pages, fonts, parts, per, size = doc.pages(), {}, [], [], 0
     for pg, res in pages:
@@ -512,5 +545,7 @@ def text(data, need_text=True):
             break
     out = '\n\n'.join(parts)
     if need_text and len(re.sub(r'\W', '', out)) < 20:
-        raise ValueError('в PDF нет текста — похоже на скан (картинки). Приложите PDF прямо в окне ИИ-чата или скопируйте текст вручную')
+        raise ValueError(
+            'в PDF нет текста — похоже на скан (картинки). Приложите PDF прямо в окне ИИ-чата или скопируйте текст вручную'
+        )
     return {'text': out[:MAX_TEXT], 'pages': len(pages), 'per': per}
