@@ -7,6 +7,7 @@
     "app/app_update.py",
     "app/auth_users.py",
     "app/backup_mirror.py",
+    "app/bitrix.py",
     "app/bitrix_rules.py",
     "app/catalog_admin.py",
     "app/catalog_migrate.py",
