@@ -335,7 +335,7 @@ def current(handler, store) -> dict | None:
     return u
 
 
-def find_by_login(store, login: str) -> tuple:
+def find_by_login(store, login: object) -> tuple:
     login = norm_login(login)
     for mid, rec in access(store).items():
         if login and norm_login(rec.get('login')) == login:

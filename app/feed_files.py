@@ -265,7 +265,7 @@ def _pages_table(text) -> list | None:
     if len(rows) < 2:
         return None
     head = [re.sub(r'\s+', ' ', head_cell).strip().lower() for head_cell in rows[0]]
-    col = {}
+    col: dict[str, int | None] = {}
     for key, regex in PAGE_COLS.items():
         col[key] = next((i for i, head_cell in enumerate(head) if re.search(regex, head_cell)), None)
     if col['name'] is None or col['url'] is None:
@@ -275,7 +275,8 @@ def _pages_table(text) -> list | None:
         return None  # кавычки сломаны — строки склеились, читать построчно
 
     def get(cells, k) -> str:
-        return cells[col[k]].strip() if col[k] is not None and col[k] < len(cells) else ''
+        index = col[k]
+        return cells[index].strip() if index is not None and index < len(cells) else ''
 
     return [
         [
@@ -519,7 +520,7 @@ def parse_pages_json(obj) -> list:
         return u if u.startswith('http') else ''
 
     # логотипы марок: {"logos": {"EXELUTE": "asset:logo-exelute"}} — у позиций этой марки, если в каталоге логотипа ещё нет
-    raw_logos = obj.get('logos') if isinstance(obj, dict) and isinstance(obj.get('logos'), dict) else {}
+    raw_logos = picked if isinstance(obj, dict) and isinstance(picked := obj.get('logos'), dict) else {}
     logos = {str(k).strip().lower(): pic(v) for k, v in list(raw_logos.items())[:50] if isinstance(v, str)}
     out, seen = [], set()
     for item in items:
@@ -693,7 +694,7 @@ def parse_pages(data) -> list:
                 parts = _split_line(line)
         if not parts or not parts[1]:
             continue
-        cat, name, url, pics, desc, chars = parts
+        cat, name, url, pics, desc, chars = list(parts)
         url = url.strip()
         if url in seen:
             continue
@@ -867,7 +868,7 @@ OPT_HEAD = re.compile(
 
 def _price_cols(head) -> dict:
     """Столбцы прайса по текстам шапки: артикул, название, цены по исполнениям, опции, характеристики."""
-    cols = {
+    cols: dict[str, Any] = {
         'sku': None,
         'name': None,
         'short': None,
@@ -906,8 +907,10 @@ def _price_cols(head) -> dict:
                 r'^фильтров с ндс.*', 'Рекомендованные фильтры', label, flags=re.I
             )  # «Цена фильтров с НДС, €»
             cols['opts'].append((col, label))
-        elif re.search(r'производ|расход|подача', text_low) and re.search(r'(\d+(?:[.,]\d+)?)\s*бар\s*$', text_low):
-            cols['pcols'].append((col, re.search(r'(\d+(?:[.,]\d+)?)\s*бар\s*$', text_low).group(1).replace(',', '.')))
+        elif re.search(r'производ|расход|подача', text_low) and (
+            bar_match := re.search(r'(\d+(?:[.,]\d+)?)\s*бар\s*$', text_low)
+        ):
+            cols['pcols'].append((col, bar_match.group(1).replace(',', '.')))
         else:
             cols['specs'].append((col, head_text))
     if cols['prices']:
@@ -1351,7 +1354,7 @@ def _sents(text) -> list:
 
 def _intro_blocks(prose, bullets) -> list:
     """Вводный текст без подзаголовков: назначение → конструкция и принцип работы → диапазон серии → исполнения/особенности."""
-    buckets = {'Назначение': [], 'Конструкция и принцип работы': [], 'Диапазон серии': []}
+    buckets: dict[str, list[str]] = {'Назначение': [], 'Конструкция и принцип работы': [], 'Диапазон серии': []}
     cur = 'Назначение'
     sents = [sent for line in prose for sent in _sents(line)]
     for i, sent in enumerate(sents):
@@ -1379,7 +1382,8 @@ def desc_blocks(text) -> list:
     text = str(text or '').strip()
     if not text:
         return []
-    sections, cur = [], {'label': '', 'prose': [], 'bullets': []}
+    sections: list[dict[str, Any]] = []
+    cur: dict[str, Any] = {'label': '', 'prose': [], 'bullets': []}
     for raw_line in text.split('\n'):
         line = raw_line.strip()
         if not line:
@@ -2119,7 +2123,7 @@ def parse_stock(data) -> list:
                 for col_key, v in row.items():
                     if col_key not in (sku, name) and _num(v) is not None:
                         nums[col_key] = nums.get(col_key, 0) + 1
-            qty = max(nums, key=nums.get) if nums else None
+            qty = max(nums, key=lambda col_key: nums[col_key]) if nums else None
             if qty is None:
                 continue
         for row in data_rows:
@@ -2168,9 +2172,10 @@ def parse_stock(data) -> list:
                 )
             promo_val = str(row.get(promo, '') if promo is not None else '').strip()
             if promo_val and promo_val != '0' and not x['promo']:
+                promo_share = _num(promo_val)
                 x['promo'] = (
-                    (f'Скидка {_num(promo_val) * 100:g} %')
-                    if _num(promo_val) is not None and 0 < _num(promo_val) < 1
+                    (f'Скидка {promo_share * 100:g} %')
+                    if promo_share is not None and 0 < promo_share < 1
                     else promo_val[:80]
                 )
     if not out:

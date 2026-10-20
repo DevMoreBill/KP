@@ -563,7 +563,7 @@ class TaskBook:
             )
         )
 
-    def get(self, tid: str) -> dict | None:
+    def get(self, tid: str | int) -> dict | None:
         row = self.store.one(f'SELECT {self.COLS} FROM crm_tasks WHERE id=?', (int(tid),))
         return self._out(row) if row else None
 
@@ -637,7 +637,7 @@ class TaskBook:
             tid = cur.lastrowid
         return self._require(tid)
 
-    def update(self, tid: str, data) -> dict:
+    def update(self, tid: str | int, data) -> dict:
         cur = self.get(tid)
         if not cur:
             raise LookupError('Дело не найдено')

@@ -43,7 +43,7 @@ class ListStore:
             out.append(row)
         return out
 
-    def save(self, values: dict, author: str = '') -> dict:
+    def save(self, values: object, author: str = '') -> dict:
         """values = {ключ: [строки] | None — встроенный список}."""
         if not isinstance(values, dict):
             raise ValueError('Нет списков')

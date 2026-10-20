@@ -120,7 +120,7 @@ class MakerLogos:
             pass
         return None, None
 
-    def set(self, maker: str, raw, author: str = '') -> dict:
+    def set(self, maker: object, raw, author: str = '') -> dict:
         """Закрепить логотип и поставить на оборудование марки → {maker, logo, items}."""
         maker = str(maker or '').strip()
         if not maker or len(maker) > self.MAX_MAKER or not self.key(maker):
@@ -146,7 +146,7 @@ class MakerLogos:
             'items': self.apply(maker, author),
         }
 
-    def unpin(self, maker: str) -> dict:
+    def unpin(self, maker: object) -> dict:
         """Снять закрепление; логотип на оборудовании остаётся."""
         pins, k = self.pins(), self.key(maker)
         if k not in pins:

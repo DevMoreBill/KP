@@ -21,6 +21,12 @@ if ! command -v ruff >/dev/null 2>&1 || [ "ruff==$(ruff --version | cut -d' ' -f
   python3 -m pip install --quiet --disable-pip-version-check "$RUFF"
 fi
 
+# mypy — подписи типов сервера (tests/code_style.py), та же версия, что в CI
+MYPY=$(python3 -c "import re; print(re.search(r\"MYPY = '([^']+)'\", open('tests/code_style.py', encoding='utf-8').read()).group(1))")
+if [ "mypy==$(python3 -m mypy --version 2>/dev/null | cut -d' ' -f2)" != "$MYPY" ]; then
+  python3 -m pip install --quiet --disable-pip-version-check "$MYPY"
+fi
+
 # Prettier — оформление ES-модулей интерфейса, заранее в кэш npm
 PRETTIER=$(python3 -c "import re; print(re.search(r\"PRETTIER = '([^']+)'\", open('tests/code_style.py', encoding='utf-8').read()).group(1))")
 if command -v npx >/dev/null 2>&1; then

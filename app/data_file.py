@@ -155,7 +155,7 @@ class XlsxData:
             return True
         return isinstance(v, str) and v != '' and not XmlTree.RAW.search(v)
 
-    def _columns(self, rows) -> list:
+    def _columns(self, rows) -> list[tuple[str, tuple, bool]]:
         """Столбцы таблицы: [(ключ строки 2, путь (k,) или (k, sub), json?)]; вложенные объекты — раскрыты одним уровнем."""
         order = []
         vals: dict = {}
@@ -166,7 +166,7 @@ class XlsxData:
                     vals[k] = []
                 vals[k].append(v)
         order.sort(key=lambda k: (k != 'id', k != 'name'))
-        out = []
+        out: list[tuple[str, tuple, bool]] = []
         for k in order:
             if not self.KEY.match(str(k)):
                 continue  # ключ с «.» или «:» — в общем столбце «_more:json»
@@ -285,7 +285,7 @@ class XlsxData:
 
         widths = [min(50, max(10, len(str(head_cell)) + 2)) for head_cell in head]
         name = self._name(title)
-        self.sheets.append((name, self._sheet(rows(), 2, widths), False))
+        self.out_sheets.append((name, self._sheet(rows(), 2, widths), False))
         self.map.append(['table', name, path])
 
     def _pairs(self, title, path, data) -> None:
@@ -293,7 +293,7 @@ class XlsxData:
         rows = [['Ключ', 'Значение'], ['_key', '_value:json']] + [
             [k, json.dumps(v, ensure_ascii=False)] for k, v in data.items()
         ]
-        self.sheets.append((name, self._sheet(rows, 2, [30, 80]), False))
+        self.out_sheets.append((name, self._sheet(rows, 2, [30, 80]), False))
         self.map.append(['kv', name, path])
 
     @staticmethod
@@ -302,12 +302,10 @@ class XlsxData:
 
     def dump(self, doc) -> bytes:
         """Документ → байты .xlsx."""
-        self.sheets, self.map, self.long, self.used = (
-            [],
-            [],
-            [],
-            {self.INFO.lower(), self.META.lower(), self.LONG_SHEET.lower()},
-        )
+        self.out_sheets: list[tuple] = []
+        self.map: list[list] = []
+        self.long: list[str] = []
+        self.used: set[str] = {self.INFO.lower(), self.META.lower(), self.LONG_SHEET.lower()}
         buf = io.BytesIO()
         self.z, self.files = (
             zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED),
@@ -321,7 +319,7 @@ class XlsxData:
         sec = picked if isinstance(picked := doc.get('sections'), dict) else {}
         loose = {}
         for sec_key, v in sec.items():
-            title = self.SECTION.get(sec_key, sec_key)
+            title = str(self.SECTION.get(sec_key, sec_key))
             if self._records(v):
                 self._table(title, [sec_key], v)
             elif isinstance(v, dict):
@@ -355,7 +353,9 @@ class XlsxData:
             ),
             0,
         )
-        self._book([(self.INFO, info, False), *self.sheets, (self.META, kp_no, True), (self.LONG_SHEET, long_no, True)])
+        self._book(
+            [(self.INFO, info, False), *self.out_sheets, (self.META, kp_no, True), (self.LONG_SHEET, long_no, True)]
+        )
 
     def _info(self, doc) -> list:
         what = {
@@ -451,7 +451,7 @@ class XlsxData:
         return html.unescape(text)
 
     @classmethod
-    def sheets(cls, z) -> list:
+    def sheets(cls, z) -> dict:
         """{имя листа: {номер строки: {номер столбца: значение с типом}}}."""
         names = set(z.namelist())
         strings = []

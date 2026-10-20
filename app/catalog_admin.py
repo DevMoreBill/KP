@@ -171,7 +171,7 @@ class TrashBin:
             counts[row['entityType']] = counts.get(row['entityType'], 0) + 1
         return {'items': [row for row in rows if not etype or row['entityType'] == etype], 'counts': counts}
 
-    def restore(self, tid: str) -> None:
+    def restore(self, tid: str | int) -> None:
         etype, eid = self.store.trash_restore(tid)
         if etype == 'kp':
             from crm import DealBook
@@ -179,7 +179,7 @@ class TrashBin:
             DealBook.kp_moved(self.store, eid, 'Корзина')
         self.log('restore', etype, eid, None, None)
 
-    def drop(self, tid: str) -> None:
+    def drop(self, tid: str | int) -> None:
         """Удалить навсегда одну запись корзины."""
         rec = self.store.trash_drop(tid)
         if not rec:

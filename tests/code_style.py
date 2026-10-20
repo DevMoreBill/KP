@@ -1,6 +1,7 @@
-"""Оформление переписанного кода: Ruff (проверка и формат) для модулей Python из tests/code_style.json, Prettier для
-ES-модулей интерфейса (app/web/js). Запуск из корня репозитория: python tests/code_style.py [--fix] [файлы…]."""
+"""Оформление переписанного кода: Ruff (проверка и формат) для модулей Python из tests/code_style.json, mypy (подписи
+типов сервера app/*.py), Prettier для ES-модулей интерфейса (app/web/js). Запуск из корня репозитория: python tests/code_style.py [--fix] [файлы…]."""
 
+import importlib.util
 import json
 import re
 import shutil
@@ -13,6 +14,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 class CodeStyle:
     RUFF = 'ruff==0.15.8'
+    MYPY = 'mypy==2.4.0'
     PRETTIER = 'prettier@3.6.2'
     ESM = re.compile(r'^(?:import|export)\s', re.M)
 
@@ -37,15 +39,22 @@ class CodeStyle:
         return [exe] if exe else None
 
     @staticmethod
+    def mypy() -> list[str] | None:
+        return [sys.executable, '-m', 'mypy'] if importlib.util.find_spec('mypy') else None
+
+    @staticmethod
     def npx() -> str | None:
         return shutil.which('npx')
 
     def commands(self, fix: bool = False) -> list[tuple[str, list[str]]]:
         out = []
-        py_files, js_files, ruff, npx = self.python(), self.modules(), self.ruff(), self.npx()
+        py_files, js_files, ruff, mypy, npx = self.python(), self.modules(), self.ruff(), self.mypy(), self.npx()
         if py_files and ruff:
             out.append(('Ruff (проверка)', [*ruff, 'check', *(['--fix'] if fix else []), *py_files]))
             out.append(('Ruff (формат)', [*ruff, 'format', *([] if fix else ['--check']), *py_files]))
+        if py_files and mypy:
+            server = sorted(path.relative_to(REPO).as_posix() for path in (REPO / 'app').glob('*.py'))
+            out.append(('mypy (типы сервера)', [*mypy, *server]))
         if js_files and npx:
             out.append(('Prettier', [npx, '--yes', self.PRETTIER, '--write' if fix else '--check', *js_files]))
         return out
@@ -54,6 +63,8 @@ class CodeStyle:
         need = []
         if self.python() and not self.ruff():
             need.append(f'Ruff (pip install {self.RUFF})')
+        if self.python() and not self.mypy():
+            need.append(f'mypy (pip install {self.MYPY})')
         if self.modules() and not self.npx():
             need.append('Node.js (npx)')
         return need

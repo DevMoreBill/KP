@@ -554,7 +554,7 @@ def _schema_props(html) -> list:
                 rf'<meta\b[^>]*\bitemprop\s*=\s*["\']{key_name}["\'][^>]*\bcontent\s*=\s*"([^"]*)"', block, re.I
             ) or re.search(rf'<(\w+)\b[^>]*\bitemprop\s*=\s*["\']{key_name}["\'][^>]*>(.*?)</\1>', block, re.I | re.S)
             if x:
-                props[key_name] = _unesc(re.sub(r'<[^>]+>', ' ', x.group(x.lastindex)))
+                props[key_name] = _unesc(re.sub(r'<[^>]+>', ' ', x.group(x.lastindex or 0)))
         k, v = (props.get('name') or '').strip(' :'), props.get('value') or ''
         if k and v:
             out.append([k, v])
@@ -965,7 +965,7 @@ def parse(data) -> dict:
     shop = root.find('shop') if root.tag != 'shop' else root
     if shop is None:
         raise ValueError('Это не фид YML: нет раздела <shop>')
-    cats = {}
+    cats: dict[str, dict[str, str]] = {}
     for cat_el in shop.iter('category'):
         cid = (cat_el.get('id') or '').strip()
         if cid:
@@ -974,13 +974,13 @@ def parse(data) -> dict:
                 'name': re.sub(r'\s+', ' ', cat_el.text or '').strip(),
                 'parent': (cat_el.get('parentId') or '').strip(),
             }
-    for cat_el in cats.values():
-        path, cat_path, seen = [cat_el['name']], cat_el['parent'], set()
+    for cat_rec in cats.values():
+        path, cat_path, seen = [cat_rec['name']], cat_rec['parent'], set()
         while cat_path and cat_path in cats and cat_path not in seen:
             seen.add(cat_path)
             path.insert(0, cats[cat_path]['name'])
             cat_path = cats[cat_path]['parent']
-        cat_el['path'] = ' / '.join(x for x in path if x)
+        cat_rec['path'] = ' / '.join(x for x in path if x)
     offers = []
     for el in shop.iter('offer'):
         oid = (el.get('id') or '').strip()
@@ -996,11 +996,11 @@ def parse(data) -> dict:
         params = []
         qty = None
         warehouses: dict = {}
-        for cat_path in el.findall('param'):
+        for param_el in el.findall('param'):
             param_name = re.sub(
-                r'\s+', ' ', re.sub(r'[\xad\u200b-\u200d\ufeff]', '', cat_path.get('name') or '')
+                r'\s+', ' ', re.sub(r'[\xad\u200b-\u200d\ufeff]', '', param_el.get('name') or '')
             ).strip()
-            param_val = re.sub(r'\s+', ' ', cat_path.text or '').strip()
+            param_val = re.sub(r'\s+', ' ', param_el.text or '').strip()
             if (
                 not param_name
                 or not param_val
@@ -1027,7 +1027,7 @@ def parse(data) -> dict:
             if re.match(r'^(код номенклатуры|артикул)$', param_name, re.I) and not sku:
                 sku = param_val
                 continue
-            k, u = _param_name(param_name, (cat_path.get('unit') or '').strip())
+            k, u = _param_name(param_name, (param_el.get('unit') or '').strip())
             if re.search(r'мощност', k, re.I):  # «90-4», «200-4 B35» — мощность и число полюсов (исполнение) двигателя
                 param_val = re.sub(r'^(\d+(?:[.,]\d+)?)-[2468](?:\s*B\d+)?$', r'\1', param_val)
             params.append({'k': k, 'u': u, 'v': param_val})
@@ -1247,7 +1247,7 @@ def _sum_txt(k, v, u) -> str | None:
         match = re.match(r'^' + num_rx + r'\s*[хx×*]\s*(\d)\b', v)
         if not match:
             return None
-        tot = parse_number(match.group(1)) * int(match.group(2))
+        tot = (parse_number(match.group(1)) or 0) * int(match.group(2))
     return '{} {} ({})'.format(
         _fmt(round(tot, 3)), u, re.sub(r'\s*\(.*$', '', v).replace('х', ' × ').replace('x', ' × ')
     )
@@ -1714,7 +1714,8 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
         k = feed_files.code_cfg(offs[i]['name'])
         if k:
             by_code.setdefault(k['ser'], []).append((i, k))
-    pairs, cand_docs = [], set()
+    pairs: list[tuple] = []
+    cand_docs: set = set()
     for doc in docs:
         feed_info = doc.get('feed') or {}
         if feed_info.get('url') and feed_info['url'].rstrip('/').lower() in by_url:
@@ -1787,7 +1788,7 @@ def _code_pairs(doc, offs, ocfg, by_code) -> list:
             continue
         if doc_code['gen'] and offer_cfg['gen'] != doc_code['gen']:
             continue
-        rank = 0 if offer_cfg['gen'] == doc_code['gen'] else 1
+        rank: float = 0 if offer_cfg['gen'] == doc_code['gen'] else 1
         if offer_cfg['p'] is not None and doc_code['p'] is not None:
             if offer_cfg['p'] != doc_code['p']:
                 continue
@@ -2513,12 +2514,12 @@ def build(offer, feed, types, old=None, put_image=None) -> tuple:
             doc.get('photoSource')
         }  # главное фото, выбранное в редакторе, — не дублировать
         gal = doc.get('gallery') or []
-        for k, u in enumerate(
+        for pic_no, u in enumerate(
             offer['pictures'][:9]
         ):  # с первого: если главным выбрано другое фото, первое — в изображениях
             if u in have:
                 continue
-            group = put_image(u, tdef, maker, model, offer['name'], 'gallery', f'foto-{k + 1}')
+            group = put_image(u, tdef, maker, model, offer['name'], 'gallery', f'foto-{pic_no + 1}')
             if group:
                 gal.append(dict(group, id=hashlib.md5(u.encode()).hexdigest()[:8], caption='', on=True, source=u))
         doc['gallery'] = gal
@@ -2586,7 +2587,7 @@ def _logo_filler(store, image_store, feed) -> tuple:
     have = {_brand_key(v['maker']): v for v in imgfetch.logos(store).values()}
     logos = {_brand_key(k): v for k, v in (feed.get('logos') or {}).items() if v}
     pins = MakerLogos(store)  # логотип, закреплённый администратором за маркой, — всегда, даже поверх логотипа позиции
-    state = {'put': None, 'save': None}
+    state: dict[str, Any] = {'put': None, 'save': None}
 
     def fill(doc) -> bool:
         maker = (doc.get('attrs') or {}).get('maker') or ''
@@ -2623,7 +2624,7 @@ def _logo_filler(store, image_store, feed) -> tuple:
 def _image_putter(store, image_store) -> tuple:
     cache = store.kv_get('feedimg') or {}
     lock = threading.Lock()
-    stat = {'got': 0, 'fail': []}  # скачано новых картинок; не скачались — «адрес: причина»
+    stat: dict[str, Any] = {'got': 0, 'fail': []}  # скачано новых картинок; не скачались — «адрес: причина»
 
     def put(url, tdef, maker, model, name, kind, caption) -> dict | None:
         with lock:
@@ -2755,7 +2756,7 @@ def import_feed(
         logo_fill, logo_save = _logo_filler(store, image_store, feed)
         dget, dsave, derr = _page_getter(store)
         photo = _placeholders(feed['offers'])
-        pstat = {'img': 0, 'noimg': []}  # страниц товара: с фото / открылись, но фото не найдено
+        pstat: dict[str, Any] = {'img': 0, 'noimg': []}  # страниц товара: с фото / открылись, но фото не найдено
         added = 0
         updated = 0
         same = 0
@@ -2980,7 +2981,8 @@ def _maker_cards(store, feed) -> list:
 
 def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tuple:
     """Ручные карточки производителя ↔ строки прайса: РРЦ, цена КП и закупка по сетке скидок."""
-    changes, sumr = [], {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
+    changes: list = []
+    sumr: dict[str, Any] = {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
     sidx = feed_files.stock_index(stock) if stock else None
     revs = store.catalog_revs()  # правку менеджера за время проверки не затираем
     for doc in _maker_cards(store, feed):

@@ -66,7 +66,7 @@ class BitrixRules:
     def allow(data: str, way: str) -> bool:
         return data in ('both', way)
 
-    def mgr(self, mid: str) -> dict:
+    def mgr(self, mid: str | None) -> dict:
         mgr = (self.conf.get('mgr') or {}).get(str(mid or '')) or {}
         return {
             'on': mgr.get('on', True) is not False,
@@ -119,7 +119,7 @@ class BitrixRules:
     def category(self):
         return str(self.conf.get('category') or '0')
 
-    def cat_of(self, mid: str):
+    def cat_of(self, mid: str | None) -> str:
         return self.mgr(mid)['cat'] or self.category()
 
     def pull_cats(self) -> list:

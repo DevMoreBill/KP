@@ -44,9 +44,9 @@ jobs:
       - name: ESLint — интерфейс (eslint.config.mjs, необъявленные имена)
         run: npx --yes eslint@10.1.0 --max-warnings 0 app/web/js
 
-      - name: Оформление переписанного кода — Ruff, Prettier (tests/code_style.py)
+      - name: Оформление переписанного кода — Ruff, mypy, Prettier (tests/code_style.py)
         run: |
-          python -m pip install ruff==0.15.8
+          python -m pip install ruff==0.15.8 mypy==2.4.0
           python tests/code_style.py
 
       - name: Проверки программы (tests/run_all.py)

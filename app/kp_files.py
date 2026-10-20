@@ -305,7 +305,7 @@ class KpFiles:
             rows = self.store.all('SELECT kp_id, COUNT(*) FROM kp_files GROUP BY kp_id')
         return {k: count for k, count in rows if k in want}
 
-    def _get(self, kid: str, fid: str) -> dict | None:
+    def _get(self, kid: str, fid: str | int) -> dict | None:
         row = self.store.one(
             'SELECT {} FROM kp_files WHERE kp_id=? AND id=?'.format(', '.join(self.COLS)), (self._kp_id(kid), int(fid))
         )
@@ -406,7 +406,7 @@ class KpFiles:
         )
         return self._require(kid, fid)
 
-    def delete(self, kid: str, fid: str) -> dict | None:
+    def delete(self, kid: str, fid: str | int) -> dict | None:
         """Удалить документ (администратор или автор через delete_own — проверяет маршрут) → прежнее описание или None."""
         rec = self._get(kid, fid)
         if not rec:

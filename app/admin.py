@@ -10,6 +10,7 @@ import secrets
 import threading
 import time
 import urllib.parse
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -160,9 +161,9 @@ class AdminSessions:
     @classmethod
     def _save(cls) -> None:
         cls._store().kv_set(
-            cls.KV_KEY, {k: {field: v.get(field) for field in cls.FIELDS} for k, v in cls.items.items()}
+            cls.KV_KEY, {k: {field: v.get(field) for field in cls.FIELDS} for k, v in cls._all().items()}
         )
-        for v in cls.items.values():
+        for v in cls._all().values():
             v['saved'] = v['last']
 
     @classmethod
@@ -177,7 +178,7 @@ class AdminSessions:
                 return None
             now = time.time()
             if now - sess['last'] > SrvVal.get(cls._store(), 'srv.adminIdleMin') * 60:
-                cls.items.pop(k, None)
+                cls._all().pop(k, None)
                 cls._save()
                 return None
             if touch:
@@ -213,7 +214,7 @@ class AdminSessions:
         with LOCK:
             gone = [k for k, sess in cls._all().items() if sess.get('login', '').lower() == login_low and k != keep_key]
             for k in gone:
-                cls.items.pop(k, None)
+                cls._all().pop(k, None)
             if gone:
                 cls._save()
 
@@ -873,12 +874,13 @@ def guard(handler, store, method, path) -> Any:
             return lambda: log(
                 handler, store, 'edit_settings', 'settings', 'integrations', None, {'keys': keys}, admin=True
             )
-        if tpl.group(2) != 'open':
+        if tpl and tpl.group(2) != 'open':
+            name = tpl.group(1)
             info = {
                 'action': tpl.group(2),
                 'file': urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query).get('name', [''])[0],
             }
-            return lambda: log(handler, store, 'edit_template', 'template', tpl.group(1), None, info, admin=True)
+            return lambda: log(handler, store, 'edit_template', 'template', name, None, info, admin=True)
         return None
     # журнал: КП, менеджеры, клиенты, типы оборудования
     match = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/meta$', path)
@@ -1190,7 +1192,7 @@ class AdminApi:
         return data
 
     def log(self, *args, **k) -> None:
-        log(self.handler, self.store, *args, admin=True, **k)
+        log(self.handler, self.store, *args, **(k | {'admin': True}))
 
     def handle(self, method, sub) -> None:
         handler, store = self.handler, self.store
@@ -1440,7 +1442,7 @@ class AdminApi:
             self.log('check_feed', 'catalog', 'feed:' + fid, None, {'url': feed['url']})
         return self.ok({'job': feeds.JOBS.get(fid) or {'state': 'run', 'kind': act}})
 
-    def _login_ok(self, user=None) -> None:
+    def _login_ok(self, user=None) -> Any:
         tok, csrf = AdminSessions.start(self.handler, user)
         return self.handler.send(
             200,
@@ -1955,7 +1957,7 @@ class AdminApi:
                 'root': config.ROOT,
                 'backup': os.path.join(config.DATA_DIR, 'backup'),
                 'logs': os.path.join(config.DATA_DIR, 'logs'),
-            }.get(self.data().get('which'))
+            }.get(str(self.data().get('which')))
             if not path or not os.path.isdir(path):
                 return self.err(404, 'Папки нет')
             open_folder(path)
@@ -2060,7 +2062,7 @@ class AdminApi:
 
             return self.ok(DbOverview(store, data_dir).get())
         if sub == 'maint/backup' and method == 'POST':
-            rec = maintenance.DbCopy.daily(store, data_dir, force=True)
+            rec = maintenance.DbCopy.daily(store, data_dir, force=True) or {}
             self.log(
                 'backup_db',
                 'db',
@@ -2384,7 +2386,7 @@ class AdminApi:
         keep = None
         ids = None
         docs = None
-        src: tuple = None
+        src: tuple | None = None
         fmt = DataFile.fmt(fmt, 'zip' if images else 'json')
         if fmt == 'yml':
             # YML — каталог для сайтов и маркетплейсов: только каталог и без закупки (она при загрузке остаётся в базе)
@@ -2450,7 +2452,7 @@ class AdminApi:
             # всей выгрузки не собирается — 25 000 позиций в Excel занимали больше гигабайта памяти сервера
             cat_docs = None
             if 'catalog' in out:
-                cat_docs, catalog = (docs if docs is not None else json.loads(catalog)), None
+                cat_docs, catalog = (docs if docs is not None else json.loads(catalog)), ''
             digests = self.digests(out, cat_docs if cat_docs is not None else False)
             doc = {
                 'format': 'kp-backup',
@@ -2526,7 +2528,8 @@ class AdminApi:
 
     def current(self, sections) -> dict:
         """Разделы базы, кроме каталога, — как в файле выгрузки."""
-        store, out = self.store, {}
+        store = self.store
+        out: dict[str, Any] = {}
         if 'kp' in sections:
             out['kp'] = [
                 dict(zip(('id', 'number', 'state', 'meta', 'docx', 'updated', 'track'), row, strict=False))
@@ -2549,7 +2552,7 @@ class AdminApi:
             out['settings'] = ProgramSettings(store).export()
         return out
 
-    def _rows(self, src) -> None:
+    def _rows(self, src) -> Iterator[dict]:
         """Позиции каталога по одной (для отпечатков): условие WHERE … или список id."""
         where, args = src
         if '%s' in where:
@@ -2987,7 +2990,7 @@ class AdminApi:
             if z:
                 z.close()
 
-    def settings_doc(self, data_file, data) -> dict:
+    def settings_doc(self, data_file, data) -> Any:
         """Файл настроек любого формата → документ kp-settings (проверку делает SettingsFile.read)."""
         from data_file import DataFile
 
@@ -3069,7 +3072,7 @@ def stats(store) -> dict:
         ),
         key=lambda prod: -prod['count'],
     )
-    series = {'day': [], 'week': [], 'month': []}
+    series: dict[str, list] = {'day': [], 'week': [], 'month': []}
     for i in range(29, -1, -1):
         day_date = today - timedelta(days=i)
         series['day'].append({'label': day_date.strftime('%d.%m'), 'count': sum(1 for x, _ in days if x == day_date)})

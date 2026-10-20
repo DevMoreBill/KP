@@ -34,6 +34,14 @@ class BitrixApi:
     TIMEOUT = 30
     PAGE = 50
 
+    PORTAL = re.compile(r'^(https?://[^/]+)')
+
+    @classmethod
+    def portal_of(cls, url: str) -> str:
+        """Адрес портала (схема и хост) из адреса вебхука."""
+        found = cls.PORTAL.match(url)
+        return found.group(1) if found else ''
+
     def __init__(self, url, opener=None) -> None:
         url = str(url or '').strip()
         if not self.URL.match(url):
@@ -42,7 +50,7 @@ class BitrixApi:
                 'Другое → Входящий вебхук)'
             )
         self.url = url.rstrip('/') + '/'
-        self.host = re.match(r'^(https?://[^/]+)', url).group(1)
+        self.host = self.portal_of(url)
         self.opener = opener or urllib.request.build_opener(
             urllib.request.HTTPSHandler(context=ssl.create_default_context())
         )
@@ -189,7 +197,7 @@ class BitrixConf:
             if u:
                 BitrixApi(u)  # проверка вида адреса
                 new['url'] = u
-                new['portal'] = re.match(r'^(https?://[^/]+)', u).group(1)
+                new['portal'] = BitrixApi.portal_of(u)
             else:
                 new.pop('url', None)
                 new['on'] = False
@@ -227,7 +235,7 @@ class BitrixConf:
             }
         if 'pollSec' in data:
             try:
-                poll = int(data.get('pollSec'))
+                poll = int(data['pollSec'])
             except (TypeError, ValueError):
                 raise ValueError('Как часто спрашивать изменения — число секунд') from None
             if not (self.POLL[0] <= poll <= self.POLL[1]):
@@ -493,7 +501,7 @@ class BitrixSync:
         self.links, self.queue, self.log = BitrixLinks(store), BitrixQueue(store), BitrixLog(store)
         self.opener = opener
         self.files = files or self._kp_files
-        self._api: BitrixApi | None = None
+        self._api: BitrixApi | BitrixDryApi | None = None
         self._rules: BitrixRules | None = None
 
     @property
@@ -504,7 +512,7 @@ class BitrixSync:
         return self._rules
 
     @property
-    def api(self) -> 'BitrixApi':
+    def api(self) -> 'BitrixApi | BitrixDryApi':
         if self._api is None:
             self._api = self.conf.api(self.opener)
         return self._api
@@ -594,7 +602,7 @@ class BitrixSync:
                 {
                     'id': row.get('STATUS_ID'),
                     'name': row.get('NAME') or '',
-                    'sem': {'success': 'S', 'failure': 'F'}.get(sem, sem or ''),
+                    'sem': {'success': 'S', 'failure': 'F'}.get(str(sem), sem or ''),
                 }
             )
         return out
@@ -687,9 +695,9 @@ class BitrixSync:
             return  # только из Битрикса — в Битриксе ничего не создаём
         want = self.rules.own_fields()
         codes = sorted(code for code, _title, _label in want)
-        made = (
-            conf.get('fieldsMade')
-            if isinstance(conf.get('fieldsMade'), list)
+        made: list = (
+            listed
+            if isinstance(listed := conf.get('fieldsMade'), list)
             else ([code for code, _title, _label in BitrixFields.LIST] if conf.get('fieldsOk') else [])
         )
         if set(codes) - set(made):
@@ -819,7 +827,7 @@ class BitrixSync:
         self.conf.mark(preset=pid)
         return pid
 
-    def _user_of(self, mid: str) -> Any:
+    def _user_of(self, mid: str | None) -> Any:
         return (self.conf.get().get('users') or {}).get(str(mid or ''))
 
     def _mid_of(self, uid: str) -> str | None:
@@ -888,7 +896,7 @@ class BitrixSync:
             'inn': deal.get('clientInn') or '',
             'items': '; '.join(str(x) for x in (meta.get('items') or [])[:30])[:1000],
             'kpDate': str(meta.get('date') or '')[:10],
-            'kpStatus': status.get(k.get('status'), k.get('status') or '') if k else '',
+            'kpStatus': status.get(str(k.get('status')), k.get('status') or '') if k else '',
             'mgrName': deal.get('manager') or '',
         }
 
@@ -1245,7 +1253,7 @@ class BitrixSync:
                 out.append((rec['name'], got[1], 'Справочный документ'))
         return out
 
-    def push_task(self, tid: str, bid=None) -> None:
+    def push_task(self, tid: str | int, bid=None) -> None:
         task = TaskBook(self.store).get(tid)
         if not task or not task.get('deal'):
             return
@@ -1417,7 +1425,7 @@ class BitrixSync:
         """Новая сделка воронки обмена Битрикса → сделка программы у ответственного (mid — по правилам, _who)."""
         company = self._company_info(bx_deal.get('COMPANY_ID'))
         mid = (self._mid_of(bx_deal.get('ASSIGNED_BY_ID')) or '') if mid is None else mid
-        mgr = next((x for x in self._managers() if x['id'] == mid), {})
+        mgr: dict = next((x for x in self._managers() if x['id'] == mid), {})
         key = (
             self._key_of(
                 bx_deal.get('STAGE_ID'),
@@ -1707,17 +1715,18 @@ class BitrixDry:
             real = BitrixSync(self.store, self.opener)
             labels = {x['bx']: x['label'] for x in real.rules.view()['fields'].values()}
             sync = BitrixSync(st2, self.opener, files=real._kp_files)
-            sync._api = BitrixDryApi(real.api, labels)
+            dry = BitrixDryApi(real.api, labels)
+            sync._api = dry
             first_log = BitrixLog(st2).last_id()
             res = sync.run(manual=True)
             log = BitrixLog(st2).since(first_log)
             prog = [x['text'] for x in log if '←' in x['text'] or x['text'].startswith('Новая сделка')]
             return {
                 'result': res,
-                'bitrix': sync._api.rec[:500],
+                'bitrix': dry.rec[:500],
                 'program': prog[:500],
                 'errors': [x['text'] for x in log if x['level'] == 'error'][:50],
-                'more': max(0, len(sync._api.rec) - 500),
+                'more': max(0, len(dry.rec) - 500),
             }
         finally:
             if st2 is not None:

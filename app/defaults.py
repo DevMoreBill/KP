@@ -28,7 +28,7 @@ def _clean(v):
     return str(v).strip()[:MAX_LEN]
 
 
-def save(store, values: dict, author: str = '') -> dict:
+def save(store, values: object, author: str = '') -> dict:
     """values = {ключ: {on, v} | None — встроенное}."""
     if not isinstance(values, dict):
         raise ValueError('Нет значений')

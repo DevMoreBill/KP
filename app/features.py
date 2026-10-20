@@ -94,7 +94,7 @@ class FeatureAccess:
     def is_on(self, key: str) -> bool:
         return self.config()[key]['on']
 
-    def save(self, values: dict, author: str = '') -> dict:
+    def save(self, values: object, author: str = '') -> dict:
         """values = {ключ: {on, who, users} | да / нет | None — встроенное}."""
         if not isinstance(values, dict) or not values:
             raise ValueError('Нет значений')
