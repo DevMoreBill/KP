@@ -176,7 +176,8 @@ export class MyPrefs {
   static _main() {
     const prefs = this.prefs;
     const defs = prefs.defaults || {};
-    const templates = Templates.list.filter(tpl => !tpl.error)
+    const templates = Templates.list
+      .filter(tpl => !tpl.error)
       .map(
         tpl =>
           `<option value="${esc(tpl.id)}"${prefs.template === tpl.id ? ' selected' : ''}>${esc(tpl.name)}</option>`,
