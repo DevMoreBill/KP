@@ -112,7 +112,7 @@ class ConnectionCheck:
             return 'off', 'не настроен — «Подключения и ключи → Битрикс24»'
         profile = conf.api().call('profile') or {}
         queue = BitrixQueue(self.store).stats()
-        if not conf.on():
+        if not conf.enabled():
             return 'warn', f'связь есть ({profile.get("NAME") or "вебхук"}), обмен выключен'
         failed = f', с ошибкой {queue["failed"]}' if queue['failed'] else ''
         return ('warn' if queue['failed'] else 'ok'), f'связь есть; в очереди {queue["queued"]}{failed}'

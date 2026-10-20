@@ -49,8 +49,8 @@ class BitrixApi:
     @staticmethod
     def mask(url) -> str:
         """Адрес для показа: ключ скрыт."""
-        m = re.match(r'^(https?://.+/rest/\d+/)([A-Za-z0-9]+)/?$', str(url or ''))
-        return (m.group(1) + '••••' + m.group(2)[-3:] + '/') if m else ''
+        match = re.match(r'^(https?://.+/rest/\d+/)([A-Za-z0-9]+)/?$', str(url or ''))
+        return (match.group(1) + '••••' + match.group(2)[-3:] + '/') if match else ''
 
     def call(self, method, params=None) -> object:
         """Результат метода (result); список — (result, next) через call_raw. BitrixError — понятным текстом."""
@@ -67,42 +67,42 @@ class BitrixApi:
             headers={'Content-Type': 'application/json; charset=utf-8', 'User-Agent': 'KP-PNEVMOTEH'},
         )
         try:
-            with self.opener.open(req, timeout=self.TIMEOUT) as r:
-                raw = r.read()
-        except urllib.error.HTTPError as e:
-            raw = e.read() or b''
-            d = self._json(raw)
-            if d.get('error'):
-                raise self._error(d) from e
-            if e.code in (401, 403):
+            with self.opener.open(req, timeout=self.TIMEOUT) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as exc:
+            raw = exc.read() or b''
+            data = self._json(raw)
+            if data.get('error'):
+                raise self._error(data) from exc
+            if exc.code in (401, 403):
                 raise BitrixError(
-                    f'Битрикс24 не принял вебхук (HTTP {e.code}): проверьте адрес, ключ и права вебхука', 'AUTH'
-                ) from e
-            raise BitrixError(f'Битрикс24 ответил ошибкой HTTP {e.code}', 'HTTP') from e
-        except (urllib.error.URLError, OSError) as e:
-            why = getattr(e, 'reason', e)
+                    f'Битрикс24 не принял вебхук (HTTP {exc.code}): проверьте адрес, ключ и права вебхука', 'AUTH'
+                ) from exc
+            raise BitrixError(f'Битрикс24 ответил ошибкой HTTP {exc.code}', 'HTTP') from exc
+        except (urllib.error.URLError, OSError) as exc:
+            why = getattr(exc, 'reason', exc)
             raise BitrixError(
                 'Битрикс24 недоступен: {}'.format(str(why)[:160].replace(self.url, self.host + '/…')), 'NET'
-            ) from e
-        d = self._json(raw)
-        if d.get('error'):
-            raise self._error(d)
-        if 'result' not in d:
+            ) from exc
+        data = self._json(raw)
+        if data.get('error'):
+            raise self._error(data)
+        if 'result' not in data:
             raise BitrixError('Битрикс24 прислал непонятный ответ', 'BAD')
-        return d
+        return data
 
     @staticmethod
     def _json(raw) -> dict:
         try:
-            d = json.loads(raw.decode('utf-8'))
+            data = json.loads(raw.decode('utf-8'))
         except (ValueError, UnicodeDecodeError):
             return {}
-        return d if isinstance(d, dict) else {}
+        return data if isinstance(data, dict) else {}
 
     @staticmethod
-    def _error(d) -> 'BitrixError':
-        code = str(d.get('error') or '')
-        text = str(d.get('error_description') or code)[:300]
+    def _error(data) -> 'BitrixError':
+        code = str(data.get('error') or '')
+        text = str(data.get('error_description') or code)[:300]
         human = {
             'ERROR_METHOD_NOT_FOUND': 'метод не найден (старая версия Битрикса или у вебхука нет прав на этот раздел)',
             'insufficient_scope': 'у вебхука нет прав на этот раздел — добавьте права CRM, Диск, Пользователи',
@@ -116,12 +116,12 @@ class BitrixApi:
         """Все строки списка (по 50 за запрос, не больше limit)."""
         out, start = [], 0
         while True:
-            d = self.call_raw(method, dict(params or {}, start=start))
-            res = d.get('result')
+            data = self.call_raw(method, dict(params or {}, start=start))
+            res = data.get('result')
             if isinstance(res, dict):  # новые методы: {items: […]} или {categories: […]}
                 res = next((v for k, v in res.items() if isinstance(v, list)), [])
             out += res if isinstance(res, list) else []
-            nxt = d.get('next')
+            nxt = data.get('next')
             if not nxt or len(out) >= limit:
                 return out[:limit]
             start = nxt
@@ -137,20 +137,20 @@ class BitrixConf:
         self.store = store
 
     def get(self) -> dict:
-        d = self.store.kv_get(self.KEY) or {}
-        return d if isinstance(d, dict) else {}
+        data = self.store.kv_get(self.KEY) or {}
+        return data if isinstance(data, dict) else {}
 
-    def on(self) -> bool:
-        d = self.get()
-        return bool(d.get('on') and d.get('url'))
+    def enabled(self) -> bool:
+        data = self.get()
+        return bool(data.get('on') and data.get('url'))
 
     def api(self, opener=None) -> 'BitrixApi':
-        d = self.get()
-        if not d.get('url'):
+        data = self.get()
+        if not data.get('url'):
             raise BitrixError(
                 'Адрес вебхука не задан — «Настройки → Сотрудники и система → Подключения и ключи → Битрикс24»'
             )
-        return BitrixApi(d['url'], opener)
+        return BitrixApi(data['url'], opener)
 
     def poll(self) -> int:
         try:
@@ -161,30 +161,30 @@ class BitrixConf:
 
     def view(self) -> dict:
         """Для «Настроек»: без ключа."""
-        d = self.get()
+        data = self.get()
         out = {
-            k: d.get(k)
+            k: data.get(k)
             for k in ('on', 'category', 'stages', 'users', 'since', 'lastPull', 'lastRun', 'at', 'by', 'portal')
         }
         out.update(
-            url=BitrixApi.mask(d.get('url')),
-            hasUrl=bool(d.get('url')),
+            url=BitrixApi.mask(data.get('url')),
+            hasUrl=bool(data.get('url')),
             pollSec=self.poll(),
-            rules=BitrixRules(d).view(),
+            rules=BitrixRules(data).view(),
         )
         return out
 
     def rules(self) -> BitrixRules:
         return BitrixRules(self.get())
 
-    def save(self, d, by: str) -> dict:
+    def save(self, data, author: str) -> dict:
         """Изменить настройку: url, on, category, stages, users, pollSec и правила обмена (BitrixRules.check). ValueError — понятным текстом."""
-        if not isinstance(d, dict):
+        if not isinstance(data, dict):
             raise ValueError('Нет данных')
         cur = self.get()
         new = dict(cur)
-        if 'url' in d:
-            u = str(d.get('url') or '').strip()
+        if 'url' in data:
+            u = str(data.get('url') or '').strip()
             if u:
                 BitrixApi(u)  # проверка вида адреса
                 new['url'] = u
@@ -192,65 +192,67 @@ class BitrixConf:
             else:
                 new.pop('url', None)
                 new['on'] = False
-        if 'category' in d:
-            c = str(d.get('category') if d.get('category') is not None else '')
-            if c and not re.match(r'^\d{1,9}$', c):
+        if 'category' in data:
+            cat = str(data.get('category') if data.get('category') is not None else '')
+            if cat and not re.match(r'^\d{1,9}$', cat):
                 raise ValueError('Неверная воронка')
             old = str(cur.get('category') or '0')
-            if (c or '0') != old:  # этапы прежней основной воронки остаются за ней; у новой — свои (если были)
-                sb = dict(new.get('stagesBy') or {})
+            if (cat or '0') != old:  # этапы прежней основной воронки остаются за ней; у новой — свои (если были)
+                stages_by = dict(new.get('stagesBy') or {})
                 if cur.get('stages'):
-                    sb.setdefault(old, cur['stages'])
-                new['stagesBy'] = sb
-                new['stages'] = sb.get(c or '0', {})
-            new['category'] = c
-        if 'stages' in d:
-            st = d.get('stages')
-            if not isinstance(st, dict):
+                    stages_by.setdefault(old, cur['stages'])
+                new['stagesBy'] = stages_by
+                new['stages'] = stages_by.get(cat or '0', {})
+            new['category'] = cat
+        if 'stages' in data:
+            stages = data.get('stages')
+            if not isinstance(stages, dict):
                 raise ValueError('Неверное соответствие этапов')
             keys = Stages.keys(self.store)
             new['stages'] = {
-                k: str(v)[:60] for k, v in st.items() if k in keys and v and re.match(r'^[A-Za-z0-9_:]{1,60}$', str(v))
+                k: str(v)[:60]
+                for k, v in stages.items()
+                if k in keys and v and re.match(r'^[A-Za-z0-9_:]{1,60}$', str(v))
             }
             new['stagesBy'] = dict(new.get('stagesBy') or {}, **{str(new.get('category') or '0'): new['stages']})
-        if 'users' in d:
-            us = d.get('users')
-            if not isinstance(us, dict):
+        if 'users' in data:
+            users = data.get('users')
+            if not isinstance(users, dict):
                 raise ValueError('Неверное соответствие менеджеров')
             new['users'] = {
                 str(k)[:64]: str(v)
-                for k, v in us.items()
+                for k, v in users.items()
                 if re.match(r'^[A-Za-z0-9_-]{1,64}$', str(k)) and re.match(r'^\d{1,9}$', str(v or ''))
             }
-        if 'pollSec' in d:
+        if 'pollSec' in data:
             try:
-                p = int(d.get('pollSec'))
+                poll = int(data.get('pollSec'))
             except (TypeError, ValueError):
                 raise ValueError('Как часто спрашивать изменения — число секунд') from None
-            if not (self.POLL[0] <= p <= self.POLL[1]):
+            if not (self.POLL[0] <= poll <= self.POLL[1]):
                 raise ValueError(f'Как часто спрашивать изменения — от {self.POLL[0]} до {self.POLL[1]} с')
-            new['pollSec'] = p
-        mids = {r[0] for r in self.store.all('SELECT id FROM managers')}
+            new['pollSec'] = poll
+        mids = {row[0] for row in self.store.all('SELECT id FROM managers')}
         BitrixRules.check(
-            new, d, mids, Stages.keys(self.store)
+            new, data, mids, Stages.keys(self.store)
         )  # тонкая настройка: направления, менеджеры, поля, воронки…
-        if 'on' in d:
-            on = bool(d.get('on'))
-            if on and not new.get('url'):
+        if 'on' in data:
+            enabled = bool(data.get('on'))
+            if enabled and not new.get('url'):
                 raise ValueError('Сначала задайте адрес вебхука')
-            if on and not new.get('category'):
+            if enabled and not new.get('category'):
                 new['category'] = '0'
-            if on and not cur.get('on'):
+            if enabled and not cur.get('on'):
                 new['since'] = new.get('since') or BitrixTime.now()  # новые сделки Битрикса — созданные после включения
-            new['on'] = on
-        new.update(at=Val.now(), by=str(by or '')[:120])
+            new['on'] = enabled
+        new.update(at=Val.now(), by=str(author or '')[:120])
         self.store.kv_set(self.KEY, new)
         return new
 
     def mark(self, **kw) -> None:
-        d = self.get()
-        d.update(kw)
-        self.store.kv_set(self.KEY, d)
+        data = self.get()
+        data.update(kw)
+        self.store.kv_set(self.KEY, data)
 
 
 class BitrixTime:
@@ -261,19 +263,19 @@ class BitrixTime:
         return datetime.now(UTC).astimezone().isoformat(timespec='seconds')
 
     @staticmethod
-    def local(s) -> str:
+    def local(text) -> str:
         """'2026-10-17T15:00:00+03:00' → местное 'ГГГГ-ММ-ДДTЧЧ:ММ:СС' (для сравнения с правками программы)."""
         try:
-            t = datetime.fromisoformat(str(s or '').strip())
+            moment = datetime.fromisoformat(str(text or '').strip())
         except ValueError:
             return ''
-        if t.tzinfo:
-            t = t.astimezone().replace(tzinfo=None)
-        return t.isoformat(timespec='seconds')
+        if moment.tzinfo:
+            moment = moment.astimezone().replace(tzinfo=None)
+        return moment.isoformat(timespec='seconds')
 
     @staticmethod
-    def day(s) -> str:
-        return str(s or '')[:10] if re.match(r'^\d{4}-\d{2}-\d{2}', str(s or '')) else ''
+    def day(text) -> str:
+        return str(text or '')[:10] if re.match(r'^\d{4}-\d{2}-\d{2}', str(text or '')) else ''
 
 
 class BitrixLinks:
@@ -283,23 +285,23 @@ class BitrixLinks:
         self.store = store
 
     def get(self, kind, local) -> dict | None:
-        r = self.store.one('SELECT bx_id, sent, at FROM bx_link WHERE kind=? AND local_id=?', (kind, str(local)))
-        if not r:
+        row = self.store.one('SELECT bx_id, sent, at FROM bx_link WHERE kind=? AND local_id=?', (kind, str(local)))
+        if not row:
             return None
         try:
-            sent = json.loads(r[1]) if r[1] else {}
+            sent = json.loads(row[1]) if row[1] else {}
         except ValueError:
             sent = {}
-        return {'bx': r[0], 'sent': sent if isinstance(sent, dict) else {}, 'at': r[2]}
+        return {'bx': row[0], 'sent': sent if isinstance(sent, dict) else {}, 'at': row[2]}
 
-    def local(self, kind, bx) -> str | None:
-        r = self.store.one('SELECT local_id FROM bx_link WHERE kind=? AND bx_id=?', (kind, str(bx)))
-        return r[0] if r else None
+    def local(self, kind, bx_id) -> str | None:
+        row = self.store.one('SELECT local_id FROM bx_link WHERE kind=? AND bx_id=?', (kind, str(bx_id)))
+        return row[0] if row else None
 
-    def put(self, kind, local, bx, sent=None) -> None:
+    def put(self, kind, local, bx_id, sent=None) -> None:
         self.store.write(
             'INSERT OR REPLACE INTO bx_link (kind, local_id, bx_id, sent, at) VALUES (?,?,?,?,?)',
-            (kind, str(local), str(bx), json.dumps(sent or {}, ensure_ascii=False), Val.now()),
+            (kind, str(local), str(bx_id), json.dumps(sent or {}, ensure_ascii=False), Val.now()),
         )
 
     def count(self, kind) -> int:
@@ -325,7 +327,7 @@ class BitrixQueue:
         if cls.quiet() or not local:
             return
         try:
-            if not BitrixConf(store).on():
+            if not BitrixConf(store).enabled():
                 return
             store.write(
                 'INSERT INTO bx_queue (kind, local_id, added, tries, next_at) VALUES (?,?,?,0,?) '
@@ -374,11 +376,13 @@ class BitrixQueue:
             (limit,),
         ):
             if kind == 'deal':
-                d = DealBook(self.store).get(local) or {}
-                title = 'Сделка № {} «{}»'.format(d.get('number') or local, d.get('title') or d.get('client') or '')
+                deal = DealBook(self.store).get(local) or {}
+                title = 'Сделка № {} «{}»'.format(
+                    deal.get('number') or local, deal.get('title') or deal.get('client') or ''
+                )
             else:
-                t = TaskBook(self.store).get(int(local)) if str(local).isdigit() else None
-                title = f'Дело «{(t or {}).get("title") or local}»'
+                task = TaskBook(self.store).get(int(local)) if str(local).isdigit() else None
+                title = f'Дело «{(task or {}).get("title") or local}»'
             out.append(
                 {
                     'kind': kind,
@@ -392,9 +396,9 @@ class BitrixQueue:
         return out
 
     def stats(self) -> dict:
-        n, bad = self.store.one('SELECT COUNT(*), SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) FROM bx_queue')
+        count, bad = self.store.one('SELECT COUNT(*), SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) FROM bx_queue')
         last = self.store.one('SELECT error FROM bx_queue WHERE error IS NOT NULL ORDER BY added DESC LIMIT 1')
-        return {'queued': n or 0, 'failed': bad or 0, 'lastError': last[0] if last else ''}
+        return {'queued': count or 0, 'failed': bad or 0, 'lastError': last[0] if last else ''}
 
 
 class BitrixLog:
@@ -413,10 +417,12 @@ class BitrixLog:
             'DELETE FROM bx_log WHERE id NOT IN (SELECT id FROM bx_log ORDER BY id DESC LIMIT ?)', (self.KEEP,)
         )
 
-    def tail(self, n=60) -> list:
+    def tail(self, count=60) -> list:
         return [
-            {'at': a, 'level': lv, 'text': t, 'mid': m or ''}
-            for a, lv, t, m in self.store.all('SELECT at, level, text, mid FROM bx_log ORDER BY id DESC LIMIT ?', (n,))
+            {'at': stamp, 'level': level, 'text': text, 'mid': meta or ''}
+            for stamp, level, text, meta in self.store.all(
+                'SELECT at, level, text, mid FROM bx_log ORDER BY id DESC LIMIT ?', (count,)
+            )
         ]
 
     def last_id(self) -> int:
@@ -424,8 +430,8 @@ class BitrixLog:
 
     def since(self, i) -> list:
         return [
-            {'level': lv, 'text': t}
-            for lv, t in self.store.all('SELECT level, text FROM bx_log WHERE id > ? ORDER BY id', (i,))
+            {'level': level, 'text': text}
+            for level, text in self.store.all('SELECT level, text FROM bx_log WHERE id > ? ORDER BY id', (i,))
         ]
 
 
@@ -452,12 +458,12 @@ class BitrixFields:
     @classmethod
     def ensure(cls, api, want=None) -> int:
         """Создать недостающие свои поля сделки: want — [(код без UF_CRM_, тип, подпись)] (по умолчанию — поля экономики)."""
-        have = {f.get('FIELD_NAME') for f in api.list('crm.deal.userfield.list', {'filter': {}})}
+        have = {field.get('FIELD_NAME') for field in api.list('crm.deal.userfield.list', {'filter': {}})}
         made = 0
         for code, typ, label in cls.LIST if want is None else want:
             if cls.name(code) in have:
                 continue
-            f = {
+            field = {
                 'FIELD_NAME': code,
                 'USER_TYPE_ID': typ,
                 'EDIT_FORM_LABEL': label,
@@ -466,8 +472,8 @@ class BitrixFields:
                 'XML_ID': code,
             }
             if code == 'KP_ECON':
-                f['SETTINGS'] = {'ROWS': 12}
-            api.call('crm.deal.userfield.add', {'fields': f})
+                field['SETTINGS'] = {'ROWS': 12}
+            api.call('crm.deal.userfield.add', {'fields': field})
             made += 1
         return made
 
@@ -490,7 +496,7 @@ class BitrixSync:
         self._rules = None
 
     @property
-    def R(self) -> BitrixRules:
+    def rules(self) -> BitrixRules:
         """Правила обмена (bitrix_rules) — читаются один раз за обмен."""
         if self._rules is None:
             self._rules = self.conf.rules()
@@ -511,9 +517,17 @@ class BitrixSync:
         users = self.users()
         mgrs = self._managers()
         by_mail = {u['email'].lower(): u['id'] for u in users if u.get('email')}
-        auto = {m['id']: by_mail[m['email'].lower()] for m in mgrs if m.get('email') and m['email'].lower() in by_mail}
-        R = self.conf.rules()
-        stages_by = {c['id']: self.stage_list(c['id']) for c in cats if c['id'] in {*R.pull_cats(), cat}}
+        auto = {
+            mgr['id']: by_mail[mgr['email'].lower()]
+            for mgr in mgrs
+            if mgr.get('email') and mgr['email'].lower() in by_mail
+        }
+        rules = self.conf.rules()
+        stages_by = {
+            category['id']: self.stage_list(category['id'])
+            for category in cats
+            if category['id'] in {*rules.pull_cats(), cat}
+        }
         return {
             'ok': True,
             'user': ' '.join(x for x in (prof.get('NAME'), prof.get('LAST_NAME')) if x) or str(prof.get('ID') or ''),
@@ -535,15 +549,15 @@ class BitrixSync:
         except BitrixError:
             return []
         out = []
-        for code, f in raw.items() if isinstance(raw, dict) else []:
+        for code, field in raw.items() if isinstance(raw, dict) else []:
             if (
-                not isinstance(f, dict)
-                or f.get('isReadOnly')
+                not isinstance(field, dict)
+                or field.get('isReadOnly')
                 or not (code.startswith('UF_') or code in ('COMMENTS', 'SOURCE_DESCRIPTION', 'ADDITIONAL_INFO'))
             ):
                 continue
-            title = f.get('formLabel') or f.get('listLabel') or f.get('title') or code
-            out.append({'code': code, 'title': str(title)[:120], 'type': str(f.get('type') or '')})
+            title = field.get('formLabel') or field.get('listLabel') or field.get('title') or code
+            out.append({'code': code, 'title': str(title)[:120], 'type': str(field.get('type') or '')})
         return sorted(out, key=lambda x: x['title'].lower())
 
     def stages_all(self, cat) -> list:
@@ -553,14 +567,15 @@ class BitrixSync:
     def categories(self) -> list:
         try:
             rows = self.api.list('crm.category.list', {'entityTypeId': 2})
-            out = [{'id': str(r.get('id')), 'name': r.get('name') or ''} for r in rows]
-        except BitrixError as e:
-            if e.code not in ('ERROR_METHOD_NOT_FOUND', 'NOT_FOUND'):
+            out = [{'id': str(row.get('id')), 'name': row.get('name') or ''} for row in rows]
+        except BitrixError as exc:
+            if exc.code not in ('ERROR_METHOD_NOT_FOUND', 'NOT_FOUND'):
                 raise
             out = [{'id': '0', 'name': 'Общая'}] + [
-                {'id': str(r.get('ID')), 'name': r.get('NAME') or ''} for r in self.api.list('crm.dealcategory.list')
+                {'id': str(row.get('ID')), 'name': row.get('NAME') or ''}
+                for row in self.api.list('crm.dealcategory.list')
             ]
-        if not any(c['id'] == '0' for c in out):
+        if not any(cat['id'] == '0' for cat in out):
             out.insert(0, {'id': '0', 'name': 'Общая'})
         return out
 
@@ -568,12 +583,16 @@ class BitrixSync:
         ent = 'DEAL_STAGE' if str(cat or '0') == '0' else f'DEAL_STAGE_{cat}'
         rows = self.api.list('crm.status.list', {'filter': {'ENTITY_ID': ent}, 'order': {'SORT': 'ASC'}})
         out = []
-        for r in rows:
-            sem = (r.get('EXTRA') or {}).get('SEMANTICS') if isinstance(r.get('EXTRA'), dict) else r.get('SEMANTICS')
+        for row in rows:
+            sem = (
+                (row.get('EXTRA') or {}).get('SEMANTICS')
+                if isinstance(row.get('EXTRA'), dict)
+                else row.get('SEMANTICS')
+            )
             out.append(
                 {
-                    'id': r.get('STATUS_ID'),
-                    'name': r.get('NAME') or '',
+                    'id': row.get('STATUS_ID'),
+                    'name': row.get('NAME') or '',
                     'sem': {'success': 'S', 'failure': 'F'}.get(sem, sem or ''),
                 }
             )
@@ -596,19 +615,19 @@ class BitrixSync:
         out = []
         for mid, doc in self.store.all('SELECT id, doc FROM managers ORDER BY name COLLATE NOCASE'):
             try:
-                d = json.loads(doc)
+                card = json.loads(doc)
             except ValueError:
                 continue
-            if d.get('name'):
-                out.append({'id': mid, 'name': d['name'], 'email': str(d.get('email') or '').strip()})
+            if card.get('name'):
+                out.append({'id': mid, 'name': card['name'], 'email': str(card.get('email') or '').strip()})
         return out
 
     def run(self, pull=True, budget=None, manual=False, push=True) -> dict:
         """Отправить очередь (push) и забрать изменения (pull)."""
-        if not self.conf.on():
+        if not self.conf.enabled():
             return {'off': True}
         self._rules = None
-        if not manual and not self.R.in_hours():
+        if not manual and not self.rules.in_hours():
             return {'hours': True}
         if not self.LOCK.acquire(blocking=False):
             return {'busy': True}
@@ -616,12 +635,12 @@ class BitrixSync:
             res = {'sent': 0, 'failed': 0, 'pulled': 0, 'created': 0, 'tasks': 0}
             try:
                 self._prepare()
-            except BitrixError as e:
-                self.log.add(f'Нет связи с Битрикс24: {e}', 'error')
-                res['error'] = str(e)
+            except BitrixError as exc:
+                self.log.add(f'Нет связи с Битрикс24: {exc}', 'error')
+                res['error'] = str(exc)
                 return res
-            sc = self.R.sched()
-            for kind, local, tries in self.queue.due(sc['batch'], sc['tries']) if push else []:
+            sched = self.rules.sched()
+            for kind, local, tries in self.queue.due(sched['batch'], sched['tries']) if push else []:
                 try:
                     if kind == 'deal':
                         self.push_deal(local)
@@ -629,84 +648,86 @@ class BitrixSync:
                         self.push_task(int(local))
                     self.queue.done(kind, local)
                     res['sent'] += 1
-                except BitrixError as e:
-                    self.queue.fail(kind, local, tries, e)
+                except BitrixError as exc:
+                    self.queue.fail(kind, local, tries, exc)
                     what = (
                         (f'Сделка № {(DealBook(self.store).get(local) or {}).get("number") or local}')
                         if kind == 'deal'
                         else f'Дело {local}'
                     )
                     self.log.add(
-                        f'{what} не отправлена: {e}' if kind == 'deal' else f'{what} не отправлено: {e}',
+                        f'{what} не отправлена: {exc}' if kind == 'deal' else f'{what} не отправлено: {exc}',
                         'error',
                     )
                     res['failed'] += 1
-                    if e.code == 'NET':
-                        res['error'] = str(e)
+                    if exc.code == 'NET':
+                        res['error'] = str(exc)
                         return res
-                except Exception as e:  # ошибка не связи (этап убрали из списка и т. п.) — запись не держит очередь
-                    self.queue.fail(kind, local, tries, e)
+                except Exception as exc:  # ошибка не связи (этап убрали из списка и т. п.) — запись не держит очередь
+                    self.queue.fail(kind, local, tries, exc)
                     self.log.add(
-                        '{} {} не отправлено: {}'.format('Сделка' if kind == 'deal' else 'Дело', local, e), 'error'
+                        '{} {} не отправлено: {}'.format('Сделка' if kind == 'deal' else 'Дело', local, exc), 'error'
                     )
                     res['failed'] += 1
             if pull:
                 try:
                     res.update(self.pull())
-                except Exception as e:
-                    self.log.add(f'Изменения из Битрикс24 не получены: {e}', 'error')
-                    res['error'] = str(e)
+                except Exception as exc:
+                    self.log.add(f'Изменения из Битрикс24 не получены: {exc}', 'error')
+                    res['error'] = str(exc)
             return res
         finally:
             self.LOCK.release()
 
     def _prepare(self) -> None:
         """Свои поля сделки, включённые в карте полей, — создать в Битриксе один раз (новые — когда их включат)."""
-        d = self.conf.get()
-        if not self.R.can('deal', 'out'):
+        conf = self.conf.get()
+        if not self.rules.can('deal', 'out'):
             return  # только из Битрикса — в Битриксе ничего не создаём
-        want = self.R.own_fields()
-        codes = sorted(c for c, _t, _l in want)
+        want = self.rules.own_fields()
+        codes = sorted(code for code, _title, _label in want)
         made = (
-            d.get('fieldsMade')
-            if isinstance(d.get('fieldsMade'), list)
-            else ([c for c, _t, _l in BitrixFields.LIST] if d.get('fieldsOk') else [])
+            conf.get('fieldsMade')
+            if isinstance(conf.get('fieldsMade'), list)
+            else ([code for code, _title, _label in BitrixFields.LIST] if conf.get('fieldsOk') else [])
         )
         if set(codes) - set(made):
-            n = BitrixFields.ensure(self.api, want)
-            if n:
-                self.log.add(f'В сделках Битрикс24 созданы поля программы: {n}')
+            count = BitrixFields.ensure(self.api, want)
+            if count:
+                self.log.add(f'В сделках Битрикс24 созданы поля программы: {count}')
             self.conf.mark(fieldsOk=True, fieldsMade=sorted(set(made) | set(codes)))
 
-    def company(self, d) -> str | None:
+    def company(self, deal) -> str | None:
         """Компания сделки в Битриксе: по ИНН в реквизитах (дублей не создаётся), иначе по названию; нет — создаётся."""
-        inn = re.sub(r'\D', '', str(d.get('clientInn') or ''))
-        name = str(d.get('client') or '').strip()
+        inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
+        name = str(deal.get('client') or '').strip()
         key = inn or name.lower()
         if not key:
             return None
-        ln = self.links.get('company', key)
-        if ln:
-            return ln['bx']
-        C = self.R.company()
+        link = self.links.get('company', key)
+        if link:
+            return link['bx']
+        comp_rules = self.rules.company()
         cid = None
-        if inn and C['find'] in ('inn', 'inn_name'):
-            rq = self.api.list(
+        if inn and comp_rules['find'] in ('inn', 'inn_name'):
+            req = self.api.list(
                 'crm.requisite.list',
                 {'filter': {'RQ_INN': inn, 'ENTITY_TYPE_ID': 4}, 'select': ['ID', 'ENTITY_ID']},
                 limit=5,
             )
-            cid = rq[0].get('ENTITY_ID') if rq else None
-        if not cid and name and C['find'] in ('inn_name', 'name'):
+            cid = req[0].get('ENTITY_ID') if req else None
+        if not cid and name and comp_rules['find'] in ('inn_name', 'name'):
             found = self.api.list('crm.company.list', {'filter': {'TITLE': name}, 'select': ['ID']}, limit=2)
             cid = found[0].get('ID') if found else None
         if not cid:
-            if not C['create'] or not self.R.can('company', 'out'):  # создавать компании в Битриксе — нельзя
+            if not comp_rules['create'] or not self.rules.can(
+                'company', 'out'
+            ):  # создавать компании в Битриксе — нельзя
                 return None
-            cid = self._company_add(d, inn, name)
+            cid = self._company_add(deal, inn, name)
             self.log.add(
                 'В Битрикс24 создана компания «{}»{}'.format(name, f' (ИНН {inn})' if inn else ''),
-                mid=d.get('managerId'),
+                mid=deal.get('managerId'),
             )
         self.links.put('company', key, cid)
         return str(cid)
@@ -716,43 +737,43 @@ class BitrixSync:
         if inn:
             doc = self.store.client_get('inn' + inn)
             if not doc:
-                r = self.store.one('SELECT doc FROM clients WHERE inn=? LIMIT 1', (inn,))
-                doc = json.loads(r[0]) if r and r[0] else None
+                row = self.store.one('SELECT doc FROM clients WHERE inn=? LIMIT 1', (inn,))
+                doc = json.loads(row[0]) if row and row[0] else None
         return doc if isinstance(doc, dict) else {}
 
-    def _company_add(self, d, inn, name) -> str:
-        c = self._client(inn, name)
-        cons = [x for x in (c.get('contacts') or []) if isinstance(x, dict) and x.get('name')]
+    def _company_add(self, deal, inn, name) -> str:
+        client = self._client(inn, name)
+        cons = [x for x in (client.get('contacts') or []) if isinstance(x, dict) and x.get('name')]
         phones = [x['phone'] for x in cons if x.get('phone')][:3]
         mails = [x['email'] for x in cons if x.get('email')][:3]
         fields = {
-            'TITLE': c.get('name') or name,
+            'TITLE': client.get('name') or name,
             'OPENED': 'Y',
             'COMPANY_TYPE': 'CUSTOMER',
-            'PHONE': [{'VALUE': p, 'VALUE_TYPE': 'WORK'} for p in phones],
-            'EMAIL': [{'VALUE': m, 'VALUE_TYPE': 'WORK'} for m in mails],
+            'PHONE': [{'VALUE': phone, 'VALUE_TYPE': 'WORK'} for phone in phones],
+            'EMAIL': [{'VALUE': mail, 'VALUE_TYPE': 'WORK'} for mail in mails],
         }
-        uid = self._user_of(d.get('managerId'))
+        uid = self._user_of(deal.get('managerId'))
         if uid:
             fields['ASSIGNED_BY_ID'] = uid
         cid = self.api.call('crm.company.add', {'fields': fields})
-        C = self.R.company()
-        if inn and C['reqs']:
+        comp_rules = self.rules.company()
+        if inn and comp_rules['reqs']:
             preset = self._preset()
-            rq = {
+            req = {
                 'ENTITY_TYPE_ID': 4,
                 'ENTITY_ID': cid,
                 'PRESET_ID': preset,
                 'NAME': 'Реквизиты',
                 'RQ_INN': inn,
-                'RQ_KPP': c.get('kpp') or '',
-                'RQ_OGRN': c.get('ogrn') or '',
-                'RQ_COMPANY_NAME': c.get('name') or name,
-                'RQ_COMPANY_FULL_NAME': c.get('full') or '',
-                'RQ_DIRECTOR': c.get('director') or '',
+                'RQ_KPP': client.get('kpp') or '',
+                'RQ_OGRN': client.get('ogrn') or '',
+                'RQ_COMPANY_NAME': client.get('name') or name,
+                'RQ_COMPANY_FULL_NAME': client.get('full') or '',
+                'RQ_DIRECTOR': client.get('director') or '',
             }
-            rid = self.api.call('crm.requisite.add', {'fields': rq})
-            if c.get('address') and rid:
+            rid = self.api.call('crm.requisite.add', {'fields': req})
+            if client.get('address') and rid:
                 try:
                     self.api.call(
                         'crm.address.add',
@@ -761,13 +782,13 @@ class BitrixSync:
                                 'TYPE_ID': 6,
                                 'ENTITY_TYPE_ID': 8,
                                 'ENTITY_ID': rid,
-                                'ADDRESS_1': c['address'][:250],
+                                'ADDRESS_1': client['address'][:250],
                             }
                         },
                     )
                 except BitrixError:
                     pass  # адрес — не главное: компания и реквизиты уже есть
-        for x in cons[:3] if self.R.allow(C['contacts'], 'out') else []:
+        for x in cons[:3] if self.rules.allow(comp_rules['contacts'], 'out') else []:
             parts = str(x['name']).split()
             self.api.call(
                 'crm.contact.add',
@@ -786,12 +807,13 @@ class BitrixSync:
         return cid
 
     def _preset(self) -> object:
-        d = self.conf.get()
-        if d.get('preset'):
-            return d['preset']
+        conf = self.conf.get()
+        if conf.get('preset'):
+            return conf['preset']
         rows = self.api.list('crm.requisite.preset.list', {'select': ['ID', 'NAME', 'ENTITY_TYPE_ID']}, limit=50)
         pid = next(
-            (r['ID'] for r in rows if 'организац' in str(r.get('NAME') or '').lower()), rows[0]['ID'] if rows else 1
+            (row['ID'] for row in rows if 'организац' in str(row.get('NAME') or '').lower()),
+            rows[0]['ID'] if rows else 1,
         )
         self.conf.mark(preset=pid)
         return pid
@@ -800,16 +822,16 @@ class BitrixSync:
         return (self.conf.get().get('users') or {}).get(str(mid or ''))
 
     def _mid_of(self, uid: str) -> str | None:
-        return next((m for m, u in (self.conf.get().get('users') or {}).items() if str(u) == str(uid)), None)
+        return next((mid for mid, u in (self.conf.get().get('users') or {}).items() if str(u) == str(uid)), None)
 
     def _stage_of(self, key, cat=None) -> object:
-        return self.R.stages(cat).get(key)
+        return self.rules.stages(cat).get(key)
 
     def _key_of(self, stage_id, sem='', cat=None) -> str | None:
         if cat is None and ':' in str(stage_id or ''):
             cat = str(stage_id).split(':')[0][1:]  # «C3:NEW» — стадия воронки 3
-        st = self.R.stages(cat if cat is not None else None)
-        k = next((k for k, v in st.items() if v == stage_id), None)
+        stages = self.rules.stages(cat if cat is not None else None)
+        k = next((k for k, v in stages.items() if v == stage_id), None)
         if k:
             return k
         return {'S': 'won', 'F': 'lost'}.get(sem)
@@ -820,53 +842,53 @@ class BitrixSync:
         k = next((x for x in kps if isinstance(x.get('deal'), dict) and x['deal'].get('full')), None)
         if not k:
             return {}
-        e, f = k['deal'], k['deal']['full']
+        econ, full = k['deal'], k['deal']['full']
 
         def num(v) -> float | str:
             return round(float(v), 2) if isinstance(v, (int, float)) else ''
 
         lines = ['Экономика по КП № {}'.format(k['number'])]
-        for n, s in (f.get('parts') or [])[:30]:
-            lines.append('{}: {} ₽'.format(n, f'{float(s or 0):,.0f}'.replace(',', ' ')))
-        if f.get('pays'):
+        for name, sum_val in (full.get('parts') or [])[:30]:
+            lines.append('{}: {} ₽'.format(name, f'{float(sum_val or 0):,.0f}'.replace(',', ' ')))
+        if full.get('pays'):
             lines.append('')
             lines.append('График платежей:')
-            for p in f['pays'][:40]:
+            for pay in full['pays'][:40]:
                 lines.append(
                     '{} — {}: {} ₽'.format(
-                        p.get('d') or 'день {}'.format(p.get('day')),
-                        p.get('t') or '',
-                        '{:,.0f}'.format(float(p.get('a') or 0)).replace(',', ' '),
+                        pay.get('d') or 'день {}'.format(pay.get('day')),
+                        pay.get('t') or '',
+                        '{:,.0f}'.format(float(pay.get('a') or 0)).replace(',', ' '),
                     )
                 )
-        if not e.get('confirmed'):
+        if not econ.get('confirmed'):
             lines.append('')
             lines.append('Прибыль — диапазоном: не указан ввозной НДС к вычету')
         return {
-            'KP_PRICE': num(f.get('price')),
-            'KP_REVENUE': num(f.get('revenue')),
-            'KP_COST': num(f.get('cost')),
-            'KP_FINANCE': num(f.get('fin')),
-            'KP_PROFIT': num(e.get('profit') if e.get('confirmed') else e.get('lo')),
-            'KP_NET': num(e.get('net')),
-            'KP_MARGIN': num(e.get('margin') if e.get('confirmed') else e.get('marginLo')),
-            'KP_MARKUP': num(e.get('markup')),
+            'KP_PRICE': num(full.get('price')),
+            'KP_REVENUE': num(full.get('revenue')),
+            'KP_COST': num(full.get('cost')),
+            'KP_FINANCE': num(full.get('fin')),
+            'KP_PROFIT': num(econ.get('profit') if econ.get('confirmed') else econ.get('lo')),
+            'KP_NET': num(econ.get('net')),
+            'KP_MARGIN': num(econ.get('margin') if econ.get('confirmed') else econ.get('marginLo')),
+            'KP_MARKUP': num(econ.get('markup')),
             'KP_ECON': '\n'.join(lines)[:6000],
         }
 
-    def _extra(self, d, kps) -> dict:
+    def _extra(self, deal, kps) -> dict:
         """Прочие поля программы для карты полей (по умолчанию не передаются): номер сделки, клиент, ИНН, оборудование…"""
         k = kps[0] if kps else {}
-        m = k.get('meta') or {}
+        meta = k.get('meta') or {}
         status = {'new': 'Новое', 'sent': 'Отправлено', 'talks': 'Переговоры', 'won': 'Выиграно', 'lost': 'Проиграно'}
         return {
-            'dealNo': str(d.get('number') or ''),
-            'client': d.get('client') or '',
-            'inn': d.get('clientInn') or '',
-            'items': '; '.join(str(x) for x in (m.get('items') or [])[:30])[:1000],
-            'kpDate': str(m.get('date') or '')[:10],
+            'dealNo': str(deal.get('number') or ''),
+            'client': deal.get('client') or '',
+            'inn': deal.get('clientInn') or '',
+            'items': '; '.join(str(x) for x in (meta.get('items') or [])[:30])[:1000],
+            'kpDate': str(meta.get('date') or '')[:10],
             'kpStatus': status.get(k.get('status'), k.get('status') or '') if k else '',
-            'mgrName': d.get('manager') or '',
+            'mgrName': deal.get('manager') or '',
         }
 
     def _kps(self, did) -> list:
@@ -879,23 +901,23 @@ class BitrixSync:
             (did,),
         ):
             try:
-                m = json.loads(meta)
+                meta_obj = json.loads(meta)
             except ValueError:
                 continue
             try:
-                tr = json.loads(track) if track else {}
+                track_obj = json.loads(track) if track else {}
             except ValueError:
-                tr = {}
+                track_obj = {}
             out.append(
                 {
                     'id': kid,
-                    'number': m.get('number') or kid,
-                    'savedAt': m.get('savedAt') or m.get('date') or '',
-                    'meta': m,
-                    'status': (tr or {}).get('status') or 'new',
-                    'deal': m.get('deal'),
-                    'lines': m.get('lines'),
-                    'sum': econ_rub(m)[0],
+                    'number': meta_obj.get('number') or kid,
+                    'savedAt': meta_obj.get('savedAt') or meta_obj.get('date') or '',
+                    'meta': meta_obj,
+                    'status': (track_obj or {}).get('status') or 'new',
+                    'deal': meta_obj.get('deal'),
+                    'lines': meta_obj.get('lines'),
+                    'sum': econ_rub(meta_obj)[0],
                 }
             )
         out.sort(key=lambda x: (x['savedAt'], x['id']), reverse=True)
@@ -904,147 +926,152 @@ class BitrixSync:
     @staticmethod
     def _rows(k) -> list | None:
         """Товары сделки: позиции последнего КП (цены — за единицу со скидкой, с НДС, в рублях по курсу КП)."""
-        L = k.get('lines') if isinstance(k.get('lines'), dict) else None
-        if not L or not isinstance(L.get('rows'), list):
+        lines = k.get('lines') if isinstance(k.get('lines'), dict) else None
+        if not lines or not isinstance(lines.get('rows'), list):
             return None
-        rate = float(L.get('rate') or 1) or 1
-        vat = float(L.get('vat') or 0)
+        rate = float(lines.get('rate') or 1) or 1
+        vat = float(lines.get('vat') or 0)
         out = []
-        for r in L['rows'][:200]:
-            if not isinstance(r, dict) or not r.get('n'):
+        for row in lines['rows'][:200]:
+            if not isinstance(row, dict) or not row.get('n'):
                 continue
             out.append(
                 {
-                    'PRODUCT_NAME': str(r['n'])[:250],
-                    'PRICE': round(float(r.get('p') or 0) / 100 * rate, 2),
-                    'QUANTITY': float(r.get('q') or 1),
+                    'PRODUCT_NAME': str(row['n'])[:250],
+                    'PRICE': round(float(row.get('p') or 0) / 100 * rate, 2),
+                    'QUANTITY': float(row.get('q') or 1),
                     'TAX_RATE': vat,
                     'TAX_INCLUDED': 'Y',
-                    'MEASURE_NAME': str(r.get('u') or 'шт')[:20],
+                    'MEASURE_NAME': str(row.get('u') or 'шт')[:20],
                 }
             )
         return out
 
-    def _ours(self, d, kps) -> dict:
-        mid = d.get('managerId')
+    def _ours(self, deal, kps) -> dict:
+        mid = deal.get('managerId')
         return {
-            'title': d.get('title') or d.get('client') or 'Сделка № {}'.format(d.get('number')),
-            'stage': d.get('stage'),
-            'expected': d.get('expected') or '',
+            'title': deal.get('title') or deal.get('client') or 'Сделка № {}'.format(deal.get('number')),
+            'stage': deal.get('stage'),
+            'expected': deal.get('expected') or '',
             'manager': self._user_of(mid) or '',
-            'note': d.get('note') or '',
-            'lostReason': d.get('lostReason') or '' if d.get('stage') == 'lost' else '',
+            'note': deal.get('note') or '',
+            'lostReason': deal.get('lostReason') or '' if deal.get('stage') == 'lost' else '',
         }
 
-    def _bx(self, key) -> str:
+    def _bx_id(self, key) -> str:
         """Поле Битрикса для общего поля программы (по карте полей)."""
-        return self.STD.get(key) or self.R.field(key)['bx']
+        return self.STD.get(key) or self.rules.field(key)['bx']
 
-    def _theirs(self, b) -> dict:
+    def _theirs(self, bx_deal) -> dict:
         return {
-            'title': b.get('TITLE') or '',
-            'stage': b.get('STAGE_ID') or '',
-            'expected': BitrixTime.day(b.get('CLOSEDATE')),
-            'manager': str(b.get('ASSIGNED_BY_ID') or ''),
-            'note': str(b.get(self._bx('note')) or ''),
-            'lostReason': str(b.get(self._bx('lostReason')) or ''),
+            'title': bx_deal.get('TITLE') or '',
+            'stage': bx_deal.get('STAGE_ID') or '',
+            'expected': BitrixTime.day(bx_deal.get('CLOSEDATE')),
+            'manager': str(bx_deal.get('ASSIGNED_BY_ID') or ''),
+            'note': str(bx_deal.get(self._bx_id('note')) or ''),
+            'lostReason': str(bx_deal.get(self._bx_id('lostReason')) or ''),
         }
 
     def push_deal(self, did) -> None:
         """Сделка программы → Битрикс: создать или обновить (общие поля — по последней правке), товары, экономика, файлы."""
-        d = DealBook(self.store).get(did)
-        if not d:
+        deal = DealBook(self.store).get(did)
+        if not deal:
             return
-        R, mid = self.R, d.get('managerId')
-        ln = self.links.get('deal', did)
-        if not R.can('deal', 'out', mid):
+        rules, mid = self.rules, deal.get('managerId')
+        link = self.links.get('deal', did)
+        if not rules.can('deal', 'out', mid):
             return  # обмен только из Битрикса (весь или у этого менеджера) — в Битрикс не пишем
         kps = self._kps(did)
 
         def out(k) -> bool:
-            return R.allow(R.field(k)['dir'], 'out')
+            return rules.allow(rules.field(k)['dir'], 'out')
 
         fields = {}
         if out('sum'):
-            fields.update(OPPORTUNITY=round((d.get('sum') or 0) / 100, 2), CURRENCY_ID='RUB')
-        if R.flow('company') != 'off':
-            cid = self.company(d)
+            fields.update(OPPORTUNITY=round((deal.get('sum') or 0) / 100, 2), CURRENCY_ID='RUB')
+        if rules.flow('company') != 'off':
+            cid = self.company(deal)
             if cid:
                 fields['COMPANY_ID'] = cid
-        uf = self._econ(kps)
+        econ_fields = self._econ(kps)
         if kps:
-            uf['KP_NUMBER'] = ', '.join(str(k['number']) for k in kps)[:250]
-        uf.update(self._extra(d, kps))
-        for k, v in uf.items():
-            x = R.field(k)
+            econ_fields['KP_NUMBER'] = ', '.join(str(k['number']) for k in kps)[:250]
+        econ_fields.update(self._extra(deal, kps))
+        for k, v in econ_fields.items():
+            x = rules.field(k)
             if x['dir'] == 'out' and x['bx']:
                 fields[x['bx']] = v
-        cat = str((ln or {}).get('sent', {}).get('cat') or R.cat_of(mid))
-        ours = self._ours(d, kps)
-        ours['stage'] = self._stage_of(d['stage'], cat) or ''
-        if not ln:
+        cat = str((link or {}).get('sent', {}).get('cat') or rules.cat_of(mid))
+        ours = self._ours(deal, kps)
+        ours['stage'] = self._stage_of(deal['stage'], cat) or ''
+        if not link:
             fields.update(
                 {
                     'CATEGORY_ID': int(cat),
                     'OPENED': 'Y',
-                    'SOURCE_DESCRIPTION': 'Конструктор КП, сделка № {}'.format(d.get('number')),
+                    'SOURCE_DESCRIPTION': 'Конструктор КП, сделка № {}'.format(deal.get('number')),
                 }
             )
             sent = {'cat': cat}
             for k in self.SHARED:
-                if out(k) and ours.get(k) and self._bx(k):
-                    fields[self._bx(k)] = ours[k]
+                if out(k) and ours.get(k) and self._bx_id(k):
+                    fields[self._bx_id(k)] = ours[k]
                     sent[k] = ours[k]
             fields.setdefault('TITLE', ours['title'])  # без названия Битрикс сделку не создаст
             bid = str(self.api.call('crm.deal.add', {'fields': fields, 'params': {'REGISTER_SONET_EVENT': 'N'}}))
             self.links.put('deal', did, bid, sent)
             self.log.add(
-                'Сделка № {} «{}» → Битрикс24 (сделка {})'.format(d.get('number'), ours['title'], bid), mid=mid
+                'Сделка № {} «{}» → Битрикс24 (сделка {})'.format(deal.get('number'), ours['title'], bid), mid=mid
             )
         else:
-            bid = ln['bx']
-            b = self.api.call('crm.deal.get', {'id': bid}) or {}
-            cat = str(b.get('CATEGORY_ID') or cat)
-            ours['stage'] = self._stage_of(d['stage'], cat) or ''
-            sent, upd, back = self._merge(d, ours, self._theirs(b), ln['sent'], BitrixTime.local(b.get('DATE_MODIFY')))
+            bid = link['bx']
+            bx_deal = self.api.call('crm.deal.get', {'id': bid}) or {}
+            cat = str(bx_deal.get('CATEGORY_ID') or cat)
+            ours['stage'] = self._stage_of(deal['stage'], cat) or ''
+            sent, upd, back = self._merge(
+                deal, ours, self._theirs(bx_deal), link['sent'], BitrixTime.local(bx_deal.get('DATE_MODIFY'))
+            )
             sent['cat'] = cat
             for k, v in upd.items():
-                fields[self._bx(k)] = v
+                fields[self._bx_id(k)] = v
             if upd:
                 self.log.add(
-                    'Сделка № {} → Битрикс24: {}'.format(d.get('number'), self._said(upd, ln['sent'], cat)), mid=mid
+                    'Сделка № {} → Битрикс24: {}'.format(deal.get('number'), self._said(upd, link['sent'], cat)),
+                    mid=mid,
                 )
             if fields:
                 self.api.call('crm.deal.update', {'id': bid, 'fields': fields, 'params': {'REGISTER_SONET_EVENT': 'N'}})
             if back:
-                self._apply(d, back, b, ln['sent'])
+                self._apply(deal, back, bx_deal, link['sent'])
             self.links.put('deal', did, bid, sent)
-        S = R.send()
+        send_rules = rules.send()
         rows = (
-            (self._rows(kps[0]) if S['rowsHow'] == 'kp' else self._rows_sum(d, kps[0])) if kps and S['rows'] else None
+            (self._rows(kps[0]) if send_rules['rowsHow'] == 'kp' else self._rows_sum(deal, kps[0]))
+            if kps and send_rules['rows']
+            else None
         )
         if rows is not None:
-            h = hashlib.sha1(json.dumps(rows, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-            lr = self.links.get('rows', did)
-            if not lr or lr['sent'].get('h') != h:
+            digest = hashlib.sha1(json.dumps(rows, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            rows_link = self.links.get('rows', did)
+            if not rows_link or rows_link['sent'].get('h') != digest:
                 self.api.call('crm.deal.productrows.set', {'id': bid, 'rows': rows})
-                self.links.put('rows', did, bid, {'h': h})
+                self.links.put('rows', did, bid, {'h': digest})
         for k in kps:
             self._files(bid, k)
-        for t in TaskBook(self.store).list(deal=did):
-            if not self.links.get('task', t['id']):
-                self.push_task(t['id'], bid)
+        for task in TaskBook(self.store).list(deal=did):
+            if not self.links.get('task', task['id']):
+                self.push_task(task['id'], bid)
 
     @staticmethod
-    def _rows_sum(d, k) -> list:
+    def _rows_sum(deal, k) -> list:
         """Товары сделки одной строкой: итог последнего КП (правило «товары — только итог»)."""
-        L = k.get('lines') if isinstance(k.get('lines'), dict) else {}
+        lines = k.get('lines') if isinstance(k.get('lines'), dict) else {}
         return [
             {
                 'PRODUCT_NAME': 'Оборудование по КП № {}'.format(k['number']),
-                'PRICE': round((d.get('sum') or 0) / 100, 2),
+                'PRICE': round((deal.get('sum') or 0) / 100, 2),
                 'QUANTITY': 1,
-                'TAX_RATE': float(L.get('vat') or 0),
+                'TAX_RATE': float(lines.get('vat') or 0),
                 'TAX_INCLUDED': 'Y',
                 'MEASURE_NAME': 'компл',
             }
@@ -1060,9 +1087,9 @@ class BitrixSync:
             'note': 'заметка',
             'lostReason': 'причина',
         }
-        stg = {v: k for k, v in self.R.stages(cat).items()}
-        labels = {s['key']: s['label'] for s in Stages.all(self.store)}
-        mg = {m['id']: m['name'] for m in self._managers()}
+        stg = {v: k for k, v in self.rules.stages(cat).items()}
+        labels = {stage['key']: stage['label'] for stage in Stages.all(self.store)}
+        mgr_names = {mgr['id']: mgr['name'] for mgr in self._managers()}
 
         def show(k, v) -> str:
             if not v:
@@ -1070,49 +1097,51 @@ class BitrixSync:
             if k == 'stage':
                 return labels.get(stg.get(v, v), v)
             if k == 'manager':
-                return mg.get(self._mid_of(v) or '', f'пользователь {v}')
+                return mgr_names.get(self._mid_of(v) or '', f'пользователь {v}')
             v = str(v)
             return v if len(v) <= 40 else v[:38] + '…'
 
         return ', '.join(f'{names.get(k, k)}: {show(k, (base or {}).get(k))} → {show(k, v)}' for k, v in vals.items())
 
-    def _merge(self, d, ours, theirs, base, their_at) -> tuple:
+    def _merge(self, deal, ours, theirs, base, their_at) -> tuple:
         """Общие поля по карте полей: главная сторона — по направлению поля и правилу «кто главный»."""
         upd, back, agreed = {}, {}, dict(base)
         for k in self.SHARED:
-            x = self.R.field(k)
-            if x['dir'] == 'off' or not self._bx(k):
+            x = self.rules.field(k)
+            if x['dir'] == 'off' or not self._bx_id(k):
                 continue
-            o, t, b = ours.get(k) or '', theirs.get(k) or '', base.get(k) or ''
-            if k == 'stage' and not o:
-                o = t  # этап без соответствия стадии — стадию Битрикса не трогаем
-            if k == 'manager' and not o:
-                o = t  # менеджер без пользователя Битрикса — ответственного не трогаем
-            if o == t:
-                agreed[k] = o
+            ours_val, theirs_val, base_val = ours.get(k) or '', theirs.get(k) or '', base.get(k) or ''
+            if k == 'stage' and not ours_val:
+                ours_val = theirs_val  # этап без соответствия стадии — стадию Битрикса не трогаем
+            if k == 'manager' and not ours_val:
+                ours_val = theirs_val  # менеджер без пользователя Битрикса — ответственного не трогаем
+            if ours_val == theirs_val:
+                agreed[k] = ours_val
                 continue
-            mine, their = o != b, t != b
+            mine, their = ours_val != base_val, theirs_val != base_val
             if x['dir'] == 'out':
-                upd[k], agreed[k] = o, o
+                upd[k], agreed[k] = ours_val, ours_val
             elif x['dir'] == 'in':
                 if their:
-                    back[k] = t
-                agreed[k] = t
+                    back[k] = theirs_val
+                agreed[k] = theirs_val
             elif mine and their:
-                ours_win = x['win'] == 'ours' or (x['win'] == 'last' and (d.get('updated') or '') >= (their_at or ''))
+                ours_win = x['win'] == 'ours' or (
+                    x['win'] == 'last' and (deal.get('updated') or '') >= (their_at or '')
+                )
                 if ours_win:
-                    upd[k], agreed[k] = o, o
+                    upd[k], agreed[k] = ours_val, ours_val
                 else:
-                    back[k], agreed[k] = t, t
+                    back[k], agreed[k] = theirs_val, theirs_val
             elif mine:
-                upd[k], agreed[k] = o, o
+                upd[k], agreed[k] = ours_val, ours_val
             else:
-                back[k], agreed[k] = t, t
+                back[k], agreed[k] = theirs_val, theirs_val
         return agreed, upd, back
 
-    def _apply(self, d, back, b=None, base=None) -> None:
+    def _apply(self, deal, back, bx_deal=None, base=None) -> None:
         """Значения из Битрикса — в сделку программы (без отправки обратно); в журнал — «поле: было → стало»."""
-        if not self.R.can('deal', 'in', d.get('managerId')):
+        if not self.rules.can('deal', 'in', deal.get('managerId')):
             return
         body = {}
         if back.get('title'):
@@ -1123,55 +1152,57 @@ class BitrixSync:
             body['expected'] = back['expected']
         if 'stage' in back:
             key = self._key_of(
-                back['stage'], (b or {}).get('STAGE_SEMANTIC_ID') or '', str((b or {}).get('CATEGORY_ID') or '') or None
+                back['stage'],
+                (bx_deal or {}).get('STAGE_SEMANTIC_ID') or '',
+                str((bx_deal or {}).get('CATEGORY_ID') or '') or None,
             )
-            if key and key != d.get('stage'):
+            if key and key != deal.get('stage'):
                 body['stage'] = key
                 if key == 'lost':
-                    body['lostReason'] = back.get('lostReason') or d.get('lostReason') or 'Проиграно в Битрикс24'
-        if back.get('lostReason') and (body.get('stage') or d.get('stage')) == 'lost':
+                    body['lostReason'] = back.get('lostReason') or deal.get('lostReason') or 'Проиграно в Битрикс24'
+        if back.get('lostReason') and (body.get('stage') or deal.get('stage')) == 'lost':
             body['lostReason'] = back['lostReason']
         mgr = None
         if 'manager' in back:
             mid = self._mid_of(back['manager'])
-            if mid and mid != d.get('managerId'):
-                m = next((x for x in self._managers() if x['id'] == mid), None)
-                mgr = (mid, m['name']) if m else None
+            if mid and mid != deal.get('managerId'):
+                mgr_rec = next((x for x in self._managers() if x['id'] == mid), None)
+                mgr = (mid, mgr_rec['name']) if mgr_rec else None
         if not body and not mgr:
             return
         BitrixQueue._quiet.on = True
         try:
-            DealBook(self.store).update(d['id'], body, self.WHO, None, mgr)
+            DealBook(self.store).update(deal['id'], body, self.WHO, None, mgr)
             if mgr:
-                TaskBook(self.store).move_deal(d['id'], mgr[0])
+                TaskBook(self.store).move_deal(deal['id'], mgr[0])
         finally:
             BitrixQueue._quiet.on = False
         shown = {k: back[k] for k in back if k in body or (k == 'manager' and mgr)}
         self.log.add(
             'Сделка № {} ← Битрикс24: {}'.format(
-                d.get('number'), self._said(shown, base, str((b or {}).get('CATEGORY_ID') or '') or None)
+                deal.get('number'), self._said(shown, base, str((bx_deal or {}).get('CATEGORY_ID') or '') or None)
             ),
-            mid=mgr[0] if mgr else d.get('managerId'),
+            mid=mgr[0] if mgr else deal.get('managerId'),
         )
 
     def _files(self, bid, k) -> None:
         """Файлы КП (Word, PDF, справочные документы, Excel экономики) → лента сделки; каждый файл — один раз на версию."""
-        S = self.R.send()
-        on = {v: S['files'][k] for k, v in BitrixRules.FILES.items()}
+        send_rules = self.rules.send()
+        enabled = {v: send_rules['files'][k] for k, v in BitrixRules.FILES.items()}
         for name, path_or_data, what in self.files(k['id']):
-            if not on.get(what, True):
+            if not enabled.get(what, True):
                 continue
             try:
                 data = path_or_data if isinstance(path_or_data, bytes) else Path(path_or_data).read_bytes()
             except OSError:
                 continue
-            if len(data) > S['fileMB'] * 1024 * 1024:
-                self.log.add(f'Файл «{name}» больше {S["fileMB"]} МБ — в Битрикс24 не отправлен', 'warn')
+            if len(data) > send_rules['fileMB'] * 1024 * 1024:
+                self.log.add(f'Файл «{name}» больше {send_rules["fileMB"]} МБ — в Битрикс24 не отправлен', 'warn')
                 continue
-            h = hashlib.sha1(data).hexdigest()
+            digest = hashlib.sha1(data).hexdigest()
             key = '{}|{}'.format(k['id'], name)
-            ln = self.links.get('file', key)
-            if ln and ln['sent'].get('h') == h and ln['bx'] == bid:
+            link = self.links.get('file', key)
+            if link and link['sent'].get('h') == digest and link['bx'] == bid:
                 continue
             cid = self.api.call(
                 'crm.timeline.comment.add',
@@ -1179,12 +1210,12 @@ class BitrixSync:
                     'fields': {
                         'ENTITY_ID': int(bid),
                         'ENTITY_TYPE': 'deal',
-                        'COMMENT': '{} — КП № {}{}'.format(what, k['number'], ' (новая версия)' if ln else ''),
+                        'COMMENT': '{} — КП № {}{}'.format(what, k['number'], ' (новая версия)' if link else ''),
                         'FILES': [[name, base64.b64encode(data).decode('ascii')]],
                     }
                 },
             )
-            self.links.put('file', key, bid, {'h': h, 'c': cid})
+            self.links.put('file', key, bid, {'h': digest, 'c': cid})
 
     def _kp_files(self, kid: str) -> list:
         """[(имя, путь или байты, подпись)] — файлы КП для ленты сделки."""
@@ -1195,65 +1226,65 @@ class BitrixSync:
         rel = self.store.kp_get(kid, 'docx')
         if rel:
             try:
-                f = docs_path(rel.strip())
+                path = docs_path(rel.strip())
             except ValueError:
-                f = ''
-            if f and os.path.isfile(f):
-                out.append((os.path.basename(f), f, 'КП (Word)'))
-                pdf = os.path.splitext(f)[0] + '.pdf'
+                path = ''
+            if path and os.path.isfile(path):
+                out.append((os.path.basename(path), path, 'КП (Word)'))
+                pdf = os.path.splitext(path)[0] + '.pdf'
                 if os.path.isfile(pdf):
                     out.append((os.path.basename(pdf), pdf, 'КП (PDF)'))
         x = EconXlsx(self.store).path(kid)
         if x:
             out.append((f'Экономика_КП_{kid}.xlsx', x, 'Экономика сделки (Excel)'))
-        kf = KpFiles.of(self.store)
-        for r in kf.list(kid):
-            got = kf.read(kid, r['id'])
+        files = KpFiles.of(self.store)
+        for rec in files.list(kid):
+            got = files.read(kid, rec['id'])
             if got:
-                out.append((r['name'], got[1], 'Справочный документ'))
+                out.append((rec['name'], got[1], 'Справочный документ'))
         return out
 
     def push_task(self, tid: str, bid=None) -> None:
-        t = TaskBook(self.store).get(tid)
-        if not t or not t.get('deal'):
+        task = TaskBook(self.store).get(tid)
+        if not task or not task.get('deal'):
             return
-        T = self.R.tasks()
-        how = T['kinds'].get(t['kind'], 'todo')
-        if how == 'off' or not self.R.can('task', 'out', t.get('managerId')):
+        task_rules = self.rules.tasks()
+        how = task_rules['kinds'].get(task['kind'], 'todo')
+        if how == 'off' or not self.rules.can('task', 'out', task.get('managerId')):
             return  # этот вид дел (или дела этого менеджера) в Битрикс не передаются
-        if t['state'] == 'cancel' and not T['cancel'] and not self.links.get('task', tid):
+        if task['state'] == 'cancel' and not task_rules['cancel'] and not self.links.get('task', tid):
             return
         if not bid:
-            ln = self.links.get('deal', t['deal'])
-            if not ln:
-                self.push_deal(t['deal'])  # сделка ещё не в Битриксе — её дела уйдут вместе с ней
+            link = self.links.get('deal', task['deal'])
+            if not link:
+                self.push_deal(task['deal'])  # сделка ещё не в Битриксе — её дела уйдут вместе с ней
                 return
-            bid = ln['bx']
-        subj = '{}: {}'.format(self.KIND.get(t['kind'], 'Задача'), t['title'])
-        if t['state'] == 'cancel':
+            bid = link['bx']
+        subj = '{}: {}'.format(self.KIND.get(task['kind'], 'Задача'), task['title'])
+        if task['state'] == 'cancel':
             subj = 'Отменено — ' + subj
-        when = '{}T{}:00'.format(t['due'], t.get('time') or '18:00')
-        uid = self._user_of(t.get('managerId'))
-        ln = self.links.get('task', tid)
-        done = 'Y' if t['state'] != 'open' else 'N'
+        when = '{}T{}:00'.format(task['due'], task.get('time') or '18:00')
+        uid = self._user_of(task.get('managerId'))
+        link = self.links.get('task', tid)
+        done = 'Y' if task['state'] != 'open' else 'N'
         sent = {'subj': subj, 'when': when, 'done': done}
-        if ln:
-            if ln['sent'] == sent or (t['state'] == 'cancel' and not T['cancel']):
+        if link:
+            if link['sent'] == sent or (task['state'] == 'cancel' and not task_rules['cancel']):
                 return
             self.api.call(
                 'crm.activity.update',
                 {
-                    'id': ln['bx'],
+                    'id': link['bx'],
                     'fields': {
                         'SUBJECT': subj,
                         'DEADLINE': when,
                         'END_TIME': when,
                         'COMPLETED': done,
-                        'DESCRIPTION': t.get('note') or '',
+                        'DESCRIPTION': task.get('note') or '',
                     },
                 },
             )
-            self.links.put('task', tid, ln['bx'], sent)
+            self.links.put('task', tid, link['bx'], sent)
             return
         try:
             if how != 'todo':
@@ -1265,15 +1296,15 @@ class BitrixSync:
                     'ownerId': int(bid),
                     'deadline': when,
                     'title': subj,
-                    'description': t.get('note') or '',
+                    'description': task.get('note') or '',
                     **({'responsibleId': int(uid)} if uid else {}),
                 },
             )
             aid = aid.get('id') if isinstance(aid, dict) else aid
-        except BitrixError as e:
-            if e.code not in ('ERROR_METHOD_NOT_FOUND', 'NOT_FOUND'):
+        except BitrixError as exc:
+            if exc.code not in ('ERROR_METHOD_NOT_FOUND', 'NOT_FOUND'):
                 raise
-            meet = how == 'meet' or (how == 'todo' and t['kind'] == 'meet')
+            meet = how == 'meet' or (how == 'todo' and task['kind'] == 'meet')
             aid = self.api.call(
                 'crm.activity.add',
                 {
@@ -1286,7 +1317,7 @@ class BitrixSync:
                         'END_TIME': when,
                         'DEADLINE': when,
                         'COMPLETED': 'N',
-                        'DESCRIPTION': t.get('note') or '',
+                        'DESCRIPTION': task.get('note') or '',
                         'COMMUNICATIONS': [{'VALUE': '', 'ENTITY_TYPE_ID': 2, 'ENTITY_ID': int(bid)}],
                         **({'RESPONSIBLE_ID': int(uid)} if uid else {}),
                     }
@@ -1300,143 +1331,151 @@ class BitrixSync:
         conf = self.conf.get()
         since = conf.get('lastPull') or conf.get('since') or BitrixTime.now()
         try:
-            t0 = datetime.fromisoformat(since) - timedelta(minutes=3)  # запас на разницу часов и запись в ту же секунду
+            since_dt = datetime.fromisoformat(since) - timedelta(
+                minutes=3
+            )  # запас на разницу часов и запись в ту же секунду
         except ValueError:
-            t0 = datetime.now(UTC).astimezone() - timedelta(hours=1)
-        R = self.R
+            since_dt = datetime.now(UTC).astimezone() - timedelta(hours=1)
+        rules = self.rules
         res = {'pulled': 0, 'created': 0, 'tasks': 0, 'skipped': 0}
         last = since
-        if not R.can('deal', 'in') and not R.can('deal', 'out'):
+        if not rules.can('deal', 'in') and not rules.can('deal', 'out'):
             self.conf.mark(lastPull=last, lastRun=Val.now())
             return res
         deals = []
-        for cat in R.pull_cats():  # воронки обмена: основная, отмеченные и воронки менеджеров
-            flt = {'CATEGORY_ID': int(cat), '>DATE_MODIFY': t0.isoformat(timespec='seconds')}
+        for cat in rules.pull_cats():  # воронки обмена: основная, отмеченные и воронки менеджеров
+            flt = {'CATEGORY_ID': int(cat), '>DATE_MODIFY': since_dt.isoformat(timespec='seconds')}
             deals += self.api.list(
                 'crm.deal.list', {'filter': flt, 'select': ['*'], 'order': {'DATE_MODIFY': 'ASC'}}, limit=2000
             )
-        for b in sorted(deals, key=lambda x: str(x.get('DATE_MODIFY') or '')):
-            last = max(last, str(b.get('DATE_MODIFY') or ''))
-            did = self.links.local('deal', b.get('ID'))
+        for bx_deal in sorted(deals, key=lambda x: str(x.get('DATE_MODIFY') or '')):
+            last = max(last, str(bx_deal.get('DATE_MODIFY') or ''))
+            did = self.links.local('deal', bx_deal.get('ID'))
             if did:
-                d = DealBook(self.store).get(did)
-                ln = self.links.get('deal', did)
-                if d and ln:
-                    cat = str(b.get('CATEGORY_ID') or ln['sent'].get('cat') or R.category())
-                    ours = self._ours(d, [])
-                    ours['stage'] = self._stage_of(d['stage'], cat) or ''
+                deal = DealBook(self.store).get(did)
+                link = self.links.get('deal', did)
+                if deal and link:
+                    cat = str(bx_deal.get('CATEGORY_ID') or link['sent'].get('cat') or rules.category())
+                    ours = self._ours(deal, [])
+                    ours['stage'] = self._stage_of(deal['stage'], cat) or ''
                     agreed, upd, back = self._merge(
-                        d, ours, self._theirs(b), ln['sent'], BitrixTime.local(b.get('DATE_MODIFY'))
+                        deal, ours, self._theirs(bx_deal), link['sent'], BitrixTime.local(bx_deal.get('DATE_MODIFY'))
                     )
                     agreed['cat'] = cat
-                    if back and R.can('deal', 'in', d.get('managerId')):
-                        self._apply(d, back, b, ln['sent'])
+                    if back and rules.can('deal', 'in', deal.get('managerId')):
+                        self._apply(deal, back, bx_deal, link['sent'])
                         res['pulled'] += 1
-                    self._pull_sum(d, b)
-                    self.links.put('deal', did, b['ID'], agreed)
-                    if upd and R.can('deal', 'out', d.get('managerId')):
+                    self._pull_sum(deal, bx_deal)
+                    self.links.put('deal', did, bx_deal['ID'], agreed)
+                    if upd and rules.can('deal', 'out', deal.get('managerId')):
                         BitrixQueue.touch(self.store, 'deal', did)
-            elif str(b.get('DATE_CREATE') or '') >= str(conf.get('since') or ''):
-                mid = self._who(b)
+            elif str(bx_deal.get('DATE_CREATE') or '') >= str(conf.get('since') or ''):
+                mid = self._who(bx_deal)
                 if mid is None:
                     res['skipped'] += 1
                     continue
-                self._new_deal(b, mid)
+                self._new_deal(bx_deal, mid)
                 res['created'] += 1
-        res['tasks'] = self._pull_tasks(t0)
+        res['tasks'] = self._pull_tasks(since_dt)
         self.conf.mark(lastPull=last, lastRun=Val.now())
         return res
 
-    def _who(self, b) -> str | None:
+    def _who(self, bx_deal) -> str | None:
         """Менеджер новой сделки Битрикса: сопоставленный или по правилу; None — не загружать."""
-        R = self.R
-        if not R.can('deal', 'in'):
+        rules = self.rules
+        if not rules.can('deal', 'in'):
             return None
-        mid = self._mid_of(b.get('ASSIGNED_BY_ID'))
+        mid = self._mid_of(bx_deal.get('ASSIGNED_BY_ID'))
         if mid:
-            return mid if R.can('deal', 'in', mid) else None
-        fb = R.fallback()
-        if fb == 'skip':
+            return mid if rules.can('deal', 'in', mid) else None
+        fallback = rules.fallback()
+        if fallback == 'skip':
             return None
-        return fb if fb and R.can('deal', 'in', fb) else ''
+        return fallback if fallback and rules.can('deal', 'in', fallback) else ''
 
-    def _pull_sum(self, d, b) -> None:
+    def _pull_sum(self, deal, bx_deal) -> None:
         """Сумма из Битрикса: по умолчанию — только у сделки без КП; по правилу поля — всегда или никогда."""
-        x = self.R.field('sum')['dir']
-        if x == 'off' or not self.R.can('deal', 'in', d.get('managerId')):
+        x = self.rules.field('sum')['dir']
+        if x == 'off' or not self.rules.can('deal', 'in', deal.get('managerId')):
             return
-        if x != 'in' and self.store.one('SELECT 1 FROM deal_kp WHERE deal_id=? LIMIT 1', (d['id'],)):
+        if x != 'in' and self.store.one('SELECT 1 FROM deal_kp WHERE deal_id=? LIMIT 1', (deal['id'],)):
             return
         try:
-            rub = float(b.get('OPPORTUNITY') or 0)
+            rub = float(bx_deal.get('OPPORTUNITY') or 0)
         except (TypeError, ValueError):
             return
-        if round(rub * 100) == int(d.get('sum') or 0):
+        if round(rub * 100) == int(deal.get('sum') or 0):
             return
         BitrixQueue._quiet.on = True
         try:
-            DealBook(self.store).update(d['id'], {'sum': rub}, self.WHO)
+            DealBook(self.store).update(deal['id'], {'sum': rub}, self.WHO)
         finally:
             BitrixQueue._quiet.on = False
 
-    def _new_deal(self, b, mid: str | None = None, flag=True) -> dict | None:
+    def _new_deal(self, bx_deal, mid: str | None = None, flag=True) -> dict | None:
         """Новая сделка воронки обмена Битрикса → сделка программы у ответственного (mid — по правилам, _who)."""
-        cl = self._company_info(b.get('COMPANY_ID'))
-        mid = (self._mid_of(b.get('ASSIGNED_BY_ID')) or '') if mid is None else mid
-        m = next((x for x in self._managers() if x['id'] == mid), {})
+        company = self._company_info(bx_deal.get('COMPANY_ID'))
+        mid = (self._mid_of(bx_deal.get('ASSIGNED_BY_ID')) or '') if mid is None else mid
+        mgr = next((x for x in self._managers() if x['id'] == mid), {})
         key = (
-            self._key_of(b.get('STAGE_ID'), b.get('STAGE_SEMANTIC_ID') or '', str(b.get('CATEGORY_ID') or '') or None)
+            self._key_of(
+                bx_deal.get('STAGE_ID'),
+                bx_deal.get('STAGE_SEMANTIC_ID') or '',
+                str(bx_deal.get('CATEGORY_ID') or '') or None,
+            )
             or Stages.keys(self.store)[0]
         )
         body = {
-            'title': b.get('TITLE') or cl.get('name') or 'Сделка из Битрикс24',
-            'client': cl.get('name') or '',
-            'clientInn': cl.get('inn') or '',
-            'expected': BitrixTime.day(b.get('CLOSEDATE')),
-            'note': b.get('COMMENTS') or '',
+            'title': bx_deal.get('TITLE') or company.get('name') or 'Сделка из Битрикс24',
+            'client': company.get('name') or '',
+            'clientInn': company.get('inn') or '',
+            'expected': BitrixTime.day(bx_deal.get('CLOSEDATE')),
+            'note': bx_deal.get('COMMENTS') or '',
             'stage': key,
         }
         if key == 'lost':
             body['lostReason'] = 'Проиграно в Битрикс24'
-        if b.get('OPPORTUNITY'):
-            body['sum'] = b['OPPORTUNITY']
+        if bx_deal.get('OPPORTUNITY'):
+            body['sum'] = bx_deal['OPPORTUNITY']
         BitrixQueue._quiet.on = True
         try:
-            d = DealBook(self.store).create(body, mid, m.get('name') or '', self.WHO)
+            deal = DealBook(self.store).create(body, mid, mgr.get('name') or '', self.WHO)
         finally:
             BitrixQueue._quiet.on = False
-        self.links.put('deal', d['id'], b['ID'], dict(self._theirs(b), cat=str(b.get('CATEGORY_ID') or '0')))
+        self.links.put(
+            'deal', deal['id'], bx_deal['ID'], dict(self._theirs(bx_deal), cat=str(bx_deal.get('CATEGORY_ID') or '0'))
+        )
         if flag:
             DealBook(self.store).flag(
-                d['id'], bxNew=True
+                deal['id'], bxNew=True
             )  # в кабинете — «Новые сделки из Битрикс24», пока ответственный не откроет
-        if cl.get('company') and cl.get('inn'):
-            self.links.put('company', cl['inn'], cl['company'])
+        if company.get('company') and company.get('inn'):
+            self.links.put('company', company['inn'], company['company'])
         self.log.add(
             'Новая сделка из Битрикс24 «{}» → кабинет{}'.format(
-                body['title'], ' ({})'.format(m['name']) if m else ' (ответственный не сопоставлен)'
+                body['title'], ' ({})'.format(mgr['name']) if mgr else ' (ответственный не сопоставлен)'
             ),
             mid=mid,
         )
-        return d
+        return deal
 
     def _company_info(self, cid) -> dict:
         """Компания Битрикса: название, ИНН; контакты и адрес — в справочник клиентов программы (без дублей)."""
         if not cid or str(cid) == '0':
             return {}
-        c = self.api.call('crm.company.get', {'id': cid}) or {}
-        rq = self.api.list(
+        comp = self.api.call('crm.company.get', {'id': cid}) or {}
+        req = self.api.list(
             'crm.requisite.list',
             {'filter': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': cid}, 'select': ['ID', 'RQ_INN', 'RQ_KPP', 'RQ_OGRN']},
             limit=3,
         )
-        inn = re.sub(r'\D', '', str((rq[0] if rq else {}).get('RQ_INN') or ''))
-        out = {'company': str(cid), 'name': c.get('TITLE') or '', 'inn': inn}
-        if inn and self.R.can('company', 'in'):  # компании и контакты из Битрикса — в справочник клиентов
-            self._merge_client(inn, c, rq[0])
+        inn = re.sub(r'\D', '', str((req[0] if req else {}).get('RQ_INN') or ''))
+        out = {'company': str(cid), 'name': comp.get('TITLE') or '', 'inn': inn}
+        if inn and self.rules.can('company', 'in'):  # компании и контакты из Битрикса — в справочник клиентов
+            self._merge_client(inn, comp, req[0])
         return out
 
-    def _merge_client(self, inn, c, rq) -> None:
+    def _merge_client(self, inn, comp, req) -> None:
         doc = self._client(inn, '')
         new = not doc
         doc = (
@@ -1444,10 +1483,10 @@ class BitrixSync:
             if doc
             else {
                 'id': 'inn' + inn,
-                'name': c.get('TITLE') or '',
+                'name': comp.get('TITLE') or '',
                 'inn': inn,
-                'kpp': rq.get('RQ_KPP') or '',
-                'ogrn': rq.get('RQ_OGRN') or '',
+                'kpp': req.get('RQ_KPP') or '',
+                'ogrn': req.get('RQ_OGRN') or '',
                 'source': 'Битрикс24',
             }
         )
@@ -1455,31 +1494,31 @@ class BitrixSync:
         cons = [x for x in (doc.get('contacts') or []) if isinstance(x, dict)]
         have = {str(x.get('phone') or '') for x in cons} | {str(x.get('email') or '').lower() for x in cons}
         changed = new
-        take = self.R.allow(self.R.company()['contacts'], 'in')
-        for ph in (c.get('PHONE') or [])[:5] if take else []:
-            v = str(ph.get('VALUE') or '')
+        take = self.rules.allow(self.rules.company()['contacts'], 'in')
+        for phone in (comp.get('PHONE') or [])[:5] if take else []:
+            v = str(phone.get('VALUE') or '')
             if v and v not in have:
-                cons.append({'name': c.get('TITLE') or 'Телефон', 'phone': v})
+                cons.append({'name': comp.get('TITLE') or 'Телефон', 'phone': v})
                 have.add(v)
                 changed = True
-        for em in (c.get('EMAIL') or [])[:5] if take else []:
-            v = str(em.get('VALUE') or '')
+        for email in (comp.get('EMAIL') or [])[:5] if take else []:
+            v = str(email.get('VALUE') or '')
             if v and v.lower() not in have:
-                cons.append({'name': c.get('TITLE') or 'Почта', 'email': v})
+                cons.append({'name': comp.get('TITLE') or 'Почта', 'email': v})
                 have.add(v.lower())
                 changed = True
         if changed:
             doc['contacts'] = cons[:30]
             self.store.client_put(doc.get('id') or 'inn' + inn, doc, self.WHO)
 
-    def _pull_tasks(self, t0) -> int:
-        if not self.R.can('task', 'in'):
+    def _pull_tasks(self, since_dt) -> int:
+        if not self.rules.can('task', 'in'):
             return 0
-        T = self.R.tasks()
+        task_rules = self.rules.tasks()
         rows = self.api.list(
             'crm.activity.list',
             {
-                'filter': {'OWNER_TYPE_ID': 2, '>LAST_UPDATED': t0.isoformat(timespec='seconds')},
+                'filter': {'OWNER_TYPE_ID': 2, '>LAST_UPDATED': since_dt.isoformat(timespec='seconds')},
                 'select': [
                     'ID',
                     'OWNER_ID',
@@ -1494,72 +1533,76 @@ class BitrixSync:
             },
             limit=2000,
         )
-        tb, n = TaskBook(self.store), 0
-        for a in rows:
-            did = self.links.local('deal', a.get('OWNER_ID'))
+        tasks, count = TaskBook(self.store), 0
+        for activity in rows:
+            did = self.links.local('deal', activity.get('OWNER_ID'))
             if not did:
                 continue
-            dm = (DealBook(self.store).get(did) or {}).get('managerId')
-            if not self.R.can('task', 'in', self._mid_of(a.get('RESPONSIBLE_ID')) or dm):
+            deal_mgr = (DealBook(self.store).get(did) or {}).get('managerId')
+            if not self.rules.can('task', 'in', self._mid_of(activity.get('RESPONSIBLE_ID')) or deal_mgr):
                 continue
-            subj = str(a.get('SUBJECT') or '').strip()
+            subj = str(activity.get('SUBJECT') or '').strip()
             cancel = subj.startswith('Отменено — ')
             subj = subj[len('Отменено — ') :] if cancel else subj
-            kind = next((k for k, lb in self.KIND.items() if subj.startswith(lb + ': ')), None)
+            kind = next((k for k, label in self.KIND.items() if subj.startswith(label + ': ')), None)
             title = subj[len(self.KIND[kind]) + 2 :] if kind else subj
-            if not kind and not T['other'] and not self.links.local('task', a.get('ID')):
+            if not kind and not task_rules['other'] and not self.links.local('task', activity.get('ID')):
                 continue  # дела Битрикса, заведённые не программой, — по правилу не загружать
-            kind = kind or {'1': 'meet', '2': 'call', '4': 'mail'}.get(str(a.get('TYPE_ID')), 'task')
-            if T['kinds'].get(kind) == 'off':
+            kind = kind or {'1': 'meet', '2': 'call', '4': 'mail'}.get(str(activity.get('TYPE_ID')), 'task')
+            if task_rules['kinds'].get(kind) == 'off':
                 continue
-            due = BitrixTime.local(a.get('DEADLINE')) or Val.now()
-            tm = due[11:16] if due[11:16] not in ('', '00:00', '18:00') else ''
-            state = 'cancel' if cancel else ('done' if a.get('COMPLETED') == 'Y' else 'open')
+            due = BitrixTime.local(activity.get('DEADLINE')) or Val.now()
+            time_text = due[11:16] if due[11:16] not in ('', '00:00', '18:00') else ''
+            state = 'cancel' if cancel else ('done' if activity.get('COMPLETED') == 'Y' else 'open')
             body = {
                 'kind': kind,
                 'title': title[:200],
                 'due': due[:10],
-                'time': tm,
-                'note': str(a.get('DESCRIPTION') or '')[:1000],
+                'time': time_text,
+                'note': str(activity.get('DESCRIPTION') or '')[:1000],
                 'state': state,
             }
-            when = '{}T{}:00'.format(body['due'], tm or '18:00')
-            sent = {'subj': str(a.get('SUBJECT') or '').strip(), 'when': when, 'done': 'Y' if state != 'open' else 'N'}
-            tid = self.links.local('task', a.get('ID'))
+            when = '{}T{}:00'.format(body['due'], time_text or '18:00')
+            sent = {
+                'subj': str(activity.get('SUBJECT') or '').strip(),
+                'when': when,
+                'done': 'Y' if state != 'open' else 'N',
+            }
+            tid = self.links.local('task', activity.get('ID'))
             if tid:
-                ln = self.links.get('task', tid)
+                link = self.links.get('task', tid)
                 if (
-                    ln
-                    and ln['sent'].get('subj') == sent['subj']
-                    and ln['sent'].get('done') == sent['done']
-                    and ln['sent'].get('when', '')[:16] == when[:16]
+                    link
+                    and link['sent'].get('subj') == sent['subj']
+                    and link['sent'].get('done') == sent['done']
+                    and link['sent'].get('when', '')[:16] == when[:16]
                 ):
                     continue  # своё же дело вернулось без изменений
-                cur = tb.get(int(tid))
+                cur = tasks.get(int(tid))
                 if cur:
-                    tb.update(int(tid), {k: v for k, v in body.items() if k != 'kind' or kind})
-                    self.links.put('task', tid, a['ID'], sent)
-                    n += 1
+                    tasks.update(int(tid), {k: v for k, v in body.items() if k != 'kind' or kind})
+                    self.links.put('task', tid, activity['ID'], sent)
+                    count += 1
                 continue
-            d = DealBook(self.store).get(did) or {}
-            mid = self._mid_of(a.get('RESPONSIBLE_ID')) or d.get('managerId') or ''
-            t = tb.add(dict(body), mid, self.WHO, did)
+            deal = DealBook(self.store).get(did) or {}
+            mid = self._mid_of(activity.get('RESPONSIBLE_ID')) or deal.get('managerId') or ''
+            task = tasks.add(dict(body), mid, self.WHO, did)
             if state != 'open':
-                tb.update(t['id'], {'state': state})
-            self.links.put('task', t['id'], a['ID'], sent)
-            n += 1
-        return n
+                tasks.update(task['id'], {'state': state})
+            self.links.put('task', task['id'], activity['ID'], sent)
+            count += 1
+        return count
 
     def card(self, did) -> dict | None:
-        ln = self.links.get('deal', did)
-        if not ln:
-            q = self.store.one("SELECT error FROM bx_queue WHERE kind='deal' AND local_id=?", (did,))
-            return {'queued': True, 'error': q[0] or ''} if q else None
+        link = self.links.get('deal', did)
+        if not link:
+            queue_row = self.store.one("SELECT error FROM bx_queue WHERE kind='deal' AND local_id=?", (did,))
+            return {'queued': True, 'error': queue_row[0] or ''} if queue_row else None
         portal = self.conf.get().get('portal') or ''
         return {
-            'id': ln['bx'],
-            'at': ln['at'],
-            'url': '{}/crm/deal/details/{}/'.format(portal, ln['bx']) if portal else '',
+            'id': link['bx'],
+            'at': link['at'],
+            'url': '{}/crm/deal/details/{}/'.format(portal, link['bx']) if portal else '',
         }
 
 
@@ -1580,7 +1623,7 @@ class BitrixDryApi:
     }
 
     def __init__(self, api, labels=None) -> None:
-        self.api, self.rec, self.n = api, [], 0
+        self.api, self.rec, self.count = api, [], 0
         self.host = api.host
         self.labels = labels or {}
 
@@ -1590,52 +1633,54 @@ class BitrixDryApi:
     def call(self, method, params=None) -> object:
         if not self.WRITE.search(method):
             return self.api.call(method, params)
-        self.n += 1
+        self.count += 1
         self.rec.append(self.say(method, params or {}))
-        i = self.FAKE + self.n
+        i = self.FAKE + self.count
         return (
             {'id': i} if method.endswith('todo.add') else True if method.endswith(('.update', '.set', '.delete')) else i
         )
 
-    def say(self, m, p) -> str:
-        f = p.get('fields') or {}
+    def say(self, method, params) -> str:
+        fields = params.get('fields') or {}
 
         def name(k) -> str:
             return self.NAMES.get(k) or self.labels.get(k) or k
 
-        if m == 'crm.deal.add':
-            return f'Создать сделку «{f.get("TITLE") or ""}»' + (
-                ': ' + ', '.join(name(k) for k in f if k in self.NAMES or k in self.labels) if f else ''
+        if method == 'crm.deal.add':
+            return f'Создать сделку «{fields.get("TITLE") or ""}»' + (
+                ': ' + ', '.join(name(k) for k in fields if k in self.NAMES or k in self.labels) if fields else ''
             )
-        if m == 'crm.deal.update':
-            return 'Сделка {}: изменить — {}'.format(p.get('id'), ', '.join(name(k) for k in f) or 'ничего')
-        if m == 'crm.deal.productrows.set':
-            return f'Сделка {p.get("id")}: товары — {len(p.get("rows") or [])} стр.'
-        if m == 'crm.timeline.comment.add':
-            fl = f.get('FILES') or [['']]
-            return 'Сделка {}: файл «{}»'.format(f.get('ENTITY_ID'), fl[0][0])
-        if m == 'crm.company.add':
-            return f'Создать компанию «{f.get("TITLE") or ""}»'
-        if m == 'crm.requisite.add':
-            return f'Реквизиты компании (ИНН {f.get("RQ_INN") or "—"})'
-        if m == 'crm.contact.add':
-            return 'Создать контакт «{}»'.format(' '.join(x for x in (f.get('LAST_NAME'), f.get('NAME')) if x))
-        if m in ('crm.activity.todo.add', 'crm.activity.add'):
-            return f'Дело «{p.get("title") or f.get("SUBJECT") or ""}»'
-        if m == 'crm.activity.update':
+        if method == 'crm.deal.update':
+            return 'Сделка {}: изменить — {}'.format(params.get('id'), ', '.join(name(k) for k in fields) or 'ничего')
+        if method == 'crm.deal.productrows.set':
+            return f'Сделка {params.get("id")}: товары — {len(params.get("rows") or [])} стр.'
+        if method == 'crm.timeline.comment.add':
+            files = fields.get('FILES') or [['']]
+            return 'Сделка {}: файл «{}»'.format(fields.get('ENTITY_ID'), files[0][0])
+        if method == 'crm.company.add':
+            return f'Создать компанию «{fields.get("TITLE") or ""}»'
+        if method == 'crm.requisite.add':
+            return f'Реквизиты компании (ИНН {fields.get("RQ_INN") or "—"})'
+        if method == 'crm.contact.add':
+            return 'Создать контакт «{}»'.format(
+                ' '.join(x for x in (fields.get('LAST_NAME'), fields.get('NAME')) if x)
+            )
+        if method in ('crm.activity.todo.add', 'crm.activity.add'):
+            return f'Дело «{params.get("title") or fields.get("SUBJECT") or ""}»'
+        if method == 'crm.activity.update':
             return 'Дело {}: изменить — {}'.format(
-                p.get('id'),
+                params.get('id'),
                 ', '.join(
                     {'SUBJECT': 'тема', 'DEADLINE': 'срок', 'COMPLETED': 'выполнено'}.get(k, k.lower())
-                    for k in f
+                    for k in fields
                     if k != 'END_TIME'
                 ),
             )
-        if m == 'crm.address.add':
+        if method == 'crm.address.add':
             return 'Адрес компании'
-        if m == 'crm.deal.userfield.add':
-            return f'Создать поле сделки «{f.get("EDIT_FORM_LABEL") or f.get("FIELD_NAME")}»'
-        return m
+        if method == 'crm.deal.userfield.add':
+            return f'Создать поле сделки «{fields.get("EDIT_FORM_LABEL") or fields.get("FIELD_NAME")}»'
+        return method
 
 
 class BitrixDry:
@@ -1657,19 +1702,19 @@ class BitrixDry:
             self.store.backup(dst)
             st2 = Store(dst)
             real = BitrixSync(self.store, self.opener)
-            labels = {x['bx']: x['label'] for x in real.R.view()['fields'].values()}
-            s = BitrixSync(st2, self.opener, files=real._kp_files)
-            s._api = BitrixDryApi(real.api, labels)
-            i0 = BitrixLog(st2).last_id()
-            res = s.run(manual=True)
-            log = BitrixLog(st2).since(i0)
+            labels = {x['bx']: x['label'] for x in real.rules.view()['fields'].values()}
+            sync = BitrixSync(st2, self.opener, files=real._kp_files)
+            sync._api = BitrixDryApi(real.api, labels)
+            first_log = BitrixLog(st2).last_id()
+            res = sync.run(manual=True)
+            log = BitrixLog(st2).since(first_log)
             prog = [x['text'] for x in log if '←' in x['text'] or x['text'].startswith('Новая сделка')]
             return {
                 'result': res,
-                'bitrix': s._api.rec[:500],
+                'bitrix': sync._api.rec[:500],
                 'program': prog[:500],
                 'errors': [x['text'] for x in log if x['level'] == 'error'][:50],
-                'more': max(0, len(s._api.rec) - 500),
+                'more': max(0, len(sync._api.rec) - 500),
             }
         finally:
             if st2 is not None:
@@ -1691,13 +1736,13 @@ class BitrixImport:
     def preview(self, since, cats=None) -> dict:
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(since or '')):
             raise ValueError('Дата — ГГГГ-ММ-ДД')
-        s, R = self.sync, self.sync.R
-        allowed = R.pull_cats()
-        cats = [str(c) for c in (cats or allowed) if str(c) in allowed] or allowed
-        until = str(s.conf.get().get('since') or BitrixTime.now())
+        sync, rules = self.sync, self.sync.rules
+        allowed = rules.pull_cats()
+        cats = [str(code) for code in (cats or allowed) if str(code) in allowed] or allowed
+        until = str(sync.conf.get().get('since') or BitrixTime.now())
         rows = []
         for cat in cats:
-            rows += s.api.list(
+            rows += sync.api.list(
                 'crm.deal.list',
                 {
                     'filter': {'CATEGORY_ID': int(cat), '>DATE_CREATE': since + 'T00:00:00'},
@@ -1718,26 +1763,30 @@ class BitrixImport:
                 },
                 limit=self.MAX * 2,
             )
-        rows = [b for b in rows if str(b.get('DATE_CREATE') or '') < until and not s.links.local('deal', b.get('ID'))][
-            : self.MAX
-        ]
-        inns = self._inns([b.get('COMPANY_ID') for b in rows])
-        mg = {m['id']: m['name'] for m in s._managers()}
+        rows = [
+            bx_deal
+            for bx_deal in rows
+            if str(bx_deal.get('DATE_CREATE') or '') < until and not sync.links.local('deal', bx_deal.get('ID'))
+        ][: self.MAX]
+        inns = self._inns([bx_deal.get('COMPANY_ID') for bx_deal in rows])
+        mgr_names = {mgr['id']: mgr['name'] for mgr in sync._managers()}
         labels = {x['key']: x['label'] for x in Stages.all(self.store)}
         out = []
-        for b in rows:
-            mid = s._who(b)
-            inn = inns.get(str(b.get('COMPANY_ID') or ''), '')
-            key = s._key_of(
-                b.get('STAGE_ID'), b.get('STAGE_SEMANTIC_ID') or '', str(b.get('CATEGORY_ID') or '') or None
+        for bx_deal in rows:
+            mid = sync._who(bx_deal)
+            inn = inns.get(str(bx_deal.get('COMPANY_ID') or ''), '')
+            key = sync._key_of(
+                bx_deal.get('STAGE_ID'),
+                bx_deal.get('STAGE_SEMANTIC_ID') or '',
+                str(bx_deal.get('CATEGORY_ID') or '') or None,
             )
             item = {
-                'id': str(b['ID']),
-                'title': b.get('TITLE') or '',
-                'created': BitrixTime.day(b.get('DATE_CREATE')),
-                'sum': b.get('OPPORTUNITY') or '',
+                'id': str(bx_deal['ID']),
+                'title': bx_deal.get('TITLE') or '',
+                'created': BitrixTime.day(bx_deal.get('DATE_CREATE')),
+                'sum': bx_deal.get('OPPORTUNITY') or '',
                 'stage': labels.get(key, '—'),
-                'manager': mg.get(mid or '', '—'),
+                'manager': mgr_names.get(mid or '', '—'),
                 'inn': inn,
             }
             if mid is None:
@@ -1760,54 +1809,61 @@ class BitrixImport:
         return {'items': out, 'cats': cats, 'until': until[:10], 'max': self.MAX}
 
     def _inns(self, cids) -> dict:
-        ids = sorted({str(c) for c in cids if c and str(c) != '0'})
+        ids = sorted({str(cid) for cid in cids if cid and str(cid) != '0'})
         out = {}
         for i in range(0, len(ids), 50):
-            for r in self.sync.api.list(
+            for row in self.sync.api.list(
                 'crm.requisite.list',
                 {'filter': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': ids[i : i + 50]}, 'select': ['ENTITY_ID', 'RQ_INN']},
                 limit=200,
             ):
-                inn = re.sub(r'\D', '', str(r.get('RQ_INN') or ''))
+                inn = re.sub(r'\D', '', str(row.get('RQ_INN') or ''))
                 if inn:
-                    out.setdefault(str(r.get('ENTITY_ID')), inn)
+                    out.setdefault(str(row.get('ENTITY_ID')), inn)
         return out
 
     def _open_unlinked(self, inn) -> list:
         out = []
         for (did,) in self.store.all("SELECT id FROM deals WHERE stage NOT IN ('won', 'lost')"):
-            d = DealBook(self.store).get(did) or {}
-            if re.sub(r'\D', '', str(d.get('clientInn') or '')) == inn and not self.sync.links.get('deal', did):
-                out.append(d)
+            deal = DealBook(self.store).get(did) or {}
+            if re.sub(r'\D', '', str(deal.get('clientInn') or '')) == inn and not self.sync.links.get('deal', did):
+                out.append(deal)
         return out
 
     def run(self, since, cats, ids) -> dict:
         """Загрузить отмеченные (ids) из предпросмотра. → {created, linked, skipped}."""
         want = {str(i) for i in (ids or [])}
-        pv = self.preview(since, cats)
+        preview = self.preview(since, cats)
         res = {'created': 0, 'linked': 0, 'skipped': 0}
-        s = self.sync
-        for it in pv['items']:
-            if it['id'] not in want:
+        sync = self.sync
+        for item in preview['items']:
+            if item['id'] not in want:
                 continue
-            if it['act'] == 'skip':
+            if item['act'] == 'skip':
                 res['skipped'] += 1
                 continue
-            b = s.api.call('crm.deal.get', {'id': it['id']}) or {}
-            if not b or s.links.local('deal', it['id']):
+            bx_deal = sync.api.call('crm.deal.get', {'id': item['id']}) or {}
+            if not bx_deal or sync.links.local('deal', item['id']):
                 res['skipped'] += 1
                 continue
-            if it['act'] == 'link':
-                s.links.put('deal', it['deal'], it['id'], dict(s._theirs(b), cat=str(b.get('CATEGORY_ID') or '0')))
-                BitrixQueue.touch(self.store, 'deal', it['deal'])
-                s.log.add(
-                    'Сделка Битрикса {} «{}» связана со сделкой программы ({})'.format(it['id'], it['title'], it['why'])
+            if item['act'] == 'link':
+                sync.links.put(
+                    'deal',
+                    item['deal'],
+                    item['id'],
+                    dict(sync._theirs(bx_deal), cat=str(bx_deal.get('CATEGORY_ID') or '0')),
+                )
+                BitrixQueue.touch(self.store, 'deal', item['deal'])
+                sync.log.add(
+                    'Сделка Битрикса {} «{}» связана со сделкой программы ({})'.format(
+                        item['id'], item['title'], item['why']
+                    )
                 )
                 res['linked'] += 1
             else:
-                s._new_deal(b, s._who(b) or '', flag=False)
+                sync._new_deal(bx_deal, sync._who(bx_deal) or '', flag=False)
                 res['created'] += 1
-        s.log.add(
+        sync.log.add(
             f'Загрузка сделок Битрикс24 с {since}: новых {res["created"]}, связано {res["linked"]}, пропущено {res["skipped"]}'
         )
         return res
@@ -1833,163 +1889,163 @@ class EconXlsx:
         if not data.startswith(b'PK'):
             raise ValueError('Нужен файл Excel (.xlsx)')
         os.makedirs(self.dir, exist_ok=True)
-        f = self._file(kid)
-        with open(f + '.tmp', 'wb') as fh:
-            fh.write(data)
-        os.replace(f + '.tmp', f)
+        path = self._file(kid)
+        with open(path + '.tmp', 'wb') as handle:
+            handle.write(data)
+        os.replace(path + '.tmp', path)
 
     def path(self, kid: str) -> str | None:
         try:
-            f = self._file(kid)
+            path = self._file(kid)
         except ValueError:
             return None
-        return f if os.path.isfile(f) else None
+        return path if os.path.isfile(path) else None
 
 
 class BitrixDesk:
     """«Настройки → Подключения и ключи → Битрикс24» (/api/admin/bitrix…): только администратор, изменения — с CSRF."""
 
-    def __init__(self, h, store, log_fn, opener=None) -> None:
-        self.h, self.store, self.log_fn, self.opener = h, store, log_fn, opener
+    def __init__(self, handler, store, log_fn, opener=None) -> None:
+        self.handler, self.store, self.log_fn, self.opener = handler, store, log_fn, opener
 
     def send(self, obj, code=200) -> None:
-        return self.h.send(code, 'application/json; charset=utf-8', json.dumps(obj, ensure_ascii=False))
+        return self.handler.send(code, 'application/json; charset=utf-8', json.dumps(obj, ensure_ascii=False))
 
-    def text(self, code, t) -> None:
-        return self.h.send(code, 'text/plain; charset=utf-8', t)
+    def text(self, code, text) -> None:
+        return self.handler.send(code, 'text/plain; charset=utf-8', text)
 
     def body(self) -> dict:
         try:
-            d = json.loads(self.h.body().decode('utf-8') or '{}')
+            data = json.loads(self.handler.body().decode('utf-8') or '{}')
         except (ValueError, UnicodeDecodeError):
-            d = None
-        return d if isinstance(d, dict) else {}
+            data = None
+        return data if isinstance(data, dict) else {}
 
     def view(self) -> dict:
-        st = self.store
+        store = self.store
         return dict(
-            BitrixConf(st).view(),
-            queue=BitrixQueue(st).stats(),
-            log=BitrixLog(st).tail(100),
-            failed=BitrixQueue(st).failed(),
+            BitrixConf(store).view(),
+            queue=BitrixQueue(store).stats(),
+            log=BitrixLog(store).tail(100),
+            failed=BitrixQueue(store).failed(),
             linked={
-                'deals': BitrixLinks(st).count('deal'),
-                'companies': BitrixLinks(st).count('company'),
-                'tasks': BitrixLinks(st).count('task'),
+                'deals': BitrixLinks(store).count('deal'),
+                'companies': BitrixLinks(store).count('company'),
+                'tasks': BitrixLinks(store).count('task'),
             },
-            stagesOur=Stages.all(st),
-            managers=BitrixSync(st, self.opener)._managers(),
+            stagesOur=Stages.all(store),
+            managers=BitrixSync(store, self.opener)._managers(),
         )
 
-    def route(self, m, sub, by: str) -> None:
-        st = self.store
-        if sub == 'bitrix' and m == 'GET':
+    def route(self, method, sub, author: str) -> None:
+        store = self.store
+        if sub == 'bitrix' and method == 'GET':
             return self.send(self.view())
-        if sub == 'bitrix' and m == 'POST':
-            d = self.body()
-            was = BitrixConf(st).get()
+        if sub == 'bitrix' and method == 'POST':
+            data = self.body()
+            was = BitrixConf(store).get()
             try:
-                new = BitrixConf(st).save(d, by)
-            except (ValueError, BitrixError) as e:
-                return self.text(400, str(e))
-            info = {k: d[k] for k in ('on', 'category', 'pollSec', 'mode', 'fallback') if k in d}
+                new = BitrixConf(store).save(data, author)
+            except (ValueError, BitrixError) as exc:
+                return self.text(400, str(exc))
+            info = {k: data[k] for k in ('on', 'category', 'pollSec', 'mode', 'fallback') if k in data}
             info.update(
                 {
                     k: 'изменено'
                     for k in ('flow', 'mgr', 'cats', 'stagesBy', 'fields', 'send', 'company', 'tasks', 'sched')
-                    if k in d
+                    if k in data
                 }
             )
-            if 'url' in d:
-                info['url'] = 'изменён' if d.get('url') else 'удалён'
-            if 'stages' in d:
+            if 'url' in data:
+                info['url'] = 'изменён' if data.get('url') else 'удалён'
+            if 'stages' in data:
                 info['stages'] = len(new.get('stages') or {})
-            if 'users' in d:
+            if 'users' in data:
                 info['users'] = len(new.get('users') or {})
             self.log_fn(
                 'edit_settings', 'settings', 'bitrix', {k: was.get(k) for k in ('on', 'category') if k in info}, info
             )
             if new.get('on') and not was.get('on'):  # включили — открытые сделки программы уходят в Битрикс
-                DealBook(st).adopt()
-                for (did,) in st.all("SELECT id FROM deals WHERE stage NOT IN ('won', 'lost')"):
-                    BitrixQueue.touch(st, 'deal', did)
+                DealBook(store).adopt()
+                for (did,) in store.all("SELECT id FROM deals WHERE stage NOT IN ('won', 'lost')"):
+                    BitrixQueue.touch(store, 'deal', did)
             return self.send(self.view())
-        if sub == 'bitrix/test' and m == 'POST':
+        if sub == 'bitrix/test' and method == 'POST':
             try:
-                d = self.body()
-                if d.get('category') is not None:
-                    BitrixConf(st).save({'category': d['category']}, by)
-                return self.send(BitrixSync(st, self.opener).check())
-            except (BitrixError, ValueError) as e:
-                return self.text(422, str(e))
-        if sub == 'bitrix/run' and m == 'POST':
-            res = BitrixSync(st, self.opener).run(manual=True)
+                data = self.body()
+                if data.get('category') is not None:
+                    BitrixConf(store).save({'category': data['category']}, author)
+                return self.send(BitrixSync(store, self.opener).check())
+            except (BitrixError, ValueError) as exc:
+                return self.text(422, str(exc))
+        if sub == 'bitrix/run' and method == 'POST':
+            res = BitrixSync(store, self.opener).run(manual=True)
             return self.send(dict(self.view(), result=res))
-        if sub == 'bitrix/pull' and m == 'POST':  # «Загрузить из Битрикса сейчас» — без отправки очереди
-            res = BitrixSync(st, self.opener).run(manual=True, push=False)
+        if sub == 'bitrix/pull' and method == 'POST':  # «Загрузить из Битрикса сейчас» — без отправки очереди
+            res = BitrixSync(store, self.opener).run(manual=True, push=False)
             return self.send(dict(self.view(), result=res))
-        if sub == 'bitrix/push' and m == 'POST':  # «Выгрузить сделку № …» — сразу
+        if sub == 'bitrix/push' and method == 'POST':  # «Выгрузить сделку № …» — сразу
             num = str(self.body().get('number') or '').strip()
-            r = (
-                st.one("SELECT id FROM deals WHERE CAST(json_extract(doc, '$.number') AS TEXT)=?", (num,))
+            row = (
+                store.one("SELECT id FROM deals WHERE CAST(json_extract(doc, '$.number') AS TEXT)=?", (num,))
                 if num
                 else None
             )
-            if not r:
+            if not row:
                 return self.text(404, 'Сделки с таким номером нет')
-            BitrixQueue.touch(st, 'deal', r[0])
-            if not st.one("SELECT 1 FROM bx_queue WHERE kind='deal' AND local_id=?", (r[0],)):
+            BitrixQueue.touch(store, 'deal', row[0])
+            if not store.one("SELECT 1 FROM bx_queue WHERE kind='deal' AND local_id=?", (row[0],)):
                 return self.text(400, 'Связь выключена — сделка не отправлена')
-            res = BitrixSync(st, self.opener).run(manual=True, pull=False)
+            res = BitrixSync(store, self.opener).run(manual=True, pull=False)
             return self.send(dict(self.view(), result=res))
-        if sub == 'bitrix/stages' and m == 'POST':  # стадии другой воронки — для соответствия этапов
+        if sub == 'bitrix/stages' and method == 'POST':  # стадии другой воронки — для соответствия этапов
             cat = str(self.body().get('category') or '0')
             if not re.match(r'^\d{1,9}$', cat):
                 return self.text(400, 'Неверная воронка')
             try:
-                return self.send({'category': cat, 'stages': BitrixSync(st, self.opener).stages_all(cat)})
-            except BitrixError as e:
-                return self.text(422, str(e))
-        if sub == 'bitrix/dry' and m == 'POST':  # пробный прогон: ничего не записывается
-            if not BitrixConf(st).on():
+                return self.send({'category': cat, 'stages': BitrixSync(store, self.opener).stages_all(cat)})
+            except BitrixError as exc:
+                return self.text(422, str(exc))
+        if sub == 'bitrix/dry' and method == 'POST':  # пробный прогон: ничего не записывается
+            if not BitrixConf(store).enabled():
                 return self.text(400, 'Сначала включите связь — пробный прогон идёт по её правилам')
             try:
-                return self.send(BitrixDry(st, self.opener).run())
-            except BitrixError as e:
-                return self.text(422, str(e))
-        if sub in ('bitrix/import/preview', 'bitrix/import') and m == 'POST':
-            if not BitrixConf(st).on():
+                return self.send(BitrixDry(store, self.opener).run())
+            except BitrixError as exc:
+                return self.text(422, str(exc))
+        if sub in ('bitrix/import/preview', 'bitrix/import') and method == 'POST':
+            if not BitrixConf(store).enabled():
                 return self.text(400, 'Сначала включите связь')
-            d = self.body()
-            cats = [str(x) for x in d.get('cats') or []] if isinstance(d.get('cats'), list) else None
+            data = self.body()
+            cats = [str(x) for x in data.get('cats') or []] if isinstance(data.get('cats'), list) else None
             try:
                 if sub == 'bitrix/import/preview':
-                    return self.send(BitrixImport(st, self.opener).preview(d.get('from'), cats))
+                    return self.send(BitrixImport(store, self.opener).preview(data.get('from'), cats))
                 ids = (
-                    [str(x)[:20] for x in d.get('ids') or []][: BitrixImport.MAX]
-                    if isinstance(d.get('ids'), list)
+                    [str(x)[:20] for x in data.get('ids') or []][: BitrixImport.MAX]
+                    if isinstance(data.get('ids'), list)
                     else []
                 )
-                res = BitrixImport(st, self.opener).run(d.get('from'), cats, ids)
-                self.log_fn('edit_settings', 'settings', 'bitrix', None, dict(res, importFrom=d.get('from')))
+                res = BitrixImport(store, self.opener).run(data.get('from'), cats, ids)
+                self.log_fn('edit_settings', 'settings', 'bitrix', None, dict(res, importFrom=data.get('from')))
                 return self.send(dict(self.view(), result=res))
-            except ValueError as e:
-                return self.text(400, str(e))
-            except BitrixError as e:
-                return self.text(422, str(e))
-        if sub == 'bitrix/resend' and m == 'POST':
+            except ValueError as exc:
+                return self.text(400, str(exc))
+            except BitrixError as exc:
+                return self.text(422, str(exc))
+        if sub == 'bitrix/resend' and method == 'POST':
             body = self.body()
             what = body.get('what')
             if body.get('kind') in ('deal', 'task') and body.get('id'):  # «Повторить» у одной записи
-                if not BitrixQueue(st).retry(body['kind'], str(body['id'])[:64]):
+                if not BitrixQueue(store).retry(body['kind'], str(body['id'])[:64]):
                     return self.text(404, 'Записи уже нет в очереди — она отправлена')
-                return self.send(dict(self.view(), result=BitrixSync(st, self.opener).run(pull=False)))
-            BitrixQueue(st).retry_all()
-            n = 0
+                return self.send(dict(self.view(), result=BitrixSync(store, self.opener).run(pull=False)))
+            BitrixQueue(store).retry_all()
+            count = 0
             if what == 'all':
-                for (did,) in st.all('SELECT id FROM deals'):
-                    BitrixQueue.touch(st, 'deal', did)
-                    n += 1
-            self.log_fn('edit_settings', 'settings', 'bitrix', None, {'resend': what or 'failed', 'deals': n})
-            return self.send(dict(self.view(), queued=n))
+                for (did,) in store.all('SELECT id FROM deals'):
+                    BitrixQueue.touch(store, 'deal', did)
+                    count += 1
+            self.log_fn('edit_settings', 'settings', 'bitrix', None, {'resend': what or 'failed', 'deals': count})
+            return self.send(dict(self.view(), queued=count))
         return self.text(404, 'not found')

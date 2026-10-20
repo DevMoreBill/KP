@@ -708,7 +708,7 @@ class KpController(Controller):
                         'ok': True,
                         'rev': rev,
                         'deal': CrmController.on_kp(self.handler, kid),
-                        'bx': BitrixConf(store()).on(),
+                        'bx': BitrixConf(store()).enabled(),
                     }
                 )
             return self.send_json({'ok': True, 'rev': rev})
@@ -1288,7 +1288,7 @@ class TrackController(Controller):
             return self.not_found('Сначала сохраните КП')
         if not admin.deal_allowed(self.handler, meta):
             return self.text(403, 'Экономика сделки — только автору КП и администратору')
-        if not BitrixConf(store()).on():
+        if not BitrixConf(store()).enabled():
             return self.send_json({'ok': False})
         with self.user_input():
             EconXlsx(store()).save(kid, self.body())
@@ -1813,7 +1813,7 @@ class CrmController(Controller):
         except PermissionError as exc:
             return self.text(403, str(exc))
         res = CrmBoard(store()).build(scope)
-        if BitrixConf(store()).on():  # ссылки «Открыть в Битрикс24» на карточках доски
+        if BitrixConf(store()).enabled():  # ссылки «Открыть в Битрикс24» на карточках доски
             portal = BitrixConf(store()).get().get('portal') or ''
             bx_ids = dict(store().all("SELECT local_id, bx_id FROM bx_link WHERE kind='deal'"))
             for deal in res['deals']:
@@ -1908,7 +1908,7 @@ class CrmController(Controller):
             deal = new
         deal['kps'] = book.kps([did])[did]
         deal['tasks'] = TaskBook(store()).list(deal=did)
-        if BitrixConf(store()).on():
+        if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
         return self.send_json(dict(deal, stages=Stages.all(store())))
 
