@@ -247,3 +247,18 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 @media (max-width:760px){.dc-bx{padding:12px 12px;margin:-8px 0}}
 .cab-sort{width:auto;max-width:220px}
 @media (max-width:760px){.cab-sort{flex:1 1 100%;max-width:none}}
+
+/* кабинет как Битрикс24: выбор воронки, поля сделки Битрикса в карточке */
+.cab-fn{min-width:220px;max-width:340px}
+.kb-more{width:100%;margin-top:6px}
+.dk-ufs .md-h{margin-bottom:4px}
+.dk-ufg{border-top:1px solid var(--line);padding:6px 0}
+.dk-ufg:first-of-type{border-top:0}
+.dk-ufg>summary{cursor:pointer;font-weight:600;padding:4px 0;min-height:32px;display:flex;align-items:center;gap:6px}
+.dk-ufg>summary .muted{font-weight:400}
+.dk-uf .dk-wide{grid-column:1/-1}
+.dk-uf .dk-ro b{display:block;font-weight:500;padding:9px 0;overflow-wrap:anywhere}
+.dk-uf select[multiple]{min-height:84px}
+.dk-stl{align-items:flex-end;flex-wrap:wrap;gap:8px}
+.dk-stl .f{min-width:240px;flex:1 1 260px;margin:0}
+@media (max-width:768px){.cab-fn{min-width:0;max-width:none;width:100%}.dk-stl .f{min-width:0}}

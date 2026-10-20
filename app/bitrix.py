@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from bitrix_mirror import BitrixMirror
 from bitrix_rules import BitrixRules
 from crm import DealBook, Stages, TaskBook
 from kp_track import Val
@@ -514,6 +515,7 @@ class BitrixSync:
         self.files = files or self._kp_files
         self._api: BitrixApi | BitrixDryApi | None = None
         self._rules: BitrixRules | None = None
+        self.mirror = BitrixMirror(store)
 
     @property
     def rules(self) -> BitrixRules:
@@ -856,6 +858,22 @@ class BitrixSync:
     def _stage_of(self, key, cat=None) -> Any:
         return self.rules.stages(cat).get(key)
 
+    def _bx_stage(self, deal, cat) -> str:
+        """Стадия Битрикса сделки: в повторённой воронке — та же, иначе — по соответствию этапов."""
+        if self.mirror.cat(deal):
+            return str(deal.get('fstage') or deal.get('stage') or '')
+        return self._stage_of(deal['stage'], cat) or ''
+
+    def _shared(self) -> list:
+        return [*self.SHARED, *self.mirror.shared()]
+
+    def _field(self, key) -> dict:
+        return self.mirror.field(key) or self.rules.field(key)
+
+    def _pull_cats(self) -> list:
+        cats = list(self.rules.pull_cats())
+        return cats + [cat for cat in self.mirror.cats() if cat not in cats]
+
     def _key_of(self, stage_id, sem='', cat=None) -> str | None:
         if cat is None and ':' in str(stage_id or ''):
             cat = str(stage_id).split(':')[0][1:]  # «C3:NEW» — стадия воронки 3
@@ -985,11 +1003,12 @@ class BitrixSync:
             'manager': self._user_of(mid) or '',
             'note': deal.get('note') or '',
             'lostReason': deal.get('lostReason') or '' if deal.get('stage') == 'lost' else '',
+            **self.mirror.ours(deal),
         }
 
     def _bx_id(self, key) -> str:
         """Поле Битрикса для общего поля программы (по карте полей)."""
-        return self.STD.get(key) or self.rules.field(key)['bx']
+        return self.STD.get(key) or self._field(key)['bx']
 
     def _theirs(self, bx_deal) -> dict:
         return {
@@ -999,6 +1018,7 @@ class BitrixSync:
             'manager': str(bx_deal.get('ASSIGNED_BY_ID') or ''),
             'note': str(bx_deal.get(self._bx_id('note')) or ''),
             'lostReason': str(bx_deal.get(self._bx_id('lostReason')) or ''),
+            **self.mirror.theirs(bx_deal),
         }
 
     def push_deal(self, did) -> None:
@@ -1013,7 +1033,7 @@ class BitrixSync:
         kps = self._kps(did)
 
         def out(k) -> bool:
-            return rules.allow(rules.field(k)['dir'], 'out')
+            return rules.allow(self._field(k)['dir'], 'out')
 
         fields: dict = {}
         if out('sum'):
@@ -1030,9 +1050,9 @@ class BitrixSync:
             x = rules.field(k)
             if x['dir'] == 'out' and x['bx']:
                 fields[x['bx']] = v
-        cat = str((link or {}).get('sent', {}).get('cat') or rules.cat_of(mid))
+        cat = self.mirror.cat(deal) or str((link or {}).get('sent', {}).get('cat') or rules.cat_of(mid))
         ours = self._ours(deal, kps)
-        ours['stage'] = self._stage_of(deal['stage'], cat) or ''
+        ours['stage'] = self._bx_stage(deal, cat)
         if not link:
             fields.update(
                 {
@@ -1042,9 +1062,9 @@ class BitrixSync:
                 }
             )
             sent = {'cat': cat}
-            for k in self.SHARED:
+            for k in self._shared():
                 if out(k) and ours.get(k) and self._bx_id(k):
-                    fields[self._bx_id(k)] = ours[k]
+                    fields[self._bx_id(k)] = self.mirror.to_bx(k, ours[k])
                     sent[k] = ours[k]
             fields.setdefault('TITLE', ours['title'])  # без названия Битрикс сделку не создаст
             bid = str(self.api.call('crm.deal.add', {'fields': fields, 'params': {'REGISTER_SONET_EVENT': 'N'}}))
@@ -1055,14 +1075,17 @@ class BitrixSync:
         else:
             bid = link['bx']
             bx_deal = self.api.call('crm.deal.get', {'id': bid}) or {}
+            moved = self.mirror.cat(deal)
+            if moved and moved != str(bx_deal.get('CATEGORY_ID') or '0'):
+                bx_deal = self._move(deal, bid, bx_deal, moved)
             cat = str(bx_deal.get('CATEGORY_ID') or cat)
-            ours['stage'] = self._stage_of(deal['stage'], cat) or ''
+            ours['stage'] = self._bx_stage(deal, cat)
             sent, upd, back = self._merge(
                 deal, ours, self._theirs(bx_deal), link['sent'], BitrixTime.local(bx_deal.get('DATE_MODIFY'))
             )
             sent['cat'] = cat
             for k, v in upd.items():
-                fields[self._bx_id(k)] = v
+                fields[self._bx_id(k)] = self.mirror.to_bx(k, v)
             if upd:
                 self.log.add(
                     'Сделка № {} → Битрикс24: {}'.format(deal.get('number'), self._said(upd, link['sent'], cat)),
@@ -1090,6 +1113,23 @@ class BitrixSync:
         for task in TaskBook(self.store).list(deal=did):
             if not self.links.get('task', task['id']):
                 self.push_task(task['id'], bid)
+
+    def _move(self, deal, bid, bx_deal, cat) -> dict:
+        """Сделку перенесли в другую воронку в программе — и в Битриксе (crm.item.update: смена воронки сделки)."""
+        stage = self._bx_stage(deal, cat)
+        try:
+            self.api.call(
+                'crm.item.update',
+                {'entityTypeId': 2, 'id': int(bid), 'fields': {'categoryId': int(cat), 'stageId': stage}},
+            )
+        except BitrixError as exc:
+            self.log.add(
+                'Сделка № {}: воронка в Битрикс24 не изменена — {}'.format(deal.get('number'), exc),
+                'error',
+                deal.get('managerId'),
+            )
+            return bx_deal
+        return dict(bx_deal, CATEGORY_ID=cat, STAGE_ID=stage)
 
     @staticmethod
     def _rows_sum(deal, k) -> list:
@@ -1124,21 +1164,26 @@ class BitrixSync:
             if not v:
                 return '—'
             if k == 'stage':
-                return labels.get(stg.get(v, v), v)
+                return labels.get(stg.get(v, v)) or self.mirror.stage_label(str(v)) or str(v)
             if k == 'manager':
                 return mgr_names.get(self._mid_of(v) or '', f'пользователь {v}')
             v = str(v)
             return v if len(v) <= self.TEXT_MAX else v[:38] + '…'
 
-        return ', '.join(f'{names.get(k, k)}: {show(k, (base or {}).get(k))} → {show(k, v)}' for k, v in vals.items())
+        return ', '.join(
+            f'{names.get(k) or self._field(k)["label"]}: {show(k, (base or {}).get(k))} → {show(k, v)}'
+            for k, v in vals.items()
+        )
 
     def _merge(self, deal, ours, theirs, base, their_at) -> tuple:
         """Общие поля по карте полей: главная сторона — по направлению поля и правилу «кто главный»."""
         upd, back, agreed = {}, {}, dict(base)
-        for k in self.SHARED:
-            x = self.rules.field(k)
+        for k in self._shared():
+            x = self._field(k)
             if x['dir'] == 'off' or not self._bx_id(k):
                 continue
+            if k.startswith(BitrixMirror.PREFIX) and k not in theirs:
+                continue  # поля нет в ответе Битрикса — не сравнивать
             ours_val, theirs_val, base_val = ours.get(k) or '', theirs.get(k) or '', base.get(k) or ''
             if k == 'stage' and not ours_val:
                 ours_val = theirs_val  # этап без соответствия стадии — стадию Битрикса не трогаем
@@ -1179,7 +1224,7 @@ class BitrixSync:
             body['note'] = back['note']
         if 'expected' in back:
             body['expected'] = back['expected']
-        if 'stage' in back:
+        if 'stage' in back and not self.mirror.stage_back(deal, back['stage'], bx_deal, body):
             key = self._key_of(
                 back['stage'],
                 (bx_deal or {}).get('STAGE_SEMANTIC_ID') or '',
@@ -1191,22 +1236,26 @@ class BitrixSync:
                     body['lostReason'] = back.get('lostReason') or deal.get('lostReason') or 'Проиграно в Битрикс24'
         if back.get('lostReason') and (body.get('stage') or deal.get('stage')) == 'lost':
             body['lostReason'] = back['lostReason']
+        fields = self.mirror.uf_back(back)
         mgr = None
         if 'manager' in back:
             mid = self._mid_of(back['manager'])
             if mid and mid != deal.get('managerId'):
                 mgr_rec = next((x for x in self._managers() if x['id'] == mid), None)
                 mgr = (mid, mgr_rec['name']) if mgr_rec else None
-        if not body and not mgr:
+        if not body and not mgr and not fields:
             return
         BitrixQueue._quiet.on = True
         try:
-            DealBook(self.store).update(deal['id'], body, self.WHO, None, mgr)
+            if body or mgr:
+                DealBook(self.store).update(deal['id'], body, self.WHO, None, mgr)
             if mgr:
                 TaskBook(self.store).move_deal(deal['id'], mgr[0])
+            if fields:
+                DealBook(self.store).put_uf(deal['id'], fields, self.WHO)
         finally:
             BitrixQueue._quiet.on = False
-        shown = {k: back[k] for k in back if k in body or (k == 'manager' and mgr)}
+        shown = {k: back[k] for k in back if k in body or (k == 'manager' and mgr) or k.startswith('uf:')}
         self.log.add(
             'Сделка № {} ← Битрикс24: {}'.format(
                 deal.get('number'), self._said(shown, base, str((bx_deal or {}).get('CATEGORY_ID') or '') or None)
@@ -1372,10 +1421,12 @@ class BitrixSync:
             self.conf.mark(lastPull=last, lastRun=Val.now())
             return res
         deals = []
-        for cat in rules.pull_cats():  # воронки обмена: основная, отмеченные и воронки менеджеров
+        for cat in self._pull_cats():  # воронки обмена: основная, отмеченные, менеджеров и повторённые в программе
             flt = {'CATEGORY_ID': int(cat), '>DATE_MODIFY': since_dt.isoformat(timespec='seconds')}
             deals += self.api.list(
-                'crm.deal.list', {'filter': flt, 'select': ['*'], 'order': {'DATE_MODIFY': 'ASC'}}, limit=2000
+                'crm.deal.list',
+                {'filter': flt, 'select': self.mirror.select(), 'order': {'DATE_MODIFY': 'ASC'}},
+                limit=2000,
             )
         for bx_deal in sorted(deals, key=lambda x: str(x.get('DATE_MODIFY') or '')):
             last = max(last, str(bx_deal.get('DATE_MODIFY') or ''))
@@ -1386,7 +1437,7 @@ class BitrixSync:
                 if deal and link:
                     cat = str(bx_deal.get('CATEGORY_ID') or link['sent'].get('cat') or rules.category())
                     ours = self._ours(deal, [])
-                    ours['stage'] = self._stage_of(deal['stage'], cat) or ''
+                    ours['stage'] = self._bx_stage(deal, cat)
                     agreed, upd, back = self._merge(
                         deal, ours, self._theirs(bx_deal), link['sent'], BitrixTime.local(bx_deal.get('DATE_MODIFY'))
                     )
@@ -1447,9 +1498,9 @@ class BitrixSync:
         DealBook(self.store).flag(deal['id'], bxNew=True)
         return deal
 
-    def _import_deal(self, bx_deal, mid: str | None = None) -> dict:
-        """Сделка Битрикса → сделка программы у ответственного (mid — по правилам, _who)."""
-        company = self._company_info(bx_deal.get('COMPANY_ID'))
+    def _import_deal(self, bx_deal, mid: str | None = None, company: dict | None = None) -> dict:
+        """Сделка Битрикса → сделка программы у ответственного (mid — по правилам, _who); company — уже известная компания."""
+        company = self._company_info(bx_deal.get('COMPANY_ID')) if company is None else company
         mid = (self._mid_of(bx_deal.get('ASSIGNED_BY_ID')) or '') if mid is None else mid
         mgr: dict = next((x for x in self._managers() if x['id'] == mid), {})
         key = (
@@ -1470,11 +1521,15 @@ class BitrixSync:
         }
         if key == 'lost':
             body['lostReason'] = 'Проиграно в Битрикс24'
+        body.update(self.mirror.place(bx_deal))
         if bx_deal.get('OPPORTUNITY'):
             body['sum'] = bx_deal['OPPORTUNITY']
         BitrixQueue._quiet.on = True
         try:
             deal = DealBook(self.store).create(body, mid, mgr.get('name') or '', self.WHO)
+            values = self.mirror.uf_of(bx_deal)
+            if values:
+                DealBook(self.store).put_uf(deal['id'], values, self.WHO)
         finally:
             BitrixQueue._quiet.on = False
         self.links.put(
@@ -1566,63 +1621,67 @@ class BitrixSync:
         )
         tasks, count = TaskBook(self.store), 0
         for activity in rows:
-            did = self.links.local('deal', activity.get('OWNER_ID'))
-            if not did:
-                continue
-            deal_mgr = (DealBook(self.store).get(did) or {}).get('managerId')
-            if not self.rules.can('task', 'in', self._mid_of(activity.get('RESPONSIBLE_ID')) or deal_mgr):
-                continue
-            subj = str(activity.get('SUBJECT') or '').strip()
-            cancel = subj.startswith('Отменено — ')
-            subj = subj[len('Отменено — ') :] if cancel else subj
-            kind = next((k for k, label in self.KIND.items() if subj.startswith(label + ': ')), None)
-            title = subj[len(self.KIND[kind]) + 2 :] if kind else subj
-            if not kind and not task_rules['other'] and not self.links.local('task', activity.get('ID')):
-                continue  # дела Битрикса, заведённые не программой, — по правилу не загружать
-            kind = kind or {'1': 'meet', '2': 'call', '4': 'mail'}.get(str(activity.get('TYPE_ID')), 'task')
-            if task_rules['kinds'].get(kind) == 'off':
-                continue
-            due = BitrixTime.local(activity.get('DEADLINE')) or Val.now()
-            time_text = due[11:16] if due[11:16] not in ('', '00:00', '18:00') else ''
-            state = 'cancel' if cancel else ('done' if activity.get('COMPLETED') == 'Y' else 'open')
-            body = {
-                'kind': kind,
-                'title': title[:200],
-                'due': due[:10],
-                'time': time_text,
-                'note': str(activity.get('DESCRIPTION') or '')[:1000],
-                'state': state,
-            }
-            when = '{}T{}:00'.format(body['due'], time_text or '18:00')
-            sent = {
-                'subj': str(activity.get('SUBJECT') or '').strip(),
-                'when': when,
-                'done': 'Y' if state != 'open' else 'N',
-            }
-            tid = self.links.local('task', activity.get('ID'))
-            if tid:
-                link = self.links.get('task', tid)
-                if (
-                    link
-                    and link['sent'].get('subj') == sent['subj']
-                    and link['sent'].get('done') == sent['done']
-                    and link['sent'].get('when', '')[:16] == when[:16]
-                ):
-                    continue  # своё же дело вернулось без изменений
-                cur = tasks.get(int(tid))
-                if cur:
-                    tasks.update(int(tid), {k: v for k, v in body.items() if k != 'kind' or kind})
-                    self.links.put('task', tid, activity['ID'], sent)
-                    count += 1
-                continue
-            deal = DealBook(self.store).get(did) or {}
-            mid = self._mid_of(activity.get('RESPONSIBLE_ID')) or deal.get('managerId') or ''
-            task = tasks.add(dict(body), mid, self.WHO, did)
-            if state != 'open':
-                tasks.update(task['id'], {'state': state})
-            self.links.put('task', task['id'], activity['ID'], sent)
-            count += 1
+            count += self._task_in(activity, tasks, task_rules)
         return count
+
+    def _task_in(self, activity, tasks, task_rules) -> int:
+        """Дело Битрикса по связанной сделке → дело программы (новое или изменённое). → 1, если записано."""
+        did = self.links.local('deal', activity.get('OWNER_ID'))
+        if not did:
+            return 0
+        deal_mgr = (DealBook(self.store).get(did) or {}).get('managerId')
+        if not self.rules.can('task', 'in', self._mid_of(activity.get('RESPONSIBLE_ID')) or deal_mgr):
+            return 0
+        subj = str(activity.get('SUBJECT') or '').strip()
+        cancel = subj.startswith('Отменено — ')
+        subj = subj[len('Отменено — ') :] if cancel else subj
+        kind = next((k for k, label in self.KIND.items() if subj.startswith(label + ': ')), None)
+        title = subj[len(self.KIND[kind]) + 2 :] if kind else subj
+        if not kind and not task_rules['other'] and not self.links.local('task', activity.get('ID')):
+            return 0  # дела Битрикса, заведённые не программой, — по правилу не загружать
+        kind = kind or {'1': 'meet', '2': 'call', '4': 'mail'}.get(str(activity.get('TYPE_ID')), 'task')
+        if task_rules['kinds'].get(kind) == 'off':
+            return 0
+        due = BitrixTime.local(activity.get('DEADLINE')) or Val.now()
+        time_text = due[11:16] if due[11:16] not in ('', '00:00', '18:00') else ''
+        state = 'cancel' if cancel else ('done' if activity.get('COMPLETED') == 'Y' else 'open')
+        body = {
+            'kind': kind,
+            'title': title[:200],
+            'due': due[:10],
+            'time': time_text,
+            'note': str(activity.get('DESCRIPTION') or '')[:1000],
+            'state': state,
+        }
+        when = '{}T{}:00'.format(body['due'], time_text or '18:00')
+        sent = {
+            'subj': str(activity.get('SUBJECT') or '').strip(),
+            'when': when,
+            'done': 'Y' if state != 'open' else 'N',
+        }
+        tid = self.links.local('task', activity.get('ID'))
+        if tid:
+            link = self.links.get('task', tid)
+            if (
+                link
+                and link['sent'].get('subj') == sent['subj']
+                and link['sent'].get('done') == sent['done']
+                and link['sent'].get('when', '')[:16] == when[:16]
+            ):
+                return 0  # своё же дело вернулось без изменений
+            cur = tasks.get(int(tid))
+            if cur:
+                tasks.update(int(tid), {k: v for k, v in body.items() if k != 'kind' or kind})
+                self.links.put('task', tid, activity['ID'], sent)
+                return 1
+            return 0
+        deal = DealBook(self.store).get(did) or {}
+        mid = self._mid_of(activity.get('RESPONSIBLE_ID')) or deal.get('managerId') or ''
+        task = tasks.add(dict(body), mid, self.WHO, did)
+        if state != 'open':
+            tasks.update(task['id'], {'state': state})
+        self.links.put('task', task['id'], activity['ID'], sent)
+        return 1
 
     def card(self, did) -> dict | None:
         link = self.links.get('deal', did)

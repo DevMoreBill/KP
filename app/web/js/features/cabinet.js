@@ -29,17 +29,19 @@ class CrmData {
   static KINDS={call:'☎', meet:'👥', mail:'✉', task:'✓'};
   static seq=0;          // ответ на устаревший запрос (успели сменить «Чей кабинет») не применяется
   static async load(){ const my=++this.seq, b=await api('/api/crm/board?manager='+encodeURIComponent(this.who)); if (my===this.seq) this.B=b; return this.B; }
-  static stages(open=false){ return ((this.B&&this.B.stages)||[]).filter(s=>!open||!s.closed); }
+  /** стадии открытой на доске воронки (своя воронка программы или воронка Битрикс24) */
+  static stages(open=false){ return CrmFunnel.columns(this.funnel()).filter(s=>!open||!s.closed); }
   static stage(k){ return this.stages().find(s=>s.key===k)||{key:k, label:k}; }
+  static funnel(){ return CrmFunnel.current((this.B&&this.B.deals)||[]); }
+  static inFunnel(d){ return (d.funnel||CrmFunnel.MAIN)===this.funnel(); }
+  static toneOf(d){ return CrmFunnel.toneOf(d); }
   static closed(d){ return d.stage==='won' || d.stage==='lost'; }
   static openDeals(){ return ((this.B&&this.B.deals)||[]).filter(d=>!this.closed(d)); }
   static deal(id){ return ((this.B&&this.B.deals)||[]).find(d=>d.id===id); }
   static mine(){ return !this.who || (this.B && this.who===this.B.me); }
   static all(){ return this.who==='all'; }
   /** цвет этапа: открытые — от светлого к тёмному синему по порядку, «Выиграно» — зелёный, «Проиграно» — серый */
-  static tone(k){ if (k==='won') return 'won'; if (k==='lost') return 'lost';
-    const o=this.stages(true), i=Math.max(0, o.findIndex(s=>s.key===k)), n=Math.max(1, o.length-1);
-    return 's'+Math.round(i/n*4); }
+  static tone(k){ return CrmFunnel.tone(this.funnel(), k); }
   static kind(k){ return ((this.B&&this.B.kinds)||[]).find(x=>x.key===k)?.label||k; }
   static icon(k){ return `<span class="tk-i tk-${esc(k)}" aria-hidden="true">${this.KINDS[k]||'•'}</span>`; }
   static tasks(){ return (this.B&&this.B.tasks)||[]; }
@@ -167,6 +169,7 @@ class Cabinet {
       const q=t.closest('[data-cq]'); if (q){ const k=q.dataset.cq;
         if (k==='deal') return DealCard.create();
         d.close(); if (k==='newkp') return NewKp.open(); if (k==='journal') return openJournal(); if (k==='catalog') return openCatalog({}); if (k==='back') return; }
+      const km=t.closest('[data-kbmore]'); if (km){ CabDeals.more.add(km.dataset.kbmore); return this.render(); }
       const dl=t.closest('[data-deal]'); if (dl) return DealCard.open(dl.dataset.deal);
       const r=t.closest('[data-mdr]'); if (r){ const x=Reminders.items[+r.dataset.mdr]; d.close(); return KpLoader.byId(x.id).catch(err=>toast('Не открылось: '+err.message)); }
       if (t.closest('[data-mdall]')){ d.close(); return Reminders.open(); }
@@ -181,6 +184,7 @@ class Cabinet {
       if (t.id==='mdStart'){ MyDay.setAtStart(t.checked); toast(t.checked?'Кабинет будет открываться при запуске':'Кабинет — в меню «⋯»'); return; }
       if (t.dataset.gsh){ CabGantt.set(t.dataset.gsh, t.checked); return this.render(); }
       if (t.id==='cabClosed'){ CabDeals.closed=t.checked; return this.render(); }
+      if (t.id==='cabFunnel'){ CrmFunnel.set(t.value); CabDeals.more.clear(); return this.render(); }
       if (t.id==='cabBxNew'){ CabDeals.bxOnly=t.checked; return this.render(); }
       if (t.id==='cabSort'){ CabDeals.sort=t.value; try{ localStorage.setItem('kp.cab.sort', t.value); }catch(_){} return this.render(); } });
     d.addEventListener('input', e=>{ const t=e.target; if (t.id==='cabQ'){ this.q=t.value; (this._qt=this._qt||new Debounce(250)).run(()=>{ const pos=t.selectionStart; this.render(); const n=this.dlg().querySelector('#cabQ'); if (n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(_){} } }); } });
@@ -216,8 +220,8 @@ class CabToday {
     const R=FEAT.on('reminders')&&CrmData.mine() ? Reminders.items : [], nR=Math.round(DEFN('ui.mdRem', 5)), nD=Math.round(DEFN('ui.mdDrafts', 4)), Dr=Cabinet.drafts||[];
     const rem=FEAT.on('reminders')&&CrmData.mine() ? MyDay.section(`Напоминания по КП${R.length?` <b class="md-c">${R.length}</b>`:''}`, R.length ? R.slice(0, nR).map((x, i)=>`<div class="md-r${x.overdue?' over':''}"><span aria-hidden="true">${Reminders.icon(x.kind)}</span><div><b>${esc(x.text)}</b><span class="muted">КП № ${esc(x.number)} · ${esc(x.client)}${x.overdue?' · <span class="bad-t">просрочено</span>':''}</span></div><button class="btn sm" type="button" data-mdr="${i}">Открыть КП</button></div>`).join('') : '<p class="empty">Напоминаний нет.</p>', R.length>nR?'<button class="lnk" type="button" data-mdall>Все</button>':'') : '';
     const BX=this.bxNew();
-    const bxs=BX.length ? MyDay.section(`Новые сделки из Битрикс24 <b class="md-c">${BX.length}</b>`, BX.slice(0, 6).map(d=>`<div class="md-r"><span class="cab-dot t-${CrmData.tone(d.stage)}" aria-hidden="true"></span><div><b>${esc(d.title||d.client)}</b><span class="muted">${esc(d.client&&d.client!==d.title?d.client+' · ':'')}${CrmFmt.short(d.sum)}${d.expected?' · до '+esc(CrmFmt.day(d.expected)):''}${this.late(d)?' · <span class="bad-t">ждёт больше суток</span>':''}</span></div><button class="btn sm primary" type="button" data-deal="${esc(d.id)}">Открыть</button></div>`).join('')) : '';
-    const free=MyDay.section(`Сделки без следующего дела${noTask.length?` <b class="md-c">${noTask.length}</b>`:''}`, noTask.length ? noTask.slice(0, 6).map(d=>`<div class="md-r"><span class="cab-dot t-${CrmData.tone(d.stage)}" aria-hidden="true"></span><div><b>${esc(d.title||d.client)}</b><span class="muted">${esc(d.client&&d.client!==d.title?d.client+' · ':'')}${esc(CrmData.stage(d.stage).label)} · ${CrmFmt.short(d.sum)}</span></div><button class="btn sm" type="button" data-deal="${esc(d.id)}">Открыть</button></div>`).join('')+(noTask.length>6?`<p class="muted" style="margin:6px 0 0">и ещё ${noTask.length-6} — на вкладке «Сделки»</p>`:'') : '<p class="empty">У каждой сделки запланировано следующее дело.</p>');
+    const bxs=BX.length ? MyDay.section(`Новые сделки из Битрикс24 <b class="md-c">${BX.length}</b>`, BX.slice(0, 6).map(d=>`<div class="md-r"><span class="cab-dot t-${CrmData.toneOf(d)}" aria-hidden="true"></span><div><b>${esc(d.title||d.client)}</b><span class="muted">${esc(d.client&&d.client!==d.title?d.client+' · ':'')}${CrmFmt.short(d.sum)}${d.expected?' · до '+esc(CrmFmt.day(d.expected)):''}${this.late(d)?' · <span class="bad-t">ждёт больше суток</span>':''}</span></div><button class="btn sm primary" type="button" data-deal="${esc(d.id)}">Открыть</button></div>`).join('')) : '';
+    const free=MyDay.section(`Сделки без следующего дела${noTask.length?` <b class="md-c">${noTask.length}</b>`:''}`, noTask.length ? noTask.slice(0, 6).map(d=>`<div class="md-r"><span class="cab-dot t-${CrmData.toneOf(d)}" aria-hidden="true"></span><div><b>${esc(d.title||d.client)}</b><span class="muted">${esc(d.client&&d.client!==d.title?d.client+' · ':'')}${esc(CrmFunnel.label(d))} · ${CrmFmt.short(d.sum)}</span></div><button class="btn sm" type="button" data-deal="${esc(d.id)}">Открыть</button></div>`).join('')+(noTask.length>6?`<p class="muted" style="margin:6px 0 0">и ещё ${noTask.length-6} — на вкладке «Сделки»</p>`:'') : '<p class="empty">У каждой сделки запланировано следующее дело.</p>');
     const drafts=Drafts.on()&&CrmData.mine() ? MyDay.section(`Черновики${Dr.length?` <b class="md-c">${Dr.length}</b>`:''}`, Dr.length?Dr.slice(0, nD).map(r=>`<div class="md-r"><div><b>${esc(r.client||'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(r))} · ${r.positions||0} поз. · ${esc(Fmt.dateTime(r.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(r.id)}">Продолжить</button></div>`).join(''):'<p class="empty">Незаконченных КП нет.</p>', Dr.length>nD?'<button class="lnk" type="button" data-mddr>Все</button>':'') : '';
     const quick=`<div class="md-q cab-more"><button class="btn" type="button" data-cq="journal">Журнал КП</button><button class="btn" type="button" data-cq="catalog">Каталог</button>${Drafts.meaningful(S)?`<button class="btn ghost" type="button" data-cq="back" title="Вернуться к открытому КП">Продолжить ${S.kpId?'КП № '+esc(S.number):'текущее КП'}</button>`:''}</div>`;
     const who=!CrmData.B.me && !CrmData.all() ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>' : '';
@@ -254,7 +258,7 @@ class CabClients {
 class CabTeam {
   static html(){
     if (!CrmData.all()) return `<p class="empty">Сводка отдела — по всем менеджерам. <button class="btn sm" type="button" data-tmgr="all">Показать весь отдел</button></p>`;
-    const D=CrmData.B.deals||[], O=D.filter(d=>!CrmData.closed(d)), mon=today().slice(0,7), td=today();
+    const D=CrmData.B.deals||[], O=D.filter(d=>!CrmData.closed(d) && CrmData.inFunnel(d)), mon=today().slice(0,7), td=today();
     const st=CrmData.stages(true), max=Math.max(1, ...st.map(s=>O.filter(d=>d.stage===s.key).reduce((a,d)=>a+(d.sum||0),0)));
     const funnel=st.map(s=>{ const L=O.filter(d=>d.stage===s.key), sum=L.reduce((a,d)=>a+(d.sum||0),0);
       return `<div class="fn-r"><span class="fn-l">${esc(s.label)}</span><span class="fn-b"><i class="t-${CrmData.tone(s.key)}" style="width:${Math.max(sum?2:0, sum/max*100).toFixed(1)}%"></i></span><span class="fn-v"><b>${L.length}</b> · ${CrmFmt.short(sum)}</span></div>`; }).join('');
@@ -264,7 +268,7 @@ class CabTeam {
       if (d.stage==='won'){ if (m){ r.won++; r.wonSum+=d.sum||0; } } else if (d.stage==='lost'){ if (m) r.lost++; } else { r.open++; r.sum+=d.sum||0; if (!d.next) r.free++; } }
     for (const t of CrmData.openTasks()){ const r=M.get(t.managerId); if (r && t.due<td) r.over++; }
     const rows=[...M.values()].filter(r=>r.open||r.won||r.lost||r.over).sort((a,b)=>b.sum-a.sum);
-    return `<div class="cab-team"><section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p><span class="muted">${O.length} в работе · ${CrmFmt.short(O.reduce((a,d)=>a+(d.sum||0),0))}</span></div><div class="fn">${funnel}</div></section>
+    return `<div class="cab-team"><section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p>${CrmFunnel.switcher(D, CrmData.funnel())}<span class="muted">${O.length} в работе · ${CrmFmt.short(O.reduce((a,d)=>a+(d.sum||0),0))}</span></div><div class="fn">${funnel}</div></section>
       <section class="md-s"><div class="md-h"><p class="sub">Менеджеры</p><span class="muted">итоги месяца — с 1-го числа</span></div>
       <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th></tr></thead><tbody>
       ${rows.map(r=>`<tr><td><button type="button" class="lnk" data-tmgr="${esc(r.id)}" title="Открыть кабинет менеджера">${esc(r.name)}</button></td><td>${r.open}</td><td>${CrmFmt.short(r.sum)}</td><td>${r.won}${r.won?` · ${CrmFmt.short(r.wonSum)}`:''}</td><td>${r.lost}</td><td class="${r.over?'bad-t':''}">${r.over}</td><td class="${r.free?'warn-t':''}">${r.free}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">Сделок пока нет.</td></tr>'}

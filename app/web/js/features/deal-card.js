@@ -10,26 +10,27 @@ class DealCard {
   static open(id){ return Modal.once('deal-card', ()=>this._open(id)); }
   static async _open(id){
     let d; try{ d=await api('/api/crm/deal/'+encodeURIComponent(id)); }catch(e){ return toast('Сделка не открылась: '+e.message); }
-    this.d=d; this.changed=false;
+    this.d=d; this.changed=false; this.keep(d);
     const m=this.m=new Modal(this.html(), 'deal-dlg');
     m.d.addEventListener('close', ()=>{ if (this.changed && Cabinet.dlg().open) Cabinet.reload(); this.m=null; });
     m.d.addEventListener('click', e=>this.click(e));
     m.d.addEventListener('change', e=>this.change(e));
     CrmTask.bind(m.d, ()=>this.reload());
   }
-  static async reload(){ try{ this.d=await api('/api/crm/deal/'+this.d.id); }catch(e){ return toast('Не обновилось: '+e.message); } this.changed=true; this.render(); }
+  static async reload(){ try{ this.d=this.keep(await api('/api/crm/deal/'+this.d.id)); }catch(e){ return toast('Не обновилось: '+e.message); } this.changed=true; this.render(); }
+  /** воронки и стадии из ответа сервера — для карточки, открытой не из кабинета */
+  static keep(d){ if (d && d.funnels) CrmFunnel.cache=d.funnels; return d; }
+  static MANY=8;                   // стадий больше — выбор списком (у воронок Битрикса их бывает под 30)
   /** перерисовка на месте (morph): поле, в котором сейчас печатают, сохраняет набранное (ответ сервера пришёл позже) */
   static render(){ if (!this.m) return; const a=document.activeElement, f=a && this.m.d.contains(a) && (a.matches('input,textarea')) ? a : null, v=f ? f.value : null;
     morph(this.m.d, this.html()); if (f && f.isConnected && f.value!==v) f.value=v; }
-  static stages(){ return this.d.stages||CrmData.stages(); }
+  static stages(){ return CrmFunnel.columns(this.d.funnel); }
   static html(){
     const d=this.d, S_=this.stages(), open=S_.filter(s=>!s.closed), i=open.findIndex(s=>s.key===d.stage), closed=d.stage==='won'||d.stage==='lost';
     const auto=(d.kps||[]).find(k=>k.status!=='lost')||(d.kps||[])[0];
-    const step=`<div class="dk-st" role="radiogroup" aria-label="Этап сделки">${open.map((s,k)=>`<button type="button" role="radio" aria-checked="${s.key===d.stage}" class="dk-s${s.key===d.stage?' on t-'+CrmData.tone(s.key):k<i&&!closed?' past':''}" data-dks="${esc(s.key)}">${esc(s.label)}</button>`).join('')}
-      <span class="dk-sp"></span><button type="button" role="radio" aria-checked="${d.stage==='won'}" class="dk-s dk-won${d.stage==='won'?' on':''}" data-dks="won">✓ ${esc((S_.find(s=>s.key==='won')||{}).label||'Выиграно')}</button><button type="button" role="radio" aria-checked="${d.stage==='lost'}" class="dk-s dk-lost${d.stage==='lost'?' on':''}" data-dks="lost">✕ ${esc((S_.find(s=>s.key==='lost')||{}).label||'Проиграно')}</button></div>
-      ${d.stage==='lost'?`<p class="msg warn dk-why">Причина: ${esc(d.lostReason||'не указана')} <button type="button" class="lnk" data-dks="lost">изменить</button></p>`:''}`;
+    const step=this.steps(d, open, i, closed, S_);
     const B=CrmData.B||{}, mgr=B.canAll&&(B.managers||[]).length ? `<label class="f"><span>Ответственный</span><select data-dkf="managerId">${(B.managers||[]).map(m=>`<option value="${esc(m.id)}"${m.id===d.managerId?' selected':''}>${esc(m.name)}</option>`).join('')}${(B.managers||[]).some(m=>m.id===d.managerId)?'':`<option value="${esc(d.managerId)}" selected>${esc(d.manager||'—')}</option>`}</select></label>` : '';
-    const fields=`<div class="dk-f"><label class="f"><span>Клиент</span><input type="text" data-dkf="client" value="${esc(d.client||'')}" maxlength="300" list="dkCl" autocomplete="off"></label>
+    const fields=`<div class="dk-f">${this.funnelSelect(d)}<label class="f"><span>Клиент</span><input type="text" data-dkf="client" value="${esc(d.client||'')}" maxlength="300" list="dkCl" autocomplete="off"></label>
       <label class="f"><span>Сумма, ₽ ${d.sumOwn?'<em class="muted">своя</em>':'<em class="muted">по КП</em>'}</span><input type="text" inputmode="decimal" data-dkf="sum" value="${d.sumOwn?esc(String(Math.round((d.sum||0)/100))):''}" placeholder="${esc(auto?Math.round((auto.sum||0)/100).toLocaleString('ru-RU')+' — по КП № '+auto.number:'по последнему КП')}"></label>
       <label class="f"><span>Ожидаемая дата</span><input type="date" data-dkf="expected" value="${esc(d.expected||'')}"></label>${mgr}</div>
       <label class="f dk-note"><span>Заметка</span><textarea data-dkf="note" rows="2" maxlength="3000" placeholder="Кто принимает решение, бюджет, конкуренты, особенности объекта">${esc(d.note||'')}</textarea></label>
@@ -49,15 +50,34 @@ class DealCard {
     return `<div class="dlg-h"><div class="dk-hd"><span class="muted">Сделка № ${esc(d.number)}${d.manager?' · '+esc(d.manager):''} · создана ${esc(KpDate.ddmm(String(d.created||'').slice(0,10)))}</span>${bx}
         <input type="text" class="dk-title" data-dkf="title" value="${esc(d.title||'')}" maxlength="200" aria-label="Название сделки" placeholder="Название: объект или задача клиента"></div>
         ${ClientCard.on()&&(d.client||d.clientInn)?`<button class="btn sm ghost" type="button" data-cc="${esc(JSON.stringify({id:d.clientId||'', inn:d.clientInn||'', name:d.client||''}))}">Карточка клиента</button>`:''}<button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      ${step}${fields}<div class="dk-g">${tasks}${kps}</div>${hist}`;
+      ${step}${fields}${DealFieldsView.html(d)}<div class="dk-g">${tasks}${kps}</div>${hist}`;
+  }
+  /** этапы: кнопками (как раньше) или списком, если стадий много; «успех» и «провал» — кнопками */
+  static steps(d, open, i, closed, S_){
+    if (open.length>this.MANY) return this.stepList(d, open, S_);
+    return `<div class="dk-st" role="radiogroup" aria-label="Этап сделки">${open.map((s,k)=>`<button type="button" role="radio" aria-checked="${s.key===d.stage}" class="dk-s${s.key===d.stage?' on t-'+CrmFunnel.tone(d.funnel, s.key):k<i&&!closed?' past':''}" data-dks="${esc(s.key)}">${esc(s.label)}</button>`).join('')}
+      <span class="dk-sp"></span><button type="button" role="radio" aria-checked="${d.stage==='won'}" class="dk-s dk-won${d.stage==='won'?' on':''}" data-dks="won">✓ ${esc((S_.find(s=>s.key==='won')||{}).label||'Выиграно')}</button><button type="button" role="radio" aria-checked="${d.stage==='lost'}" class="dk-s dk-lost${d.stage==='lost'?' on':''}" data-dks="lost">✕ ${esc((S_.find(s=>s.key==='lost')||{}).label||'Проиграно')}</button></div>
+      ${d.stage==='lost'?`<p class="msg warn dk-why">Причина: ${esc(d.lostReason||'не указана')} <button type="button" class="lnk" data-dks="lost">изменить</button></p>`:''}`;
+  }
+  static stepList(d, open, S_){
+    const lost=d.stage==='lost', label=CrmFunnel.label(d);
+    return `<div class="dk-st dk-stl"><label class="f"><span>Стадия</span><select data-dkf="stage"${d.stage==='won'||lost?' class="muted"':''}>${d.stage==='won'||lost?`<option value="" selected>${esc(label)}</option>`:''}${open.map(s=>`<option value="${esc(s.key)}"${s.key===d.stage?' selected':''}>${esc(s.label)}</option>`).join('')}</select></label>
+      <span class="dk-sp"></span><button type="button" class="dk-s dk-won${d.stage==='won'?' on':''}" data-dks="won">✓ ${esc((S_.find(s=>s.key==='won')||{}).label||'Выиграно')}</button><button type="button" class="dk-s dk-lost${lost?' on':''}" data-dks="lost">✕ ${esc((S_.find(s=>s.key==='lost')||{}).label||'Проиграно')}</button></div>
+      ${lost?`<p class="msg warn dk-why">${esc(label)}${d.lostReason&&d.lostReason!==label?' — '+esc(d.lostReason):''} <button type="button" class="lnk" data-dks="lost">изменить</button></p>`:''}`;
+  }
+  static funnelSelect(d){
+    const list=CrmFunnel.visible(); if (list.length<2) return '';
+    return `<label class="f"><span>Воронка</span><select data-dkf="funnel">${list.map(f=>`<option value="${esc(f.id)}"${f.id===(d.funnel||'main')?' selected':''}>${esc(f.name)}</option>`).join('')}</select></label>`;
   }
   static hist(h){
-    const st=k=>(this.stages().find(s=>s.key===k)||{label:k}).label;
+    const st=k=>CrmFunnel.anyLabel(k);
     if (h.what==='create') return h.kp?`сделка создана по КП № ${h.kp}`:'сделка создана';
     if (h.what==='stage') return `этап: ${st(h.from)} → ${st(h.to)}${h.auto?' (по ходу КП)':''}`;
     if (h.what==='kp') return `добавлено КП № ${h.kp}`;
     if (h.what==='kpOut') return `КП № ${h.kp} перенесено в другую сделку`;
     if (h.what==='manager') return `ответственный: ${h.to}`;
+    if (h.what==='funnel') return `воронка: ${CrmFunnel.get(h.from).name} → ${CrmFunnel.get(h.to).name}`;
+    if (h.what==='fields') return 'поля Битрикс24: '+(h.fields||[]).map(c=>((this.d.fields||[]).find(f=>f.code===c)||{}).label||c).join(', ');
     if (h.what==='edit') return 'изменено: '+(h.fields||[]).map(f=>({title:'название', client:'клиент', expected:'ожидаемая дата', sum:'сумма', note:'заметка'})[f]||f).join(', ');
     return '';
   }
@@ -66,13 +86,16 @@ class DealCard {
   static save(body){ const r=this.q.then(()=>this._save(body)); this.q=r.catch(()=>{}); return r; }
   static async _save(body){
     if (!this.d) return false;
-    try{ this.d=await api('/api/crm/deal/'+this.d.id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8', 'X-KP-Rev':String(this.d.rev)}, body:JSON.stringify(body)});
+    try{ this.d=this.keep(await api('/api/crm/deal/'+this.d.id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8', 'X-KP-Rev':String(this.d.rev)}, body:JSON.stringify(body)}));
       this.changed=true; return true; }
     catch(e){ toast('Не сохранено: '+e.message); try{ this.d=await api('/api/crm/deal/'+this.d.id); }catch(_){} return false; }
     finally{ this.render(); }
   }
   static async change(e){
+    const u=e.target.closest('[data-uf]');
+    if (u){ const {code, value}=DealFieldsView.read(u, this.d); if (await this.save({uf:{[code]:value}})) toast('Сохранено'); return; }
     const f=e.target.closest('[data-dkf]'); if (!f) return;
+    if (f.dataset.dkf==='stage' && !f.value) return;
     const k=f.dataset.dkf, v=f.value;
     if (k==='title' && !v.trim()) return toast('Название сделки не может быть пустым');
     const body={[k]:k==='sum'?v.replace(/\s/g,''):v};
@@ -83,8 +106,8 @@ class DealCard {
     const t=e.target, d=this.d;
     if (t.closest('[data-x]')) return this.m.close();
     const s=t.closest('[data-dks]'); if (s){ const k=s.dataset.dks; if (k===d.stage && k!=='lost') return;
-      const body={stage:k}; if (k==='lost'){ const r=await this.lostReason(d); if (!r) return; body.lostReason=r; }
-      if (await this.save(body)) toast('Этап: '+(this.stages().find(x=>x.key===k)||{}).label); return; }
+      let body={stage:k}; if (k==='lost'){ body=await LostPick.ask(d); if (!body) return; }
+      if (await this.save(body)) toast('Этап: '+CrmFunnel.label(this.d)); return; }
     const o=t.closest('[data-dko]'); if (o){ this.m.close(); Cabinet.dlg().close(); return KpLoader.byId(o.dataset.dko).catch(err=>toast('Не открылось: '+err.message)); }
     if (t.closest('[data-dknew]')) return this.newKp(d);
     if (t.closest('[data-dklink]')) return this.link(d);
@@ -134,6 +157,7 @@ class DealCard {
       <form class="dk-new"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" list="dkNewCl" autocomplete="off" placeholder="Название или ИНН"></label>
         <label class="f"><span>Объект или задача</span><input type="text" name="title" maxlength="200" placeholder="Например: компрессорная для цеха № 3"></label>
         <label class="f"><span>Ожидаемая дата</span><input type="date" name="expected" value="${KpDate.addDays(today(), 30)}"></label>
+        ${this.funnelSelect({funnel:CrmData.funnel()}).replace('data-dkf="funnel"', 'name="funnel"')}
         <datalist id="dkNewCl">${(CLIENTS||[]).slice(0, 50).map(c=>`<option value="${esc(c.name)}">`).join('')}</datalist>
         <div class="row"><button class="btn primary" type="submit">Создать сделку</button><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button></div></form>`, 'dk-new-dlg');
     const f=m.$('form'), E=f.elements;
@@ -145,6 +169,7 @@ class DealCard {
       const v=E.client.value.trim(), c=(CLIENTS||[]).find(x=>norm(x.name)===norm(v) || (x.inn && x.inn===v.replace(/\D/g,'')));
       if (!v && !E.title.value.trim()) return toast('Укажите клиента');
       const body={client:c?c.name:v, clientInn:c?c.inn||'':'', clientId:c?c.id:'', title:E.title.value.trim()||(c?c.name:v), expected:E.expected.value};
+      if (E.funnel) body.funnel=E.funnel.value;
       if (CrmData.who && CrmData.who!=='all') body.managerId=CrmData.who;
       if (f.dataset.busy) return; f.dataset.busy='1';          // двойное нажатие / Enter — одна сделка
       try{ const d=await api('/api/crm/deal', {method:'POST', headers:{'Content-Type':'application/json; charset=utf-8'}, body:JSON.stringify(body)});

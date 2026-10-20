@@ -16,14 +16,18 @@ class CabDeals {
     return exp;
   }
   static drag=matchMedia('(pointer:fine)').matches;
+  static LIMIT=60;                // карточек в колонке сразу (тысячи сделок из Битрикс24) — остальные кнопкой
+  static more=new Set();          // колонки, раскрытые целиком
   static html(){
     const nNew=CrmData.openDeals().filter(d=>d.bxNew).length; if (!nNew) this.bxOnly=false;
-    const D=(CrmData.B.deals||[]).filter(d=>Cabinet.match(d) && (!this.bxOnly || d.bxNew)), st=CrmData.stages().filter(s=>this.closed||!s.closed);
+    const all=CrmData.B.deals||[], fn=CrmData.funnel();
+    const D=all.filter(d=>CrmData.inFunnel(d) && Cabinet.match(d) && (!this.bxOnly || d.bxNew)), st=CrmData.stages().filter(s=>this.closed||!s.closed);
     const open=D.filter(d=>!CrmData.closed(d));
     const cols=st.map(s=>{ const L=D.filter(d=>d.stage===s.key).sort((a,b)=>this.order(a, b)), sum=L.reduce((a,d)=>a+(d.sum||0),0);
-      return `<section class="kb-c" data-kbs="${esc(s.key)}" aria-label="${esc(s.label)}"><header class="kb-h"><span class="cab-dot t-${CrmData.tone(s.key)}" aria-hidden="true"></span><b>${esc(s.label)}</b><span class="muted">${L.length}${sum?' · '+CrmFmt.short(sum):''}</span></header>
-        <div class="kb-l">${L.map(d=>this.card(d)).join('')||`<p class="kb-e">${this.drag?'Перетащите сюда сделку':'Пусто'}</p>`}</div></section>`; }).join('');
-    return `<div class="cab-bar">${Cabinet.search('Сделка, клиент, ИНН или № КП')}<label class="cab-ck"><input type="checkbox" id="cabClosed"${this.closed?' checked':''}> Закрытые</label>${nNew?`<label class="cab-ck"><input type="checkbox" id="cabBxNew"${this.bxOnly?' checked':''}> Новые из Битрикс24 (${nNew})</label>`:''}
+      const shown=this.more.has(s.key) ? L : L.slice(0, this.LIMIT), rest=L.length-shown.length, dot=s.color?` style="background:${esc(s.color)}"`:'';
+      return `<section class="kb-c" data-kbs="${esc(s.key)}" aria-label="${esc(s.label)}"><header class="kb-h"><span class="cab-dot t-${CrmFunnel.tone(fn, s.key)}"${dot} aria-hidden="true"></span><b>${esc(s.label)}</b><span class="muted">${L.length}${sum?' · '+CrmFmt.short(sum):''}</span></header>
+        <div class="kb-l">${shown.map(d=>this.card(d)).join('')||`<p class="kb-e">${this.drag?'Перетащите сюда сделку':'Пусто'}</p>`}${rest?`<button type="button" class="btn sm ghost kb-more" data-kbmore="${esc(s.key)}">Ещё ${rest}</button>`:''}</div></section>`; }).join('');
+    return `<div class="cab-bar">${CrmFunnel.switcher(all, fn)}${Cabinet.search('Сделка, клиент, ИНН или № КП')}<label class="cab-ck"><input type="checkbox" id="cabClosed"${this.closed?' checked':''}> Закрытые</label>${nNew?`<label class="cab-ck"><input type="checkbox" id="cabBxNew"${this.bxOnly?' checked':''}> Новые из Битрикс24 (${nNew})</label>`:''}
       <select id="cabSort" class="cab-sort" aria-label="Порядок карточек">${Object.entries(this.SORTS).map(([k,l])=>`<option value="${k}"${this.sort===k?' selected':''}>${l}</option>`).join('')}</select>
       <span class="muted cab-tot">В работе ${open.length} · ${CrmFmt.short(open.reduce((a,d)=>a+(d.sum||0),0))}</span></div>
       ${D.length||Cabinet.q?'':'<p class="msg">Сделки появляются сами, когда вы сохраняете КП, — или нажмите «＋ Сделка».</p>'}
@@ -31,10 +35,10 @@ class CabDeals {
   }
   static card(d){
     const late=d.expected && d.expected<today() && !CrmData.closed(d), n=d.next, nOver=n && n.due<today(), k=(d.kps||[]).length;
-    return `<article class="dc t-${CrmData.tone(d.stage)}" data-deal="${esc(d.id)}"${this.drag&&!CrmData.closed(d)?' draggable="true"':''} tabindex="0">
+    return `<article class="dc t-${CrmData.toneOf(d)}" data-deal="${esc(d.id)}"${this.drag&&!CrmData.closed(d)?' draggable="true"':''} tabindex="0">
       <b class="dc-t">${esc(d.title||d.client||'Сделка № '+d.number)}</b>${d.client&&d.client!==d.title?`<span class="dc-c">${esc(d.client)}</span>`:''}
       <div class="dc-r"><b>${CrmFmt.short(d.sum)}</b>${d.expected?`<span class="${late?'bad-t':'muted'}" title="Ожидаемая дата">${late?'срок прошёл · ':'до '}${esc(CrmFmt.day(d.expected))}</span>`:''}</div>
-      ${CrmData.closed(d)?(d.stage==='lost'&&d.lostReason?`<span class="dc-n muted">${esc(d.lostReason)}</span>`:''):n?`<span class="dc-n${nOver?' bad-t':''}">${CrmData.icon(n.kind)} ${esc(n.title)} · ${esc(CrmFmt.rel(n.due))}</span>`:'<span class="dc-n warn-t">Нет следующего дела</span>'}
+      ${CrmData.closed(d)?(d.stage==='lost'&&(d.lostReason||d.fstage)?`<span class="dc-n muted">${esc(d.lostReason||CrmFunnel.label(d))}</span>`:''):n?`<span class="dc-n${nOver?' bad-t':''}">${CrmData.icon(n.kind)} ${esc(n.title)} · ${esc(CrmFmt.rel(n.due))}</span>`:'<span class="dc-n warn-t">Нет следующего дела</span>'}
       <span class="dc-f muted">${d.bxNew?'<b class="dc-new">Новая из Битрикс24</b> · ':''}${k?`КП ${k}`:'без КП'}${CrmData.all()?' · '+esc(CrmData.mgrShort(d)):''}${d.bxUrl?`<a class="dc-bx" href="${esc(d.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24">Б24 ↗</a>`:''}</span></article>`;
   }
   static bind(b){
@@ -47,10 +51,10 @@ class CabDeals {
   }
   /** сменить этап сделки; «Проиграно» — с причиной */
   static async move(d, stage){
-    const body={stage};
-    if (stage==='lost'){ const r=await DealCard.lostReason(d); if (!r) return; body.lostReason=r; }
+    let body={stage};
+    if (stage==='lost'){ body=await LostPick.ask(d); if (!body) return; }
     try{ await api('/api/crm/deal/'+d.id, {method:'PUT', headers:{'Content-Type':'application/json; charset=utf-8', 'X-KP-Rev':String(d.rev)}, body:JSON.stringify(body)});
-      toast(`«${d.title||d.client}» → ${CrmData.stage(stage).label}`); }
+      toast(`«${d.title||d.client}» → ${CrmFunnel.anyLabel(body.stage)}`); }
     catch(e){ toast('Этап не изменён: '+e.message); }
     Cabinet.reload();
   }
@@ -96,7 +100,7 @@ class CabGantt {
     const task=t=>mark(CrmFmt.dn(t.due), 'gn-t'+(t.due<today()?' over':''), CrmData.KINDS[t.kind]||'•', `${CrmData.kind(t.kind)}: ${t.title} · ${CrmFmt.day(t.due)}${t.time?' '+t.time:''}`);
     const line=r=>{ const d=r.d, nm=d.title||d.client, late=d.expected && d.expected<today();
       let tr='';
-      if (o.deal){ tr+=bar(r.a, r.b, 'gb-d t-'+CrmData.tone(d.stage)+(late?' late':''), `${CrmData.stage(d.stage).label} · ${CrmFmt.short(d.sum)}`, `${nm}: ${CrmData.stage(d.stage).label}, ${CrmFmt.rub(d.sum)} · с ${CrmFmt.day(String(d.created).slice(0,10))} до ${CrmFmt.day(d.expected)}${late?' — ожидаемая дата прошла':''}`);
+      if (o.deal){ tr+=bar(r.a, r.b, 'gb-d t-'+CrmData.toneOf(d)+(late?' late':''), `${CrmFunnel.label(d)} · ${CrmFmt.short(d.sum)}`, `${nm}: ${CrmFunnel.label(d)}, ${CrmFmt.rub(d.sum)} · с ${CrmFmt.day(String(d.created).slice(0,10))} до ${CrmFmt.day(d.expected)}${late?' — ожидаемая дата прошла':''}`);
         if (r.kp) tr+=mark(CrmFmt.dn(r.kp.validUntil), 'gn-v', '◇', `КП № ${r.kp.number} действует до ${KpDate.ddmm(r.kp.validUntil)}`); }
       if (r.p){ const p=r.p, e=p.delivery??p.ready??p.start;
         tr+=bar(p.start, e, 'gb-s'+(p.guess?' guess':''), '', `${nm}: договор ${CrmFmt.day(CrmFmt.iso(p.start))}${p.guess?' (ожидаемая дата — в расчёте сделки дата договора не задана)':''}, готовность ${p.ready!=null?CrmFmt.day(CrmFmt.iso(p.ready)):'—'}, поставка ${CrmFmt.day(CrmFmt.iso(e))} · по КП № ${p.kp.number}`);
@@ -104,7 +108,7 @@ class CabGantt {
         if (p.ready!=null && p.ready!==e) tr+=mark(p.ready, 'gn-r', '◆', `Готовность к отгрузке: ${CrmFmt.day(CrmFmt.iso(p.ready))}`);
         for (const y of p.pays) tr+=mark(y.d, 'gn-p', '₽', `${y.t} · ${CrmFmt.day(CrmFmt.iso(y.d))}`); }
       if (o.task) tr+=r.t.map(task).join('');
-      return `<div class="gn-r${r.p?' two':''}"><button type="button" class="gn-l" data-deal="${esc(d.id)}" title="${esc(nm)}"><b>${esc(nm)}</b><span class="muted">${esc(d.client&&d.client!==nm?d.client:CrmData.stage(d.stage).label)}${CrmData.all()?' · '+esc(CrmData.mgrShort(d)):''}</span></button><div class="gn-tr" data-deal="${esc(d.id)}" style="width:${W}px">${tr}</div></div>`; };
+      return `<div class="gn-r${r.p?' two':''}"><button type="button" class="gn-l" data-deal="${esc(d.id)}" title="${esc(nm)}"><b>${esc(nm)}</b><span class="muted">${esc(d.client&&d.client!==nm?d.client:CrmFunnel.label(d))}${CrmData.all()?' · '+esc(CrmData.mgrShort(d)):''}</span></button><div class="gn-tr" data-deal="${esc(d.id)}" style="width:${W}px">${tr}</div></div>`; };
     const freeRow=o.task&&free.length?`<div class="gn-r"><div class="gn-l"><b>Дела без сделки</b><span class="muted">${free.length}</span></div><div class="gn-tr" style="width:${W}px">${free.map(task).join('')}</div></div>`:'';
     const ctl=`<div class="cab-bar">${Cabinet.search('Сделка или клиент')}<div class="seg" role="radiogroup" aria-label="Масштаб">${Object.entries(this.SCALES).map(([k,[l]])=>`<button type="button" role="radio" aria-checked="${o.scale===k}" class="${o.scale===k?'on':''}" data-gsc="${k}">${l}</button>`).join('')}</div>
       <label class="cab-ck"><input type="checkbox" data-gsh="deal"${o.deal?' checked':''}> Сроки сделок</label><label class="cab-ck"><input type="checkbox" data-gsh="sup"${o.sup?' checked':''}> Поставка</label><label class="cab-ck"><input type="checkbox" data-gsh="task"${o.task?' checked':''}> Дела</label></div>

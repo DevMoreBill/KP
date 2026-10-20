@@ -1,0 +1,211 @@
+# -*- coding: utf-8 -*-
+"""Кабинет как Битрикс24 (crm_funnels.py, bitrix_mirror*.py): воронки со своими стадиями, стадии провала как причина, ход КП
+двигает сделку в воронке Битрикса, поля сделки Битрикса (проверка ввода, только для чтения), миграция столбца воронки;
+на подставном Битриксе — структура портала, выбор полей по заполненности, загрузка сделок, стадия и поля в обе стороны,
+перенос сделки в другую воронку, перенос прежних связанных сделок."""
+import json
+import unittest
+import urllib.request
+from datetime import date
+
+from bitrix_fake import FakeBitrix
+from kit import Schema, TempStore
+
+FUNNEL = {
+    'id': 'b3', 'bx': '3', 'name': 'Продажи оборудования',
+    'stages': [{'key': 'C3:NEW', 'label': 'Новая', 'sem': ''}, {'key': 'C3:PREPARATION', 'label': 'КП отправлено', 'sem': ''},
+               {'key': 'C3:EXECUTING', 'label': 'Переговоры', 'sem': ''}, {'key': 'C3:WON', 'label': 'Успешно', 'sem': 'won'},
+               {'key': 'C3:PRICE', 'label': 'Высокая цена', 'sem': 'lost'}, {'key': 'C3:LOSE', 'label': 'Провал', 'sem': 'lost'}],
+    'track': {'lead': 'C3:NEW', 'sent': 'C3:PREPARATION', 'talks': 'C3:EXECUTING'},
+}
+FIELDS = [
+    {'code': 'UF_CRM_REGION', 'title': 'Регион1', 'label': 'Регион', 'type': 'enumeration', 'multiple': False, 'on': ['b3'],
+     'items': [{'id': '10', 'value': 'Москва'}, {'id': '11', 'value': 'Казань'}]},
+    {'code': 'UF_CRM_SUM', 'title': 'Сумма счета', 'label': 'Сумма счета', 'type': 'double', 'multiple': False, 'on': ['b3']},
+    {'code': 'UF_CRM_FILE', 'title': 'Счет / ТКП', 'label': 'Счет / ТКП', 'type': 'file', 'multiple': True, 'on': ['b3']},
+]
+
+
+def direct():
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class FunnelTest(unittest.TestCase):
+    def setUp(self):
+        self.st = TempStore(self).store
+        from crm_funnels import DealFields, Funnels
+        Funnels(self.st).save_mirror([dict(FUNNEL)])
+        DealFields(self.st).save_defs([dict(row) for row in FIELDS], {'7': 'Иванова Анна'})
+
+    def book(self):
+        from crm import DealBook
+        return DealBook(self.st)
+
+    def test_funnels_and_stages(self):
+        from crm_funnels import Funnels
+        funnels = Funnels(self.st)
+        self.assertEqual([row['id'] for row in funnels.all()], ['main', 'b3'])
+        self.assertEqual(funnels.resolve('b3', 'C3:PRICE'), ('lost', 'C3:PRICE'))
+        self.assertEqual(funnels.resolve('b3', 'lost'), ('lost', 'C3:PRICE'), 'общее «проиграно» — первая стадия провала')
+        self.assertEqual(funnels.resolve('b3', 'C3:EXECUTING'), ('C3:EXECUTING', 'C3:EXECUTING'))
+        self.assertIsNone(funnels.resolve('b3', 'talks'), 'этап своей воронки — не стадия воронки Битрикса')
+        self.assertEqual(funnels.resolve('main', 'talks'), ('talks', 'talks'))
+        self.assertEqual(funnels.for_new('m1'), 'main')
+        funnels.options({'newDeals': 'b3'})
+        self.assertEqual(funnels.for_new('m1'), 'b3')
+        with self.assertRaises(ValueError):
+            funnels.options({'funnels': {'b3': {'track': {'sent': 'C3:LOSE'}}}})
+        funnels.options({'funnels': {'b3': {'hidden': True}}})
+        self.assertEqual(funnels.for_new('m1'), 'main', 'скрытая воронка — новые сделки в свою')
+
+    def test_deal_in_bitrix_funnel(self):
+        book = self.book()
+        deal = book.create({'client': 'ООО «Альфа»', 'funnel': 'b3'}, 'm1', 'Иванова', 'тест')
+        self.assertEqual((deal['funnel'], deal['stage'], deal.get('fstage')), ('b3', 'C3:NEW', 'C3:NEW'))
+        deal = book.update(deal['id'], {'stage': 'C3:EXECUTING'}, 'тест')
+        self.assertEqual(deal['stage'], 'C3:EXECUTING')
+        deal = book.update(deal['id'], {'stage': 'C3:PRICE'}, 'тест')
+        self.assertEqual((deal['stage'], deal['fstage'], deal['lostReason']), ('lost', 'C3:PRICE', 'Высокая цена'))
+        self.assertEqual(self.st.one('SELECT stage, funnel FROM deals WHERE id=?', (deal['id'],)), ('lost', 'b3'))
+        deal = book.update(deal['id'], {'stage': 'won'}, 'тест')
+        self.assertEqual((deal['stage'], deal['fstage']), ('won', 'C3:WON'))
+        self.assertNotIn('lostReason', deal)
+        with self.assertRaises(ValueError):
+            book.update(deal['id'], {'stage': 'talks'}, 'тест')
+        deal = book.update(deal['id'], {'funnel': 'main'}, 'тест')
+        self.assertEqual((deal['funnel'], deal['stage']), ('main', 'lead'), 'другая воронка — первая стадия')
+        self.assertNotIn('fstage', deal)
+        what = [row['what'] for row in deal['history']]
+        self.assertIn('funnel', what)
+
+    def test_bitrix_fields_input(self):
+        book = self.book()
+        deal = book.create({'client': 'ООО «Бета»', 'funnel': 'b3'}, 'm1', 'Иванова', 'тест')
+        deal = book.update(deal['id'], {'uf': {'UF_CRM_REGION': '11', 'UF_CRM_SUM': '1 500,5'}}, 'тест')
+        self.assertEqual(deal['uf'], {'UF_CRM_REGION': '11', 'UF_CRM_SUM': '1500.5'})
+        self.assertEqual(deal['history'][-1]['fields'], ['UF_CRM_REGION', 'UF_CRM_SUM'])
+        for bad in ({'UF_CRM_REGION': '99'}, {'UF_CRM_SUM': 'много'}, {'UF_CRM_FILE': 'x'}, {'UF_CRM_OTHER': '1'}):
+            with self.assertRaises(ValueError, msg=bad):
+                book.update(deal['id'], {'uf': bad}, 'тест')
+        deal = book.update(deal['id'], {'uf': {'UF_CRM_SUM': ''}}, 'тест')
+        self.assertEqual(deal['uf'], {'UF_CRM_REGION': '11'}, 'пустое значение не хранится')
+
+    def test_kp_moves_stage_in_bitrix_funnel(self):
+        from crm_funnels import Funnels
+        Funnels(self.st).options({'newDeals': 'b3'})
+        meta = {'id': '1', 'number': '1', 'client': 'ООО «Альфа»', 'clientInn': '7700000001', 'authorId': 'm1', 'manager': 'Иванова',
+                'date': date.today().isoformat(), 'items': ['Компрессор']}
+        self.st.kp_set('1', 'meta', json.dumps(meta, ensure_ascii=False), 'тест')
+        book = self.book()
+        did = book.on_kp('1', meta, 'тест')
+        self.assertEqual((book.get(did)['funnel'], book.get(did)['stage']), ('b3', 'C3:NEW'))
+        self.st.kp_track_set('1', {'status': 'sent'})
+        book.refresh('1', 'тест')
+        self.assertEqual(book.get(did)['stage'], 'C3:PREPARATION', 'КП отправлено → стадия по соответствию')
+        self.st.kp_track_set('1', {'status': 'won'})
+        book.refresh('1', 'тест')
+        self.assertEqual(book.get(did)['stage'], 'C3:PREPARATION', '«Договор» без стадии — сделка не двигается')
+        self.st.kp_track_set('1', {'status': 'lost', 'reason': 'Цена'})
+        book.refresh('1', 'тест')
+        deal = book.get(did)
+        self.assertEqual((deal['stage'], deal['fstage'], deal['lostReason']), ('lost', 'C3:PRICE', 'Цена'))
+
+    def test_migration_funnel_column(self):
+        from crm import DealBook
+        deal = DealBook(self.st).create({'client': 'ООО «Гамма»'}, 'm1', 'Иванова', 'тест')
+        Schema.down_to(self.st, '2027-15-crm-funnels')
+        self.assertNotIn('funnel', [row[1] for row in self.st.all('PRAGMA table_info(deals)')])
+        self.st.migrations_up()
+        self.assertEqual(self.st.one('SELECT funnel FROM deals WHERE id=?', (deal['id'],)), ('main',))
+        self.assertEqual(DealBook(self.st).get(deal['id'])['funnel'], 'main')
+
+
+class MirrorSyncTest(unittest.TestCase):
+    def setUp(self):
+        self.fake = FakeBitrix()
+        self.addCleanup(self.fake.stop)
+        fake = self.fake
+        fake.stages['DEAL_STAGE_3'].insert(5, ('C3:PRICE', 'Высокая цена', 'F'))
+        fake.portal_fields = [
+            {'FIELD_NAME': 'UF_CRM_REGION', 'USER_TYPE_ID': 'enumeration', 'L': 'Регион1', 'ITEMS': [{'ID': '10', 'VALUE': 'Москва'}, {'ID': '11', 'VALUE': 'Казань'}]},
+            {'FIELD_NAME': 'UF_CRM_NOTE', 'USER_TYPE_ID': 'string', 'L': 'Рабочий комментарий'},
+            {'FIELD_NAME': 'UF_CRM_EMPTY', 'USER_TYPE_ID': 'string', 'L': 'Редкое поле'},
+            {'FIELD_NAME': 'UF_CRM_SYS', 'USER_TYPE_ID': 'string', 'L': 'Служебное поле - стадия'},
+        ]
+        self.st = TempStore(self).store
+        st = self.st
+        st.manager_put('m1', json.dumps({'name': 'Иванова Анна', 'email': 'ivanova@example.com'}, ensure_ascii=False), 'тест')
+        from bitrix import BitrixConf
+        BitrixConf(st).save({'url': fake.url, 'category': '3', 'on': True, 'users': {'m1': '7'},
+                             'stages': {'lead': 'C3:NEW', 'sent': 'C3:PREPARATION', 'talks': 'C3:EXECUTING', 'won': 'C3:WON', 'lost': 'C3:LOSE'}}, 'тест')
+        self.open = fake.new_deal(TITLE='Открытая', STAGE_ID='C3:EXECUTING', UF_CRM_REGION='11', UF_CRM_NOTE='звонить в среду', UF_CRM_SYS='x')
+        self.closed = fake.new_deal(TITLE='Проиграна', STAGE_ID='C3:PRICE', CLOSED='Y', UF_CRM_REGION='10', UF_CRM_NOTE='дорого')
+        for i in range(3):
+            fake.new_deal(TITLE=f'Ещё {i}', STAGE_ID='C3:NEW', UF_CRM_NOTE='есть', CLOSED='N')
+        fake.deals[self.open]['CLOSED'] = 'N'
+        fake.add_activity(self.open, 'Позвонить', '2026-11-01T10:00:00+03:00')
+
+    def load(self):
+        from bitrix_mirror_load import MirrorImport, MirrorStructure
+        MirrorStructure(self.st, direct()).load()
+        return MirrorImport(self.st, direct()).run()
+
+    def test_structure_import_and_exchange(self):
+        from bitrix import BitrixLinks, BitrixQueue, BitrixSync
+        from crm import DealBook
+        from crm_funnels import DealFields, Funnels
+        res = self.load()
+        funnels = Funnels(self.st)
+        self.assertEqual([row['id'] for row in funnels.mirror()], ['b0', 'b3'])
+        self.assertEqual(funnels.get('b3')['track'], {'lead': 'C3:NEW', 'sent': 'C3:PREPARATION', 'talks': 'C3:EXECUTING'},
+                         'ход КП → стадии — из прежнего соответствия этапов')
+        on = {row['code']: row for row in DealFields(self.st).shown('b3')}
+        self.assertEqual(sorted(on), ['UF_CRM_NOTE', 'UF_CRM_REGION'], 'заполненные поля; служебное и пустое — нет')
+        self.assertEqual(on['UF_CRM_REGION']['label'], 'Регион')
+        self.assertEqual(on['UF_CRM_REGION']['items'][1], {'id': '11', 'value': 'Казань'})
+        self.assertEqual((res['created'], res['skipped']), (5, 0), res)
+        links = BitrixLinks(self.st)
+        did = links.local('deal', self.open)
+        deal = DealBook(self.st).get(did)
+        self.assertEqual((deal['funnel'], deal['stage'], deal['managerId']), ('b3', 'C3:EXECUTING', 'm1'))
+        self.assertEqual(deal['uf'], {'UF_CRM_REGION': '11', 'UF_CRM_NOTE': 'звонить в среду'})
+        lost = DealBook(self.st).get(links.local('deal', self.closed))
+        self.assertEqual((lost['stage'], lost['fstage'], lost['lostReason']), ('lost', 'C3:PRICE', 'Высокая цена'))
+        self.assertEqual(res['tasks'], 1, 'открытое дело загруженной сделки')
+        # в Битриксе сменили стадию и поле — в программу
+        self.fake.edit_deal(self.open, STAGE_ID='C3:PREPARATION', UF_CRM_NOTE='перезвонить')
+        BitrixSync(self.st, direct()).run_now()
+        deal = DealBook(self.st).get(did)
+        self.assertEqual((deal['stage'], deal['uf']['UF_CRM_NOTE']), ('C3:PREPARATION', 'перезвонить'))
+        # в программе — поле и стадия провала: в Битрикс как есть
+        DealBook(self.st).update(did, {'uf': {'UF_CRM_REGION': '10'}, 'stage': 'C3:PRICE'}, 'Иванова')
+        BitrixQueue.touch(self.st, 'deal', did)
+        BitrixSync(self.st, direct()).run_now()
+        bx = self.fake.deals[self.open]
+        self.assertEqual((bx['STAGE_ID'], bx['UF_CRM_REGION']), ('C3:PRICE', '10'))
+        # перенос в другую воронку
+        DealBook(self.st).update(did, {'funnel': 'b0'}, 'Иванова')
+        BitrixQueue.touch(self.st, 'deal', did)
+        BitrixSync(self.st, direct()).run_now()
+        self.assertEqual((bx['CATEGORY_ID'], bx['STAGE_ID']), ('0', 'NEW'))
+        self.assertIn('crm.item.update', self.fake.methods())
+        # снова загрузка — без дублей
+        res = self.load()
+        self.assertEqual((res['created'], res['updated']), (0, 5), res)
+
+    def test_convert_linked_main_deals(self):
+        from bitrix import BitrixLinks
+        from bitrix_mirror_load import MirrorConvert, MirrorStructure
+        from crm import DealBook
+        deal = DealBook(self.st).create({'client': 'ООО «Альфа»', 'stage': 'talks'}, 'm1', 'Иванова', 'тест')
+        BitrixLinks(self.st).put('deal', deal['id'], self.open, {'cat': '3', 'stage': 'C3:EXECUTING'})
+        MirrorStructure(self.st, direct()).load()
+        self.assertEqual(MirrorConvert(self.st).count(), 1)
+        self.assertEqual(MirrorConvert(self.st).run('Админ'), 1)
+        deal = DealBook(self.st).get(deal['id'])
+        self.assertEqual((deal['funnel'], deal['stage']), ('b3', 'C3:EXECUTING'))
+        self.assertEqual(MirrorConvert(self.st).count(), 0)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -293,6 +293,18 @@ MIGRATIONS = [
      ALTER TABLE bx_log DROP COLUMN mid;
      """,
     ),
+    # воронки сделок (app/crm_funnels.py): своя воронка программы «main» и воронки, повторяющие Битрикс24 («b<номер>»)
+    (
+        '2027-15-crm-funnels',
+        """
+     ALTER TABLE deals ADD COLUMN funnel TEXT NOT NULL DEFAULT 'main';
+     CREATE INDEX IF NOT EXISTS deals_funnel ON deals(funnel, stage);
+     """,
+        """
+     DROP INDEX IF EXISTS deals_funnel;
+     ALTER TABLE deals DROP COLUMN funnel;
+     """,
+    ),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -563,6 +575,10 @@ def _fill_crm(store, conn) -> None:
     """Миграция 2027-10-crm: КП журнала — по сделкам (одного клиента у одного менеджера с промежутком до 30 дней — одна сделка)."""
     from crm import DealBook
 
+    # код сделок пишет воронку (миграция 2027-15-crm-funnels); у старой базы столбец добавляется заранее — та ADD пропустит
+    script = Store._idempotent(conn, "ALTER TABLE deals ADD COLUMN funnel TEXT NOT NULL DEFAULT 'main';")
+    if script.strip():
+        conn.execute(script)
     DealBook(store)._adopt(conn)
 
 

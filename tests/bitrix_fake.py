@@ -26,6 +26,7 @@ class FakeBitrix:
                       {'ID': '8', 'NAME': 'Олег', 'LAST_NAME': 'Петров', 'EMAIL': 'PETROV@example.com'}]
         self.ufields, self.companies, self.requisites, self.contacts, self.deals = [], {}, {}, {}, {}
         self.rows, self.comments, self.activities, self.addresses = {}, [], {}, []
+        self.portal_fields = []          # свои поля сделки портала (кабинет как Битрикс24): {FIELD_NAME, USER_TYPE_ID, L, ITEMS}
         srv = ThreadingHTTPServer(('127.0.0.1', 0), self._handler())
         self.srv = srv
         self.port = srv.server_address[1]
@@ -97,6 +98,9 @@ class FakeBitrix:
             if isinstance(v, list):                      # список значений — «одно из»
                 if str(row.get(k) if row.get(k) is not None else '') not in {str(x) for x in v}:
                     return False
+            elif k.startswith('>='):
+                if not str(row.get(k[2:]) or '') >= str(v):
+                    return False
             elif k.startswith('>'):
                 if not str(row.get(k[1:]) or '') > str(v):
                     return False
@@ -120,8 +124,9 @@ class FakeBitrix:
         if m == 'crm.deal.fields':
             out = {'TITLE': {'type': 'string', 'title': 'Название'}, 'COMMENTS': {'type': 'string', 'title': 'Комментарий'},
                    'ID': {'type': 'integer', 'isReadOnly': True, 'title': 'ID'}}
-            for u in self.ufields + [{'FIELD_NAME': 'UF_CRM_1700000001', 'USER_TYPE_ID': 'double', 'L': 'Маржа (отдел продаж)'}]:
-                out[u['FIELD_NAME']] = {'type': u['USER_TYPE_ID'], 'formLabel': u.get('L') or u['FIELD_NAME'], 'title': u['FIELD_NAME']}
+            for u in self.ufields + [{'FIELD_NAME': 'UF_CRM_1700000001', 'USER_TYPE_ID': 'double', 'L': 'Маржа (отдел продаж)'}] + self.portal_fields:
+                out[u['FIELD_NAME']] = {'type': u['USER_TYPE_ID'], 'formLabel': u.get('L') or u['FIELD_NAME'], 'title': u['FIELD_NAME'],
+                                        'isMultiple': bool(u.get('MULTIPLE')), **({'items': u['ITEMS']} if u.get('ITEMS') else {})}
             return {'result': out}
         if m == 'crm.deal.userfield.list':
             return self.page(self.ufields, b)
@@ -164,6 +169,10 @@ class FakeBitrix:
             d.update(f)
             d['DATE_MODIFY'] = self.now()
             return {'result': True}
+        if m == 'crm.item.update':        # смена воронки сделки (entityTypeId 2)
+            d = self.deals[str(b['id'])]
+            d.update(CATEGORY_ID=str(f['categoryId']), STAGE_ID=f['stageId'], DATE_MODIFY=self.now())
+            return {'result': {'item': {'id': int(b['id'])}}}
         if m == 'crm.deal.list':
             rows = sorted((d for d in self.deals.values() if self.match(d, b.get('filter'))), key=lambda d: d['DATE_MODIFY'])
             return self.page(rows, b)

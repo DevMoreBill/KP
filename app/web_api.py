@@ -46,6 +46,7 @@ from config import (
     write_bytes,
 )
 from crm import CrmBoard, DealBook, Stages, TaskBook
+from crm_funnels import DealFields, Funnels
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
 from features import FeatureAccess, Viewer
@@ -1923,7 +1924,17 @@ class CrmController(Controller):
         deal['tasks'] = TaskBook(store()).list(deal=did)
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
-        return self.send_json(dict(deal, stages=Stages.all(store())))
+        funnel = deal.get('funnel') or Funnels.MAIN
+        fields = DealFields(store())
+        return self.send_json(
+            dict(
+                deal,
+                stages=Stages.all(store()),
+                funnels=Funnels(store()).all(),
+                fields=fields.shown(funnel),
+                users=fields.users(),
+            )
+        )
 
     @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
     def link(self, did) -> Any:

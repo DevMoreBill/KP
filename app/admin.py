@@ -1658,6 +1658,10 @@ class AdminApi:
                 self.log('edit_defaults', 'settings', 'defaults', {k: before.get(k) for k in changes}, changes)
                 return self.ok({'values': res})
             return self.ok({'values': defaults.get(store)})
+        if sub == 'bitrix/mirror' or sub.startswith('bitrix/mirror/'):  # кабинет как Битрикс24 (bitrix_mirror_load.py)
+            from bitrix_mirror_load import MirrorDesk
+
+            return MirrorDesk(self.handler, self.store, self.log).route(method, sub, actor_login or 'admin')
         if sub == 'bitrix' or sub.startswith('bitrix/'):  # связь с Битрикс24 (bitrix.py)
             from bitrix import BitrixDesk
 

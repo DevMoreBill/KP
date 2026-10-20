@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from crm_funnels import DealFields, Funnels
 from kp_track import Val
 
 
@@ -59,13 +60,14 @@ class DealBook:
     """Сделки одного хранилища."""
 
     RUB_MAX = 1e12
+    REASON_MAX = 200
 
     HISTORY_MAX = 60
     GROUP_DAYS = 30  # КП одного клиента у одного менеджера с промежутком до 30 дней — одна сделка (adopt)
     WON_DAYS = 60  # выигранное КП старше — сделка «Выиграно» (adopt), моложе — «Договор и оплата»
     STALE_DAYS = 180  # незакрытые КП без движения дольше — сделка «Проиграно» с понятной причиной (adopt)
     STALE_REASON = 'Нет движения больше 180 дней (закрыта при переходе на сделки)'
-    COLS = 'id, doc, manager_id, stage, updated, rev'
+    COLS = 'id, doc, manager_id, stage, updated, rev, funnel'
 
     def __init__(self, store) -> None:
         self.store = store
@@ -73,7 +75,14 @@ class DealBook:
     @staticmethod
     def _out(row) -> dict:
         deal = _obj(row[1])
-        deal.update(id=row[0], managerId=row[2] or '', stage=row[3] or 'lead', updated=row[4] or '', rev=row[5] or 0)
+        deal.update(
+            id=row[0],
+            managerId=row[2] or '',
+            stage=row[3] or 'lead',
+            updated=row[4] or '',
+            rev=row[5] or 0,
+            funnel=row[6] or Funnels.MAIN,
+        )
         return deal
 
     def get(self, did) -> dict | None:
@@ -156,10 +165,11 @@ class DealBook:
         doc = {
             k: v
             for k, v in deal.items()
-            if k not in ('id', 'managerId', 'stage', 'updated', 'rev', 'kps', 'next', 'tasks')
+            if k not in ('id', 'managerId', 'stage', 'updated', 'rev', 'kps', 'next', 'tasks', 'funnel')
         }
         conn.execute(
-            'INSERT OR REPLACE INTO deals (id, doc, manager_id, stage, client, inn, updated, rev, updated_by) VALUES (?,?,?,?,?,?,?,?,?)',
+            'INSERT OR REPLACE INTO deals (id, doc, manager_id, stage, client, inn, updated, rev, updated_by, funnel) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?)',
             (
                 did,
                 json.dumps(doc, ensure_ascii=False),
@@ -170,6 +180,7 @@ class DealBook:
                 when or Val.now(),
                 rev,
                 str(author or '')[:120],
+                deal.get('funnel') or Funnels.MAIN,
             ),
         )
         return rev
@@ -184,11 +195,14 @@ class DealBook:
 
     def create(self, data, manager_id, manager, author: str) -> dict:
         """Новая сделка вручную (без КП). ValueError — с понятным текстом."""
-        x = self._clean(data, {}, Stages.keys(self.store))
+        funnel = self._funnel_of(data, Funnels(self.store).for_new(manager_id))
+        x = self._clean(data, {'funnel': funnel})
         if not (x.get('title') or x.get('client')):
             raise ValueError('Укажите клиента или название сделки')
         x.setdefault('title', x.get('client'))
-        x.update(managerId=manager_id or '', manager=manager or '', stage=x.get('stage') or 'lead')
+        x.update(managerId=manager_id or '', manager=manager or '', funnel=funnel)
+        if 'stage' not in x:
+            x.update(self._stage(funnel, Funnels(self.store).first(funnel)))
         if not x.get('expected'):
             x['expected'] = (date.today() + timedelta(days=30)).isoformat()
         self._log(x, author, what='create')
@@ -198,10 +212,29 @@ class DealBook:
             conn.commit()
         return self._require(did)
 
-    def _clean(self, data, cur, keys) -> dict:
-        """Поля сделки из запроса → изменения. ValueError — с понятным текстом."""
+    def _funnel_of(self, data, default) -> str:
+        if not isinstance(data, dict) or 'funnel' not in data:
+            return default
+        fid = str(data.get('funnel') or '')
+        if not Funnels(self.store).known(fid):
+            raise ValueError('Неизвестная воронка')
+        return fid
+
+    def _stage(self, funnel, key) -> dict:
+        """Стадия воронки → {stage (столбец), fstage (точная стадия воронки Битрикса)}."""
+        found = Funnels(self.store).resolve(funnel, key)
+        if not found:
+            raise ValueError('Неизвестный этап сделки')
+        out: dict[str, Any] = {'stage': found[0]}
+        if funnel != Funnels.MAIN:
+            out['fstage'] = found[1]
+        return out
+
+    def _clean(self, data, cur) -> dict:
+        """Поля сделки из запроса → изменения (cur — сделка, её воронка). ValueError — с понятным текстом."""
         if not isinstance(data, dict):
             raise ValueError('Нет данных сделки')
+        funnel = cur.get('funnel') or Funnels.MAIN
         out: dict[str, Any] = {}
         for k, field in (('title', 200), ('client', 300), ('note', 3000)):
             if k in data:
@@ -229,16 +262,21 @@ class DealBook:
                     raise ValueError('Сумма сделки — от 0 до 999 млрд руб.')
                 out.update(sum=round(rub * 100), sumOwn=True)
         if 'stage' in data:
-            stage = str(data.get('stage') or '')
-            if stage not in keys:
-                raise ValueError('Неизвестный этап сделки')
-            out['stage'] = stage
-            if stage == 'lost':
-                reason = Val.text(data.get('lostReason') if 'lostReason' in data else cur.get('lostReason'), 200)
-                if not reason:
-                    raise ValueError('Укажите причину проигрыша')
-                out['lostReason'] = reason
+            out.update(self._stage(funnel, str(data.get('stage') or '')))
+            if out['stage'] == Funnels.LOST:
+                out['lostReason'] = self._reason(data, cur, funnel, out.get('fstage'))
+        if 'uf' in data:
+            out['uf'] = DealFields(self.store).clean(funnel, data.get('uf'))
         return out
+
+    def _reason(self, data, cur, funnel, exact) -> str:
+        """Причина проигрыша: своя; у воронки Битрикса без своей — название стадии провала («Высокая цена»)."""
+        reason = Val.text(data.get('lostReason') if 'lostReason' in data else cur.get('lostReason'), self.REASON_MAX)
+        if not reason and exact:
+            reason = Funnels(self.store).label(funnel, exact)
+        if not reason:
+            raise ValueError('Укажите причину проигрыша')
+        return reason
 
     def update(self, did, data, author: str, base_rev=None, manager=None) -> dict:
         """Правка сделки (поля, этап, сумма, ответственный) → сделка; Conflict — сделку успели изменить."""
@@ -246,24 +284,60 @@ class DealBook:
             cur = self.get(did)
             if not cur:
                 raise LookupError('Сделка не найдена')
-            x = self._clean(data, cur, Stages.keys(self.store))
+            funnel = self._funnel_of(data, cur['funnel'])
+            moved = funnel != cur['funnel']
+            if moved and 'stage' not in data:
+                data = dict(data, stage=Funnels(self.store).first(funnel))
+            x = self._clean(data, dict(cur, funnel=funnel))
             conn = self.store.conn()
-            new = dict(cur, **x)
-            if x.get('stage') and x['stage'] != cur['stage']:
-                new.update(stageAt=Val.now(), lostAuto=False)
-                if x['stage'] != 'lost':
-                    new.pop('lostReason', None)
-                self._log(new, author, what='stage', **{'from': cur['stage'], 'to': x['stage']})
+            new = dict(cur, **x, funnel=funnel)
+            if moved:
+                if funnel == Funnels.MAIN:
+                    new.pop('fstage', None)
+                self._log(new, author, what='funnel', **{'from': cur['funnel'], 'to': funnel})
+            self._stage_change(new, cur, x, author)
             if manager and manager[0] != cur.get('managerId'):
                 new.update(managerId=manager[0], manager=manager[1])
                 self._log(new, author, what='manager', to=manager[1])
             changed = [k for k in ('title', 'client', 'expected', 'sum', 'note') if k in x and x[k] != cur.get(k)]
             if changed:
                 self._log(new, author, what='edit', fields=changed)
+            if 'uf' in x:
+                old_uf = cur.get('uf') or {}
+                new['uf'] = {
+                    code: value for code, value in dict(old_uf, **x['uf']).items() if value not in ('', [], None)
+                }
+                fields = [code for code, value in x['uf'].items() if value != old_uf.get(code)]
+                if fields:
+                    self._log(new, author, what='fields', fields=fields)
             self._sum(conn, new)
             self._save(conn, did, new, author, base_rev)
             conn.commit()
         return self._require(did)
+
+    def put_uf(self, did, values: dict, author: str) -> None:
+        """Значения полей Битрикса (из обмена) — без проверки ввода: пришли с портала как есть."""
+        with self.store.lock:
+            cur = self.get(did)
+            if not cur:
+                return
+            old = cur.get('uf') or {}
+            new = {code: value for code, value in dict(old, **values).items() if value not in ('', [], None)}
+            if new == old:
+                return
+            cur['uf'] = new
+            conn = self.store.conn()
+            self._save(conn, did, cur, author)
+            conn.commit()
+
+    def _stage_change(self, new, cur, x, author: str) -> None:
+        exact = x.get('fstage') or x.get('stage')
+        if not x.get('stage') or (x['stage'], exact) == (cur['stage'], cur.get('fstage') or cur['stage']):
+            return
+        new.update(stageAt=Val.now(), lostAuto=False)
+        if x['stage'] != Funnels.LOST:
+            new.pop('lostReason', None)
+        self._log(new, author, what='stage', **{'from': cur.get('fstage') or cur['stage'], 'to': exact})
 
     def deal_of(self, kid: str) -> str | None:
         row = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
@@ -349,18 +423,28 @@ class DealBook:
             'clientInn': re.sub(r'\D', '', str(meta.get('clientInn') or ''))[:12],
             'managerId': mid[:64],
             'manager': mname[:120],
-            'stage': Stages.BY_TRACK.get(track.get('status') or 'new', 'lead'),
             'expected': exp.isoformat(),
             'auto': True,
         }
-        if deal['stage'] not in Stages.keys(self.store):
-            deal['stage'] = Stages.keys(self.store)[0]
+        funnel = Funnels(self.store).for_new(mid)
+        deal.update(funnel=funnel, **self._stage(funnel, self._kp_stage(funnel, track.get('status') or 'new')))
         self._log(deal, author, what='create', kp=kid)
         did = self._new(conn, deal, author, when=when)
         conn.execute(
             'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, when or Val.now())
         )
         return did
+
+    def _kp_stage(self, funnel, status) -> str:
+        """Стадия новой сделки по ходу КП: этап хода КП или ближайший ниже, у которого есть стадия воронки."""
+        want = Stages.BY_TRACK.get(status, 'lead')
+        order = list(Funnels.TRACK)
+        funnels = Funnels(self.store)
+        for key in reversed(order[: order.index(want) + 1]):
+            target = funnels.track(funnel, key)
+            if target in funnels.open_keys(funnel):
+                return target
+        return funnels.first(funnel)
 
     @classmethod
     def kp_moved(cls, store, kid: str, author: str) -> str | None:
@@ -412,31 +496,41 @@ class DealBook:
         deal['sum'] = (live[0]['sum'] or 0) if live else (deal.get('sum') or 0)
 
     def _sync(self, conn, deal, author: str, when=None) -> None:
-        """Сумма по КП и этап только вперёд по ходу КП; все КП проиграны — «Проиграно»."""
+        """Сумма по КП и этап только вперёд по ходу КП (в любой воронке); все КП проиграны — «Проиграно»."""
         rows = self._rows(conn, deal['id'])
         self._sum(conn, deal, rows)
-        keys = [k for k in Stages.keys(self.store) if k not in ('won', 'lost')]
-        stage = deal.get('stage') or 'lead'
-        target = None
-        if rows and all(row['status'] == 'lost' for row in rows):
-            if stage not in ('won', 'lost'):
-                last = max(rows, key=lambda rec: rec['savedAt'] or rec['date'] or '')
-                target, deal['lostReason'], deal['lostAuto'] = 'lost', last['reason'] or 'КП проиграно', True
-        else:
-            best = [Stages.BY_TRACK.get(row['status']) for row in rows if row['status'] != 'lost']
-            best = [k for k in best if k in keys]
-            top = max(best, key=keys.index) if best else None
-            if (top and stage == 'lost' and deal.get('lostAuto')) or (
-                top and stage in keys and keys.index(top) > keys.index(stage)
-            ):
-                target = top
+        funnels, funnel = Funnels(self.store), deal.get('funnel') or Funnels.MAIN
+        stage = deal.get('fstage') or deal.get('stage') or 'lead'
+        target = self._auto_target(funnels, funnel, deal, rows, stage)
         if target and target != stage:
-            deal.update(stage=target, stageAt=when or Val.now())
-            if target != 'lost':
-                deal.pop('lostReason', None)
-                deal['lostAuto'] = False
-            self._log(deal, author, what='stage', auto=True, **{'from': stage, 'to': target})
+            found = funnels.resolve(funnel, target)
+            if found:
+                deal.update(stage=found[0], stageAt=when or Val.now())
+                if funnel != Funnels.MAIN:
+                    deal['fstage'] = found[1]
+                if found[0] != Funnels.LOST:
+                    deal.pop('lostReason', None)
+                    deal['lostAuto'] = False
+                self._log(deal, author, what='stage', auto=True, **{'from': stage, 'to': found[1]})
         self._save(conn, deal['id'], deal, author, when=when)
+
+    @staticmethod
+    def _auto_target(funnels, funnel, deal, rows, stage) -> str | None:
+        keys = funnels.open_keys(funnel)
+        if rows and all(row['status'] == 'lost' for row in rows):
+            if deal.get('stage') in Funnels.CLOSED:
+                return None
+            last = max(rows, key=lambda rec: rec['savedAt'] or rec['date'] or '')
+            deal['lostReason'], deal['lostAuto'] = last['reason'] or 'КП проиграно', True
+            return Funnels.LOST
+        best = [funnels.track(funnel, Stages.BY_TRACK.get(row['status'])) for row in rows if row['status'] != 'lost']
+        best = [k for k in best if k in keys]
+        top = max(best, key=keys.index) if best else None
+        if not top:
+            return None
+        if deal.get('stage') == Funnels.LOST and deal.get('lostAuto'):
+            return top
+        return top if stage in keys and keys.index(top) > keys.index(stage) else None
 
     def adopt(self) -> int:
         """КП журнала без сделки — в сделки (после перехода на сделки, восстановления и загрузки копии). → сколько КП."""
@@ -515,15 +609,23 @@ class DealBook:
             deal = self.get_c(conn, did)
             if deal is None:
                 continue
-            age = (today - end[2]).days
-            stage = deal['stage']
-            if stage == 'contract' and age > self.WON_DAYS:
-                deal.update(stage='won', stageAt=stamp)
-            elif stage not in ('won', 'lost') and age > self.STALE_DAYS:
-                deal.update(stage='lost', stageAt=stamp, lostReason=self.STALE_REASON, lostAuto=False)
-            if deal['stage'] != stage:
+            close = self._old_close(deal, (today - end[2]).days)
+            if close:
+                deal.update(self._stage(deal['funnel'], close), stageAt=stamp)
+                if close == Funnels.LOST:
+                    deal.update(lostReason=self.STALE_REASON, lostAuto=False)
                 self._save(conn, did, deal, 'переход на сделки', when=stamp)
         return len(rows)
+
+    def _old_close(self, deal, age: int) -> str | None:
+        """Давнее КП при переходе на сделки: выигранное — «Выиграно», без движения — «Проиграно»."""
+        funnel = deal['funnel']
+        stage = deal.get('fstage') or deal['stage']
+        if stage == Funnels(self.store).track(funnel, 'contract') and age > self.WON_DAYS:
+            return Funnels.WON
+        if deal['stage'] not in Funnels.CLOSED and age > self.STALE_DAYS:
+            return Funnels.LOST
+        return None
 
     def flag(self, did, **kw) -> None:
         """Служебная отметка сделки без правки и истории; None — снять."""
@@ -697,8 +799,10 @@ class CrmBoard:
             deal['kps'] = kps.get(deal['id'], [])
             deal['next'] = nxt.get(deal['id'])
             deal.pop('history', None)
+            deal.pop('uf', None)
         return {
             'stages': Stages.all(self.store),
+            'funnels': Funnels(self.store).all(),
             'deals': deals,
             'tasks': task_list,
             'kinds': [{'key': k, 'label': label} for k, label in TaskBook.KINDS],

@@ -44,7 +44,7 @@ class Modes:
            'phd': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='dark', is_mobile=True, has_touch=True,
                        device_scale_factor=3, user_agent=IPHONE)}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
-              'journal', 'misc', 'settings', 'bitrix', 'dbl')
+              'journal', 'misc', 'settings', 'bitrix', 'mirror', 'dbl')
 
     @staticmethod
     def chromium():
@@ -87,7 +87,27 @@ class UiStand:
         self.st.start(timeout=240)
         self.st.admin()
         self.bx = FakeBitrix()                  # подставной Битрикс24 — для этапа «bitrix» (вкладки связи в «Настройках»)
+        self.seed(self.bx)
         return {'port': self.st.http.port, 'admin': list(self.st.ADMIN), 'bitrix': self.bx.url}
+
+    @staticmethod
+    def seed(fake):
+        """Подставной портал для этапа «mirror»: стадия провала, поля сделки, сделки двух воронок, дело (вымышленные)."""
+        fake.stages['DEAL_STAGE_3'].insert(5, ('C3:PRICE', 'Высокая цена', 'F'))
+        fake.portal_fields = [
+            {'FIELD_NAME': 'UF_CRM_REGION', 'USER_TYPE_ID': 'enumeration', 'L': 'Регион1',
+             'ITEMS': [{'ID': '10', 'VALUE': 'Москва'}, {'ID': '11', 'VALUE': 'Казань'}, {'ID': '12', 'VALUE': 'Пермь'}]},
+            {'FIELD_NAME': 'UF_CRM_TOPIC', 'USER_TYPE_ID': 'string', 'L': 'Тема запроса'},
+            {'FIELD_NAME': 'UF_CRM_INVOICE', 'USER_TYPE_ID': 'double', 'L': 'Сумма счета / ТКП'},
+            {'FIELD_NAME': 'UF_CRM_PAID', 'USER_TYPE_ID': 'date', 'L': 'Дата оплаты'},
+            {'FIELD_NAME': 'UF_CRM_NOTE', 'USER_TYPE_ID': 'string', 'L': 'Рабочий комментарий к сделке писать СЮДА!'},
+        ]
+        for i, stage in enumerate(('C3:NEW', 'C3:NEW', 'C3:PREPARATION', 'C3:EXECUTING', 'C3:FINAL_INVOICE', 'C3:PRICE', 'C3:WON')):
+            fake.new_deal(TITLE=f'Компрессорная станция, объект {i + 1}', STAGE_ID=stage, CLOSED='Y' if stage in ('C3:PRICE', 'C3:WON') else 'N',
+                          OPPORTUNITY=str(1500000 + i * 250000), UF_CRM_REGION=str(10 + i % 3), UF_CRM_TOPIC='Подбор компрессора',
+                          UF_CRM_INVOICE=str(1200000 + i * 100000), UF_CRM_NOTE='Перезвонить главному инженеру' if i % 2 else '')
+        for i in range(3):
+            fake.new_deal(TITLE=f'Обращение с сайта {i + 1}', CATEGORY_ID='0', STAGE_ID='NEW', CLOSED='N', UF_CRM_TOPIC='Запчасти')
 
     def close(self):
         if getattr(self, 'bx', None):
@@ -748,10 +768,11 @@ class Scenario(UiRun):
             except Exception as e:
                 self.errs.append(('settings', 'SCRIPT-sub', str(e)[:100]))
 
-    def s_bitrix(self):
-        """«Настройки → Подключения и ключи → Битрикс24» на подставном Битриксе: связь, все вкладки, пробный прогон, старые сделки."""
+    def _bx_connect(self):
+        """«Настройки → Битрикс24»: вход администратора, адрес подставного Битрикса, связь включена."""
         pg = self.pg
         self.closeall()
+        self.ev("try{ localStorage.setItem('kp.bxtab', 'link'); }catch(e){}")
         self.ev("openSettings('services')")
         self.wait(1500)
         if pg.locator('#stPw').count():
@@ -760,7 +781,6 @@ class Scenario(UiRun):
             pg.fill('#stPw', self.cfg['admin'][1])
             pg.keyboard.press('Enter')
             self.wait(2000)
-        self.ev("try{ localStorage.setItem('kp.bxtab', 'link'); }catch(e){}")
         pg.wait_for_selector('#setdlg #bxUrl', timeout=20000)        # «Битрикс24» — раздел на вкладке «Подключения и ключи»
         pg.fill('#setdlg #bxUrl', self.cfg['bitrix'])
         pg.click('#setdlg #bxTest')
@@ -768,6 +788,11 @@ class Scenario(UiRun):
         if not self.ev("document.querySelector('#setdlg #bxOn').checked"):   # режимы идут параллельно на одном стенде — включить один раз
             pg.click('#setdlg #bxOn')
         pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Последний обмен')", timeout=30000)
+
+    def s_bitrix(self):
+        """«Настройки → Подключения и ключи → Битрикс24» на подставном Битриксе: связь, все вкладки, пробный прогон, старые сделки."""
+        pg = self.pg
+        self._bx_connect()
         tabs = self.ev("BitrixPanel.TABS.map(t=>t[0])")
         for t in tabs:
             pg.click('#setdlg [data-bxtab="%s"]' % t)
@@ -783,6 +808,57 @@ class Scenario(UiRun):
                 self.errs.append(('bitrix', 'ERR', '%s: %s' % (t, pg.locator('#setdlg .msg.err').first.inner_text()[:200])))
             self.ev("document.querySelector('#setdlg .bx-tabs').scrollIntoView()")
             self.snap('d_bx_' + t, '#setdlg .st-part:has(.bx-tabs)', wait=300)
+        self.closeall()
+
+    def _mirror_tab(self):
+        self.pg.click('#setdlg [data-bxtab="mirror"]')
+        self.pg.wait_for_selector('#setdlg #bxMirror .st-card', timeout=20000)
+
+    def _mirror_act(self, action, done):
+        """Кнопка вкладки «Как в Битрикс24» с подтверждением; режимы идут параллельно — сделанное другим не повторять."""
+        pg = self.pg
+        text = lambda: pg.locator('#setdlg #bxMirror').inner_text()
+        for _ in range(40):
+            if done in text():
+                return
+            btn = pg.locator('#setdlg [data-mr="%s"]' % action)
+            if btn.count() and btn.is_enabled():
+                btn.click()
+                pg.click('dialog[open] [data-v="1"]')
+            self.wait(3000)
+            self._mirror_tab()
+        self.errs.append(('mirror', 'ERR', 'не дождался: ' + done))
+
+    def s_mirror(self):
+        """«Как в Битрикс24»: структура и сделки подставного Битрикса, доска по воронкам, карточка сделки с полями Битрикса."""
+        pg = self.pg
+        self._bx_connect()
+        self._mirror_tab()
+        self._mirror_act('structure', 'Структура загружена')
+        self._mirror_act('import', 'Загрузка сделок закончена')
+        self.snap('e0_mirror', '#setdlg .st-part:has(.bx-tabs)', wait=300)
+        self.closeall()
+        self.ev("Cabinet.open('deals')")
+        pg.wait_for_selector('#cabWin .cab-tabs', timeout=30000)
+        if pg.locator('#cabWho').count():
+            pg.select_option('#cabWho', 'all')
+            self.wait(2500)
+        pg.select_option('#cabFunnel', 'b3')
+        self.wait(1200)
+        cols = self.ev("[...document.querySelectorAll('#cabWin .kb-c header b')].map(x=>x.textContent)")
+        if 'Высокая цена' in cols or 'КП отправлено' not in cols:
+            self.errs.append(('mirror', 'ERR', 'колонки доски: %s' % cols))
+        self.snap('e1_board', '#cabWin', wait=300)
+        pg.locator('#cabWin .kb-c .dc').first.click()
+        pg.wait_for_selector('dialog.deal-dlg[open] .dk-ufs', timeout=20000)
+        self.snap('e2_card', 'dialog.deal-dlg[open]', wait=300)
+        sel = pg.locator('dialog.deal-dlg[open] select[data-uf="UF_CRM_REGION"]')
+        sel.select_option('12')
+        self.wait(2000)
+        saved = self.ev("CrmFunnel && DealCard.d && (DealCard.d.uf||{}).UF_CRM_REGION")
+        if saved != '12':
+            self.errs.append(('mirror', 'ERR', 'поле Битрикса не сохранилось: %s' % saved))
+        self.snap('e3_card_saved', 'dialog.deal-dlg[open]', wait=300)
         self.closeall()
 
     def s_dbl(self):
