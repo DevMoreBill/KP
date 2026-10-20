@@ -513,7 +513,10 @@ class Scenario(UiRun):
         yes = 'dialog[open] button[data-v="1"]:has-text("Да, один модуль")'
         pg.wait_for_selector(yes)
         pg.click(yes)
-        self.wait(1500)
+        try:   # пересчёт на медленной машине идёт дольше — ждать результата, а не фиксированную паузу
+            pg.wait_for_function("(()=>{ const x=S.items[S.items.length-1], c=Kit.container(x); return c.qty===1 && !c.mods; })()", timeout=20000)
+        except Exception:
+            pass
         st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=Kit.container(x); return { q:c.qty, m:!!c.mods, j:Kit.parts(x).some(p=>p.modJoin) }; })()")
         if st.get('q') != 1 or st.get('m') or st.get('j'):
             self.errs.append(('station', 'mods', 'после «Один модуль»: %s' % st))

@@ -2,7 +2,7 @@
 paths:
   - "app/web/js/features/catalog*.js"
   - "app/web/js/features/item-editor.js"
-  - "app/web/js/features/equip-wizard.js"
+  - "app/web/js/features/wizard/*.js"
   - "app/web/js/features/ai-autofill.js"
   - "app/web/js/features/types-editor.js"
   - "app/web/js/features/images.js"

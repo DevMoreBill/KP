@@ -689,7 +689,7 @@ class CatalogWindow {
       case 'resetall': { F.resetAll(); const q=$('#cwQ'); if (q) q.value=''; this.limit=CatalogWindow.PAGE; this.refresh(); return; }
       case 'undo': return this.undoMove();
       case 'newtype': return this.newType(id=>{ F.cat=id; F.f={}; F.rng={}; this.redraw(); });
-      case 'new': return newEquip('catalog', F.cat||'');
+      case 'new': return EquipWizard.open('catalog', F.cat||'');
       case 'xls': return openXlsImport(F.cat);
       case 'types': return openTypesEditor(F.cat || undefined);
       case 'exp': return this.exportFile();

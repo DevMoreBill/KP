@@ -266,7 +266,7 @@ class GoodsTab {
     m.onclick=e=>{ const b=e.target.closest('[data-gd]'); if (!b) return;
       const a=b.dataset.gd;
       if (a==='open') return GoodsTab.open();
-      if (a==='new'){ setDlg().close(); return newEquip('catalog', ''); }
+      if (a==='new'){ setDlg().close(); return EquipWizard.open('catalog', ''); }
       return stCatalogTool(a); };
     if (auto) GoodsTab.open();
   }

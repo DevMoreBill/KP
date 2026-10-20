@@ -67,8 +67,8 @@ document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-a]'); if(!b) return;
   const a=b.dataset.a, i=+b.dataset.i, j=+b.dataset.j, k=+b.dataset.k, it=S.items[i];
   switch(a){
-    case 'addItem': return newEquip('kp', b.dataset.cat||'');
-    case 'addStation': return newEquip('kp', b.dataset.cat||'station');
+    case 'addItem': return EquipWizard.open('kp', b.dataset.cat||'');
+    case 'addStation': return EquipWizard.open('kp', b.dataset.cat||'station');
     case 'delItem': S.items.splice(i,1); break;
     case 'up': [S.items[i-1],S.items[i]]=[S.items[i],S.items[i-1]]; break;
     case 'down': [S.items[i+1],S.items[i]]=[S.items[i],S.items[i+1]]; break;
@@ -95,7 +95,7 @@ document.addEventListener('click', async e=>{
       toast(was3d ? 'Главное фото заменено — 3D-вид вернуть можно на вкладке «Компоновка»' : 'Главное фото заменено — прежнее перенесено в изображения'); break; }
     case 'edit': return openEditor(i, b.dataset.tab);
     case 'secOf': return CatSections.open(b.dataset.sec);
-    case 'catOf': { const c=b.dataset.cat; if (typeById(c).station || !catCache.some(x=>attrsOf(x).cat===c)) return newEquip('kp', c); return openCatalog({cat:c}); }
+    case 'catOf': { const c=b.dataset.cat; if (typeById(c).station || !catCache.some(x=>attrsOf(x).cat===c)) return EquipWizard.open('kp', c); return openCatalog({cat:c}); }
     case 'dupItem': { const cp=JSON.parse(JSON.stringify(it)); cp.id=uid(); (cp.features||[]).forEach(f=>{ const old=f.id; f.id=uid(); (cp.gallery||[]).forEach(g=>{ if(g.at==='feat:'+old) g.at='feat:'+f.id; }); });
       (cp.options||[]).forEach(o=>o.id=uid()); S.items.splice(i+1,0,cp); toast('Позиция скопирована'); break; }
     case 'addFeatL': { it.features=it.features||[]; const f={id:uid(),label:b.dataset.l||'',text:''}; it.features.push(f); it.page=true; break; }

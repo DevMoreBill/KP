@@ -56,7 +56,7 @@ class CatSections {
   /** нажата плитка раздела: одна категория — сразу она, пустой раздел — новое оборудование, иначе — каталог на разделе */
   static open(key){ const s=this.get(key); if (!s) return openCatalog({});
     const full=s.types.filter(t=>t.n);
-    if (!full.length) return newEquip('kp', s.types[0].id);
+    if (!full.length) return EquipWizard.open('kp', s.types[0].id);
     if (full.length===1) return openCatalog({cat:full[0].id});
     return openCatalog({grp:key}); }
 }
