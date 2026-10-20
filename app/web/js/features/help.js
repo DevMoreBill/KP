@@ -1,12 +1,8 @@
-// Руководство пользователя и история версий программы — окно «Руководство» (кнопка «?» в шапке, меню «⋯» и меню телефона).
-// Разделы — HELP_SECTIONS (html), история версий — APP_VERSIONS. Поиск по тексту, печать раздела или всего руководства.
+// Руководство пользователя и история версий программы — данные окна «Руководство» (kp/help-window.js): разделы —
+// HELP_SECTIONS (html), история версий — APP_VERSIONS. Обычный скрипт: версию и журнал читают и правят /vypusk и проверки.
 'use strict';
 
 let APP_VERSION = '3.163.0', APP_PATCHED = false;
-// фактическая версия — от сервера (после установки патча она новее встроенной в EXE)
-function loadAppVersion(){
-  return api('/api/version').then(v=>{ if (v && v.version){ APP_VERSION=String(v.version).replace(/^(\d+\.\d+)\.0$/,'$1'); APP_PATCHED=!!v.patched; } }).catch(()=>{});
-}
 
 const APP_VERSIONS = [
   ['3.163.0', '20.10.2026', [
@@ -1672,32 +1668,3 @@ Shift — пропорционально), разделы перетаскива
 </dl>`],
 ];
 
-function openHelp(sec){
-  const d=Modal.host('helpdlg', 'helpwin', 'Руководство');
-  const H={ sec: sec || (()=>{ try{ return localStorage.getItem('kp.helpSec')||'start'; }catch(e){ return 'start'; } })(), q:'' };
-  const all=[...HELP_SECTIONS, ['versions', 'История версий', `<p class="muted">Текущая версия — <b>${APP_VERSION}</b>${APP_PATCHED?' (установлено обновление)':''}.</p>`+APP_VERSIONS.map(([v,dt,items])=>`<h4>Версия ${v} <span class="muted">· ${dt}</span></h4><ul>${items.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>`).join('')]];
-  const strip=h=>h.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
-  const draw=()=>{
-    const q=H.q.trim().toLowerCase(), hits=q?all.filter(([,t,h])=>(t+' '+strip(h)).toLowerCase().includes(q)):all;
-    if (!hits.some(x=>x[0]===H.sec) && hits.length) H.sec=hits[0][0];
-    const cur=all.find(x=>x[0]===H.sec)||all[0];
-    let body=cur[2]; if (q) body=body.replace(/>([^<]+)</g,(m,t)=>'>'+t.replace(new RegExp(H.q.trim().replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),x=>`<mark>${x}</mark>`)+'<');
-    d.innerHTML=`<div class="dlg-h"><h3>Руководство пользователя<small>Конструктор КП · версия ${APP_VERSION}</small></h3>
-        <button class="btn" type="button" data-hp="print">Печать</button><button class="icon" type="button" data-hp="close" aria-label="Закрыть">✕</button></div>
-      <div class="hl-b"><nav class="hl-nav"><input type="search" id="hlQ" placeholder="Поиск по руководству" value="${esc(H.q)}" autocomplete="off">
-        <select class="hl-sel" aria-label="Раздел">${hits.map(([id,t])=>`<option value="${id}"${id===cur[0]?' selected':''}>${esc(t)}</option>`).join('')}</select>
-        ${hits.map(([id,t])=>`<button type="button" class="${id===cur[0]?'on':''}" data-hs="${id}">${esc(t)}</button>`).join('')||'<p class="muted">Ничего не найдено</p>'}</nav>
-        <article class="hl-a"><h2>${esc(cur[1])}</h2>${body}</article></div>`;
-    const qi=$('#hlQ'); qi.oninput=e=>{ H.q=e.target.value; draw(); const i=$('#hlQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); };
-  };
-  d.onclick=e=>{ const b=e.target.closest('[data-hs],[data-hp]'); if (!b) return;
-    if (b.dataset.hs){ H.sec=b.dataset.hs; try{ localStorage.setItem('kp.helpSec', H.sec); }catch(_){} draw(); d.querySelector('.hl-a').scrollTop=0; return; }
-    if (b.dataset.hp==='close') return d.close();
-    if (b.dataset.hp==='print'){ const w=window.open('', '_blank'); if (!w) return toast('Разрешите всплывающие окна для печати');
-      w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Руководство пользователя — Конструктор КП</title>
-        <style>body{font:14px/1.5 Arial,sans-serif;margin:24px;color:#111}h1{font-size:22px}h2{font-size:18px;margin-top:28px;border-bottom:1px solid #ccc}h4{margin:14px 0 4px}code{background:#f2f2f2;padding:0 4px}</style></head>
-        <body><h1>Руководство пользователя — Конструктор КП (версия ${APP_VERSION})</h1>${all.map(([,t,h])=>`<h2>${esc(t)}</h2>${h}`).join('')}</body></html>`);
-      w.document.close(); w.focus(); setTimeout(()=>w.print(), 300); } };
-  d.onchange=e=>{ if (e.target.classList.contains('hl-sel')){ H.sec=e.target.value; draw(); } };
-  draw(); if (!d.open) d.showModal();
-}

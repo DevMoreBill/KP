@@ -3,7 +3,7 @@ paths:
   - "app/crm.py"
   - "app/web/js/features/cabinet*.js"
   - "app/web/js/features/deal-card.js"
-  - "app/web/js/features/my-day.js"
+  - "app/web/js/features/kp/my-day.js"
   - "app/web/css/cabinet.css"
   - "tests/test_crm.py"
 ---

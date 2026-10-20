@@ -1,7 +1,9 @@
 ---
 paths:
   - "app/web/js/features/deal*.js"
-  - "app/web/js/features/pricing.js"
+  - "app/web/js/features/kp/currency.js"
+  - "app/web/js/features/kp/price-*.js"
+  - "app/web/js/features/kp/cbr-rates.js"
   - "app/web/js/features/logistics*.js"
   - "app/web/js/features/tnved.js"
   - "app/logistics_api.py"

@@ -20,7 +20,7 @@ export class DealKp {
 
   static async _clearCurrent() {
     if (!Drafts.meaningful(S)) return true;
-    if (Drafts.on()) return Drafts.stash();
+    if (Drafts.enabled()) return Drafts.stash();
     const text = S.kpId
       ? `Начать новое КП? Сохранённое КП № ${S.number} останется в журнале.`
       : 'Начать новое КП? Текущий черновик будет очищен.';
@@ -37,8 +37,8 @@ export class DealKp {
     NewKp.fresh();
     S.dealId = deal.id;
     const key = deal.clientId || (deal.clientInn ? `inn${deal.clientInn}` : '');
-    const client = key ? await clientById(key).catch(() => null) : null;
-    if (client) applyClient(client);
+    const client = key ? await ClientStore.byId(key).catch(() => null) : null;
+    if (client) ClientStore.apply(client);
     else {
       S.client = deal.client || '';
       S.clientInn = deal.clientInn || '';

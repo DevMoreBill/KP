@@ -1,0 +1,109 @@
+import { ApiKeys } from './api-keys.js';
+import { Auth, Powers } from './auth.js';
+import { AuthMenu, AuthScreen } from './auth-screen.js';
+import { CarrierApis } from './carrier-apis.js';
+import { CbrRates, PricingBlock } from './cbr-rates.js';
+import { ClientCard } from './client-card.js';
+import { ClientFind, ClientMatchText } from './client-find.js';
+import { ClientFields, ClientStore, Inn, OrgName, PartyFind } from './client-store.js';
+import { ClientsImport } from './clients-import.js';
+import { Currency, Discount } from './currency.js';
+import { Drafts } from './drafts.js';
+import { HelpWindow } from './help-window.js';
+import { Journal, KpVersions } from './journal.js';
+import { JournalEcon, JournalRow, ShortName } from './journal-row.js';
+import { KeyBackup } from './key-backup.js';
+import { KpDate } from './kp-date.js';
+import { KpFilesPanel } from './kp-files.js';
+import { KpDiff, KpReport } from './kp-report.js';
+import { KpReportView } from './kp-report-view.js';
+import { KpRepeat } from './kp-repeat.js';
+import { KpSaved } from './kp-saved.js';
+import { KpTrack } from './kp-track.js';
+import * as LEGACY from './legacy.js';
+import { LoginForm } from './login-form.js';
+import { MailDlg } from './mail-dlg.js';
+import { Managers, MgrLock } from './managers.js';
+import { MgrBar } from './mgr-bar.js';
+import { MyDay } from './my-day.js';
+import { MyPrefs } from './my-prefs.js';
+import { NewKp } from './new-kp.js';
+import { PartyCheck } from './party-check.js';
+import { Presets } from './presets.js';
+import { KpEconomics, PriceCalc } from './price-calc.js';
+import { CatPrice, PriceHints, PriceHist } from './price-hints.js';
+import { QuickSearch, RecentModels } from './quick-search.js';
+import { KpLoader, Reminders } from './reminders.js';
+import { UiTexts } from './ui-texts.js';
+
+export const KP_PARTS = {
+  ApiKeys,
+  Auth,
+  Powers,
+  AuthMenu,
+  AuthScreen,
+  CarrierApis,
+  CbrRates,
+  PricingBlock,
+  ClientCard,
+  ClientFind,
+  ClientMatchText,
+  ClientFields,
+  ClientStore,
+  Inn,
+  OrgName,
+  PartyFind,
+  ClientsImport,
+  Currency,
+  Discount,
+  Drafts,
+  HelpWindow,
+  Journal,
+  KpVersions,
+  JournalEcon,
+  JournalRow,
+  ShortName,
+  KeyBackup,
+  KpDate,
+  KpFilesPanel,
+  KpDiff,
+  KpReport,
+  KpReportView,
+  KpRepeat,
+  KpSaved,
+  KpTrack,
+  LoginForm,
+  MailDlg,
+  Managers,
+  MgrLock,
+  MgrBar,
+  MyDay,
+  MyPrefs,
+  NewKp,
+  PartyCheck,
+  Presets,
+  KpEconomics,
+  PriceCalc,
+  CatPrice,
+  PriceHints,
+  PriceHist,
+  QuickSearch,
+  RecentModels,
+  KpLoader,
+  Reminders,
+  UiTexts,
+};
+
+// мост для файлов интерфейса, ещё не переведённых в ES-модули: классы и прежние имена функций
+Object.assign(globalThis, KP_PARTS, LEGACY);
+
+LISTS.ready(['obj.purposes', 'kp.lost']);
+
+UiTexts.listen();
+MgrBar.listen();
+ClientFind.listen();
+ClientsImport.listen();
+ClientCard.listen();
+KpFilesPanel.listen();
+QuickSearch.listen();
+Reminders.listen();

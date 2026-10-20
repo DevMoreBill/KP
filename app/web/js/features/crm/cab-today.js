@@ -201,7 +201,7 @@ export class CabToday {
   }
 
   static _drafts() {
-    if (!Drafts.on() || !CrmData.mine()) return '';
+    if (!Drafts.enabled() || !CrmData.mine()) return '';
     const drafts = Cabinet.drafts || [];
     const limit = Math.round(DEFN('ui.mdDrafts', 4));
     const rows = drafts

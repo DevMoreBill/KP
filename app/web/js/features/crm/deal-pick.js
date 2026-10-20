@@ -7,7 +7,7 @@ export class DealPick {
    * @returns {string}
    */
   static html() {
-    if (!MyDay.on() || !(S.client || S.clientInn)) return '';
+    if (!MyDay.enabled() || !(S.client || S.clientInn)) return '';
     const key = [String(S.clientInn || '').replace(/\D/g, ''), norm(S.client), S.kpId || ''].join('|');
     const state = this.state;
     if (state.key !== key) {

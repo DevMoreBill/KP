@@ -88,6 +88,11 @@ try { const d = LocalDraft.load(); if (d) { S = Object.assign(freshState(), d); 
 
 let saveT;
 
+// справочники, которые читают и переписывают и ES-модули (features/kp), и обычные скрипты: CLIENTS — последние
+// использованные и найденные клиенты (их тысячи, поиск — на сервере), CLIENTS_ALL — сколько всего; MGRS — менеджеры;
+// mgrT — отложенное сохранение контактов менеджера (docx/build.js сбрасывает его перед записью КП)
+let CLIENTS = [], CLIENTS_ALL = 0, MGRS = [], mgrT = null;
+
 // правка позиции каталога в карточке (features/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
 var CATED = null;
 

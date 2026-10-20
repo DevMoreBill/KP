@@ -219,7 +219,7 @@ export class KitActions {
     const found = PartField.of(field.dataset.kitcur);
     if (!found) return;
     found.part.costCur = field.value;
-    if (field.value !== 'RUB' && !(rateOf(field.value) > 0)) loadCBR(true);
+    if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     Kit.sync(found.item);
     renderForm();
     persist();

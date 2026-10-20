@@ -86,7 +86,7 @@ export class Kit {
     for (const part of Kit.parts(item)) {
       if (!part.cost) continue;
       const currency = part.costCur || 'RUB';
-      const rate = currency === 'RUB' ? 1 : rateOf(currency);
+      const rate = currency === 'RUB' ? 1 : Currency.rate(currency);
       if (!(rate > 0)) return NaN;
       sum += part.cost * (+part.qty || 0) * rate;
     }

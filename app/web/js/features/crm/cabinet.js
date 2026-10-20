@@ -48,7 +48,7 @@ export class Cabinet {
    * @param {string} [tab]
    */
   static async open(tab) {
-    if (!MyDay.on()) return;
+    if (!MyDay.enabled()) return;
     if (tab) this.tab = tab;
     const dialog = this.dlg();
     if (!dialog.open) dialog.showModal();
@@ -78,7 +78,7 @@ export class Cabinet {
   static async _extras() {
     const mine = CrmData.mine();
     if (FEAT.on('reminders') && mine) await Reminders.load();
-    this.drafts = Drafts.on() && mine ? await Drafts.list() : [];
+    this.drafts = Drafts.enabled() && mine ? await Drafts.list() : [];
   }
 
   static _announce() {
@@ -200,7 +200,7 @@ export class Cabinet {
       task: () => CrmTask.quick('', after, { pick: true }),
       deal: () => DealNew.open(),
       newkp: () => this._leave(() => NewKp.open()),
-      journal: () => this._leave(() => openJournal()),
+      journal: () => this._leave(() => Journal.open()),
       catalog: () => this._leave(() => openCatalog({})),
       back: () => this._leave(() => null),
     };
