@@ -1,18 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Обновление программы из «Настроек → Обновления» и перезапуск.
+"""Обновление программы: пакет (UpdatePackage), выпуски GitHub, установка, перезапуск, ночное обновление."""
 
-• UpdatePackage — архив обновления «KP-Obnovlenie-X.zip» (как в выпуске на GitHub): внутри папка update (version.json,
-  app\\*.py, app\\web\\…, templates\\…) и server-setup (файлы управления сервером отдела). Проверка: нет путей наружу,
-  есть код и интерфейс, версия читается.
-• ReleaseSource — проверка новой версии и скачивание архива из выпусков GitHub (репозиторий и токен — в «Настройках»;
-  у приватного репозитория без токена — только загрузка архива файлом).
-• Updater — установка в папку update рядом с программой (её подключает launcher.py при запуске EXE, если версия новее
-  встроенной), прежнее обновление — в update.prev (откат одной кнопкой), копия базы перед установкой, история установок.
-• Restarter — перезапуск: вспомогательный процесс ждёт, пока программа закроется и освободит порт, и запускает её снова
-  (сервер отдела — задачей Планировщика, обычный запуск — тем же EXE без открытия браузера).
-• StartCheck — самопроверка запуска обновления и разбор ошибок запуска: не прошла — launcher.py (встроен в EXE) сам
-  возвращает прежнюю версию, а Updater показывает причину в «Обновлениях».
-"""
 import errno
 import io
 import json
@@ -42,19 +29,20 @@ class UpdateError(Exception):
 
 class UpdatePackage:
     """Архив обновления: проверка и распаковка."""
+
     MAX_BYTES = 150 * 1024 * 1024
     MAX_FILES = 5000
-    MAX_UNPACKED = 600 * 1024 * 1024        # распакованное целиком (защита от «zip-бомбы»)
+    MAX_UNPACKED = 600 * 1024 * 1024  # распакованное целиком (защита от «zip-бомбы»)
     REQUIRED = ('update/version.json', 'update/app/kp_server.py', 'update/app/web/index.html')
 
-    def __init__(self, data, keys=None):
+    def __init__(self, data, keys=None) -> None:
         """keys — доверенные ключи подписи (UpdateSign.keys); None — без проверки подписи (только разбор архива)."""
         if len(data) > self.MAX_BYTES:
             raise UpdateError('Файл слишком большой для обновления (больше 150 МБ)')
         try:
             self.zip = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile:
-            raise UpdateError('Это не архив ZIP — нужен файл обновления «KP-Obnovlenie-….zip» из выпуска')
+            raise UpdateError('Это не архив ZIP — нужен файл обновления «KP-Obnovlenie-….zip» из выпуска') from None
         self.names = {self._norm(i.filename): i for i in self.zip.infolist() if not i.is_dir()}
         if len(self.names) > self.MAX_FILES:
             raise UpdateError('В архиве слишком много файлов')
@@ -65,44 +53,51 @@ class UpdatePackage:
         self.prefix = self._prefix()
         missing = [r for r in self.REQUIRED if self.prefix + r not in self.names]
         if missing:
-            raise UpdateError('Это не обновление «Конструктора КП»: нет %s' % ', '.join(m.split('/', 1)[1] for m in missing))
+            raise UpdateError(
+                'Это не обновление «Конструктора КП»: нет {}'.format(', '.join(m.split('/', 1)[1] for m in missing))
+            )
         try:
-            self.version = str(json.loads(self.zip.read(self.names[self.prefix + 'update/version.json']).decode('utf-8-sig')).get('version') or '')
+            self.version = str(
+                json.loads(self.zip.read(self.names[self.prefix + 'update/version.json']).decode('utf-8-sig')).get(
+                    'version'
+                )
+                or ''
+            )
         except (ValueError, UnicodeDecodeError):
-            raise UpdateError('В архиве испорчен version.json')
+            raise UpdateError('В архиве испорчен version.json') from None
         if not re.match(r'^\d+\.\d+(\.\d+){0,2}$', self.version):
-            raise UpdateError('В архиве неверная версия: %s' % self.version[:40])
+            raise UpdateError(f'В архиве неверная версия: {self.version[:40]}')
         if keys is not None:
             try:
                 UpdateSign.check(self.zip, self.names, self.prefix, self.version, keys)
             except (ValueError, zipfile.BadZipFile, OSError, NotImplementedError) as e:
-                raise UpdateError('Обновление не установлено: %s' % e)
+                raise UpdateError(f'Обновление не установлено: {e}') from e
 
     _norm = staticmethod(UpdateSign.norm)
 
     @staticmethod
-    def _unsafe(n):
+    def _unsafe(n) -> bool:
         parts = n.split('/')
         return n.startswith('/') or '..' in parts or any(p.startswith('~') or ':' in p or '\\' in p for p in parts)
 
-    def _prefix(self):
+    def _prefix(self) -> str:
         """Архив может содержать update сразу или внутри папки «Обновление КП X/»."""
         for n in self.names:
             if n.endswith('update/version.json'):
-                return n[:-len('update/version.json')]
+                return n[: -len('update/version.json')]
         return ''
 
-    def files(self, folder):
+    def files(self, folder: str) -> list:
         """[(путь внутри folder, ZipInfo)] — файлы папки update или server-setup."""
         p = self.prefix + folder + '/'
-        return [(n[len(p):], i) for n, i in self.names.items() if n.startswith(p) and '__pycache__' not in n]
+        return [(n[len(p) :], i) for n, i in self.names.items() if n.startswith(p) and '__pycache__' not in n]
 
-    def extract(self, folder, dst):
+    def extract(self, folder: str, dst) -> int:
         n = 0
         root = os.path.abspath(dst)
         for rel, info in self.files(folder):
             out = os.path.abspath(os.path.join(dst, *rel.split('/')))
-            if os.path.commonpath([root, out]) != root:       # «D:» внутри пути на Windows сбросил бы папку
+            if os.path.commonpath([root, out]) != root:  # «D:» внутри пути на Windows сбросил бы папку
                 raise UpdateError('Пакет обновления повреждён: файл вне папки обновления')
             os.makedirs(os.path.dirname(out), exist_ok=True)
             with self.zip.open(info) as src, open(out, 'wb') as f:
@@ -113,17 +108,18 @@ class UpdatePackage:
 
 class ReleaseSource:
     """Выпуски на GitHub: последняя версия, описание изменений, архив обновления."""
+
     WEB_API = 'https://api.github.com'
     API = os.environ.get('KP_UPDATE_API') or WEB_API
     ASSET = re.compile(r'^KP-Obnovlenie-[\d.]+\.zip$')
     TIMEOUT = 60
 
-    def __init__(self, repo, token=''):
+    def __init__(self, repo, token='') -> None:
         if not re.match(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$', repo or ''):
             raise UpdateError('Репозиторий — в виде «владелец/имя», например DevMoreBill/KP')
         self.repo, self.token = repo, (token or '').strip()
 
-    def _headers(self, accept='application/vnd.github+json'):
+    def _headers(self, accept='application/vnd.github+json') -> dict:
         h = {'Accept': accept, 'User-Agent': 'KP-Konstruktor/' + version.VERSION, 'X-GitHub-Api-Version': '2022-11-28'}
         if self.token:
             h['Authorization'] = 'Bearer ' + self.token
@@ -131,7 +127,8 @@ class ReleaseSource:
 
     class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
         """Файл выпуска отдаётся по ссылке на хранилище — туда токен не передаётся."""
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
+
+        def redirect_request(self, req, fp, code, msg, headers, newurl) -> object:
             r = super().redirect_request(req, fp, code, msg, headers, newurl)
             if r is not None:
                 r.headers.pop('Authorization', None)
@@ -139,137 +136,186 @@ class ReleaseSource:
             return r
 
     @staticmethod
-    def _offline(e):
-        return UpdateError('Нет связи с GitHub: %s. Скачайте архив обновления вручную и загрузите его файлом' % str(getattr(e, 'reason', e))[:120])
+    def _offline(e) -> 'UpdateError':
+        return UpdateError(
+            'Нет связи с GitHub: {}. Скачайте архив обновления вручную и загрузите его файлом'.format(
+                str(getattr(e, 'reason', e))[:120]
+            )
+        )
 
-    def _open(self, url, accept):
+    def _open(self, url, accept) -> object:
         req = urllib.request.Request(url, headers=self._headers(accept))
         try:
             return urllib.request.build_opener(self._NoAuthRedirect()).open(req, timeout=self.TIMEOUT)
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
-                raise UpdateError('GitHub не принял токен — проверьте его (нужен доступ «Contents: read» к репозиторию)')
+                raise UpdateError(
+                    'GitHub не принял токен — проверьте его (нужен доступ «Contents: read» к репозиторию)'
+                ) from e
             if e.code == 404:
-                raise UpdateError('Выпуск не найден: репозиторий %s приватный — укажите токен GitHub, или выпусков ещё нет' % self.repo
-                                  if not self.token else 'Выпуск или репозиторий %s не найден' % self.repo)
-            raise UpdateError('GitHub ответил ошибкой %s' % e.code)
+                raise UpdateError(
+                    f'Выпуск не найден: репозиторий {self.repo} приватный — укажите токен GitHub, или выпусков ещё нет'
+                    if not self.token
+                    else f'Выпуск или репозиторий {self.repo} не найден'
+                ) from e
+            raise UpdateError(f'GitHub ответил ошибкой {e.code}') from e
         except (urllib.error.URLError, OSError) as e:
-            raise self._offline(e)
+            raise self._offline(e) from e
 
-    def latest(self):
-        """{version, tag, name, notes, published, asset: {id, name, size, url?} | None, url}. API GitHub не ответил
-        (404 у публичного репозитория, лимит запросов с общего адреса, 403) — ищется через страницу выпусков github.com."""
+    def latest(self) -> dict:
+        """{version, tag, name, notes, published, asset: {id, name, size, url?} | None, url}."""
         try:
-            with self._open('%s/repos/%s/releases/latest' % (self.API, self.repo), 'application/vnd.github+json') as r:
+            with self._open(f'{self.API}/repos/{self.repo}/releases/latest', 'application/vnd.github+json') as r:
                 j = json.loads(r.read().decode('utf-8'))
         except UpdateError:
             if self.token or self.API != ReleaseSource.WEB_API:
                 raise
             return self._latest_web()
         tag = str(j.get('tag_name') or '')
-        asset = next(({'id': a.get('id'), 'name': a.get('name'), 'size': a.get('size')} for a in (j.get('assets') or [])
-                      if self.ASSET.match(str(a.get('name') or ''))), None)
-        return {'version': tag.lstrip('vV'), 'tag': tag, 'name': str(j.get('name') or tag), 'notes': str(j.get('body') or '')[:20000],
-                'published': j.get('published_at') or '', 'asset': asset, 'url': j.get('html_url') or ''}
+        asset = next(
+            (
+                {'id': a.get('id'), 'name': a.get('name'), 'size': a.get('size')}
+                for a in (j.get('assets') or [])
+                if self.ASSET.match(str(a.get('name') or ''))
+            ),
+            None,
+        )
+        return {
+            'version': tag.lstrip('vV'),
+            'tag': tag,
+            'name': str(j.get('name') or tag),
+            'notes': str(j.get('body') or '')[:20000],
+            'published': j.get('published_at') or '',
+            'asset': asset,
+            'url': j.get('html_url') or '',
+        }
 
-    def _latest_web(self):
+    def _latest_web(self) -> dict:
         """Последний выпуск по перенаправлению github.com/<репозиторий>/releases/latest → …/releases/tag/vX.Y.Z."""
         try:
-            with urllib.request.urlopen(urllib.request.Request('https://github.com/%s/releases/latest' % self.repo, headers=self._headers('text/html')),
-                                        timeout=self.TIMEOUT) as r:
+            with urllib.request.urlopen(
+                urllib.request.Request(
+                    f'https://github.com/{self.repo}/releases/latest', headers=self._headers('text/html')
+                ),
+                timeout=self.TIMEOUT,
+            ) as r:
                 final = r.geturl()
         except urllib.error.HTTPError as e:
-            raise UpdateError('Выпуск не найден: репозиторий %s приватный или не существует (GitHub ответил %s) — укажите токен GitHub'
-                              % (self.repo, e.code))
+            raise UpdateError(
+                f'Выпуск не найден: репозиторий {self.repo} приватный или не существует (GitHub ответил {e.code}) — укажите токен GitHub'
+            ) from e
         except (urllib.error.URLError, OSError) as e:
-            raise self._offline(e)
+            raise self._offline(e) from e
         m = re.search(r'/releases/tag/([^/?#]+)$', final or '')
         if not m:
-            raise UpdateError('Выпусков в репозитории %s ещё нет' % self.repo)
+            raise UpdateError(f'Выпусков в репозитории {self.repo} ещё нет')
         tag = urllib.parse.unquote(m.group(1))
         ver = tag.lstrip('vV')
-        name = 'KP-Obnovlenie-%s.zip' % ver
-        asset = {'id': 0, 'name': name, 'size': None,
-                 'url': 'https://github.com/%s/releases/download/%s/%s' % (self.repo, urllib.parse.quote(tag), name)} if self.ASSET.match(name) else None
+        name = f'KP-Obnovlenie-{ver}.zip'
+        asset = (
+            {
+                'id': 0,
+                'name': name,
+                'size': None,
+                'url': f'https://github.com/{self.repo}/releases/download/{urllib.parse.quote(tag)}/{name}',
+            }
+            if self.ASSET.match(name)
+            else None
+        )
         return {'version': ver, 'tag': tag, 'name': tag, 'notes': '', 'published': '', 'asset': asset, 'url': final}
 
-    def download(self, asset):
+    def download(self, asset) -> bytes:
         """asset — {id, url?} из latest() (или номер файла выпуска)."""
         a = asset if isinstance(asset, dict) else {'id': asset}
         if a.get('url') and not a.get('id'):
-            if not str(a['url']).startswith('https://github.com/%s/releases/download/' % self.repo):
+            if not str(a['url']).startswith(f'https://github.com/{self.repo}/releases/download/'):
                 raise UpdateError('Неверная ссылка на файл выпуска')
             url = a['url']
         else:
-            url = '%s/repos/%s/releases/assets/%d' % (self.API, self.repo, int(a['id']))
+            url = f'{self.API}/repos/{self.repo}/releases/assets/{int(a["id"])}'
         with self._open(url, 'application/octet-stream') as r:
             return r.read(UpdatePackage.MAX_BYTES + 1)
 
 
 class Updater:
     """Установка обновления рядом с программой, откат, история."""
+
     KV = 'update'
     HISTORY = 30
-    REPO = 'DevMoreBill/KP'              # репозиторий выпусков по умолчанию
-    FAILED_LOG = 'update-failed.json'     # пишет launcher.py, когда обновление не запустилось и вернулась прежняя версия
+    REPO = 'DevMoreBill/KP'  # репозиторий выпусков по умолчанию
+    FAILED_LOG = 'update-failed.json'  # пишет launcher.py, когда обновление не запустилось и вернулась прежняя версия
 
-    def __init__(self, store, root, data_dir):
+    def __init__(self, store, root, data_dir: str) -> None:
         self.store, self.root, self.data_dir = store, root, data_dir
-        self.dir, self.prev, self.new, self.failed_dir = (os.path.join(root, x) for x in ('update', 'update.prev', 'update.new', 'update.failed'))
+        self.dir, self.prev, self.new, self.failed_dir = (
+            os.path.join(root, x) for x in ('update', 'update.prev', 'update.new', 'update.failed')
+        )
 
-    # ---------- состояние
-    def settings(self):
+    def settings(self) -> dict:
         s = self.store.kv_get(self.KV) or {}
         return s if isinstance(s, dict) else {}
 
-    def _save(self, s):
+    def _save(self, s) -> None:
         self.store.kv_set(self.KV, s)
 
     @staticmethod
-    def frozen():
+    def frozen() -> bool:
         return bool(getattr(sys, 'frozen', False))
 
     @staticmethod
-    def _dir_version(d):
+    def _dir_version(d) -> str:
         try:
-            with open(os.path.join(d, 'version.json'), 'r', encoding='utf-8-sig') as f:
+            with open(os.path.join(d, 'version.json'), encoding='utf-8-sig') as f:
                 return str(json.load(f).get('version') or '')
         except (OSError, ValueError):
             return ''
 
-    def current(self):
+    def current(self) -> str:
         return version.VERSION
 
-    def token(self):
+    def token(self) -> str:
         return str(((self.store.kv_get('integrations') or {}).get('githubToken')) or '').strip()
 
-    def status(self):
+    def status(self) -> dict:
         s = (os.path.isfile(os.path.join(self.root, self.FAILED_LOG)) and self.absorb_failures()) or self.settings()
         installed, prev = self._dir_version(self.dir), self._dir_version(self.prev)
         last = s.get('last') or {}
-        return {'current': self.current(), 'base': os.environ.get('KP_BASE_VERSION') or '', 'patched': bool(os.environ.get('KP_UPDATE_DIR')),
-                'installed': installed, 'pending': bool(installed) and version.as_tuple(installed) > version.as_tuple(self.current()),
-                'prev': prev, 'frozen': self.frozen(), 'writable': self.writable(), 'root': self.root,
-                'repo': s.get('repo') or self.REPO, 'auto': s.get('auto', True), 'hasToken': bool(self.token()),
-                'last': last, 'available': bool(last.get('version')) and version.as_tuple(last['version']) > version.as_tuple(self.current()),
-                'failed': self.failed(s), 'history': (s.get('history') or [])[-self.HISTORY:][::-1],
-                'nightly': s.get('nightly') or 'off', 'nightHour': int(s.get('nightHour', NightUpdate.HOUR)), 'nightLast': s.get('nightLast'),
-                'nightSupported': NightUpdate.supported()}
+        return {
+            'current': self.current(),
+            'base': os.environ.get('KP_BASE_VERSION') or '',
+            'patched': bool(os.environ.get('KP_UPDATE_DIR')),
+            'installed': installed,
+            'pending': bool(installed) and version.as_tuple(installed) > version.as_tuple(self.current()),
+            'prev': prev,
+            'frozen': self.frozen(),
+            'writable': self.writable(),
+            'root': self.root,
+            'repo': s.get('repo') or self.REPO,
+            'auto': s.get('auto', True),
+            'hasToken': bool(self.token()),
+            'last': last,
+            'available': bool(last.get('version'))
+            and version.as_tuple(last['version']) > version.as_tuple(self.current()),
+            'failed': self.failed(s),
+            'history': (s.get('history') or [])[-self.HISTORY :][::-1],
+            'nightly': s.get('nightly') or 'off',
+            'nightHour': int(s.get('nightHour', NightUpdate.HOUR)),
+            'nightLast': s.get('nightLast'),
+            'nightSupported': NightUpdate.supported(),
+        }
 
-    def failed(self, s=None):
-        """Последнее обновление, которое не запустилось (программа вернулась к прежней версии), — пока работает версия
-        старше него: {version, back, at, reason, trace} или None."""
+    def failed(self, s=None) -> dict | None:
+        """Последнее не запустившееся обновление (пока работает версия старше него) или None."""
         f = (s or self.settings()).get('failed')
         if not isinstance(f, dict) or not f.get('version'):
             return None
         return f if version.as_tuple(f['version']) > version.as_tuple(self.current()) else None
 
-    def absorb_failures(self):
-        """Записи launcher.py о неудачных запусках обновлений (update-failed.json рядом с программой) → история установок
-        и предупреждение в «Обновлениях»; файл удаляется. Никогда не мешает запуску. → новые настройки или None."""
+    def absorb_failures(self) -> dict | None:
+        """Записи launcher.py о неудачных запусках → история и предупреждение; файл удаляется."""
         path = os.path.join(self.root, self.FAILED_LOG)
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 recs = json.load(f)
         except FileNotFoundError:
             return None
@@ -278,29 +324,50 @@ class Updater:
         try:
             s = self.settings()
             h = s.get('history') if isinstance(s.get('history'), list) else []
-            for r in recs if isinstance(recs, list) else []:
-                if not isinstance(r, dict) or not r.get('version'):
+            for raw in recs if isinstance(recs, list) else []:
+                if not isinstance(raw, dict) or not raw.get('version'):
                     continue
-                r = {k: str(r.get(k) or '')[:limit] for k, limit in (('version', 40), ('back', 40), ('exe', 40), ('at', 40), ('reason', 600), ('trace', 6000))}
-                h.append({'version': r['back'] or r['exe'], 'from': r['version'], 'by': 'программа', 'at': r['at'],
-                          'source': 'не запустилось — возврат', 'reason': r['reason']})
-                ServerLog.failure('обновление %s не запустилось, программа вернулась к %s: %s' % (r['version'], r['back'] or r['exe'], r['reason']))
+                r = {
+                    k: str(raw.get(k) or '')[:limit]
+                    for k, limit in (
+                        ('version', 40),
+                        ('back', 40),
+                        ('exe', 40),
+                        ('at', 40),
+                        ('reason', 600),
+                        ('trace', 6000),
+                    )
+                }
+                h.append(
+                    {
+                        'version': r['back'] or r['exe'],
+                        'from': r['version'],
+                        'by': 'программа',
+                        'at': r['at'],
+                        'source': 'не запустилось — возврат',
+                        'reason': r['reason'],
+                    }
+                )
+                ServerLog.failure(
+                    'обновление {} не запустилось, программа вернулась к {}: {}'.format(
+                        r['version'], r['back'] or r['exe'], r['reason']
+                    )
+                )
                 # не запустились подряд два обновления (новое и предыдущее) — предупреждение о самом новом из них
                 old = s.get('failed') if isinstance(s.get('failed'), dict) else {}
                 if version.as_tuple(r['version']) >= version.as_tuple(old.get('version') or '0'):
                     s['failed'] = r
-            s['history'] = h[-self.HISTORY:]
+            s['history'] = h[-self.HISTORY :]
             self._save(s)
             os.remove(path)
             return s
-        except Exception as e:          # запись о сбое не должна мешать работе программы
+        except Exception as e:  # запись о сбое не должна мешать работе программы
             ServerLog.failure('запись о неудачном обновлении не прочитана', e)
             return None
 
-    def writable(self):
-        """Можно ли писать рядом с программой: пробный файл — отдельный, папку update.new не трогаем (в неё в это время может
-        распаковываться обновление: «Обзор» и ежечасная проверка писем спрашивают статус, удаление папки обрывало установку)."""
-        probe = os.path.join(os.path.dirname(self.new), '.kp-write-probe-%d' % os.getpid())
+    def writable(self) -> bool:
+        """Можно ли писать рядом с программой (пробный файл; update.new не трогается — туда идёт распаковка)."""
+        probe = os.path.join(os.path.dirname(self.new), f'.kp-write-probe-{os.getpid()}')
         try:
             with open(probe, 'w') as f:
                 f.write('1')
@@ -309,10 +376,10 @@ class Updater:
         except OSError:
             return False
 
-    def configure(self, d, by):
+    def configure(self, d, by: str) -> dict:
         s = self.settings()
         if 'repo' in d:
-            ReleaseSource(str(d.get('repo') or '').strip())       # проверка вида «владелец/имя»
+            ReleaseSource(str(d.get('repo') or '').strip())  # проверка вида «владелец/имя»
             s['repo'] = str(d['repo']).strip()
         if 'auto' in d:
             s['auto'] = bool(d['auto'])
@@ -340,11 +407,10 @@ class Updater:
         self._save(s)
         return self.status()
 
-    # ---------- проверка и скачивание
-    def source(self):
+    def source(self) -> 'ReleaseSource':
         return ReleaseSource(self.settings().get('repo') or self.REPO, self.token())
 
-    def check(self):
+    def check(self) -> dict:
         s = self.settings()
         try:
             rel = self.source().latest()
@@ -357,7 +423,7 @@ class Updater:
         self._save(s)
         return self.status()
 
-    def auto_check(self):
+    def auto_check(self) -> None:
         """Раз в сутки (фоновая задача): проверить, есть ли новая версия (только если включено и задан репозиторий)."""
         s = self.settings()
         if not s.get('auto', True):
@@ -370,21 +436,22 @@ class Updater:
         except UpdateError:
             pass
 
-    def download_latest(self, by):
+    def download_latest(self, by: str) -> dict:
         last = self.settings().get('last') or {}
         if not last.get('asset'):
             raise UpdateError('В выпуске нет архива обновления — сначала «Проверить обновления»')
         return self.install(self.source().download(last['asset']), by, source='GitHub ' + (last.get('tag') or ''))
 
-    # ---------- установка, откат
-    def install(self, data, by, source='файл', force=False):
+    def install(self, data, by: str, source='файл', force: bool = False) -> dict:
         pkg = UpdatePackage(data, UpdateSign.keys(self.root))
         cur = self.current()
         if not force and version.as_tuple(pkg.version) <= version.as_tuple(cur):
-            raise UpdateError('Версия обновления %s не новее работающей %s — устанавливать нечего' % (pkg.version, cur))
+            raise UpdateError(f'Версия обновления {pkg.version} не новее работающей {cur} — устанавливать нечего')
         if not self.writable():
-            raise UpdateError('Нет прав записи в папку программы %s — запустите обновление файлом «Установить обновление.cmd» '
-                              'от имени администратора компьютера' % self.root)
+            raise UpdateError(
+                f'Нет прав записи в папку программы {self.root} — запустите обновление файлом «Установить обновление.cmd» '
+                'от имени администратора компьютера'
+            )
         self._backup_db(pkg.version)
         shutil.rmtree(self.new, ignore_errors=True)
         n = pkg.extract('update', self.new)
@@ -393,17 +460,16 @@ class Updater:
             raise UpdateError('Архив распакован не полностью — повторите')
         self._swap_in()
         setup = self._server_setup(pkg)
-        shutil.rmtree(self.failed_dir, ignore_errors=True)      # прежнее неудачное обновление больше не нужно
+        shutil.rmtree(self.failed_dir, ignore_errors=True)  # прежнее неудачное обновление больше не нужно
         self._log({'version': pkg.version, 'from': cur, 'by': by, 'source': source, 'files': n}, failed=None)
         return {'version': pkg.version, 'from': cur, 'files': n, 'serverSetup': setup}
 
-    def _backup_db(self, ver):
+    def _backup_db(self, ver) -> None:
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        self.store.backup(os.path.join(self.data_dir, 'backup', 'kp-%s-before-update-%s.zip' % (stamp, ver)))
+        self.store.backup(os.path.join(self.data_dir, 'backup', f'kp-{stamp}-before-update-{ver}.zip'))
 
-    def _swap_in(self):
-        """update.new → update; прежнее update → update.prev. Папку, занятую работающей программой, не переименовать —
-        тогда файлы копируются поверх (прежние сохраняются в update.prev)."""
+    def _swap_in(self) -> None:
+        """update.new → update; прежнее update → update.prev."""
         shutil.rmtree(self.prev, ignore_errors=True)
         try:
             if os.path.isdir(self.dir):
@@ -415,7 +481,7 @@ class Updater:
             shutil.copytree(self.new, self.dir, dirs_exist_ok=True)
             shutil.rmtree(self.new, ignore_errors=True)
 
-    def _server_setup(self, pkg):
+    def _server_setup(self, pkg) -> int:
         dst = os.path.join(self.root, 'server-setup')
         if not os.path.isdir(dst) or not pkg.files('server-setup'):
             return 0
@@ -424,7 +490,7 @@ class Updater:
         except OSError:
             return 0
 
-    def rollback(self, by):
+    def rollback(self, by: str) -> dict:
         """Вернуть предыдущее обновление (или версию EXE, если предыдущего нет)."""
         if not os.path.isdir(self.prev):
             raise UpdateError('Предыдущего обновления нет')
@@ -439,7 +505,7 @@ class Updater:
         self._log({'version': back, 'from': cur, 'by': by, 'source': 'откат'})
         return {'version': back}
 
-    def remove(self, by):
+    def remove(self, by: str) -> dict:
         """Убрать установленное обновление — после перезапуска работает версия, встроенная в EXE."""
         if not os.path.isdir(self.dir):
             raise UpdateError('Обновление не установлено — работает версия программы (EXE)')
@@ -448,14 +514,20 @@ class Updater:
         self._log({'version': 'EXE', 'from': self.current(), 'by': by, 'source': 'обновление убрано'})
         return {'ok': True}
 
-    def _log(self, rec, **extra):
-        ServerLog.note('Обновления: %s → %s (%s%s)' % (rec.get('from') or '', rec.get('version') or '', rec.get('source') or '',
-                                                       ', ' + rec['by'] if rec.get('by') else ''))
+    def _log(self, rec, **extra) -> None:
+        ServerLog.note(
+            'Обновления: {} → {} ({}{})'.format(
+                rec.get('from') or '',
+                rec.get('version') or '',
+                rec.get('source') or '',
+                ', ' + rec['by'] if rec.get('by') else '',
+            )
+        )
         s = self.settings()
         h = s.get('history') if isinstance(s.get('history'), list) else []
         h.append(dict(rec, at=datetime.now().isoformat(timespec='seconds')))
-        s['history'] = h[-self.HISTORY:]
-        for k, v in extra.items():          # failed=None — новая установка: прежнее предупреждение о сбое снимается
+        s['history'] = h[-self.HISTORY :]
+        for k, v in extra.items():  # failed=None — новая установка: прежнее предупреждение о сбое снимается
             if v is None:
                 s.pop(k, None)
             else:
@@ -465,162 +537,180 @@ class Updater:
 
 class Restarter:
     """Перезапуск программы: вспомогательный процесс ждёт закрытия и запускает её снова."""
+
     TASK = 'Конструктор КП — сервер отдела'
     DELAY = 3
 
-    def __init__(self, server_mode):
+    def __init__(self, server_mode) -> None:
         self.server_mode = server_mode
 
-    def _task_exists(self):
+    def _task_exists(self) -> bool:
         try:
-            return subprocess.run(['schtasks', '/Query', '/TN', self.TASK], capture_output=True, timeout=15).returncode == 0
+            return (
+                subprocess.run(
+                    ['schtasks', '/Query', '/TN', self.TASK], check=False, capture_output=True, timeout=15
+                ).returncode
+                == 0
+            )
         except (OSError, subprocess.SubprocessError):
             return False
 
-    def command(self):
-        """Команда вспомогательного процесса. На Windows — готовая строка: из списка Python сделал бы кавычки вида \\",
-        которых cmd.exe не понимает (start "" "…\\kp.exe" сломался бы)."""
+    def command(self) -> list | str:
+        """Команда вспомогательного процесса."""
         if os.name == 'nt':
-            wait = 'ping -n %d 127.0.0.1 >nul' % (self.DELAY + 1)
+            wait = f'ping -n {self.DELAY + 1} 127.0.0.1 >nul'
             if self.server_mode and self._task_exists():
-                return 'cmd.exe /s /c "%s & schtasks /Run /TN "%s""' % (wait, self.TASK)
-            run = '"%s"' % sys.executable if getattr(sys, 'frozen', False) else '"%s" "%s"' % (sys.executable, os.path.abspath(sys.argv[0]))
-            return 'cmd.exe /s /c "%s & start "" %s"' % (wait, run)
+                return f'cmd.exe /s /c "{wait} & schtasks /Run /TN "{self.TASK}""'
+            run = (
+                f'"{sys.executable}"'
+                if getattr(sys, 'frozen', False)
+                else f'"{sys.executable}" "{os.path.abspath(sys.argv[0])}"'
+            )
+            return f'cmd.exe /s /c "{wait} & start "" {run}"'
         args = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, os.path.abspath(sys.argv[0])]
-        return ['sh', '-c', 'sleep %d; exec "$@"' % self.DELAY, 'kp-restart'] + args
+        return ['sh', '-c', f'sleep {self.DELAY}; exec "$@"', 'kp-restart', *args]
 
-    # переменные, которые новый процесс должен получить заново, а не унаследовать:
-    # _MEI…/_PYI… — EXE в одном файле (PyInstaller) распаковывается во временную папку и помечает её в окружении;
-    # унаследовав их, новый EXE искал бы свои файлы в папке старого процесса (её уже удалили) и сразу падал;
-    # KP_UPDATE_* / KP_BASE_VERSION — launcher.py ставит их сам, если обновление новее EXE (после отката — нет)
+    # новый процесс не наследует _MEI…/_PYI… (папка старого EXE) и KP_UPDATE_* (их ставит launcher.py)
     INHERIT_DROP = ('_MEI', '_PYI', 'PYINSTALLER_', 'KP_UPDATE_', 'KP_BASE_VERSION')
 
     @classmethod
-    def environment(cls, browser=False):
+    def environment(cls, browser=False) -> dict:
         env = {k: v for k, v in os.environ.items() if not k.upper().startswith(cls.INHERIT_DROP)}
-        env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'      # PyInstaller ≥ 6.10: новый EXE — как запущенный заново
+        env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'  # PyInstaller ≥ 6.10: новый EXE — как запущенный заново
         if browser:
             env.pop('KP_NO_BROWSER', None)
         else:
             env['KP_NO_BROWSER'] = '1'
         return env
 
-    def spawn(self, browser=False):
+    def spawn(self, browser=False) -> None:
         """browser — новый процесс сам откроет браузер (возврат к прежней версии при первом запуске: страницы ещё нет)."""
         env = self.environment(browser)
         cmd = self.command()
         if os.name == 'nt':
-            flags = 0x00000008 | 0x00000200       # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
             try:
-                subprocess.Popen(cmd, env=env, creationflags=flags | 0x01000000, close_fds=True)   # + CREATE_BREAKAWAY_FROM_JOB
+                subprocess.Popen(
+                    cmd, env=env, creationflags=flags | 0x01000000, close_fds=True
+                )  # + CREATE_BREAKAWAY_FROM_JOB
             except OSError:
                 subprocess.Popen(cmd, env=env, creationflags=flags, close_fds=True)
         else:
-            subprocess.Popen(cmd, env=env, start_new_session=True, close_fds=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+            subprocess.Popen(
+                cmd,
+                env=env,
+                start_new_session=True,
+                close_fds=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
 
-    def restart(self, server):
+    def restart(self, server) -> None:
         """После ответа на запрос: запустить вспомогательный процесс и закрыть сервер (main() завершает программу)."""
-        def go():
+
+        def go() -> None:
             self.spawn()
             server.shutdown()
+
         threading.Timer(0.7, go).start()
 
 
 class StartCheck:
-    """Самопроверка запуска обновления (патча) и разбор ошибок запуска.
+    """Самопроверка запуска обновления (патча) и разбор ошибок запуска."""
 
-    Пока новая версия не ответила на свои главные адреса, программа не считается запущенной (kp_server.STARTED).
-    Ошибка в коде обновления до этого момента или неудачная самопроверка — launcher.py возвращает прежнюю версию
-    (update → update.failed, update.prev → update) и запускает её; причина — в «Настройки → Обновления».
-    Ошибки окружения (база повреждена или занята, нет места, нет прав) прежняя версия встретила бы так же — из-за них
-    обновление не откатывается: программа показывает своё обычное сообщение."""
     PATHS = ('/api/version', '/api/ping', '/')
-    TIMEOUT = 60           # медленный компьютер или большая база: не ответил за минуту — не повод откатывать
-    ENV_WORDS = ('malformed', 'not a database', 'disk is full', 'database is locked', 'disk i/o error', 'readonly database',
-                 'unable to open database', 'read-only file system', 'no space left')
+    TIMEOUT = 60  # медленный компьютер или большая база: не ответил за минуту — не повод откатывать
+    ENV_WORDS = (
+        'malformed',
+        'not a database',
+        'disk is full',
+        'database is locked',
+        'disk i/o error',
+        'readonly database',
+        'unable to open database',
+        'read-only file system',
+        'no space left',
+    )
 
     class Failed(Exception):
         """Обновление запустилось, но на свои главные адреса не отвечает как надо."""
 
-    def __init__(self, port, server, ready):
+    def __init__(self, port, server, ready) -> None:
         self.port, self.server, self.ready, self.error = port, server, ready, ''
 
     @staticmethod
-    def armed():
-        """Работает обновление (патч), и EXE умеет вернуть прежнюю версию (launcher.py с 3.51). У прежних EXE ошибку
-        запуска вернуть некому — тогда без самопроверки и обновление запускается как раньше."""
+    def armed() -> bool:
+        """Работает обновление (патч), и EXE умеет вернуть прежнюю версию (launcher.py с 3.51)."""
         return bool(os.environ.get('KP_UPDATE_DIR')) and os.environ.get('KP_UPDATE_FALLBACK') == '1'
 
     @classmethod
-    def code_error(cls, e):
+    def code_error(cls, e) -> bool:
         """Ошибка в коде программы, а не в окружении (нет прав, нет места, база повреждена или занята)."""
-        if isinstance(e, PermissionError) or (isinstance(e, OSError) and e.errno in (errno.ENOSPC, errno.EROFS, errno.EACCES)):
+        if isinstance(e, PermissionError) or (
+            isinstance(e, OSError) and e.errno in (errno.ENOSPC, errno.EROFS, errno.EACCES)
+        ):
             return False
-        if isinstance(e, sqlite3.DatabaseError) or isinstance(e, OSError):
+        if isinstance(e, (sqlite3.DatabaseError, OSError)):
             return not any(w in str(e).lower() for w in cls.ENV_WORDS)
         return True
 
-    def start(self):
+    def start(self) -> None:
         threading.Thread(target=self._run, daemon=True, name='start-check').start()
 
-    def _run(self):
+    def _run(self) -> None:
         try:
             for path in self.PATHS:
                 self._get(path)
         except self.Failed as e:
-            self.error = 'Самопроверка после запуска: %s' % e
+            self.error = f'Самопроверка после запуска: {e}'
             self.server.shutdown()
             return
-        except Exception as e:           # сама проверка не должна откатывать рабочую версию
+        except Exception as e:  # сама проверка не должна откатывать рабочую версию
             ServerLog.failure('самопроверка запуска не выполнена', e)
         self.ready()
 
-    def _get(self, path):
+    def _get(self, path) -> None:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:
-            with opener.open('http://127.0.0.1:%d%s' % (self.port, path), timeout=self.TIMEOUT) as r:
+            with opener.open(f'http://127.0.0.1:{self.port}{path}', timeout=self.TIMEOUT) as r:
                 r.read(1 << 20)
         except urllib.error.HTTPError as e:
-            raise self.Failed('%s — ответ %d' % (path, e.code))
+            raise self.Failed(f'{path} — ответ {e.code}') from e
         except urllib.error.URLError as e:
             if isinstance(e.reason, TimeoutError):
                 return
-            raise self.Failed('%s — нет ответа (%s)' % (path, e.reason))
+            raise self.Failed(f'{path} — нет ответа ({e.reason})') from e
         except TimeoutError:
             return
         except (OSError, ValueError) as e:
-            raise self.Failed('%s — %s' % (path, e))
+            raise self.Failed(f'{path} — {e}') from e
 
 
 class NightUpdate:
-    """Ночное обновление (по желанию, «Настройки → Обновления»): в выбранный час программа сама проверяет новую версию на
-    GitHub, скачивает и ставит её и перезапускается. Условия: EXE 3.51 и новее (вернёт прежнюю версию, если новая не
-    запустится — launcher.py); последние 15 минут никто ничего не сохранял (иначе — следующая проверка через полчаса);
-    одна попытка за ночь; версия, которая уже не запустилась, сама второй раз не ставится. «Только исправления» — новая
-    версия той же ветки (3.52.0 → 3.52.1), «все версии» — любая новая. Итог — kv update.nightLast, письмо администратору
-    (admin_alerts) и история установок."""
+    """Ночное обновление в выбранный час, если программа простаивает (EXE с откатом, launcher.py)."""
+
     MODES = ('off', 'patch', 'all')
-    HOUR = 3              # час по умолчанию
-    # окно (часов с выбранного часа) и тишина (минут без изменений) — «Значения программы»: srv.nightWindowH, srv.nightQuietMin
+    HOUR = 3  # час по умолчанию
+    # окно и тишина — srv.nightWindowH, srv.nightQuietMin
     MIN_EXE = (3, 51, 0)  # EXE с возвратом к прежней версии
     BY = 'ночное обновление'
-    last_write = 0.0      # время последнего изменяющего запроса (kp_server.Handler)
+    last_write = 0.0  # время последнего изменяющего запроса (kp_server.Handler)
 
-    def __init__(self, updater):
+    def __init__(self, updater) -> None:
         self.up = updater
 
     @classmethod
-    def touch(cls):
+    def touch(cls) -> None:
         cls.last_write = time.time()
 
     @classmethod
-    def supported(cls):
+    def supported(cls) -> bool:
         """Программа запущена из EXE, который умеет вернуть прежнюю версию (встроенная в EXE версия — 3.51 и новее)."""
         base = os.environ.get('KP_BASE_VERSION') or version.VERSION
         return bool(getattr(sys, 'frozen', False)) and version.as_tuple(base) >= cls.MIN_EXE
 
-    def skip(self, s, now):
+    def skip(self, s, now) -> str:
         """Почему сейчас не ставить ('' — ставить можно)."""
         if (s.get('nightly') or 'off') == 'off':
             return 'выключено'
@@ -636,18 +726,22 @@ class NightUpdate:
         return ''
 
     @staticmethod
-    def night(now, h):
+    def night(now, h) -> str:
         """Какая это ночь: дата начала окна (окно 23:00–01:00 — одна ночь)."""
         start = now if now.hour >= h else now - timedelta(days=1)
         return start.strftime('%Y-%m-%d')
 
-    def run(self, restart, now=None):
+    def run(self, restart, now=None) -> dict | None:
         """Раз в полчаса (Background.every): поставить новую версию, если пора; restart — перезапуск программы. → запись или None."""
         now = now or datetime.now()
         s = self.up.settings()
         if self.skip(s, now):
             return None
-        rec = {'night': self.night(now, int(s.get('nightHour', self.HOUR))), 'at': now.isoformat(timespec='seconds'), 'from': self.up.current()}
+        rec = {
+            'night': self.night(now, int(s.get('nightHour', self.HOUR))),
+            'at': now.isoformat(timespec='seconds'),
+            'from': self.up.current(),
+        }
         try:
             st = self.up.check()
             last, failed = st.get('last') or {}, (self.up.settings().get('failed') or {})
@@ -655,21 +749,29 @@ class NightUpdate:
             if not st['available']:
                 rec['result'] = 'новой версии нет'
             elif failed.get('version') == lv:
-                rec['result'] = 'версия %s уже не запустилась на этом компьютере — ставится только вручную' % lv
+                rec['result'] = f'версия {lv} уже не запустилась на этом компьютере — ставится только вручную'
             elif (s.get('nightly') == 'patch') and version.as_tuple(lv)[:2] != version.as_tuple(cur)[:2]:
-                rec['result'] = 'версия %s — не исправление текущей %s; её ставят вручную' % (lv, cur)
+                rec['result'] = f'версия {lv} — не исправление текущей {cur}; её ставят вручную'
             else:
                 res = self.up.download_latest(self.BY)
-                rec.update(result='установлена версия %s, перезапуск' % res['version'], version=res['version'], ok=True)
+                rec.update(
+                    result='установлена версия {}, перезапуск'.format(res['version']), version=res['version'], ok=True
+                )
         except UpdateError as e:
-            rec.update(result='не выполнено: %s' % e, error=True)
+            rec.update(result=f'не выполнено: {e}', error=True)
             ServerLog.failure('ночное обновление', e)
         s = self.up.settings()
         s['nightLast'] = rec
         self.up._save(s)
         if rec.get('ok'):
             from admin_alerts import AdminAlerts
-            AdminAlerts.notice(self.up.store, 'Ночью установлено обновление %s (было %s) — программа перезапустилась' % (rec['version'], rec['from']))
-            ServerLog.note('Ночное обновление: %s → %s' % (rec['from'], rec['version']))
+
+            AdminAlerts.notice(
+                self.up.store,
+                'Ночью установлено обновление {} (было {}) — программа перезапустилась'.format(
+                    rec['version'], rec['from']
+                ),
+            )
+            ServerLog.note('Ночное обновление: {} → {}'.format(rec['from'], rec['version']))
             restart()
         return rec
