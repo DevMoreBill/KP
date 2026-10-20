@@ -386,6 +386,7 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 .dk-t.ok b{color:var(--ok)}
 .dk-t.bad{border-color:var(--danger)}.dk-t.bad b{color:var(--danger)}
 .dk-t.warn{border-color:var(--warn-line,var(--line));background:var(--warn-bg,var(--card))}
+.dk-t.warn>span,.dk-t.warn>small{color:var(--warn-ink,var(--ink))}
 .dk-tb{display:block;height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin:3px 0 1px}
 .dk-tb>i{display:block;height:100%;background:var(--ok);border-radius:3px}
 .dk-exec{margin-bottom:14px}
