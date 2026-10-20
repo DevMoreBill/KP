@@ -236,6 +236,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.163.0** (20.10) — чистый код, ч. 24: `equip-wizard.js` → `features/wizard/` (`EquipWizard`, `NewStation`); глобальные `NW`, `newEquip`, `nwDraw`, `nwFinish` … заменены методами `EquipWizard`; вызовы `newEquip(…)` → `EquipWizard.open(…)`; вывод окна побайтно как прежде (399 сравнений).
 - **3.164.0** (20.10) — чистый код, ч. 25: `settings*.js` → `features/admin/` (29 классов, `AdminApi`, `AdminDialog`; разметка «Настроек» как прежде).
 - **3.165.0** (20.10) — чистый код, ч. 26–27: документ КП, шаблоны, предпросмотр, графический редактор → `features/doc/`; журнал, черновики, клиенты, менеджеры, вход, цены, руководство → `features/kp/` (`help.js` — данные версий, `kp/legacy.js` — мост старых имён).
+- **3.166.0** (20.10) — чистый код, ч. 28: каталог, карточка позиции, фото, ИИ, категории → `features/catalog/`; сервер — кэш сжатых файлов по пути и версии.
 - **3.155.1** (20.10) — `test_update_fallback.wait_version`: ожидание версии после отката вместо фиксированной паузы.
 - **3.155.0** (20.10) — чистый код, ч. 20: «магические числа» сервера 256 → 0 (Ruff PLR2004 включён), `feed_files.PRESSURE_ALIAS`.
 - **3.154.0** (20.10) — чистый код, ч. 19: без флагов, этап 2 (31 → 0): `Mailer.send_service`, `AiAsk.ask/probe`, `install/reinstall`, `DbCopy.daily/now`, `AutoRates`, `Sides`, `CheckMode`, `CatDetect`, `PdfText`, `data_bundle.Keys`, `feeds.Missing`, `FeedPurge.run_and_block`.
