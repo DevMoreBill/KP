@@ -222,7 +222,7 @@ export class ExpertFix {
    * @returns {object[]}
    */
   static collect(item) {
-    if (!stationOf(item) || !isKit(item)) return [];
+    if (!Kit.station(item) || !Kit.has(item)) return [];
     const list = new FixList();
     this._inputs(item, list);
     this._needs(item, list);
@@ -312,7 +312,7 @@ export class ExpertFix {
 
   /** замечания компоновки (ошибки и предупреждения) */
   static _layout(item, list) {
-    const plan = StationUi.enabled(item) && kitContainer(item) ? StationUi.plan(item) : null;
+    const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
     if (!plan || plan.level === 'none') return;
     for (const issue of plan.issues || []) {
       if (issue.level === 'error' || issue.level === 'warn') {
@@ -343,7 +343,7 @@ export class ExpertFix {
       issue.level === 'error' &&
       sec === 'fit' &&
       !StationReq.recvOut(item) &&
-      kitParts(item).some(part => StationEquip.kindOf(part) === 'receiver')
+      Kit.parts(item).some(part => StationEquip.kindOf(part) === 'receiver')
     );
   }
 
@@ -352,7 +352,7 @@ export class ExpertFix {
   }
 
   static _ventFix(item, issue, sec) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     if (sec !== 'vent' || !/Не поместил/.test(issue.text) || !container) return null;
     if (!KitView.sysOn(item, container, 'exfan') && StationRules.opt('vent.exfan'))
       return { id: 'exfan', label: 'Включить вытяжные вентиляторы' };
@@ -382,7 +382,7 @@ export class ExpertFix {
 
   /** основные ресиверы (не мокрые и не у потребителя) больше 500 л */
   static _mainReceivers(item) {
-    return kitParts(item).filter(
+    return Kit.parts(item).filter(
       part =>
         StationEquip.kindOf(part) === 'receiver' &&
         part.recvRole !== 'wet' &&
@@ -398,7 +398,7 @@ export class ExpertFix {
    */
   static cont(suggest) {
     const size = suggest.size ? ` ${suggest.size.map(side => Mm.text(side)).join(' × ')} мм` : '';
-    return ctypeOf(suggest.ctype).name + size;
+    return ContainerKind.of(suggest.ctype).name + size;
   }
 
   /**
@@ -441,11 +441,11 @@ export class ExpertFix {
   }
 
   static _container(item) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     const plan = StationUi.plan(item);
     const suggest = plan && plan.suggest;
     if (!suggest || !container) return '';
-    contApply(container, {
+    ContainerPart.apply(container, {
       ctype: suggest.ctype,
       size: suggest.size ? suggest.size.join(' × ') : '',
       sizeAuto: !!StationGeo.FLEX[suggest.ctype],
@@ -459,18 +459,18 @@ export class ExpertFix {
   }
 
   static _exfan(item) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     if (!container) return '';
-    container.sys = { ...(container.sys || CONT_SYS_DEF), exfan: true, boost: false };
-    contApply(container);
+    container.sys = { ...(container.sys || ContainerKind.SYSTEMS_ON), exfan: true, boost: false };
+    ContainerPart.apply(container);
     return 'вытяжные вентиляторы в стене напротив притока — проёмы меньше';
   }
 
   static _boost(item) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     if (!container) return '';
-    container.sys = { ...(container.sys || CONT_SYS_DEF), boost: true };
-    contApply(container);
+    container.sys = { ...(container.sys || ContainerKind.SYSTEMS_ON), boost: true };
+    ContainerPart.apply(container);
     return 'вентилятор в воздуховоде выброса — жалюзи меньше';
   }
 
@@ -580,7 +580,7 @@ export class ExpertFix {
     tried.add(row.fix.id);
     const text = await this.fix(item, row.fix.id);
     if (text) done.push(text);
-    kitSync(item);
+    Kit.sync(item);
     StationUi.cache.delete(item.id);
     StationSize.refresh(item);
     this.memo = null;

@@ -32,7 +32,7 @@ export class StationModsUi {
    * @returns {string}
    */
   static btn(item, index, plan) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     if (!this.can(container)) return '';
     const mods = StationMods.of(container);
     const bad = plan.level === 'error' && !mods;
@@ -82,7 +82,7 @@ export class StationModsUi {
    */
   static open(index) {
     const item = S.items[index];
-    const container = item && kitContainer(item);
+    const container = item && Kit.container(item);
     if (!this.can(container)) return;
     const current = StationMods.of(container);
     const state = {
@@ -457,7 +457,7 @@ export class StationModsUi {
     const part =
       place >= 0
         ? parts[place]
-        : kitNewPart({
+        : Kit.newPart({
             name: this.JOIN,
             desc: this.JOIN_DESC,
             modJoin: true,
@@ -474,10 +474,10 @@ export class StationModsUi {
    * @param {string} message
    */
   static done(item, message) {
-    const container = kitContainer(item);
-    if (container) contApply(container);
+    const container = Kit.container(item);
+    if (container) ContainerPart.apply(container);
     StationSize.refresh(item);
-    stationFill(item);
+    StationAuto.fill(item);
     persist();
     renderEditor();
     renderForm();

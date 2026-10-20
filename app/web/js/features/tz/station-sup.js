@@ -18,7 +18,7 @@ export class StationSup {
   }
   /** поставщик основного оборудования станции x (компрессоры, ДГУ, насосы — роль main) */
   static use(station) {
-    const part = kitParts(station).find(z => z.role === 'main'),
+    const part = Kit.parts(station).find(z => z.role === 'main'),
       item = part && catCache.find(z => z.id === part.catId);
     this.ctx = this.of(item);
     return this.ctx;
@@ -52,7 +52,7 @@ export class StationSup {
         tank: 'бак',
       },
       bySupplier = new Map();
-    for (const part of kitParts(station)) {
+    for (const part of Kit.parts(station)) {
       const k = StationEquip.kindOf(part);
       if (!KIND[k]) continue;
       const supplier = this.label(part) || 'без поставщика в каталоге',

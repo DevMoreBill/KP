@@ -98,7 +98,7 @@ class CoverHint {
     return { title:t.coverTitle||t.name, model:CoverHint.model(x), desc:'', kpis:kp };
   }
   static model(x){
-    const m=typeof stationOf==='function' && stationOf(x) ? kitMainPart(x) : null, ma=(m&&m.attrs)||{};
+    const m=typeof Kit!=='undefined' && Kit.station(x) ? Kit.main(x) : null, ma=(m&&m.attrs)||{};
     if (ma.model) return [ma.maker, ma.model].filter(Boolean).join(' ');
     const a=attrsOf(x);
     return [a.maker,a.model].filter(Boolean).join(' ')||x.name;

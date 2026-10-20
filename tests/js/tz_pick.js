@@ -22,7 +22,7 @@ global.mainLine=()=>''; global.groupsFromAttrs=()=>[];   // характерис
 global.esc=v=>String(v??'').replace(/[&<>"']/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js', 'station/index.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'kit-view.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js', 'station/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
@@ -32,8 +32,8 @@ if (GOLDEN){ process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN));
 class Cat {
   static n=0;
   static item(name, attrs){ return { id:'c'+(++Cat.n), name, attrs:Object.assign({ maker:'Пример' }, attrs) }; }
-  static station(cat, parts, req){ return { id:'st'+(++Cat.n), name:'', attrs:{ cat }, req:req||{}, kit:{ parts:[kitNewContainer('block'), ...parts] } }; }
-  static kinds(x){ return kitParts(x).map(p=>[StationEquip.kindOf(p), p.qty, (p.attrs||{}).cat||'']); }
+  static station(cat, parts, req){ return { id:'st'+(++Cat.n), name:'', attrs:{ cat }, req:req||{}, kit:{ parts:[ContainerPart.create('block'), ...parts] } }; }
+  static kinds(x){ return Kit.parts(x).map(p=>[StationEquip.kindOf(p), p.qty, (p.attrs||{}).cat||'']); }
 }
 
 class Check {
@@ -89,17 +89,17 @@ class Check {
       Cat.item('Ресивер РВ-900/11', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040' }),
       Cat.item('Ресивер РВ-2000', { cat:'receiver', volume:2000, pressure:11 }),
     ];
-    const x=Cat.station('st_comp', [kitNewPart({ name:'Трубопроводная обвязка и запорная арматура' })], { reserve:'1' });
+    const x=Cat.station('st_comp', [Kit.newPart({ name:'Трубопроводная обвязка и запорная арматура' })], { reserve:'1' });
     x.stLayout={ air:'2.2.2' };
     const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'1', work:0 });
     const K=Cat.kinds(x), comp=K.find(k=>k[0]==='compressor');
     assert.deepStrictEqual(comp.slice(0, 2), ['compressor', 2], '1 рабочий + 1 резервный: '+JSON.stringify(K));
-    assert.strictEqual(kitParts(x).find(p=>StationEquip.kindOf(p)==='compressor').name, 'Компрессор винтовой К-130', '10 м³/мин + продувка 15 % — один на 13 м³/мин');
+    assert.strictEqual(Kit.parts(x).find(p=>StationEquip.kindOf(p)==='compressor').name, 'Компрессор винтовой К-130', '10 м³/мин + продувка 15 % — один на 13 м³/мин');
     assert.ok(K.some(k=>k[0]==='dryer' && k[2]==='dryer_ads'), 'класс воды 2 (−40 °C) — адсорбционный осушитель');
     assert.ok(K.filter(k=>k[0]==='filter').length>=2, 'фильтры до и после адсорбционного осушителя: '+JSON.stringify(K));
     // методика ПНЕВМОТЕХ: 13 м³/мин — цикл 13 / (8 · 1) = 1 625 л; наименьшее допустимое — не меньше
     // 15 % минутной (1 950 л) → 3 × 900 л (основной, после осушителя); мокрый — только при пиках; 2000 л — не из ряда 900/500
-    const RV=p=>kitParts(p).filter(z=>StationEquip.kindOf(z)==='receiver').map(z=>[z.name, z.qty, z.recvRole]);
+    const RV=p=>Kit.parts(p).filter(z=>StationEquip.kindOf(z)==='receiver').map(z=>[z.name, z.qty, z.recvRole]);
     assert.deepStrictEqual(RV(x), [['Ресивер РВ-900/11', 3, 'dry']], JSON.stringify(RV(x)));
     assert.ok(/основной ресивер: 3 × Ресивер РВ-900\/11/.test(note) && !/мокрый ресивер/.test(note), note);
     const y=Cat.station('st_comp', [], {});
@@ -141,9 +141,9 @@ class Check {
   await Check.run('компрессорная: два рабочих по ТЗ, рефрижераторный осушитель', async ()=>{
     const x=Cat.station('st_comp', [], {});
     const note=await TzPick.run(x, { kind:'comp', flow:12.5, pressure:8, air:'2.4.2', reserve:'1', work:2 });
-    const p=kitParts(x).find(z=>StationEquip.kindOf(z)==='compressor');
+    const p=Kit.parts(x).find(z=>StationEquip.kindOf(z)==='compressor');
     assert.deepStrictEqual([p.name, p.qty], ['Компрессор винтовой К-65', 3], '2 рабочих + 1 резервный по 6,5 м³/мин');
-    assert.ok(kitParts(x).some(z=>(z.attrs||{}).cat==='dryer_refrig'), 'класс воды 4 — рефрижераторный');
+    assert.ok(Kit.parts(x).some(z=>(z.attrs||{}).cat==='dryer_refrig'), 'класс воды 4 — рефрижераторный');
     assert.ok(!/продувк/.test(note), note);
   });
 
@@ -158,7 +158,7 @@ class Check {
     ];
     const x=Cat.station('st_comp', [], {});
     const note=await TzPick.run(x, { kind:'comp', flow:36, pressure:7, air:'2.4.2', reserve:'0', work:0 });
-    const one=k=>kitParts(x).filter(p=>StationEquip.kindOf(p)===k), c=one('compressor')[0], d=one('dryer')[0], Qc=13*c.qty;
+    const one=k=>Kit.parts(x).filter(p=>StationEquip.kindOf(p)===k), c=one('compressor')[0], d=one('dryer')[0], Qc=13*c.qty;
     assert.ok(c && c.qty>=3 && c.qty<=TzPick.MAX && Qc>=36, 'компрессоров — сколько нужно (до четырёх): '+JSON.stringify(c && c.qty));
     assert.ok(d && d.name==='Осушитель рефрижераторный ОР-20' && d.qty>=2, 'один осушитель мал — несколько одинаковых параллельно: '+note);
     const plan=StationLayout.solve(StationUi.input(x)), F=one('filter');
@@ -180,7 +180,7 @@ class Check {
     ];
     const x=Cat.station('st_comp', [], {});
     const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0 });
-    const F=kitParts(x).filter(p=>StationEquip.kindOf(p)==='filter').map(p=>p.name).sort();
+    const F=Kit.parts(x).filter(p=>StationEquip.kindOf(p)==='filter').map(p=>p.name).sort();
     assert.deepStrictEqual(F, ['Фильтр магистральный DDp 44 пылевой', 'Фильтр магистральный PD 44, 0,01 мкм'], note);
     assert.ok(!/В каталоге нет: .*фильтр/.test(note), note);
   });
@@ -191,7 +191,7 @@ class Check {
       Cat.item('Компрессор винтовой К-130 VSD', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
       Cat.item('Компрессор безмасляный БК-140', { cat:'comp_screw', flow:14, pressure:10, kw:90 }),
     ];
-    const main=x=>kitParts(x).find(p=>StationEquip.kindOf(p)==='compressor');
+    const main=x=>Kit.parts(x).find(p=>StationEquip.kindOf(p)==='compressor');
     let x=Cat.station('st_comp', [], {});
     await TzPick.run(x, { kind:'comp', flow:10, pressure:7, reserve:'0', work:0, oilFree:true });
     assert.strictEqual(main(x).name, 'Компрессор безмасляный БК-140', 'класс 0 по маслу — только безмасляный');
@@ -209,7 +209,7 @@ class Check {
     assert.deepStrictEqual(StationReq.ensureParts(x), ['Шкаф АВР (автоматический ввод резерва)', 'Шкаф АСУ ТП (автоматизация и диспетчеризация)']);
     assert.deepStrictEqual(StationReq.ensureParts(x), [], 'второй раз — ничего');
     assert.deepStrictEqual(warn(), []);
-    assert.ok(kitParts(x).filter(p=>/^Шкаф/.test(p.name)).every(p=>KitScope.of(p)==='asm' && p.desc), 'шкафы — у сборщика, с описанием');
+    assert.ok(Kit.parts(x).filter(p=>/^Шкаф/.test(p.name)).every(p=>KitScope.of(p)==='asm' && p.desc), 'шкафы — у сборщика, с описанием');
   });
 
   // «400 / 230 В» — трёхфазная с нейтралью (до 3.86 по ошибке отсекалась как однофазная, и для 800 кВт бралась ДГУ на
@@ -222,13 +222,13 @@ class Check {
     global.catCache=[I('ДГУ HERTZ HG 1100 CL', '400 / 230 В', '3 фазы', 800), I('ДГУ ТСС АД-2000С-Т10500', '10500 В', '3 фазы', 2000)];
     const x=Cat.station('st_dgu', [], { kw:'800' }); StationDefaults.add(x, 'st_dgu');
     await TzPick.run(x, { kind:'dgu', kw:800, hours:0, work:0 });
-    assert.strictEqual(kitParts(x).find(z=>StationEquip.kindOf(z)==='dgu').name, 'ДГУ HERTZ HG 1100 CL');
+    assert.strictEqual(Kit.parts(x).find(z=>StationEquip.kindOf(z)==='dgu').name, 'ДГУ HERTZ HG 1100 CL');
     // в контейнер — открытого исполнения (в кожухе шире, станция уходит в негабарит), кожух — если открытой нет
     const J=(n, ex, kw)=>Cat.item(n, { cat:'dgu', kw, voltage:'400 / 230 В', phases:'3 фазы', execution:ex });
     global.catCache=[J('ДГУ Energo 1000 MP-SD-S в кожухе', 'В кожухе', 800), J('ДГУ Energo MP1000S открытого исполнения', 'Открытое', 800)];
     const y=Cat.station('st_dgu', [], { kw:'800' }); StationDefaults.add(y, 'st_dgu');
     await TzPick.run(y, { kind:'dgu', kw:800, hours:0, work:0 });
-    assert.strictEqual(kitParts(y).find(z=>StationEquip.kindOf(z)==='dgu').name, 'ДГУ Energo MP1000S открытого исполнения');
+    assert.strictEqual(Kit.parts(y).find(z=>StationEquip.kindOf(z)==='dgu').name, 'ДГУ Energo MP1000S открытого исполнения');
   });
 
   await Check.run('ДГУ: резерв и бак под время работы', async ()=>{
@@ -236,7 +236,7 @@ class Check {
     const x=Cat.station('st_dgu', [], { reserve:'1', hours:'24', kw:'200' });
     StationDefaults.add(x, 'st_dgu');
     const note=await TzPick.run(x, { kind:'dgu', kw:200, hours:24, reserve:'1', work:0 });
-    const d=kitParts(x).find(z=>StationEquip.kindOf(z)==='dgu'), t=kitParts(x).find(z=>StationDefaults.FUEL.test(z.name));
+    const d=Kit.parts(x).find(z=>StationEquip.kindOf(z)==='dgu'), t=Kit.parts(x).find(z=>StationDefaults.FUEL.test(z.name));
     assert.deepStrictEqual([d.name, d.qty], ['ДГУ АД-250', 2], 'ДГУ 250 кВт: рабочая + резервная');
     // как в расчётной записке: нагрузка 200/250 = 80 %; расхода в паспорте нет — 0,25 л/кВт·ч · 0,8 · 250 = 50 л/ч;
     // 50 · 24 ч · 1,1 (запас) = 1320 л, бака у ДГУ нет → ближайший типовой 1500 л
@@ -261,7 +261,7 @@ class Check {
     global.catCache=[Cat.item('Насос Н-50/35', { cat:'pump', flow:50, head:35 }), Cat.item('Насос Н-100/35', { cat:'pump', flow:100, head:35 }), Cat.item('Насос Н-50/60', { cat:'pump', flow:50, head:60 })];
     const x=Cat.station('st_pump', [], { reserve:'1' });
     await TzPick.run(x, { kind:'pump', q:90, head:30.6, reserve:'1', work:2 });
-    const p=kitParts(x).find(z=>StationEquip.kindOf(z)==='pump');
+    const p=Kit.parts(x).find(z=>StationEquip.kindOf(z)==='pump');
     assert.deepStrictEqual([p.name, p.qty], ['Насос Н-50/35', 3], '2 рабочих по 50 м³/ч с напором 35 м + резервный');
     x.req={ q:'90', head:'30.6', reserve:'1' };
     assert.ok(StationReq.checks(x).every(c=>c.ok), JSON.stringify(StationReq.checks(x)));
@@ -293,7 +293,7 @@ class Check {
     assert.ok(/^Нужно: рефрижераторный осушитель не менее .* — к компрессорам 13 м³\/мин, 10 бар\. Показаны подходящие: производительность от .* м³\/мин, давление от 10 бар\.$/.test(P.need), P.need);
     assert.strictEqual(P.best && global.catCache.find(c=>c.id===P.best.id).name, 'Осушитель рефрижераторный ОР-20', 'рекомендуемый — самый маленький подходящий, на давление компрессора (8 бар — нет)');
     // окно каталога: подходящие — без маленького и без низкого давления; давление без данных не отсекается
-    const F=KitNeed.filters(x, R.find(r=>r.key==='dryer-refrig')), L=pfList(F, ['dryer_refrig']).list.map(c=>c.name);
+    const F=KitNeed.filters(x, R.find(r=>r.key==='dryer-refrig')), L=PickFilter.list(F, ['dryer_refrig']).list.map(c=>c.name);
     assert.deepStrictEqual(L, ['Осушитель рефрижераторный ОР-20'], 'подходящие: '+JSON.stringify(L));
     assert.strictEqual(KitNeed.fits(global.catCache[2], P), false, 'ОР-5 — «мало»');
     assert.strictEqual(KitNeed.top('7,5 / 10 / 13 бар'), 13, 'давление «7,5 / 10 / 13» — до 13 бар');
@@ -307,13 +307,13 @@ class Check {
     assert.deepStrictEqual(KitNeed.recs(x).map(r=>r.key), [], 'всё на месте');
     const tt=toasts.pop();   // 13 м³/мин → 1 625 л, не меньше 1 950 л → 3 × 900 л; мокрый — только при пиках
     assert.ok(/^Добавлено: Осушитель рефрижераторный ОР-20; 3 × Ресивер РВ-900\/11/.test(tt) && !/2 × Ресивер/.test(tt), tt);
-    assert.deepStrictEqual(kitParts(x).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.qty, p.recvRole]), [[3, 'dry']], 'роли ресиверов');
+    assert.deepStrictEqual(Kit.parts(x).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.qty, p.recvRole]), [[3, 'dry']], 'роли ресиверов');
     // осушитель меньше нужного — «Заменить», старый уходит из состава
     const y=Cat.station('st_comp', [await TzPick.part(global.catCache[1], 1, 'main'), await TzPick.part(global.catCache[2], 1)], {}); global.S={ items:[y] };
     const sw=KitNeed.recs(y).find(r=>r.key==='dryer-refrig');
     assert.ok(sw && sw.swap && sw.replace.length===1, 'мало — замена: '+JSON.stringify(sw));
     await KitNeed.fillAll(0);
-    assert.deepStrictEqual(kitParts(y).filter(p=>StationEquip.kindOf(p)==='dryer').map(p=>p.name), ['Осушитель рефрижераторный ОР-20'], 'ОР-5 заменён');
+    assert.deepStrictEqual(Kit.parts(y).filter(p=>StationEquip.kindOf(p)==='dryer').map(p=>p.name), ['Осушитель рефрижераторный ОР-20'], 'ОР-5 заменён');
     // компрессор по требованиям «Подбора станции»: показаны подходящие, рекомендуемый — как у «Подобрать оборудование»
     const z=Cat.station('st_comp', [], { flow:'10', pressure:'7', reserve:'1' }), M=KitNeed.mainPreset(z);
     assert.strictEqual(global.catCache.find(c=>c.id===M.best.id).name, 'Компрессор винтовой К-130', 'один на 13 м³/мин');
@@ -351,7 +351,7 @@ class Check {
     // подбор станции целиком — тоже по 900 л
     const y=Cat.station('st_comp', [], {});
     const note=await TzPick.run(y, { kind:'comp', flow:12, pressure:7, air:'', reserve:'0', work:0 });
-    const rv=kitParts(y).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.name, p.qty]);
+    const rv=Kit.parts(y).filter(p=>StationEquip.kindOf(p)==='receiver').map(p=>[p.name, p.qty]);
     assert.deepStrictEqual(rv[0], ['Воздушный ресивер АСО РВ 900/11', 3], JSON.stringify(rv)+' — '+note);
     assert.ok(rv.every(z=>/900/.test(z[0])), 'только 900 л');
   });
@@ -373,7 +373,7 @@ class Check {
     assert.deepStrictEqual([r.key, r.qty, KitNeed.head(r)], ['main-qty', 3, 'Нужно: ещё 2 × Компрессор винтовой К-65'], JSON.stringify(r));
     assert.ok(/всего 3: 2 рабоч\. \+ 1 резерв\. на 12 м³\/мин/.test(r.why), r.why);
     assert.ok(/data-k="main-qty">Добавить</.test(KitNeed.rows(x, 0)), 'кнопка «Добавить»');
-    KitNeed.apply(x, r); assert.strictEqual(kitParts(x).find(p=>p.role==='main').qty, 3);
+    KitNeed.apply(x, r); assert.strictEqual(Kit.parts(x).find(p=>p.role==='main').qty, 3);
     assert.ok(!keys(x).includes('main-qty') && StationReq.checks(x).every(c=>c.ok), 'хватает: '+JSON.stringify(StationReq.checks(x)));
     // давление: компрессор 8 бар, у потребителя нужно 8,5 — «Заменить», каталог по требованиям
     const y=Cat.station('st_comp', [await TzPick.part(C[2], 2, 'main'), await TzPick.part(C[1], 1)], { flow:'6', pressure:'8,5' });
@@ -447,7 +447,7 @@ class Check {
     const C=global.catCache, x=Cat.station('st_comp', [], {});
     x.stLayout={ air:'2.2.2' };
     const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0 });
-    const P=kitParts(x), name=k=>P.filter(p=>StationEquip.kindOf(p)===k).map(p=>p.name);
+    const P=Kit.parts(x), name=k=>P.filter(p=>StationEquip.kindOf(p)===k).map(p=>p.name);
     assert.deepStrictEqual(name('compressor'), ['Компрессор винтовой К-150'], 'передвижной и дизельный — не в станцию: '+note);
     assert.deepStrictEqual(name('dryer'), ['Осушитель адсорбционный ОА-25'], 'высокий осушитель не проходит по высоте контейнера: '+note);
     const dust=P.find(p=>p.name==='Фильтр частиц ФЧ-30');
@@ -458,21 +458,21 @@ class Check {
     // пылевой без адсорбционного осушителя — предварительный; подобранный под «пылевой» (airGrade) — остаётся пылевым
     const y=Cat.station('st_comp', [await TzPick.part(C[2], 1, 'main'), await TzPick.part(C[7], 1)], {});
     assert.strictEqual(KitNeed.air(y).units.find(e=>e.kind==='filter').air.grade, 'pre', 'сухой фильтр частиц без адсорбционного — предварительный');
-    kitParts(y).find(p=>StationEquip.kindOf(p)==='filter').airGrade='dust';
+    Kit.parts(y).find(p=>StationEquip.kindOf(p)==='filter').airGrade='dust';
     assert.strictEqual(KitNeed.air(y).units.find(e=>e.kind==='filter').air.grade, 'dust', 'ступень подбора главнее');
     // нет пылевого в каталоге — тонкий 1 мкм; компоновка не сложилась — фильтры всё равно по цепочке воздуха
     global.catCache=C.filter(c=>c.name!=='Фильтр частиц ФЧ-30');
     const solve=StationLayout.solve; StationLayout.solve=()=>({});
     try{ const z=Cat.station('st_comp', [], {}); z.stLayout={ air:'2.2.2' };
       await TzPick.run(z, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0 });
-      const fz=kitParts(z).filter(p=>StationEquip.kindOf(p)==='filter');
+      const fz=Kit.parts(z).filter(p=>StationEquip.kindOf(p)==='filter');
       assert.deepStrictEqual(fz.map(p=>[p.name, p.airGrade]).sort(), [['Фильтр ФС-30', 'micro'], ['Фильтр ФТ-30', 'dust'], ['Фильтр ФТ-30', 'fine']],
         'тонкий 1 мкм — и перед микрофильтром, и пылевым после осушителя: '+JSON.stringify(fz.map(p=>p.name)));
     } finally { StationLayout.solve=solve; }
     // только дизельные — тогда дизельный
     global.catCache=[C[1], C[4]];
     const d=Cat.station('st_comp', [], {}); await TzPick.run(d, { kind:'comp', flow:10, pressure:7, air:'2.4.2', reserve:'0', work:0 });
-    assert.ok(kitParts(d).some(p=>p.name==='Компрессор дизельный КД-130'), 'электрических нет — дизельный');
+    assert.ok(Kit.parts(d).some(p=>p.name==='Компрессор дизельный КД-130'), 'электрических нет — дизельный');
     // встроенные фильтры: поле каталога «filters» или строка «Фильтры в комплекте» (не «нет»)
     const info=(attrs, rows, kind)=>AirChain.info({ name:'Аппарат', attrs, rows }, kind);
     assert.strictEqual(info({ cat:'dryer_refrig', filters:'Да' }, [], 'dryer').filters, true);
@@ -507,7 +507,7 @@ class Check {
       Cat.item('Ресивер РВ 900/11', { cat:'receiver', volume:900, pressure:11, size:'930 × 940 × 2040' }),
     ];
     const x=Cat.station('st_comp', [], { flow:'40', pressure:'8' }); global.S={ items:[x] };
-    const note=await TzPick.assemble(x, StationQuick.query(x)), m=kitParts(x).find(p=>p.role==='main');
+    const note=await TzPick.assemble(x, StationQuick.query(x)), m=Kit.parts(x).find(p=>p.role==='main');
     const plan=StationLayout.solve(StationUi.input(x));
     assert.ok(m && m.qty>=2 && /МК-140 компактный/.test(m.name), 'несколько одинаковых компактных: '+(m && m.qty+' × '+m.name));
     assert.ok(plan.level!=='error' && !plan.issues.some(i=>i.wide) && plan.geo.ext[1]<=StationGeo.ROAD_W, 'в габарите перевозки: '+JSON.stringify(plan.geo && plan.geo.ext));
@@ -515,7 +515,7 @@ class Check {
     assert.strictEqual(TzPick.area(global.catCache[2]), 0.3*1.4*1.3, 'штраф за площадь — 0,3 на м²');
     // запрос меньше — тот же порядок без лишнего: один компрессор, ресиверы внутри (снаружи — только если выбрала программа)
     x.req.flow='12'; await TzPick.assemble(x, StationQuick.query(x));
-    assert.ok(!x.req.recvOut && kitParts(x).find(p=>p.role==='main').qty===1, 'малая станция — один агрегат, всё внутри');
+    assert.ok(!x.req.recvOut && Kit.parts(x).find(p=>p.role==='main').qty===1, 'малая станция — один агрегат, всё внутри');
   });
 
   await Check.run('ТКП станции: устройство, карточки агрегатов, описание ИИ (3.87)', async ()=>{
@@ -525,8 +525,8 @@ class Check {
     assert.ok(des.includes('Контейнер') && des.includes('Сжатый воздух'), 'устройство станции: '+des.join(', '));
     assert.ok(/→ потребителю/.test(StationDesign.text(x)), 'цепочка подготовки воздуха — до потребителя');
     // карточки: основные агрегаты — да, фильтры и контейнер — нет; строки — производительность первой, не больше 8
-    const P=kitParts(x), kind=k=>P.find(p=>StationEquip.kindOf(p)===k);
-    assert.ok(StationDoc.card(kind('compressor')) && !StationDoc.card(kitContainer(x)), 'карточки — только агрегаты');
+    const P=Kit.parts(x), kind=k=>P.find(p=>StationEquip.kindOf(p)===k);
+    assert.ok(StationDoc.card(kind('compressor')) && !StationDoc.card(Kit.container(x)), 'карточки — только агрегаты');
     if (kind('filter')) assert.ok(!StationDoc.card(kind('filter')), 'фильтр — только в таблице состава');
     const rows=StationDoc.rows({ rows:[{ k:'Страна', v:'Турция' }, { k:'Масса', v:'900 кг' }, { k:'Давление', v:'8 бар' }, { k:'Производительность', v:'12 м³/мин' },
       ...Array.from({ length:9 }, (_, j)=>({ k:'Параметр '+j, v:String(j) }))] });
@@ -570,7 +570,7 @@ class Check {
       Cat.item('Ресивер РВ 900.16', { cat:'receiver', volume:900, pressure:16, size:'2200 × 1000 × 1000' }),   // исполнение не указано: «высота × Ø × Ø»
       ...(r5 ? [Cat.item('Ресивер РВ 500/16', { cat:'receiver', volume:500, pressure:16, size:'680 × 650 × 2000' })] : [])];
     const go=async r5=>{ global.catCache=cat(r5); const x=Cat.station('st_comp', [], { flow:'40', pressure:'8' }); global.S={ items:[x] };
-      const note=await TzPick.assemble(x, StationQuick.query(x)), p=StationLayout.solve(StationUi.input(x)), R=kitParts(x).find(q=>StationEquip.kindOf(q)==='receiver');
+      const note=await TzPick.assemble(x, StationQuick.query(x)), p=StationLayout.solve(StationUi.input(x)), R=Kit.parts(x).find(q=>StationEquip.kindOf(q)==='receiver');
       return { x, note, p, R }; };
     try{
       // без продольного прохода и прочих исключений (так 7 × 900 л внутри не встают): в каталоге есть 500 л — 12 × 500 л внутри
@@ -645,7 +645,7 @@ class Check {
       // состав: поставщик под названием и итог «Подбора»
       const part=(c, qty)=>Object.assign(KitPart.fromCat(c), { qty }), st=Cat.station('st_comp', [part(global.catCache[1], 1), part(global.catCache[2], 1)]);
       assert.strictEqual(StationSup.summary(st), 'Всё у одного поставщика: Бета');
-      const p0=kitParts(st).find(z=>z.catId===global.catCache[1].id);
+      const p0=Kit.parts(st).find(z=>z.catId===global.catCache[1].id);
       assert.ok(/поставщик: Бета/.test(KitView.sub(p0, 'compressor')), KitView.sub(p0, 'compressor'));
       st.kit.parts.push(part(global.catCache[5], 2));
       assert.strictEqual(StationSup.summary(st), 'Поставщиков: 2 — Бета (компрессоры, осушители); Гамма (ресиверы)');

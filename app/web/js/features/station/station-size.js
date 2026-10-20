@@ -91,17 +91,17 @@ export class StationSize {
     this.last.set(item.id, { h: hash, size });
     this.notify(item, container, plan);
     const changed = !(size === String(container.size || '') && container.sizeAuto);
-    if (changed) contApply(container, { size, sizeAuto: true });
+    if (changed) ContainerPart.apply(container, { size, sizeAuto: true });
     // та же расстановка — вкладке «Компоновка» и характеристикам второй раз не считать
     StationUi.keep(item, plan, `${hash}|${full.air}`);
-    if (changed) stationFill(item);
+    if (changed) StationAuto.fill(item);
     return changed;
   }
 
   /** блок-контейнер «по проекту» без своего размера (вписанный менеджером — не трогать) или null */
   static _flexible(item) {
     if (!StationUi.enabled(item)) return null;
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     if (!container || !StationGeo.FLEX[container.ctype]) return null;
     return String(container.size || '').trim() && !container.sizeAuto ? null : container;
   }

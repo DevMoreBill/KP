@@ -49,7 +49,7 @@ export class StationImages {
    * @returns {Promise<boolean>} что-то изменилось
    */
   static async sync(item) {
-    if (!StationUi.enabled(item) || !isKit(item) || this.busy.has(item.id)) return false;
+    if (!StationUi.enabled(item) || !Kit.has(item) || this.busy.has(item.id)) return false;
     StationSize.apply(item);
     const plan = StationUi.plan(item);
     const opts = StationUi.opts(item);
@@ -439,7 +439,7 @@ export class StationImages {
    */
   static partPhoto(item) {
     const src = item && item.photo && item.photo.src;
-    return !!src && kitParts(item).some(part => part.photo && part.photo.src === src);
+    return !!src && Kit.parts(item).some(part => part.photo && part.photo.src === src);
   }
 
   /**
@@ -448,7 +448,7 @@ export class StationImages {
    * @returns {boolean} главным был 3D-вид
    */
   static chosen(item) {
-    if (!item || !stationOf(item)) return false;
+    if (!item || !Kit.station(item)) return false;
     const was = !!(item.photo && item.photo.gen === 'st3d');
     if (was) item.photo = null;
     this.forget(item, 'photo');

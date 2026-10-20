@@ -20,7 +20,7 @@ export class TzContainer {
   /** t — состав ТЗ (TzText): станция, контейнер, расстановка, климат. */
   static rows(spec) {
     const { x, c: container, plan } = spec;
-    const ctype = ctypeOf(container.ctype);
+    const ctype = ContainerKind.of(container.ctype);
     return [
       ['Тип', ctype.name],
       ['Исполнение', this.BUILD[StationGeo.SEA[container.ctype] ? 'sea' : container.ctype] || this.BUILD.block],
@@ -44,7 +44,7 @@ export class TzContainer {
       ['Окраска', this._paint(container)],
       ...this._arts(container),
       ['Двери', `${TzDoors.text(plan) + this._fuel(plan)}; над входами — съёмные козырьки и светодиодные прожекторы`],
-      ...CONT_SYSTEMS.filter(([id]) => KitView.sysOn(x, container, id)).map(([id, label, base]) => [
+      ...ContainerKind.SYSTEMS.filter(([id]) => KitView.sysOn(x, container, id)).map(([id, label, base]) => [
         label,
         TzSystems.text(id, base, plan),
       ]),

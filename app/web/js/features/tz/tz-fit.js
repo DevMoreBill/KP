@@ -53,7 +53,7 @@ export class TzFit {
   }
 
   static _main(station) {
-    return kitParts(station).find(part => part.role === 'main');
+    return Kit.parts(station).find(part => part.role === 'main');
   }
 
   /** Как встала станция: bad — ошибка или нет агрегата, wide — негабарит, close — ресиверы вплотную, ok. */
@@ -125,7 +125,7 @@ export class TzFit {
     });
     const state = this._state(job.station);
     const kept = this._keep(job.station, note, variant);
-    const dryReceivers = kitParts(job.station).some(
+    const dryReceivers = Kit.parts(job.station).some(
       part => StationEquip.kindOf(part) === 'receiver' && part.recvRole !== 'local' && part.recvRole !== 'wet',
     );
     return { state, kept, dryReceivers };

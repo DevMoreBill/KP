@@ -318,7 +318,7 @@ export class PhotoTint {
 
   /** У элементов станции есть фото, цвет которых ещё не определён. */
   static pending(x) {
-    return kitParts(x).some(item => {
+    return Kit.parts(x).some(item => {
       const src = PhotoTint.src(item);
       return src && !PhotoTint.cache.has(src);
     });
@@ -327,7 +327,7 @@ export class PhotoTint {
   /** Определить цвета фото элементов станции (по одному разу на адрес); true — что-то определено. */
   static async load(x) {
     let changed = false;
-    for (const item of kitParts(x)) {
+    for (const item of Kit.parts(x)) {
       const src = PhotoTint.src(item);
       if (!src || PhotoTint.cache.has(src)) continue;
       try {

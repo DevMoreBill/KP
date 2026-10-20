@@ -56,7 +56,7 @@ class KpModels {
     const map=new Map();
     for (const x of S.items){
       const a=attrsOf(x), t=typeById(a.cat); if (t.role==='accessory') continue;
-      const station=!!stationOf(x);
+      const station=!!Kit.station(x);
       const model=(!station && x.hint && x.hint.model) || (station ? CoverHint.model(x) : (a.model&&a.maker?a.maker+' '+a.model:'')) || x.name;
       const key=(station?'станция ':'')+norm(model); const pr=(x.groups||[]).flatMap(g=>g.rows||[]).find(r=>/основная мощность|номинальная мощность/i.test(r.k));
       const power = a.cat==='dgu' ? (pr?pr.v:(a.kva&&a.kw?`${a.kva} кВА / ${a.kw} кВт`:(a.kw?a.kw+' кВт':''))) : mainLine(x,2);
@@ -69,7 +69,7 @@ class KpModels {
   static short(){
     const seen=new Set(), parts=[];
     for (const x of S.items){ const a=attrsOf(x), t=typeById(a.cat); if (t.role==='accessory') continue;
-      const st=stationOf(x) ? (kitMainPart(x)||{}).attrs||{} : null;
+      const st=Kit.station(x) ? (Kit.main(x)||{}).attrs||{} : null;
       let m=(st ? st.model : a.model) || ((x.hint&&x.hint.model)||'').replace(/^(Tide Power|HERTZ|Energo|ТСС)\s+/i,'') || x.name.split(' ').slice(-1)[0];
       const s=[(t.short ?? SHORT_T[t.id] ?? (st ? t.item : '')), m].filter(Boolean).join(' ');
       if (!seen.has(s)){ seen.add(s); parts.push(s); } }
@@ -114,7 +114,7 @@ class DocxTypes {
 function docState(){
   S.items.forEach(x=>(x.features||[]).forEach(featId));
   const St = JSON.parse(JSON.stringify(S, (k,v)=>k.startsWith('_')?undefined:v));
-  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>Object.assign(kitDocItem(x), isKit(x)?{kitDoc:kitDocData(x)}:{}, {info:(a=>({maker:a.maker||'', model:a.model||'', type:a.type||''}))(attrsOf(x))})).map(x=>({...x, kit:undefined, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
+  St.vat=+S.vat; St.cur={code:kpCur(), rate:kpCur()!=='RUB'?rateOf(kpCur()):null, date:S.pricing.rateDate||''}; St.items=S.items.map(x=>Object.assign(KitDoc.item(x), Kit.has(x)?{kitDoc:KitDoc.data(x)}:{}, {info:(a=>({maker:a.maker||'', model:a.model||'', type:a.type||''}))(attrsOf(x))})).map(x=>({...x, kit:undefined, qty:+x.qty, photo:undefined, logo:undefined, _srcImg:undefined, options:(x.options||[]).filter(o=>o.name.trim()&&+o.qty>0).map(o=>({name:o.name.trim(), short:o.short, unit:o.unit, qty:+o.qty, price:o.price||0}))}));
   return St;
 }
 
@@ -161,7 +161,7 @@ async function renderDocx(St, pack, settings){
   for (const ci of covers){ const du=await docImg(ci.photo, ci.name); if (!du) continue;
     const cf=`cover.${/^data:image\/png/.test(du) ? 'png' : 'jpg'}`;   // имя по формату картинки
     zip.file(`word/media/${cf}`, b64(du), {base64:true}); Min.cover={file:cf,w:ci.photo.w,h:ci.photo.h}; break; }
-  for (const x of S.items.map(kitDocItem)){ if(!x.page) continue; const m={};
+  for (const x of S.items.map(x=>KitDoc.item(x))){ if(!x.page) continue; const m={};
     if (x.photo){ const t=await docTile(x.photo, x.name); if (t){ zip.file(`word/media/tile_${x.id}.png`, b64(t.url), {base64:true}); m.tile={file:`tile_${x.id}.png`,w:t.w,h:t.h}; } }
     if (x.logo){ const du=await docImg(x.logo, x.name+' (логотип)'); if (du){ zip.file(`word/media/logo_${x.id}.png`, b64(du), {base64:true}); m.logo={file:`logo_${x.id}.png`,w:x.logo.w,h:x.logo.h}; } }
     m.gallery=[]; m.featImgs={}; let gk=0;
@@ -192,8 +192,8 @@ async function renderDocx(St, pack, settings){
   // остальным — состав, разложенный в блоки описания и таблицы (kitDocItem)
   if (feats.includes('kit')){
     St.items=St.items.map(x=>x.kitDoc ? Object.assign({}, x, x.kitDoc.base, {kit:{parts:x.kitDoc.parts}, kitDoc:undefined}) : x);
-    for (const x of S.items){ if (!isKit(x) || !Min.items[x.id]) continue; const m=Min.items[x.id]; m.kitImgs={};
-      for (const p of kitParts(x)){ if (!p.photo || !p.photo.src) continue; const du=await docImg(p.photo, x.name+' — '+(p.name||'элемент')); if (!du) continue;
+    for (const x of S.items){ if (!Kit.has(x) || !Min.items[x.id]) continue; const m=Min.items[x.id]; m.kitImgs={};
+      for (const p of Kit.parts(x)){ if (!p.photo || !p.photo.src) continue; const du=await docImg(p.photo, x.name+' — '+(p.name||'элемент')); if (!du) continue;
         const ext=/^data:image\/png/.test(du)?'png':'jpg', fnm=`kit_${x.id}_${String(p.id).replace(/[^A-Za-z0-9_-]/g,'')}.${ext}`;
         zip.file('word/media/'+fnm, b64(du), {base64:true}); m.kitImgs[p.id]={file:fnm, w:p.photo.w, h:p.photo.h}; } } }
   else St.items=St.items.map(x=>x.kitDoc ? Object.assign({}, x, {kitDoc:undefined}) : x);
@@ -251,7 +251,7 @@ async function download(){
     btn.textContent='Сохраняю в журнал…';
     Drafts.paused=true;                       // автосохранение черновика не вмешивается в сохранение КП
     for (const it of S.items){ it.photo=await ImgUpload.put(it.photo, imgPlace(it,'photo')); it.logo=await ImgUpload.put(it.logo, imgPlace(it,'logo')); if (it.gallery) for (const g of it.gallery){ const u=await ImgUpload.put(g, imgPlace(it,'gallery',g)); if(u) g.src=u.src; }
-      for (const p of kitParts(it)){ if (p.photo) p.photo=await ImgUpload.put(p.photo, imgPlace(it,'gallery',{caption:p.name})); if (p.draw) p.draw=await DrawPic.upload(p.draw, it, p.name); }
+      for (const p of Kit.parts(it)){ if (p.photo) p.photo=await ImgUpload.put(p.photo, imgPlace(it,'gallery',{caption:p.name})); if (p.draw) p.draw=await DrawPic.upload(p.draw, it, p.name); }
       if (it.draw) it.draw=await DrawPic.upload(it.draw, it); }
     if (!S.managerId && String(S.manager.name||'').trim()) await saveManager(true);   // новый менеджер попадает в справочник
     if (!S.authorId) S.authorId=meId()||S.managerId||'';

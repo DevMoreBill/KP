@@ -426,7 +426,7 @@ class Scenario(UiRun):
         pg.select_option('#edlg .kc-art select[data-k=wall]', 'left')
         self.wait(600)
         self.ev("document.querySelector('#edlg details.kc-more').open=true")
-        row = self.ev("(kitContainer(S.items[S.items.length-1])||{}).rows.find(r=>r.k==='Окраска')?.v||''")
+        row = self.ev("(Kit.container(S.items[S.items.length-1])||{}).rows.find(r=>r.k==='Окраска')?.v||''")
         if 'RAL 9006' not in row and 'буклет' not in row:
             self.errs.append(('station', 'paint', 'строка «Окраска»: ' + row))
         self.snap('45p_st_paint', '#edlg .kc-more', wait=500)
@@ -482,7 +482,7 @@ class Scenario(UiRun):
         self.snap('47c_st_mods_ask', 'dialog.st-confirm[open]:not(.md-dlg):has(button[data-v="1"])', wait=200)
         pg.click(yes)
         self.wait(2500)
-        st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=kitContainer(x), j=kitParts(x).find(p=>p.modJoin); return { q:c.qty, n:c.mods&&c.mods.cells.length, j:j?j.qty:0, size:c.size }; })()")
+        st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=Kit.container(x), j=Kit.parts(x).find(p=>p.modJoin); return { q:c.qty, n:c.mods&&c.mods.cells.length, j:j?j.qty:0, size:c.size }; })()")
         if st.get('q') != 2 or st.get('n') != 2 or st.get('j') != 1:
             self.errs.append(('station', 'mods', 'состав после «Сделать из модулей»: %s' % st))
         self.snap('47d_st_mods_layout', '#edlg', wait=6000)
@@ -494,7 +494,7 @@ class Scenario(UiRun):
         pg.wait_for_selector(yes)
         pg.click(yes)
         self.wait(1500)
-        st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=kitContainer(x); return { q:c.qty, m:!!c.mods, j:kitParts(x).some(p=>p.modJoin) }; })()")
+        st = self.ev("(()=>{ const x=S.items[S.items.length-1], c=Kit.container(x); return { q:c.qty, m:!!c.mods, j:Kit.parts(x).some(p=>p.modJoin) }; })()")
         if st.get('q') != 1 or st.get('m') or st.get('j'):
             self.errs.append(('station', 'mods', 'после «Один модуль»: %s' % st))
 

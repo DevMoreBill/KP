@@ -1,5 +1,5 @@
 // Быстродействие интерфейса: разбор характеристик карточки каталога — один раз на карточку (CatAttrs, core/types.js),
-// позиции КП — каждый раз; строка поиска окна подбора — один раз на карточку (PickFind, features/kit.js); черновик КП в
+// позиции КП — каждый раз; строка поиска окна подбора — один раз на карточку (PickFind, features/kit/kit-pick.js); черновик КП в
 // браузере — большие картинки отдельными записями, пишутся один раз (LocalDraft, core/state.js).
 // Запуск из корня репозитория: node tests/js/client_speed.js — код выхода 0, если всё прошло (tests/test_client_speed.py).
 'use strict';
@@ -20,7 +20,7 @@ t('карточка каталога: разбор один раз, копия �
   CatAttrs.mark(L);
   const a=attrsOf(card); assert.strictEqual(a.cat, 'comp_screw'); assert.strictEqual(attrsOf(card), a, 'второй раз — тот же разбор');
   delete card._a; assert.notStrictEqual(attrsOf(card), a, 'окно каталога сбросило разбор — разбирается заново');
-  assert.ok(/const a=\{ \.\.\.attrsOf\(doc\) \}/.test(JS('features/kit.js')), 'KitPart.fromCat дописывает габариты в копию разбора');
+  assert.ok(/const attrs = \{ \.\.\.attrsOf\(doc\) \};/.test(JS('features/kit/kit-part.js')), 'KitPart.fromCat дописывает габариты в копию разбора');
 });
 t('позиция КП (не карточка): разбор каждый раз, правка видна сразу', ()=>{
   const it={ name:'Компрессор винтовой', attrs:{ maker:'А' } };
@@ -31,7 +31,7 @@ t('служебные поля разбора не уходят на серве�
     assert.ok(rx.test(JS(f)), f);
 });
 
-vm.runInThisContext(cls('features/kit.js', 'PickFind')+'\nglobal.PickFind=PickFind;');
+global.PickFind=require(path.join(ROOT, 'app', 'web', 'js', 'features', 'kit', 'kit-pick.js')).PickFind;   // ES-модуль
 t('окно подбора: строка поиска карточки — один раз, у позиции КП — каждый раз', ()=>{
   const card={ id:'c2', name:'Компрессор винтовой Remeza ВК 15' }; CatAttrs.mark([card]);
   const a=attrsOf(card), h=PickFind.hay(card, a); assert.ok(h.includes('remeza')); assert.strictEqual(card._pq, h);

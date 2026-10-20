@@ -16,10 +16,9 @@ global.typeById=id=>TYPES[id]||{};
 global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'tz/index.js', 'station/index.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'kit-view.js', 'tz/index.js', 'station/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
-global.isKit=x=>!!(x && x.kit);
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
 if (GOLDEN){ global.Spoiler={ attr:k=>` data-sp="${k}"` };   // заглушка, как при записи слепка (настоящий Spoiler — в station/index.js)
   const run0=StationCalc.run; let inHtml=false;   // расчётная записка на экране — по каждому расчёту
@@ -28,9 +27,9 @@ if (GOLDEN){ global.Spoiler={ attr:k=>` data-sp="${k}"` };   // заглушка
   GOLDEN.wrap(StationCalc, ['run', 'docGroups']); process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN)); }
 
 const near=(a, b, tol, msg)=>assert.ok(Math.abs(a-b)<=tol, `${msg}: ${a} ≠ ${b} (±${tol})`);
-const part=(name, attrs, qty=1, rows=[])=>Object.assign(kitNewPart({ name }), { attrs, qty, rows });
+const part=(name, attrs, qty=1, rows=[])=>Object.assign(Kit.newPart({ name }), { attrs, qty, rows });
 let sid=0;
-const station=(cat, req, parts, air)=>({ id:'s'+(++sid), name:'', attrs:{ cat }, req, stLayout:air ? { air, calc:true } : { calc:true }, kit:{ parts:[kitNewContainer('block'), ...parts] } });   // приложение «Расчётная записка» — с галочкой (в ТКП по умолчанию его нет)
+const station=(cat, req, parts, air)=>({ id:'s'+(++sid), name:'', attrs:{ cat }, req, stLayout:air ? { air, calc:true } : { calc:true }, kit:{ parts:[ContainerPart.create('block'), ...parts] } });   // приложение «Расчётная записка» — с галочкой (в ТКП по умолчанию его нет)
 
 class Check {
   static n=0;
@@ -250,15 +249,15 @@ Check.run('компрессорная: всё проходит, приложен
   assert.ok(!JSON.stringify(StationCalc.docGroups(x)).includes('ТЗ_Заказчик'), 'имя файла ТЗ — не в КП');
   assert.ok(G.some(g=>g.name==='Расчётная записка: осушители'));
   // «Назначение и состав» — из данных станции; свой блок менеджера — вместо него
-  const D=kitDocItem(x), pf=D.features[0];
+  const D=KitDoc.item(x), pf=D.features[0];
   assert.strictEqual(pf.label, 'Назначение и состав'); assert.ok(/^Компрессорная станция предназначена для выработки/.test(pf.text), pf.text);
   assert.ok(/Компрессор винтовой К-130 — 2 шт\./.test(pf.text) && /В составе:/.test(pf.text), pf.text);
   assert.ok(!D.features.some(f=>f.id==='kit_all'), 'перечень состава не повторяется отдельным блоком');
   assert.ok(!/undefined|NaN|null/.test(pf.text), pf.text);
   const own=Object.assign({}, x, { features:[{ label:'Назначение', text:'Своё' }] });
-  assert.ok(!kitDocItem(own).features.some(f=>f.id==='st_purpose') && kitDocItem(own).features.some(f=>f.id==='kit_all'), 'свой блок — без шаблона');
-  assert.ok(!/В составе/.test(kitDocData(x).base.features[0].text), 'шаблон со своим составом — без перечня');
-  assert.ok(kitDocItem(x).groups.some(g=>g.name==='Расчётная записка: производительность'), 'в документе КП');
+  assert.ok(!KitDoc.item(own).features.some(f=>f.id==='st_purpose') && KitDoc.item(own).features.some(f=>f.id==='kit_all'), 'свой блок — без шаблона');
+  assert.ok(!/В составе/.test(KitDoc.data(x).base.features[0].text), 'шаблон со своим составом — без перечня');
+  assert.ok(KitDoc.item(x).groups.some(g=>g.name==='Расчётная записка: производительность'), 'в документе КП');
   x.stLayout.calc=false; assert.deepStrictEqual(StationCalc.docGroups(x), [], 'выключено — не в КП');
 });
 
@@ -348,7 +347,7 @@ Check.run('подбор осушителя по ТЗ — с поправками
   const x=station('st_comp', {}, []);
   return TzPick.run(x, { kind:'comp', flow:12, pressure:7, tmax:'35', air:'', reserve:'0', work:0 }).then(note=>{
     // 13 м³/мин через осушитель; 35 + 5 = 40 °C (0,84), вход 50 °C (0,65), 7 бар (1): DK 1000 — 16,7 · 0,546 = 9,1 мало, DK 1450 — 13,1
-    assert.ok(kitParts(x).some(p=>/DK 1450/.test(p.name)), note);
+    assert.ok(Kit.parts(x).some(p=>/DK 1450/.test(p.name)), note);
     assert.ok(/с поправками 13,1/.test(note), note);
   });
 });

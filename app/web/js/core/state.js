@@ -93,7 +93,7 @@ var CATED = null;
 
 function persist(){
   if (CATED) return;
-  S.items.forEach(x=>{ kitSync(x); stationFill(x); stationAutoName(x); });     // закупка сборки — по текущим курсам; параметры станции — по составу
+  S.items.forEach(x=>{ Kit.sync(x); StationAuto.fill(x); StationName.apply(x); });     // закупка сборки — по текущим курсам; параметры станции — по составу
   coverSync();
   clearTimeout(saveT);
   saveT = setTimeout(()=>{

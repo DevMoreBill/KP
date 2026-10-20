@@ -79,7 +79,7 @@ document.addEventListener('click', async e=>{
     case 'attrsToGroups': { const g=groupsFromAttrs(it); const keep=(it.groups||[]).filter(x=>!g.some(y=>y.name===x.name)); it.groups=[...g,...keep]; if(!it.hint) it.hint=CoverHint.of(it); it.page=true; toast('Таблица характеристик сформирована'); break; }
     case 'galAdd': return pickGallery(i, b.dataset.slot||'');
     case 'galPage': return galFromPage(i, e.shiftKey);
-    case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (kitAction(a, i, b)==='async') return; break; }
+    case 'kitAdd': case 'kitCat': case 'kitMain': case 'kitCont': case 'kitSys': case 'kitPreset': case 'kitDel': case 'kitMv': case 'kitRowAdd': case 'kitRowDel': case 'kitPhoto': case 'kitPhotoDel': { if (KitActions.run(a, i, b)==='async') return; break; }
     case 'kitOpen': case 'kitBy': case 'reqPickX': case 'reqReset': case 'kitNeed': case 'kitNeedAll': case 'kitSwap': { const r=KitView.act(a, i, b); if (r==='async' || !r) return; break; }
     case 'drawPick': return DrawPic.pick(i, j, b.dataset.v);
     case 'tzOut': return LazyJs.load('tz-out/index.js').then(()=>TzOut.download(i)).catch(e=>toast(e.message));
@@ -90,7 +90,7 @@ document.addEventListener('click', async e=>{
     case 'stParAdd': case 'stParDel': if (!StationParams.act(a, i, b)) return; break;
     case 'drawDel': DrawPic.del(i, j, b.dataset.v); break;
     case 'galDel': StationImages.drop(it, j); break;
-    case 'stPhoto': { const p=kitParts(it)[j]; if (!p || !p.photo || !p.photo.src) return; StationImages.chosen(it); it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
+    case 'stPhoto': { const p=Kit.parts(it)[j]; if (!p || !p.photo || !p.photo.src) return; StationImages.chosen(it); it.photo={...p.photo}; delete it.photoFrom; toast('Главное фото станции — фото «'+(p.name||'элемента')+'»'); break; }
     case 'galMain': { if (!(it.gallery||[])[j]) return; const was3d=StationImages.chosen(it); if (!edSetMain(it, j)) return;
       toast(was3d ? 'Главное фото заменено — 3D-вид вернуть можно на вкладке «Компоновка»' : 'Главное фото заменено — прежнее перенесено в изображения'); break; }
     case 'edit': return openEditor(i, b.dataset.tab);

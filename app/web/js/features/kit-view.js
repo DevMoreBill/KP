@@ -13,7 +13,7 @@ class KitScope {
   static def(p){ return p && p.role!=='container' && this.OUR.test(StationEquip.kindOf(p)) ? 'our' : 'asm'; }
   static of(p){ return p && (p.by==='our' || p.by==='asm') ? p.by : this.def(p); }
   /** поставщик элемента сборщика без своего поставщика — сборщик (поставщик контейнера): в экономике — у него */
-  static sup(x, p){ const s=String((p && p.sup)||'').trim(); if (s || this.of(p)!=='asm') return s; return String((kitContainer(x)||{}).sup||'').trim(); }
+  static sup(x, p){ const s=String((p && p.sup)||'').trim(); if (s || this.of(p)!=='asm') return s; return String((Kit.container(x)||{}).sup||'').trim(); }
 }
 
 // ---------------------------------------------------------------- числа в требованиях: разбор и допустимые значения
@@ -85,7 +85,7 @@ class StationReq {
   static SCADA = /АСУ\s?ТП|диспетчер/i;
   /** шкафы АВР и АСУ ТП по требованиям — добавить, если их нет; ответ — названия добавленного */
   static ensureParts(x){
-    const r=this.of(x), P=kitParts(x), has=re=>P.some(p=>re.test(String(p.name||''))), out=[];
+    const r=this.of(x), P=Kit.parts(x), has=re=>P.some(p=>re.test(String(p.name||''))), out=[];
     if (r.ats && !has(this.ATS)){ const p=StationDefaults.part(x, 'Шкаф АВР (автоматический ввод резерва)'); p.attrs={ cat:'ats' }; P.push(p); out.push(p.name); }
     if (r.scada && !has(this.SCADA)){ const p=StationDefaults.part(x, 'Шкаф АСУ ТП (автоматизация и диспетчеризация)'); P.push(p); out.push(p.name); }
     return out;
@@ -102,7 +102,7 @@ class StationReq {
   static RSIZE = [['', 'авто: кратно 900 л'], ['900', '900 л'], ['500', '500 л (крайняя необх.)']];
   static RWHY = [['', 'обоснование 500 л —'], ['space', 'нехватка места'], ['mass', 'ограничение по массе']];
   /** расчёт ресиверов по составу станции (ReceiverPlan) или null */
-  static recvPlan(x){ return ReceiverPlan.from(StationEquip.list(kitParts(x), { recv:this.recv(x), recvOut:this.recvOut(x) }), this.recvIn(x)); }
+  static recvPlan(x){ return ReceiverPlan.from(StationEquip.list(Kit.parts(x), { recv:this.recv(x), recvOut:this.recvOut(x) }), this.recvIn(x)); }
   /** блок «Ресиверы»: где ставить, типоразмер, ТЗ, ΔP, клапан, циклограмма, пик точки — и итог расчёта одной строкой */
   static recvBlock(x, i, fld, sel){
     const r=this.of(x), R=this.recvPlan(x), n=Mm.text, E=R ? R.checks : [], er=E.filter(c=>c.level==='error').length;
@@ -154,7 +154,7 @@ class StationReq {
 
   /** что даёт состав против требований: [{ok, text}] */
   static checks(x){
-    const r=this.of(x), k=this.kind(x), out=[], P=kitParts(x), n=v=>String(Math.round(v*100)/100).replace('.', ',');
+    const r=this.of(x), k=this.kind(x), out=[], P=Kit.parts(x), n=v=>String(Math.round(v*100)/100).replace('.', ',');
     const units=kind=>P.filter(p=>StationEquip.kindOf(p)===kind).flatMap(p=>Array.from({ length:Math.max(1, Math.min(20, +p.qty||1)) }, ()=>p));
     const res=Math.max(0, Math.round(this.num(r.reserve)||0));
     // рабочие — без res самых больших агрегатов (отказать может любой); текст: «12,6 + 12,6 в резерве — не меньше 12,5»
@@ -271,12 +271,12 @@ class StationReq {
     if (k==='recv' || k==='recvOut'){ StationUi.cache.delete(x.id); StationSize.refresh(x); }
     // исходные данные ресиверов — число ресиверов в составе по расчёту
     const fk=k || String(t.dataset.p||'').split('.').pop();
-    if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ kitSync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); toast('Ресиверы по расчёту: '+m); } }
+    if (ReceiverSync.KEYS.includes(fk)){ const m=ReceiverSync.apply(x); if (m){ Kit.sync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); toast('Ресиверы по расчёту: '+m); } }
     // главное требование (расход, давление; мощность ДГУ; подача и напор насосов) изменилось у подобранной станции —
     // комплектующие подбираются заново сами, с уведомлением, что заменено
-    if (k==='basis' && kitMainPart(x)){ persist(); StationQuick.auto(i, 'flow'); return; }   // другие кубометры — другая потребность
-    if (StationQuick.AUTO.includes(fk) && t.dataset.p && kitMainPart(x)){ r[fk]=t.value; persist(); StationQuick.auto(i, fk); return; }
-    if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ kitSync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); toast('Добавлено в состав: '+a.join(', ')); } }
+    if (k==='basis' && Kit.main(x)){ persist(); StationQuick.auto(i, 'flow'); return; }   // другие кубометры — другая потребность
+    if (StationQuick.AUTO.includes(fk) && t.dataset.p && Kit.main(x)){ r[fk]=t.value; persist(); StationQuick.auto(i, fk); return; }
+    if ((k==='ats' || k==='scada') && t.checked){ const a=this.ensureParts(x); if (a.length){ Kit.sync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); toast('Добавлено в состав: '+a.join(', ')); } }
     persist(); renderForm();
   }
 }
@@ -291,7 +291,7 @@ class ReceiverSync {
   /** что изменено словами («основной 4 × 900 л») или ''; dry — только узнать, что изменилось бы */
   static apply(x, dry=false){
     const R=StationReq.recvPlan(x); if (!R) return '';
-    const eq=StationEquip.list(kitParts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), P=kitParts(x), done=[];
+    const eq=StationEquip.list(Kit.parts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), P=Kit.parts(x), done=[];
     const role=e=>e.local ? 'local' : e.kind==='receiver' && e.air ? (e.air.role==='wet' ? 'wet' : 'dry') : '';
     for (const [k, g] of [['dry', R.main], ['wet', R.wet], ['local', R.local]]){
       if (!g || !(g.n>0)) continue;
@@ -343,7 +343,7 @@ class ExpertLog {
 // документация на сборку и протоколы испытаний.
 class SupplyDocs {
   static list(x){
-    const P=kitParts(x).filter(p=>String(p.name||'').trim()), k=p=>StationEquip.kindOf(p), has=(...K)=>P.some(p=>K.includes(k(p)));
+    const P=Kit.parts(x).filter(p=>String(p.name||'').trim()), k=p=>StationEquip.kindOf(p), has=(...K)=>P.some(p=>K.includes(k(p)));
     const mach=has('compressor', 'pump', 'dgu', 'dryer'), el=mach || has('cabinet'), vessel=has('receiver') || P.some(p=>k(p)==='dryer' && /адсорбц/i.test(AirChain.text(p)));
     const tr=[mach && 'ТР ТС 010/2011 «О безопасности машин и оборудования»', el && 'ТР ТС 004/2011 «О безопасности низковольтного оборудования»',
       el && 'ТР ТС 020/2011 «Электромагнитная совместимость технических средств»', vessel && 'ТР ТС 032/2013 «О безопасности оборудования, работающего под избыточным давлением»'].filter(Boolean);
@@ -358,7 +358,7 @@ class SupplyDocs {
   }
   /** блок описания для документа КП (станция, документы включены) или null */
   static feature(x){
-    if (!stationOf(x) || !StationReq.docs(x) || !kitParts(x).length) return null;
+    if (!Kit.station(x) || !StationReq.docs(x) || !Kit.parts(x).length) return null;
     const L=this.list(x); return { id:'kit_docs', label:'Документы при поставке', text:L.map((t, i)=>i ? t : t[0].toUpperCase()+t.slice(1)).join('; ')+'.' };
   }
 }
@@ -377,10 +377,10 @@ class KitNeed {
   /** цепочка воздуха по составу (контейнер не нужен): {q, bar, recs, …} или null (не компрессорная, нет компрессоров) */
   static air(x){
     if (StationReq.kind(x)!=='comp') return null;
-    return AirChain.check(StationEquip.list(kitParts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), StationUi.opts(x).air, StationReq.recvIn(x));
+    return AirChain.check(StationEquip.list(Kit.parts(x), { recv:StationReq.recv(x), recvOut:StationReq.recvOut(x) }), StationUi.opts(x).air, StationReq.recvIn(x));
   }
   /** компрессоры состава с характеристиками */
-  static comps(x){ return StationEquip.list(kitParts(x)).filter(e=>e.kind==='compressor' && e.air); }
+  static comps(x){ return StationEquip.list(Kit.parts(x)).filter(e=>e.kind==='compressor' && e.air); }
   /** наибольшее давление компрессоров, бар (0 — неизвестно) */
   static bar(x){ return Math.max(0, ...this.comps(x).map(e=>e.air.bar||0)); }
   /** чего не хватает (или что мало — замена): основное оборудование, бак ДГУ, подготовка воздуха компрессорной */
@@ -391,12 +391,12 @@ class KitNeed {
    *  (с потерями в подготовке воздуха), напор или больше четырёх рабочих — «Заменить». Несколько моделей — собрано вручную */
   static main(x){
     const k=StationReq.kind(x), M=this.MAIN[k]; if (!M) return [];
-    const P=kitParts(x).filter(p=>StationEquip.kindOf(p)===M[0]); if (P.length!==1) return [];
+    const P=Kit.parts(x).filter(p=>StationEquip.kindOf(p)===M[0]); if (P.length!==1) return [];
     const p=P[0], r=StationReq.of(x), a=p.attrs||{}, U=Math.max(1, Math.round(+p.qty||1)), res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=Math.max(0, Math.round(+r.work||0)), m3=AirChain.flowText;
     let cap=0, need=0, bad='';
-    if (k==='comp'){ const ads=kitParts(x).find(z=>StationEquip.kindOf(z)==='dryer' && AirChain.info(z, 'dryer').type==='ads'), purge=ads ? AirChain.purge((ads.attrs||{}).regen) : 0;
+    if (k==='comp'){ const ads=Kit.parts(x).find(z=>StationEquip.kindOf(z)==='dryer' && AirChain.info(z, 'dryer').type==='ads'), purge=ads ? AirChain.purge((ads.attrs||{}).regen) : 0;
       cap=(AirChain.flow(p)||0)*(1-purge); need=this.n(r.flow)>0 ? StationReq.need(r, this.n(r.flow)).v : 0;
-      const B=this.n(r.pressure), pm=AirChain.bar(p)||0, loss=StationReq.loss(kitParts(x));
+      const B=this.n(r.pressure), pm=AirChain.bar(p)||0, loss=StationReq.loss(Kit.parts(x));
       if (B>0 && pm>0 && pm-loss<B-1e-9) bad=`давление ${m3(pm)} бар${loss ? ` (с потерями в осушителе и фильтрах ≈ ${m3(pm-loss)})` : ''} меньше ${m3(B)} бар у потребителя`;
       if (!bad && StationReq.oilFree(x) && !TzPick.oilFree(p)) bad=`масляный, а ${StationReq.oilWhy(x)} нужен безмасляный (класс 0 по маслу)`; }
     if (k==='dgu'){ cap=GensetSizing.cap(a, r.mode==='standby'); need=this.n(r.kw)||0; }
@@ -413,7 +413,7 @@ class KitNeed {
   static fuel(x){
     if (StationReq.kind(x)!=='dgu') return [];
     const h=this.n(StationReq.of(x).hours), t=h>0 ? StationDefaults.tankFor(x, h) : null; if (!t) return [];
-    const T=kitParts(x).filter(z=>StationEquip.kindOf(z)!=='dgu' && StationDefaults.FUEL.test(String(z.name||''))), cur=T.reduce((s, z)=>s+(AirChain.volume(z)||0)*Math.max(1, +z.qty||1), 0);
+    const T=Kit.parts(x).filter(z=>StationEquip.kindOf(z)!=='dgu' && StationDefaults.FUEL.test(String(z.name||''))), cur=T.reduce((s, z)=>s+(AirChain.volume(z)||0)*Math.max(1, +z.qty||1), 0);
     if (T.length && cur>=t.v) return [];
     return [{ key:'tank', act:'tank', hours:h, by:'asm', match:StationDefaults.FUEL, swap:!!T.length,
       head:T.length ? `Заменить: топливный бак ${Mm.text(cur)} л — нужен ${Mm.text(t.v)} л` : `Нужно: топливный бак ${Mm.text(t.v)} л`,
@@ -424,7 +424,7 @@ class KitNeed {
     const A=this.air(x); if (!A) return [];
     const rank=r=>/^dryer/.test(r.cat) ? 0 : r.cat==='filter' ? 1 : 2;   // по ходу воздуха: осушитель, фильтры, ресиверы
     return [...A.recs, ...this.dryerFit(x, A)].sort((a, b)=>rank(a)-rank(b)).map(r=>{ if (!/^dryer-/.test(r.key) || r.replace) return r;
-      const old=kitParts(x).filter(p=>attrsOf(p).cat===r.cat || (StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===(r.cat==='dryer_ads' ? 'ads' : 'refrig'))).map(p=>p.id);
+      const old=Kit.parts(x).filter(p=>attrsOf(p).cat===r.cat || (StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===(r.cat==='dryer_ads' ? 'ads' : 'refrig'))).map(p=>p.id);
       return old.length ? { ...r, replace:old, swap:true } : r; });
   }
   /** осушитель состава не проходит по высоте или в плане с проходом (габариты известны) — заменить на подходящий: меньший
@@ -433,7 +433,7 @@ class KitNeed {
     const H=TzPick.hmax(x), W=TzPick.wmax(x), out=[], q=A.q||0;
     for (const t of ['ads', 'refrig']){ const cat=t==='ads' ? 'dryer_ads' : 'dryer_refrig';
       if ((A.recs||[]).some(r=>r.key==='dryer-'+t)) continue;   // уже рекомендована замена по производительности
-      const L=kitParts(x).filter(p=>StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===t), c=p=>({ name:p.name, attrs:p.attrs||{}, rows:p.rows||[] });
+      const L=Kit.parts(x).filter(p=>StationEquip.kindOf(p)==='dryer' && AirChain.info(p, 'dryer').type===t), c=p=>({ name:p.name, attrs:p.attrs||{}, rows:p.rows||[] });
       const bad=L.filter(p=>{ const d=StationEquip.dims(c(p), 'dryer'); return d.known && (!(TzPick.fitsH(c(p), 'dryer', H)) || !TzPick.fitsW(c(p), 'dryer', W)); });
       if (!bad.length) continue;
       const d=StationEquip.dims(c(bad[0]), 'dryer'), why=!TzPick.fitsH(c(bad[0]), 'dryer', H) ? `по высоте (${Mm.text(d.h)} мм, помещение ${Mm.text(H)} мм)` : `в плане с проходом (${Mm.text(Math.min(d.l, d.w))} мм, ширина ${Mm.text(W)} мм)`;
@@ -451,16 +451,16 @@ class KitNeed {
     else if (r.cat==='filter') o=TzPick.filter(r, q, B, Bc);
     else if (r.cat==='receiver'){
       // замена ресиверов на учёте (recv-split) — как раньше; остальные — типоразмер и число по методике (ReceiverPlan)
-      if (r.key==='recv-split'){ const old=kitParts(x).filter(p=>(r.replace||[]).includes(p.id)).reduce((s, p)=>s+(AirChain.volume(p)||0)*Math.max(1, +p.qty||1), 0);
+      if (r.key==='recv-split'){ const old=Kit.parts(x).filter(p=>(r.replace||[]).includes(p.id)).reduce((s, p)=>s+(AirChain.volume(p)||0)*Math.max(1, +p.qty||1), 0);
         const R=old>0 ? TzPick.receivers(old, Bc, StationReq.recvOut(x) ? 0 : TzPick.hmax(x)) : null; return R ? { c:R.o.c, n:R.n } : null; }
       const role=r.role||'dry', R=TzPick.recvPick(this.n((r.r.volume||[])[0])||0, Bc, (StationReq.recvOut(x) && role==='dry') || role==='local' ? 0 : TzPick.hmax(x));
       return R && R.o ? { c:R.o.c, n:Math.max(1, +r.qty||1), role } : null; }
     if (o) return { c:o.o.c, n:o.n };
-    const L=pfList(this.filters(x, r), [r.cat], 1).list; return L.length ? { c:L[0], n:Math.max(1, +r.qty||1) } : null;
+    const L=PickFilter.list(this.filters(x, r), [r.cat], 1).list; return L.length ? { c:L[0], n:Math.max(1, +r.qty||1) } : null;
   }
   /** фильтры окна каталога по рекомендации: {cat, f, r, min — давление не ниже компрессорного (без данных не отсекается)} */
   static filters(x, r){
-    const Bc=this.bar(x), F=pfNew([r.cat]); Object.assign(F.f, r.f||{}); for (const [k, v] of Object.entries(r.r||{})) F.r[k]=[...v];
+    const Bc=this.bar(x), F=PickFilter.create([r.cat]); Object.assign(F.f, r.f||{}); for (const [k, v] of Object.entries(r.r||{})) F.r[k]=[...v];
     if (Bc>0) F.min={ pressure:Bc }; return F;
   }
   /** пресет окна подбора по рекомендации: фильтры, строка «что нужно», рекомендуемый, количество и замена */
@@ -479,7 +479,7 @@ class KitNeed {
    *  подбор, что у кнопки «Подобрать оборудование») — первым, с числом рабочих и резервных. Компрессор — производительность,
    *  давление у потребителя, безмасляный, частотный; ДГУ — мощность (резервный источник — ESP); насос — подача и напор */
   static mainPreset(x){
-    const k=StationReq.kind(x), r=StationReq.of(x), m3=AirChain.flowText, cats=(stationOf(x)||{}).main||[], res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=+r.work||0;
+    const k=StationReq.kind(x), r=StationReq.of(x), m3=AirChain.flowText, cats=(Kit.station(x)||{}).main||[], res=Math.max(0, Math.round(this.n(r.reserve)||0)), work=+r.work||0;
     const pool=TzPick.stationPool(cats), tail=n=>`${n>1 ? ` — ${n} рабочих` : ''}${res ? ` + ${res} в резерве` : ''}`;
     const out=(u, n, test, need, extra={})=>({ test, qty:n+res, best:u ? { id:u.o.c.id, n:u.n+res, label:u.n+res>1 ? `${u.n} рабоч.${res ? ` + ${res} резерв.` : ''} = ${u.n+res} шт.` : '' } : null, need, ...extra });
     if (k==='comp'){ const q0=this.n(r.flow), B=this.n(r.pressure)||0; if (!(q0>0)) return null;
@@ -501,7 +501,7 @@ class KitNeed {
   /** подходит ли позиция каталога по пресету (отметка «мало» в окне подбора, когда показаны все) */
   static fits(c, P){
     if (!P) return true; const a=attrsOf(c);
-    for (const [k, [lo]] of Object.entries(P.r||{})){ const l=pfNum(lo), v=numOf(a[k]); if (l!=null && (v==null || v<l-1e-9)) return false; }
+    for (const [k, [lo]] of Object.entries(P.r||{})){ const l=PickFilter.num(lo), v=numOf(a[k]); if (l!=null && (v==null || v<l-1e-9)) return false; }
     for (const [k, v] of Object.entries(P.min||{})){ const t=this.top(a[k]); if (t!=null && t<v-1e-9) return false; }
     for (const [k, v] of Object.entries(P.f||{})) if (v && String(a[k]??'')!==v) return false;
     return !P.test || P.test(c);
@@ -535,19 +535,19 @@ class KitNeed {
   /** окно каталога по рекомендации (вкладки «Состав станции» и «Компоновка»); основное — по требованиям, с заменой */
   static open(i, r){
     const x=S.items[i]; if (!x || !r) return;
-    if (r.main) return kitPickCat(i, (stationOf(x)||{}).main, 'main', '', { ...(this.mainPreset(x)||{}), replace:r.replace });
-    kitPickCat(i, [r.cat], null, r.name, this.preset(x, r));
+    if (r.main) return KitPick.open(i, { cats:(Kit.station(x)||{}).main, role:'main', preset:{ ...(this.mainPreset(x)||{}), replace:r.replace } });
+    KitPick.open(i, { cats:[r.cat], name:r.name, preset:this.preset(x, r) });
   }
   /** действие в составе (без каталога): число агрегатов, топливный бак; ответ — что сделано (для сообщения) */
   static apply(x, r){
-    if (r.act==='qty'){ const p=kitParts(x).find(z=>z.id===r.id); if (!p) return ''; p.qty=r.qty; return `${String(p.name||'').trim()} — ${r.qty} шт.`; }
-    if (r.act==='tank'){ if (!kitParts(x).some(z=>StationEquip.kindOf(z)!=='dgu' && StationDefaults.FUEL.test(String(z.name||'')))) x.kit.parts.push(StationDefaults.part(x, 'Дополнительный топливный бак'));
+    if (r.act==='qty'){ const p=Kit.parts(x).find(z=>z.id===r.id); if (!p) return ''; p.qty=r.qty; return `${String(p.name||'').trim()} — ${r.qty} шт.`; }
+    if (r.act==='tank'){ if (!Kit.parts(x).some(z=>StationEquip.kindOf(z)!=='dgu' && StationDefaults.FUEL.test(String(z.name||'')))) x.kit.parts.push(StationDefaults.part(x, 'Дополнительный топливный бак'));
       const v=StationDefaults.retank(x, r.hours); return v ? `топливный бак ${Mm.text(v)} л` : ''; }
     return '';
   }
   /** состав изменился: закупка, компоновка, характеристики и название станции, перерисовка (размер контейнера — до
    *  характеристик: они берут ту же расстановку, второй раз она не считается) */
-  static done(x){ kitSync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); stationFill(x); stationAutoName(x); x.page=true; persist(); renderEditor(); renderForm(); }
+  static done(x){ Kit.sync(x); StationUi.cache.delete(x.id); StationSize.refresh(x); StationAuto.fill(x); StationName.apply(x); x.page=true; persist(); renderEditor(); renderForm(); }
   /** одна кнопка: число агрегатов и бак — в составе, остальное — рекомендуемый из каталога (после осушителя могут
    *  понадобиться фильтры — до 4 проходов) */
   static async fillAll(i){
@@ -569,7 +569,7 @@ class KitNeed {
       if (r.act){ const t=this.apply(x, r); this.done(x); if (t) toast('В составе: '+t); return 'async'; }
       this.open(i, r); return 'async'; }
     if (a==='kitNeedAll'){ this.fillAll(i); return 'async'; }
-    if (a==='kitSwap'){ const p=kitParts(x)[+b.dataset.j]; if (p) this.swap(i, p); return 'async'; }
+    if (a==='kitSwap'){ const p=Kit.parts(x)[+b.dataset.j]; if (p) this.swap(i, p); return 'async'; }
     return false;
   }
   /** виды, которые можно заменить из каталога прямо из строки состава */
@@ -582,7 +582,7 @@ class KitNeed {
     const x=S.items[i], kind=StationEquip.kindOf(p), cat=(p.attrs||{}).cat, qty=Math.max(1, +p.qty||1), name=String(p.name||'').trim();
     const tag=`Замена «${name || 'элемента'}». `;
     if (p.role==='main'){ const m=this.mainPreset(x)||{};
-      return kitPickCat(i, (stationOf(x)||{}).main, 'main', '', { ...m, replace:[p.id], swapRow:true, qty:m.qty||qty, need:tag+(m.need||'Показано основное оборудование станции.') }); }
+      return KitPick.open(i, { cats:(Kit.station(x)||{}).main, role:'main', preset:{ ...m, replace:[p.id], swapRow:true, qty:m.qty||qty, need:tag+(m.need||'Показано основное оборудование станции.') } }); }
     const cats=cat && TYPES.some(t=>t.id===cat) ? [cat] : null;
     // своя рекомендация этого вида («Нужно» / «Заменить») — её фильтры и рекомендуемый; иначе — по требованиям станции
     const rec=cats && this.recs(x).find(z=>z.cat===cat && !z.main);
@@ -594,7 +594,7 @@ class KitNeed {
     pre={ ...(pre||{}), replace:[p.id], swapRow:true, qty:pre && pre.qty ? pre.qty : qty, grade:p.airGrade || (pre && pre.grade) || '', role:p.recvRole || (pre && pre.role) || '' };
     const nd=pre.need ? pre.need.replace(/^(Нужно|Заменить): /, '') : 'Показан каталог этого вида — выберите, что поставить вместо.';
     pre.need=tag+nd.charAt(0).toUpperCase()+nd.slice(1);
-    kitPickCat(i, cats, p.role||null, cats ? '' : name, pre, p.by);
+    KitPick.open(i, { cats, role:p.role||null, name:cats ? '' : name, preset:pre, by:p.by });
   }
 }
 
@@ -604,10 +604,10 @@ class KitView {
   static pos = new Map();        // id элемента → номер позиции на чертеже (при отрисовке вкладки)
 
   static render(x, i){
-    const parts=kitParts(x), st=stationOf(x);
+    const parts=Kit.parts(x), st=Kit.station(x);
     if (!st && !parts.length) return `<div class="ed-sec"><p class="muted">Состав есть только у станций в контейнере. Чтобы собрать станцию, выберите категорию «Насосные / Компрессорные / Дизель-генераторные станции в контейнере» на вкладке «Основное».</p></div>`;
     StationReq.ensure(x);
-    const cont=kitContainer(x), main=kitMainPart(x);
+    const cont=Kit.container(x), main=Kit.main(x);
     const idx=parts.map((p, j)=>[p, j]).filter(([p])=>p.role!=='container'), our=idx.filter(([p])=>KitScope.of(p)==='our'), asm=idx.filter(([p])=>KitScope.of(p)==='asm');
     const sups=[...new Set([...(typeof DL!=='undefined' && DL.sups || []).map(s=>s.name), ...catCache.map(c=>attrsOf(c).maker)].filter(Boolean))].slice(0, 400);
     this.pos=new Map(StationEquip.list(parts).filter(e=>e.pos).map(e=>[e.id, e.pos]));   // номера позиций на чертеже
@@ -625,7 +625,7 @@ class KitView {
   /** контейнер ещё не выбран — плитки типов */
   static pickCont(i){
     return `<div class="kit-todo"><b>Контейнер</b><span class="muted">В чём поставляем станцию — дальше уточните утепление, климат и системы.</span>
-      <div class="kit-cts">${CONTAINER_TYPES.map(c=>`<button type="button" class="kit-ctb" data-a="kitCont" data-i="${i}" data-ct="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div></div>`;
+      <div class="kit-cts">${ContainerKind.TYPES.map(c=>`<button type="button" class="kit-ctb" data-a="kitCont" data-i="${i}" data-ct="${esc(c.id)}"><b>${esc(c.name)}</b><small>${esc(c.size)}</small></button>`).join('')}</div></div>`;
   }
 
   /** контейнер: тип, размер, утепление, климат, цвет, сборщик и закупка — одной строкой; системы — кнопками */
@@ -634,10 +634,10 @@ class KitView {
     const ct=p._costText ?? (p.cost ? String(p.cost/100).replace('.', ',') : ''), P=`items.${i}.kit.parts.${j}`;
     const auto=StationUi.enabled(x) && StationGeo.FLEX[p.ctype], sz=String(p.size||'').trim();
     return `<div class="kit-cont">
-      <div class="kc-g">${sel('ctype', CONTAINER_TYPES.map(c=>[c.id, c.name]), p.ctype, 'Контейнер')}
-        <label class="f"><span>Размер Д × Ш × В, мм${auto && p.sizeAuto && sz ? ` <small class="muted">${p.lenFix ? 'длина задана' : 'по оборудованию'}</small>` : ''}${auto ? tip('Все три окошка пустые — размер по оборудованию. Только длина (например, 10000) — длина заданная, ширина, высота и плотность компоновки (просторно, плотно, максимально плотно) — по оборудованию. Все три — размер целиком вручную.') : ''}</span>${DimInput.html(`data-kitct="${i}.${j}" data-fld="size"`, p.size||'', {ph:ctypeOf(p.ctype).size, label:'Размер контейнера', lenOnly:auto, unit:''})}</label>
-        ${sel('ins', CONTAINER_INS.map(v=>[v, v]), p.ins, 'Утепление')}
-        ${sel('climate', CLIMATES.map(c=>[c[0], c[0]+' — до '+c[2]+' °C']), p.climate, 'Климатическое исполнение')}
+      <div class="kc-g">${sel('ctype', ContainerKind.TYPES.map(c=>[c.id, c.name]), p.ctype, 'Контейнер')}
+        <label class="f"><span>Размер Д × Ш × В, мм${auto && p.sizeAuto && sz ? ` <small class="muted">${p.lenFix ? 'длина задана' : 'по оборудованию'}</small>` : ''}${auto ? tip('Все три окошка пустые — размер по оборудованию. Только длина (например, 10000) — длина заданная, ширина, высота и плотность компоновки (просторно, плотно, максимально плотно) — по оборудованию. Все три — размер целиком вручную.') : ''}</span>${DimInput.html(`data-kitct="${i}.${j}" data-fld="size"`, p.size||'', {ph:ContainerKind.of(p.ctype).size, label:'Размер контейнера', lenOnly:auto, unit:''})}</label>
+        ${sel('ins', ContainerKind.INSULATION.map(v=>[v, v]), p.ins, 'Утепление')}
+        ${sel('climate', ContainerKind.CLIMATES.map(c=>[c[0], c[0]+' — до '+c[2]+' °C']), p.climate, 'Климатическое исполнение')}
         <label class="f"><span>Сборщик контейнера${tip('Кто изготавливает контейнер и собирает станцию. Элементы «Сборщика контейнера» без своего поставщика в «Экономике сделки» попадут к нему; наше оборудование едет к нему на сборку.')}</span><input type="text" list="kitSupL" data-p="${P}.sup" value="${esc(p.sup||'')}" placeholder="производитель контейнеров"></label>
         <label class="f"><span>Закупка контейнера</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${i}.${j}" value="${esc(ct)}" placeholder="цена из счёта"><select data-kitcur="${i}.${j}" aria-label="Валюта закупки">${DEAL_CURS.map(c=>`<option${(p.costCur||'RUB')===c ? ' selected' : ''}>${c}</option>`).join('')}</select></span></label></div>
       <details class="kc-more"${Spoiler.attr('cont:'+x.id)}><summary>Крыша, пол, окраска${this.look(p)}</summary><div class="kc-g">
@@ -646,7 +646,7 @@ class KitView {
 </div>${PaintView.html(p, i, j)}</details>
       ${auto && p.lenFix ? StationSize.note(p, StationUi.plan(x), i) : ''}
       ${auto && !p.sizeAuto && sz ? `<p class="muted kit-szn">Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${i}">подобрать по оборудованию</button></p>` : ''}
-      <div class="kit-sys"><span class="muted">Системы:</span>${CONT_SYSTEMS.map(([id, k, v])=>{ const on=KitView.sysOn(x, p, id); return `<button type="button" class="chip sm${on ? ' on' : ''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!on}" title="${esc(v)}">${esc(k)}</button>`; }).join('')}</div></div>`;
+      <div class="kit-sys"><span class="muted">Системы:</span>${ContainerKind.SYSTEMS.map(([id, k, v])=>{ const on=KitView.sysOn(x, p, id); return `<button type="button" class="chip sm${on ? ' on' : ''}" data-a="kitSys" data-i="${i}" data-j="${j}" data-sys="${id}" aria-pressed="${!!on}" title="${esc(v)}">${esc(k)}</button>`; }).join('')}</div></div>`;
   }
 
   /** выбранное исполнение коротко — в заголовке свёрнутого блока: «(крыша скатная · пол — сталь чёрная · RAL 7035 / RAL 5005)» */
@@ -657,12 +657,12 @@ class KitView {
   }
 
   /** система контейнера включена: своё значение, иначе по умолчанию (рекуперация — у компрессорных и ДГУ, насосы почти не греют) */
-  static sysOn(x, p, id){ const v=(p.sys||{})[id]; return v ?? (id==='rec' ? StationReq.kind(x)!=='pump' : !!CONT_SYS_DEF[id]); }
+  static sysOn(x, p, id){ const v=(p.sys||{})[id]; return v ?? (id==='rec' ? StationReq.kind(x)!=='pump' : !!ContainerKind.SYSTEMS_ON[id]); }
 
   /** группа элементов: таблица строк и кнопки добавления */
   static group(x, i, by, idx, st){
-    const presets=(st ? st.parts : KIT_PRESETS).map(z=>Array.isArray(z) ? z : [z, '']), have=new Set(kitParts(x).map(p=>norm(p.name)));
-    const kinds=new Set(kitParts(x).map(p=>StationEquip.kindOf(p)).filter(k=>k==='dryer' || k==='receiver'));   // уже есть — не предлагать
+    const presets=(st ? st.parts : Kit.PRESETS).map(z=>Array.isArray(z) ? z : [z, '']), have=new Set(Kit.parts(x).map(p=>norm(p.name)));
+    const kinds=new Set(Kit.parts(x).map(p=>StationEquip.kindOf(p)).filter(k=>k==='dryer' || k==='receiver'));   // уже есть — не предлагать
     // «Нужно: …» — чего не хватает (KitNeed); кнопки этих категорий и элементов не дублируем
     const R=KitNeed.recs(x).filter(r=>(r.by||'our')===by), need=KitNeed.rows(x, i, by), needCats=new Set(R.map(r=>r.cat).filter(Boolean)), hide=n=>R.some(r=>r.match && r.match.test(n));
     const mine=presets.filter(([n, c])=>!have.has(norm(n)) && KitScope.def({ name:n, attrs:{ cat:c } })===by && !KitView.SYS.test(n) && !kinds.has(StationEquip.kindOf({ name:n, attrs:{ cat:c } })) && !needCats.has(c) && !hide(n));   // системы — кнопками у контейнера
@@ -677,7 +677,7 @@ class KitView {
 
   /** строка элемента */
   static row(x, i, p, j, by){
-    const P=`items.${i}.kit.parts.${j}`, ct=p._costText ?? (p.cost ? String(p.cost/100).replace('.', ',') : ''), open=this.open.has(p.id), last=kitParts(x).length-1;
+    const P=`items.${i}.kit.parts.${j}`, ct=p._costText ?? (p.cost ? String(p.cost/100).replace('.', ',') : ''), open=this.open.has(p.id), last=Kit.parts(x).length-1;
     const kind=StationEquip.kindOf(p), lab=p.role==='main' ? '<span class="kit-role main">основное</span>' : '';
     const asmSup=by==='asm' ? KitScope.sup(x, p) : '';
     return `<div class="kt-r${open ? ' open' : ''}${p.name ? '' : ' need'}" role="row" data-kitj="${j}">
@@ -704,7 +704,7 @@ class KitView {
   static tankSize(x, p, kind){
     if (kind!=='tank' || StationEquip.dims(p, kind).known) return '';
     // как в компоновке (под высоту и проход отсека); компоновки нет — по «Настройкам»
-    const v=TankSize.vol(p), pl=StationUi.enabled(x) && kitContainer(x) ? StationUi.plan(x) : null, it=pl && (pl.items||[]).find(i=>i.tank && i.id===p.id);
+    const v=TankSize.vol(p), pl=StationUi.enabled(x) && Kit.container(x) ? StationUi.plan(x) : null, it=pl && (pl.items||[]).find(i=>i.tank && i.id===p.id);
     const d=it ? { l:Math.max(it.lx, it.ly), w:Math.min(it.lx, it.ly), h:it.h } : TankSize.of(v||1000);
     return `<small class="muted kd-tank">Габариты по объёму${v ? ' '+Mm.text(v)+' л' : ''}: ${esc(TankSize.text(d))} — прямоугольный, стенка ${StationMatrix.tank().wall} мм (требует подтверждения изготовителем). Свои — строкой «Габариты».</small>`;
   }
@@ -726,9 +726,9 @@ class KitView {
 
   /** итог закупки и переход к компоновке */
   static sum(x, i){
-    const parts=kitParts(x); if (!parts.length) return '';
-    const cost=kitCost(x), miss=parts.filter(p=>!p.cost && (p.role==='container' || KitScope.of(p)==='our'));
-    const plan=StationUi.enabled(x) && kitContainer(x) ? StationUi.plan(x) : null;
+    const parts=Kit.parts(x); if (!parts.length) return '';
+    const cost=Kit.cost(x), miss=parts.filter(p=>!p.cost && (p.role==='container' || KitScope.of(p)==='our'));
+    const plan=StationUi.enabled(x) && Kit.container(x) ? StationUi.plan(x) : null;
     const lay=plan && plan.level!=='none' ? (plan.level==='error' ? ['bad', plan.assumed ? '✕ Компоновка: проверьте габариты' : '✕ Не помещается в контейнер'] : plan.level==='warn' ? ['warn', '⚠ Компоновка — есть замечания'] : ['on', '✓ Помещается']) : null;
     return `<div class="kit-sum"><span>Закупка изделия${parts.some(p=>p.costCur && p.costCur!=='RUB') ? ' (по курсам КП)' : ''}</span><b>${Number.isFinite(cost) ? money(cost)+' ₽' : 'нет курса валюты — укажите в шаге «Цены»'}</b>
       ${lay ? `<button type="button" class="chip sm ${lay[0]}" data-edtab="layout">${lay[1]} → компоновка</button>` : ''}
@@ -738,9 +738,9 @@ class KitView {
 
   /** действия вкладки (data-a); true — перерисовать */
   static act(a, i, b){
-    const it=S.items[i]; if (!it) return false; const P=kitParts(it), p=P[+b.dataset.j];
+    const it=S.items[i]; if (!it) return false; const P=Kit.parts(it), p=P[+b.dataset.j];
     if (a==='kitOpen' && p){ if (this.open.has(p.id)) this.open.delete(p.id); else this.open.add(p.id); renderEditor(); return 'async'; }
-    if (a==='kitBy' && p){ p.by=b.dataset.by==='our' ? 'our' : 'asm'; if (p.by===KitScope.def(p)) delete p.by; kitSync(it); return true; }
+    if (a==='kitBy' && p){ p.by=b.dataset.by==='our' ? 'our' : 'asm'; if (p.by===KitScope.def(p)) delete p.by; Kit.sync(it); return true; }
     if (a==='reqPickX'){ delete StationReq.ensure(it).pick; persist(); renderEditor(); return 'async'; }
     if (a==='reqReset'){ ExpertLog.reset(it, String(b.dataset.k||'').split(',')); StationUi.cache.delete(it.id); persist(); renderEditor(); return 'async'; }
     if (a==='kitNeed' || a==='kitNeedAll' || a==='kitSwap') return KitNeed.act(a, i, b);
@@ -762,7 +762,7 @@ class DrawPic {
   static DRAWN = /^(compressor|dryer|receiver|filter|dgu|pump|cabinet|tank)$/;
   /** карточка позиции (КП или каталог): оборудование, которое рисуется на чертеже станции, — свой рисунок модели */
   static forItem(x, i){
-    if (stationOf(x) || !this.DRAWN.test(StationEquip.kindOf(x)||'')) return '';
+    if (Kit.station(x) || !this.DRAWN.test(StationEquip.kindOf(x)||'')) return '';
     return `<div class="ed-sec">${this.fields(x, i, -1)}<p class="muted kd-hint">Попадёт в состав станции вместе с позицией: на габаритном чертеже — вместо рисунка программы.</p></div>`;
   }
   /** сохранение: рисунки data:… — файлами на сервер (как фото), в данных — адреса /img/… */
@@ -773,21 +773,21 @@ class DrawPic {
     return out;
   }
   /** есть рисунки, ещё не загруженные для чертежа */
-  static pending(x){ return kitParts(x).some(p=>this.VIEWS.some(([v])=>{ const s=p.draw && p.draw[v] && p.draw[v].src; return s && !this.cache.has(s) && !s.startsWith('data:'); })); }
+  static pending(x){ return Kit.parts(x).some(p=>this.VIEWS.some(([v])=>{ const s=p.draw && p.draw[v] && p.draw[v].src; return s && !this.cache.has(s) && !s.startsWith('data:'); })); }
   /** выбрать файл рисунка: элемент станции (j>=0) или позиция в карточке (j<0) */
   static pick(i, j, v){
     const f=$('#filePick'); f.value=''; f.multiple=false; f.accept='image/png,image/jpeg,image/webp';
     f.onchange=async ()=>{ const fl=f.files[0]; f.accept=''; if (!fl) return;
-      try{ const im=await prepGallery(fl), it=S.items[i], tg=j>=0 ? kitParts(it)[j] : it; if (!tg) return;
+      try{ const im=await prepGallery(fl), it=S.items[i], tg=j>=0 ? Kit.parts(it)[j] : it; if (!tg) return;
         tg.draw={ ...(tg.draw||{}), [v]:im }; if (j>=0) StationUi.cache.delete(it.id); renderForm(); persist(); }
       catch(e){ toast('Не удалось открыть изображение'); } };
     f.click();
   }
-  static del(i, j, v){ const it=S.items[i], tg=j>=0 ? kitParts(it)[j] : it; if (!tg || !tg.draw) return; delete tg.draw[v]; if (!Object.keys(tg.draw).length) delete tg.draw; if (j>=0) StationUi.cache.delete(it.id); }
+  static del(i, j, v){ const it=S.items[i], tg=j>=0 ? Kit.parts(it)[j] : it; if (!tg || !tg.draw) return; delete tg.draw[v]; if (!Object.keys(tg.draw).length) delete tg.draw; if (j>=0) StationUi.cache.delete(it.id); }
   /** все рисунки станции — в data:URL (для SVG чертежа); true — что-то загрузилось */
   static async load(x){
     let ch=false;
-    for (const p of kitParts(x)) for (const [v] of this.VIEWS){ const s=p.draw && p.draw[v] && p.draw[v].src; if (!s || this.cache.has(s)) continue;
+    for (const p of Kit.parts(x)) for (const [v] of this.VIEWS){ const s=p.draw && p.draw[v] && p.draw[v].src; if (!s || this.cache.has(s)) continue;
       if (s.startsWith('data:')){ this.cache.set(s, s); continue; }
       try{ const b=await (await fetch(s)).blob(); this.cache.set(s, await new Promise((ok, no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(b); })); ch=true; }
       catch(e){ this.cache.set(s, ''); } }
@@ -827,20 +827,20 @@ class PaintView {
 
   /** окно окраски, место или размер рисунка изменены */
   static change(t){
-    const [i, j, k]=String(t.dataset.kitpaint || t.dataset.kitbook || t.dataset.kitart).split('.').map(Number), it=S.items[i], p=kitParts(it)[j]; if (!p) return;
+    const [i, j, k]=String(t.dataset.kitpaint || t.dataset.kitbook || t.dataset.kitart).split('.').map(Number), it=S.items[i], p=Kit.parts(it)[j]; if (!p) return;
     if (t.dataset.kitpaint!=null) StationPaint.set(p, t.dataset.k, t.value);
     else if (t.dataset.kitbook!=null) p.paintBook=t.checked;
     else { const a=(p.art||[])[k]; if (!a) return; const f=t.dataset.k;
       if (f==='wall' && StationPaint.WALLS[t.value]) a.wall=t.value;
       else if (f==='x' || f==='z') a[f]=StationPaint.frac(+t.value, 0.5);
       else if (f==='w'){ const n=Math.round(dNum(t.value)); if (n>=100 && n<=12000) a.w=n; else toast('Ширина рисунка — от 100 до 12 000 мм'); } }
-    contApply(p); StationUi.cache.delete(it.id); renderForm(); persist();
+    ContainerPart.apply(p); StationUi.cache.delete(it.id); renderForm(); persist();
   }
 
   /** кнопки: файл буклета, рисунок заказчика — загрузить или убрать */
   static act(a, i, b){
-    const it=S.items[i], p=kitParts(it)[+b.dataset.j]; if (!p) return false;
-    const done=()=>{ contApply(p); StationUi.cache.delete(it.id); renderForm(); persist(); };
+    const it=S.items[i], p=Kit.parts(it)[+b.dataset.j]; if (!p) return false;
+    const done=()=>{ ContainerPart.apply(p); StationUi.cache.delete(it.id); renderForm(); persist(); };
     if (a==='paintFileDel'){ delete p.paintFile; return true; }
     if (a==='paintArtDel'){ (p.art||[]).splice(+b.dataset.k, 1); if (p.art && !p.art.length) delete p.art; StationUi.cache.delete(it.id); return true; }
     const book=a==='paintFile', f=$('#filePick'); f.value=''; f.multiple=false; f.accept=book ? 'application/pdf,image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp';

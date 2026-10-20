@@ -200,7 +200,7 @@ class AiFill {
 
   // ---------- основной запрос
   static prompt(it, c={}){
-    const t=typeById(attrsOf(it).cat), st=t.station, parts=kitParts(it).filter(p=>p.name), p=c.profile;
+    const t=typeById(attrsOf(it).cat), st=t.station, parts=Kit.parts(it).filter(p=>p.name), p=c.profile;
     const types=TYPES.filter(x=>!x.station).map(x=>`${x.id} — ${x.name}`).join('; '), facts=this.factsText(c.facts);
     return `Ты — инженер, готовишь технико-коммерческое предложение на русском языке.
 Оборудование: ${t.item||t.name}${it.name?` — «${it.name}»`:''}.${st&&parts.length?`\nЭто ${t.item.toLowerCase()} в контейнере, в составе: ${parts.map(x=>x.name+(+x.qty>1?' × '+x.qty:'')).join('; ')}.`:''}
@@ -369,11 +369,11 @@ ${String(it._src||'').trim()||'(только наименование выше)'
   static applyStation(it, j){
     it.kit=it.kit||{parts:[]}; const P=it.kit.parts, have=new Set(P.map(p=>norm(p.name)));
     const crow=((j.container&&j.container.rows)||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}));
-    if (crow.length){ let c=P.find(p=>p.role==='container'); if (!c){ c=kitNewContainer('welded'); P.push(c); }
+    if (crow.length){ let c=P.find(p=>p.role==='container'); if (!c){ c=ContainerPart.create('welded'); P.push(c); }
       for (const r of crow){ const o=c.rows.find(z=>norm(z.k)===norm(r.k)); if (o) o.v=r.v; else c.rows.push(r); } }
     for (const p of (j.parts||[])){ if (!p || !String(p.name||'').trim() || have.has(norm(p.name))) continue; have.add(norm(p.name));
-      P.push(kitNewPart({name:String(p.name).trim(), qty:+p.qty>0?+p.qty:1, desc:String(p.desc||''), rows:(p.rows||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}))})); }
-    stationFill(it);
+      P.push(Kit.newPart({name:String(p.name).trim(), qty:+p.qty>0?+p.qty:1, desc:String(p.desc||''), rows:(p.rows||[]).filter(x=>x&&x.k&&x.v).map(x=>({k:String(x.k), v:String(x.v)}))})); }
+    StationAuto.fill(it);
   }
 }
 
@@ -391,7 +391,7 @@ ${String(p._src||'').trim()||'(только наименование — най�
 }
 
 function aiPartDialog(i, j){
-  const it=S.items[i], p=kitParts(it)[j]; if (!p) return;
+  const it=S.items[i], p=Kit.parts(it)[j]; if (!p) return;
   const d=$('#dlg'); d.classList.add('wide');
   const draw=()=>{ const r=aiParse(p._ans);
     d.innerHTML=`<div class="dlg-h"><h3>Заполнить с ИИ: ${esc(p.name||'элемент')}</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
@@ -421,7 +421,7 @@ function aiPartDialog(i, j){
 }
 
 function aiPartCopy(i, j, url){
-  const it=S.items[i], p=kitParts(it)[j]; if (!p) return;
+  const it=S.items[i], p=Kit.parts(it)[j]; if (!p) return;
   aiSend(aiPartPrompt(it, p), url, ok=>{ if (ok) toast(url?'Запрос скопирован — вставьте его в окне ИИ (Ctrl+V)':'Запрос скопирован'); });
 }
 

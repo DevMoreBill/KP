@@ -73,7 +73,7 @@ export class StationQuick {
   static html(item, index) {
     const req = StationReq.of(item);
     const kind = StationReq.kind(item);
-    const main = kitMainPart(item);
+    const main = Kit.main(item);
     const view = { item, index, req, hint: this.hint(item), ask: this.ask(item) ? (this.NEED[kind] || [])[0] : '' };
     const fields = (this.KEYS[kind] || []).map(field => this._field(view, field)).join('');
     const industry =
@@ -154,7 +154,7 @@ export class StationQuick {
   static ask(item) {
     const kind = StationReq.kind(item);
     const need = this.NEED[kind];
-    if (!need || !kitMainPart(item) || StationReq.num(StationReq.of(item)[need[0]]) > 0) return '';
+    if (!need || !Kit.main(item) || StationReq.num(StationReq.of(item)[need[0]]) > 0) return '';
     return `Укажите ${need[1]} по ТЗ — проверим, хватает ли ${this.WHO[kind]}`;
   }
 
@@ -195,7 +195,7 @@ export class StationQuick {
 
   /** компоновка, расчёт и чего нет в каталоге — для итога */
   static _state(item) {
-    const plan = StationUi.enabled(item) && kitContainer(item) ? StationUi.plan(item) : null;
+    const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
     const calc = StationRules.ok() && typeof StationCalc !== 'undefined' ? StationCalc.run(item) : null;
     return {
       plan,
@@ -256,10 +256,10 @@ export class StationQuick {
   }
 
   static _containerLine(item) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     if (!container) return '';
     const size = String(container.size || '').trim() ? `, ${container.size} мм` : '';
-    return `<div class="muted">${esc(ctypeOf(container.ctype).name + size)}</div>`;
+    return `<div class="muted">${esc(ContainerKind.of(container.ctype).name + size)}</div>`;
   }
 
   static _supLine(item) {
@@ -273,7 +273,7 @@ export class StationQuick {
    * @returns {string[]}
    */
   static lines(item) {
-    const parts = kitParts(item).filter(part => part.role !== 'container');
+    const parts = Kit.parts(item).filter(part => part.role !== 'container');
     const reserve = Math.max(0, Math.round(StationReq.num(StationReq.of(item).reserve) || 0));
     const kinds = [
       ['compressor', ''],
@@ -403,7 +403,7 @@ export class StationQuick {
    */
   static parts(item) {
     const map = new Map();
-    for (const part of kitParts(item)) {
+    for (const part of Kit.parts(item)) {
       const kind = StationEquip.kindOf(part) || '';
       if (this.PICKED.test(kind))
         map.set(kind, [...(map.get(kind) || []), `${part.qty > 1 ? `${part.qty} × ` : ''}${part.name}`]);
@@ -459,7 +459,7 @@ export class StationQuick {
     }
     const replaced = this.REPICK[kind] || this.REPICK.pump;
     return (
-      !kitMainPart(item) ||
+      !Kit.main(item) ||
       confirm(
         `Подобрать оборудование заново? ${replaced} заменятся подобранными из каталога; контейнер, шкафы и обвязка останутся.`,
       )

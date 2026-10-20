@@ -16,10 +16,9 @@ global.typeById=id=>TYPES[id]||{};
 global.DEF=()=>null; global.FEAT={ on:()=>true };
 global.esc=s=>String(s??'');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js'), 'utf8'), { filename:'money.js' });   // Money — показ сумм
-for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit.js', 'kit-view.js', 'station/index.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js']){
+for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'kit-view.js', 'station/index.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
-global.isKit=x=>!!(x && x.kit);
 global.S={};
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
 if (GOLDEN) process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN));
@@ -53,7 +52,7 @@ class Scenario {
   /** требования из ТЗ → станция, подбор, расчёт; как TzImport.apply без окна */
   static async run(sc){
     const q=Object.assign({}, sc.req);
-    const x={ id:'x'+sc.n, name:'', attrs:{ cat:q.kind==='dgu' ? 'st_dgu' : q.kind==='pump' ? 'st_pump' : 'st_comp' }, req:{}, kit:{ parts:[kitNewContainer(q.cont||'block')] } };
+    const x={ id:'x'+sc.n, name:'', attrs:{ cat:q.kind==='dgu' ? 'st_dgu' : q.kind==='pump' ? 'st_pump' : 'st_comp' }, req:{}, kit:{ parts:[ContainerPart.create(q.cont||'block')] } };
     StationDefaults.add(x, x.attrs.cat);   // как мастер новой станции: глушитель, бак, обвязка
     const r=x.req;
     for (const k of this.NUMS) if (q[k]!=null && q[k]!=='') r[k]=this.num(q[k]);
@@ -72,7 +71,7 @@ class Scenario {
     const R=StationCalc.run(x), G=StationCalc.docGroups(x);
     const steps=R.sections.flatMap(s=>s.steps.map(o=>({ sec:s.id, what:o.what, result:o.result||'', ok:o.ok, margin:o.margin, data:(o.data||[]).map(([k, v])=>k+': '+v) })));
     return { n:sc.n, name:sc.name, req:r, cls:(x.stLayout||{}).air||'', note,
-      parts:kitParts(x).filter(p=>p.role!=='container').map(p=>({ name:p.name, qty:+p.qty||1, kind:StationEquip.kindOf(p), attrs:p.attrs||{}, rows:(p.rows||[]).filter(r=>r && r.k) })),
+      parts:Kit.parts(x).filter(p=>p.role!=='container').map(p=>({ name:p.name, qty:+p.qty||1, kind:StationEquip.kindOf(p), attrs:p.attrs||{}, rows:(p.rows||[]).filter(r=>r && r.k) })),
       errors:R.errors.map(e=>e.text), warnings:R.warnings.map(e=>e.text), weak:R.weak.map(w=>w.title), assumptions:R.assumptions, questions:R.questions, later:R.later,
       steps, groups:G.map(g=>g.name), groupsOff:off, version:R.version };
   }

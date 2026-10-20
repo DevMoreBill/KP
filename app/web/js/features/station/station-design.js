@@ -22,7 +22,7 @@ export class StationDesign {
   static items(item) {
     const plan = this._plan(item);
     if (!plan) return [];
-    const container = kitContainer(item) || {};
+    const container = Kit.container(item) || {};
     const view = { item, plan, container, on: id => KitView.sysOn(item, container, id) };
     return [
       this._container(view),
@@ -55,12 +55,12 @@ export class StationDesign {
     const [length, width, height] = plan.geo.ext;
     const roof = StationGeo.ROOFS[StationGeo.roof(container)];
     const floor = StationGeo.FLOORS[StationGeo.floor(container)];
-    const climate = CLIMATES.find(row => row[0] === container.climate);
+    const climate = ContainerKind.CLIMATES.find(row => row[0] === container.climate);
     const ins = container.ins ? `, утепление ${container.ins}` : '';
     const clim = climate ? `, климатическое исполнение ${climate[0]} (${climate[1]})` : '';
     return [
       'Контейнер',
-      `${ctypeOf(container.ctype).name}, ${this.size(length)} × ${this.size(width)} × ${this.size(height)} мм${ins}${clim}; крыша ${roof ? roof.name : 'плоская'}, пол — ${floor ? floor.name : ''}.`,
+      `${ContainerKind.of(container.ctype).name}, ${this.size(length)} × ${this.size(width)} × ${this.size(height)} мм${ins}${clim}; крыша ${roof ? roof.name : 'плоская'}, пол — ${floor ? floor.name : ''}.`,
     ];
   }
 

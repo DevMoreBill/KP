@@ -134,7 +134,7 @@ async function saveCatalog(i){
   if (cur && cur._light) return toast('Карточка каталога не загрузилась — повторите, когда будет связь с сервером');
   const doc={ ...(cur ? JSON.parse(JSON.stringify(cur)) : {}), id, name:it.name, spec:it.spec, price:it.price, pageTitle:it.pageTitle, photoCaption:it.photoCaption,
     features:it.features, groups:it.groups, hint:it.hint||null, photo:it.photo||null, logo:it.logo||null, updatedAt:new Date().toISOString(),
-    ...(isKit(it)?{kit:{parts:kitParts(it).map(({_costText,...p})=>p)}, cost:it.cost, costCur:'RUB', attrs:it.attrs}:{}) };
+    ...(Kit.has(it)?{kit:{parts:Kit.parts(it).map(({_costText,...p})=>p)}, cost:it.cost, costCur:'RUB', attrs:it.attrs}:{}) };
   try{ const sv=await store().put(doc); if(sv&&sv.photo) it.photo=sv.photo; if(sv&&sv.logo) it.logo=sv.logo; it.catId=id; await refreshCat(); toast(sv._pending?'Отправлено на модерацию — изменения появятся после одобрения администратором':'Позиция сохранена в каталог'); }
   catch(e){ toast('Не удалось сохранить в каталог: '+(e.message||e)); }
   renderForm(); persist();

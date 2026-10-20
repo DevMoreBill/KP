@@ -80,14 +80,14 @@ class DealState {
     const cal = d0 && DealCal.ready(d0) ? { isOff:day=>DealCal.off(d0,day), workShift:day=>{ let x=day, g=0; while (DealCal.off(d0,x) && g++<20) x++; return x; }, addWork:DealCal.addWorkFn(d0) } : {};
     return { ...cal, sumRub: r>0 ? e.sum/100*r : 0, sumNoRate: !(r>0), cur:e.cur, vat:+st.vat||0, rates:{...(P.rates||{})}, costNoVat:!!P.costNoVat, moneyAuto:DealDefaults.moneyAuto(),
       // строки закупки: обычная позиция — как есть, сборка — по элементам (у каждого своя валюта и поставщик)
-      items:kitLines(st).map(l=>{ const x=l.item, h=DealHs.of(x, st.deal);
+      items:KitDoc.lines(st).map(l=>{ const x=l.item, h=DealHs.of(x, st.deal);
         return {id:l.id, name:l.of?`${l.of}: ${l.name}`:l.name, qty:l.qty, cost:(l.cost||0)/100, cur:l.costCur||'RUB', cat:attrsOf(x).cat, maker:l.maker||'', catId:x.catId||'', kit:!!l.part, role:(l.part&&l.part.role)||'',
           code:h.code, duty:dNum(h.duty), hsSrc:h.src}; }) };
   }
   static ensure(){
     if (S.deal && S.deal.v){ dealUpgrade(S.deal); if (!S.deal.hs) S.deal.hs={}; DealSuppliers.autoMap(S.deal); DealSuppliers.asmAuto(S.deal); DealState.startAuto(S.deal); return S.deal; }
     const def=DealDefaults.get(), d=dealBlank(def); d.hs={}; if (def.target) d.target={type:def.targetType||'margin', v:def.target};
-    const its=kitLines(S).filter(x=>String(x.name||'').trim());
+    const its=KitDoc.lines(S).filter(x=>String(x.name||'').trim());
     // позиция каталога, закреплённая в справочнике за поставщиком, — к нему; остальные — по производителю (у элемента сборки — по его поставщику)
     const dirOfItem = x => x.item.catId && (DL.sups||[]).find(p=>(p.items||[]).includes(x.item.catId));
     const keyOf = x => { const p=dirOfItem(x); return p ? '\u0001'+p.id : x.maker||''; };
@@ -198,7 +198,7 @@ class DealSuppliers {
   // у элемента указан поставщик — новая карточка поставщика (условия — из справочника)
   static autoMap(d){
     const def=DealDefaults.get(); d.map=d.map||{};
-    for (const l of kitLines(S)){ if (d.map[l.id] && d.sup.some(s=>s.id===d.map[l.id])) continue;
+    for (const l of KitDoc.lines(S)){ if (d.map[l.id] && d.sup.some(s=>s.id===d.map[l.id])) continue;
       const mk=String(l.maker||'').trim(); if (!mk) continue;
       let s=d.sup.find(z=>norm(z.name)===norm(mk));
       if (!s && l.part){ const blank=d.sup.length===1 && !String(d.sup[0].name||'').trim() && !Object.values(d.map).includes(d.sup[0].id);
@@ -208,7 +208,7 @@ class DealSuppliers {
   }
   // сборка станции: если в КП есть станция — элементы по умолчанию едут на сборку к поставщику контейнера
   static asmAuto(d){
-    const parts=kitLines(S).filter(l=>l.part); if (!parts.length) return;
+    const parts=KitDoc.lines(S).filter(l=>l.part); if (!parts.length) return;
     if (!d.asm) d.asm={on:true, sup:'', days:'10', daysK:'work', cost:{v:''}};
     if (d.asm.on!==false && !d.sup.some(z=>z.id===d.asm.sup)){ const c=parts.find(l=>l.part.role==='container'); if (c) d.asm.sup=DealSuppliers.of(c.id); }
   }
@@ -307,7 +307,7 @@ class DealFmt {
   static stepInfo(c){
     const d=DealState.deal(), b=c.base||c.lo, si={}, d0=DealCal.d0();
     const when=day=>d0?DealCal.dayRu(day):`день ${day}`;
-    const its=DL.ex?[]:kitLines(S).filter(x=>String(x.name||'').trim()), noCost=its.filter(x=>!(x.cost>0)).length;
+    const its=DL.ex?[]:KitDoc.lines(S).filter(x=>String(x.name||'').trim()), noCost=its.filter(x=>!(x.cost>0)).length;
     si.buy={ st: noCost||d.sup.some(x=>!String(x.name||'').trim())?'need':'ok',
       sum: noCost ? `Нет цены закупки у ${noCost} из ${its.length} поз.` : c.sup.filter(x=>x.equip>0||c.sup.length===1).map(x=>`${x.name}${x.country?' ('+x.country+')':''}: ${Fmt.rub(x.equip)}, готово — ${when(x.rdy)}, у заказчика — ${when(x.arr)}`).join(' · ') };
     const lgr=d.sup.map(s=>LG.res[s.id]).filter(Boolean), lgNeed=lgr.some(r=>r.need && !/нет позиций/.test(r.need));
@@ -428,7 +428,7 @@ class DealView {
     const cards=d.sup.map((s,k)=>{ const cs=c.sup[k], P=`sup.${k}`, ru=/^росс/i.test(s.country||''), eaeu=s.cusMode==='eaeu';
       const known=DealSuppliers.dir(s.name), isNew=String(s.name||'').trim() && !known;
       const where = s.where==='ru'||s.where==='imp' ? s.where : ru ? 'ru' : s.country ? 'imp' : '';
-      const items = ex ? '' : (()=>{ const its=kitLines(S).filter(x=>String(x.name||'').trim() && DealSuppliers.of(x.id)===s.id);
+      const items = ex ? '' : (()=>{ const its=KitDoc.lines(S).filter(x=>String(x.name||'').trim() && DealSuppliers.of(x.id)===s.id);
         if (!its.length) return `<p class="muted dl-noitems">${multi?'Позиций нет — у позиции выберите этого поставщика в другой карточке.':'В КП нет позиций.'}</p>`;
         return `<table class="dl-it"><thead><tr><th>Позиция</th><th class="num">Кол-во</th><th>Цена закупки за ед.</th><th class="num">Сумма, ₽</th>${multi?'<th>Поставщик</th>':''}</tr></thead><tbody>
           ${its.map(x=>{ const r=rateOf(x.costCur||'RUB'), sum=x.cost?x.cost/100*(+x.qty||0)*(r||0)*(cs.noVat?1+c.v/100:1):0;
@@ -505,7 +505,7 @@ class DealView {
       if (cs.mode==='calc'){
         // строки закупки поставщика: обычные позиции и элементы станций (у каждого свой код и пошлина)
         const hsCats=ex ? [] : DealHs.cats();
-        const rows = ex ? '' : kitLines(S).filter(l=>String(l.name||'').trim() && DealSuppliers.of(l.id)===s.id).map(l=>{ const x=l.item, h=DealHs.of(x), ln=cs.lines.find(z=>z.id===l.id);
+        const rows = ex ? '' : KitDoc.lines(S).filter(l=>String(l.name||'').trim() && DealSuppliers.of(l.id)===s.id).map(l=>{ const x=l.item, h=DealHs.of(x), ln=cs.lines.find(z=>z.id===l.id);
           return `<tr><td class="c-nm"><b>${esc(l.name)}</b><small>${l.of?`в составе «${esc(l.of)}» · `:''}${esc(x.role==='container'?'блок-контейнер':typeById(attrsOf(x).cat).name)}</small></td>
             <td><input type="text" class="hs" data-hs-i="${esc(x.id)}" data-f="code" value="${esc(h.code)}" placeholder="0000 00 000 0" aria-label="Код ТН ВЭД"></td>
             <td><span class="dl-in"><input type="text" inputmode="decimal" class="hs-d" data-hs-i="${esc(x.id)}" data-f="duty" value="${esc(h.duty)}" placeholder="?" aria-label="Ставка пошлины, %"><i>%</i></span></td>
@@ -1188,7 +1188,7 @@ class DealHs {
 
   // код и ставка строки закупки (позиция или элемент станции): у модели каталога — в базу (для всех следующих сделок), иначе — в этом КП
   static set(lineId, patch){
-    const l=kitLines(S).find(z=>z.id===lineId); if (!l) return; const x=l.item, d=DealState.ensure(), h=DealHs.of(x), o={code:h.code, duty:h.duty};
+    const l=KitDoc.lines(S).find(z=>z.id===lineId); if (!l) return; const x=l.item, d=DealState.ensure(), h=DealHs.of(x), o={code:h.code, duty:h.duty};
     for (const f of ['code','duty']) if (patch[f]!=null) o[f]=String(patch[f]).trim();
     if (x.catId){ const key='item:'+x.catId; DL.cus=DL.cus||{}; DL.cus[key]={...o};
       api('/api/customs',{method:'PUT',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify({key, code:o.code, duty:o.duty, note:''})}).catch(()=>toast('Код не сохранён в справочнике — проверьте связь с сервером')); }
@@ -1196,7 +1196,7 @@ class DealHs {
   }
 
   // взять справочный код и ставку (TnVed) для строки
-  static useRef(lineId){ const l=kitLines(S).find(z=>z.id===lineId), r=l && DealHs.of(l.item).ref; if (!r) return '';
+  static useRef(lineId){ const l=KitDoc.lines(S).find(z=>z.id===lineId), r=l && DealHs.of(l.item).ref; if (!r) return '';
     DealHs.set(lineId, {code:r.code, duty:r.duty}); return `Код ${r.code||'—'}, пошлина ${r.duty===''?'— уточните':r.duty+' %'} — по справочнику`; }
 
   static dir(){

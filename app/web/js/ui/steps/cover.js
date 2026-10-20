@@ -34,7 +34,7 @@ function stepCover(){
 function coverSync(){
   if (CATED || S.cover.touched) return;
   const x=S.items.find(z=>z.id===S.cover.photoFrom && String(z.name||'').trim()) || S.items.find(z=>String(z.name||'').trim());
-  const h=x ? (x.hint && !stationOf(x) ? x.hint : CoverHint.of(x)) : {title:'', model:'', desc:'', kpis:[]};
+  const h=x ? (x.hint && !Kit.station(x) ? x.hint : CoverHint.of(x)) : {title:'', model:'', desc:'', kpis:[]};
   const key=JSON.stringify(h); if (S.cover._src===key) return;
   const c=S.cover; c.title=h.title||''; c.model=h.model||''; c.desc=h.desc||'';
   c.kpis=[0,1,2,3].map(n=>({num:(h.kpis||[])[n]?.num||'', unit:(h.kpis||[])[n]?.unit||'', cap:(h.kpis||[])[n]?.cap||''}));

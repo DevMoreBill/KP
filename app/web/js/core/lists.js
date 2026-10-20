@@ -8,7 +8,8 @@
 class ListDef {
   /** o: {key, group, label, hint, cols:[[поле, подпись, тип('text'|'area'|'num'), {req, id, ph}]], target:()=>массив,
    *      toRow:(элемент)=>строка, fromRow:(строка)=>элемент | null, min — меньше строк нельзя} */
-  constructor(o){ Object.assign(this, { hint:'', min:1 }, o); this.builtin = this.read(); }
+  /** late — массив объявлен в ES-модуле (загружается позже): встроенный вариант запоминается в LISTS.ready */
+  constructor(o){ Object.assign(this, { hint:'', min:1, late:false }, o); this.builtin = this.late ? null : this.read(); }
   read(){ return this.target().map(x=>this.toRow(x)); }
   apply(rows){ const arr=this.target(), items=(rows||this.builtin).map(r=>this.fromRow(r)).filter(x=>x!=null);
     if (items.length >= this.min) arr.splice(0, arr.length, ...items); }
@@ -38,7 +39,10 @@ class ListRegistry {
   isOwn(key){ return Array.isArray(this.srv[key]); }
   /** варианты администратора → в массивы программы (неизвестные ключи пропускаются) */
   use(map){ this.srv = map && typeof map==='object' && !Array.isArray(map) ? map : {};
-    for (const d of this.defs.values()){ try{ d.apply(this.isOwn(d.key) ? this.srv[d.key] : null); }catch(e){ d.apply(null); } } }
+    for (const d of this.defs.values()) this.applyDef(d); }
+  applyDef(d){ if (d.builtin==null) return; try{ d.apply(this.isOwn(d.key) ? this.srv[d.key] : null); }catch(e){ d.apply(null); } }
+  /** списки из ES-модуля: запомнить встроенный вариант и подставить свой (из браузера или сервера) */
+  ready(keys){ for (const key of keys){ const d=this.defs.get(key); if (!d || d.builtin!=null) continue; d.builtin=d.read(); this.applyDef(d); } }
   cache(){ try{ localStorage.setItem('kp.lists', JSON.stringify(this.srv)); }catch(e){} }
   fromCache(){ try{ this.use(JSON.parse(localStorage.getItem('kp.lists')||'{}')); }catch(e){ this.use({}); } }
   async load(){ try{ this.use(await api('/api/lists')); this.cache(); }catch(e){} }
@@ -65,20 +69,20 @@ LISTS.add({ key:'crm.stages', group:'crm', label:'Этапы сделки', targ
   cols:[['id','Код','text',{req:true, id:true, ph:'tender'}],['name','Название','text',{req:true}]],
   toRow:x=>({id:x.id, name:x.name}), fromRow:r=>r.id&&r.name ? {id:String(r.id).trim(), name:String(r.name).trim()} : null });
 
-LISTS.add({ key:'st.types', group:'st', label:'Типы контейнеров', target:()=>CONTAINER_TYPES,
+LISTS.add({ key:'st.types', group:'st', label:'Типы контейнеров', target:()=>ContainerKind.TYPES, late:true,
   hint:'Код — внутренний, не меняйте его у типов, которые уже есть в КП. Утепление и климат — свои для этого типа (иначе — из «Умолчаний»).',
   cols:[['id','Код','text',{req:true, id:true, ph:'block'}],['name','Название','text',{req:true}],['short','В тексте КП («в …»)','text',{req:true, ph:'блок-контейнере'}],
     ['size','Размеры','text'],['ins','Утепление','text',{ph:'по умолчанию'}],['climate','Климат','text',{ph:'по умолчанию'}],['desc','Описание в КП','area',{req:true}]],
   toRow:c=>({...c}), fromRow:r=>r.id&&r.name ? Object.fromEntries(Object.entries(r).filter(([,v])=>v!=='' && v!=null)) : null });
-lstStr('st.ins', 'st', 'Утепление контейнера', ()=>CONTAINER_INS, 'Например: 80 мм.');
-LISTS.add({ key:'st.climates', group:'st', label:'Климатические исполнения', target:()=>CLIMATES,
+lstStr('st.ins', 'st', 'Утепление контейнера', ()=>ContainerKind.INSULATION, 'Например: 80 мм.', {late:true});
+LISTS.add({ key:'st.climates', group:'st', label:'Климатические исполнения', target:()=>ContainerKind.CLIMATES, late:true,
   cols:[['code','Код','text',{req:true, unique:true, ph:'УХЛ1'}],['desc','Описание','text',{req:true}],['t','Мин. температура, °C','num',{ph:'−60'}]],
   toRow:([code, desc, t])=>({code, desc, t:t==null?'':String(t)}), fromRow:r=>r.code ? [String(r.code), String(r.desc||''), r.t===''||r.t==null?null:+r.t] : null });
-LISTS.add({ key:'st.systems', group:'st', label:'Системы контейнера', target:()=>CONT_SYSTEMS,
+LISTS.add({ key:'st.systems', group:'st', label:'Системы контейнера', target:()=>ContainerKind.SYSTEMS, late:true,
   hint:'Кнопки «Системы контейнера» в карточке станции; описание — строкой в характеристиках КП.',
   cols:[['id','Код','text',{req:true, id:true, ph:'heat'}],['name','Название','text',{req:true}],['desc','Что входит','area',{req:true}]],
   toRow:([id, name, desc])=>({id, name, desc}), fromRow:r=>r.id&&r.name ? [r.id, r.name, String(r.desc||'')] : null });
-lstStr('kit.presets', 'st', 'Быстрые элементы состава', ()=>KIT_PRESETS, 'Кнопки «+ …» во вкладке «Состав станции».');
+lstStr('kit.presets', 'st', 'Быстрые элементы состава', ()=>Kit.PRESETS, 'Кнопки «+ …» во вкладке «Состав станции».', {late:true});
 
 LISTS.add({ key:'deal.countries', group:'deal', label:'Страны поставщиков', target:()=>DEAL_COUNTRIES,
   hint:'Подсказки в поле «Где покупаем» и валюта закупки по умолчанию для страны.',

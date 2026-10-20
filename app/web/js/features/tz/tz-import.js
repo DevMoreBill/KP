@@ -163,7 +163,7 @@ export class TzImport {
     const need = { ...(parsed.req || {}) };
     need.kind = (station && StationReq.kind(station)) || need.kind || 'comp';
     if (station) this._fromStation(need, station);
-    this.cur = { r: parsed, name, i, q: need, pick: !station || !kitMainPart(station), ai: null };
+    this.cur = { r: parsed, name, i, q: need, pick: !station || !Kit.main(station), ai: null };
     this.m?.close();
     $('#toast')?.classList.remove('on');
     const modal = (this.m = new Modal(this.html(), 'wide tzi'));
@@ -183,7 +183,7 @@ export class TzImport {
 
   /** Станция уже есть: чего нет в ТЗ — из её требований и контейнера. */
   static _fromStation(need, station) {
-    const container = kitContainer(station);
+    const container = Kit.container(station);
     if (!need.cont && container) need.cont = container.ctype;
     for (const [k, value] of Object.entries(StationReq.of(station)))
       if (!['src', 'pick'].includes(k) && this._empty(need[k]) && !this._empty(value)) need[k] = value;
@@ -302,10 +302,10 @@ export class TzImport {
             ${this._sel(
               'cont',
               'Контейнер',
-              CONTAINER_TYPES.map(type => [type.id, type.name]),
-            )}${this._sel('ins', 'Утепление', [['', 'по типу контейнера'], ...CONTAINER_INS.map(ins => [ins, ins])])}
-            ${this._sel('climate', 'Климатическое исполнение', [['', 'по температуре'], ...CLIMATES.map(z => [z[0], `${z[0]} — до ${z[2]} °C`])])}</div>
-          <div class="tzi-sys"><span class="muted">Системы контейнера:</span>${CONT_SYSTEMS.map(([id, title]) => this._chk(`sys.${id}`, esc(title), sys[id] ?? CONT_SYS_DEF[id])).join('')}</div>
+              ContainerKind.TYPES.map(type => [type.id, type.name]),
+            )}${this._sel('ins', 'Утепление', [['', 'по типу контейнера'], ...ContainerKind.INSULATION.map(ins => [ins, ins])])}
+            ${this._sel('climate', 'Климатическое исполнение', [['', 'по температуре'], ...ContainerKind.CLIMATES.map(z => [z[0], `${z[0]} — до ${z[2]} °C`])])}</div>
+          <div class="tzi-sys"><span class="muted">Системы контейнера:</span>${ContainerKind.SYSTEMS.map(([id, title]) => this._chk(`sys.${id}`, esc(title), sys[id] ?? ContainerKind.SYSTEMS_ON[id])).join('')}</div>
           <div class="tzi-sys">${StationReq.OPTS.filter(([, , kinds]) => kinds.includes(k))
             .map(([key, label]) => this._chk(key, esc(label), need[key]))
             .join('')}</div>
@@ -332,7 +332,7 @@ export class TzImport {
           'Станция',
           this.KINDS.map(([value, label]) => [value, label]),
         );
-    const swap = station && kitMainPart(station) ? '; прежнее основное оборудование заменится' : '';
+    const swap = station && Kit.main(station) ? '; прежнее основное оборудование заменится' : '';
     return `${this._title(cur)}
       <div class="dlg-b">
         ${this.methods(cur.r.doc)}
@@ -614,7 +614,7 @@ export class TzImport {
     station.attrs = { cat: type.id };
     station.page = true;
     station.features = [];
-    station.kit = { parts: [kitNewContainer(need.cont || 'block')] };
+    station.kit = { parts: [ContainerPart.create(need.cont || 'block')] };
     StationDefaults.add(station, type.id);
     S.items.push(station);
     return { x: station, i: S.items.length - 1 };
@@ -622,21 +622,21 @@ export class TzImport {
 
   /** Контейнер: тип, утепление, климат (по требованию или по температуре), системы. */
   static _container(station, need) {
-    let cont = kitContainer(station);
+    let cont = Kit.container(station);
     if (!cont) {
-      cont = kitNewContainer('block');
+      cont = ContainerPart.create('block');
       station.kit.parts.push(cont);
     }
     const climate = this._climate(need, cont);
     if (need.cont && need.cont !== cont.ctype) {
       cont.ctype = need.cont;
-      const ctype = ctypeOf(need.cont);
+      const ctype = ContainerKind.of(need.cont);
       cont.size = '';
       cont.sizeAuto = !!StationGeo.FLEX[need.cont];
       if (ctype.ins) cont.ins = ctype.ins;
     }
-    cont.sys = { ...(cont.sys || CONT_SYS_DEF), ...(need.sys || {}) };
-    contApply(cont, { ins: need.ins || cont.ins, climate });
+    cont.sys = { ...(cont.sys || ContainerKind.SYSTEMS_ON), ...(need.sys || {}) };
+    ContainerPart.apply(cont, { ins: need.ins || cont.ins, climate });
   }
 
   static _climate(need, cont) {
@@ -708,10 +708,10 @@ export class TzImport {
     if (added.length) req.pick = `Добавлено по ТЗ: ${added.join(', ')}`;
     const hours = +this._numStr(need.hours);
     if (need.kind === 'dgu' && hours > 0) StationDefaults.retank(station, hours);
-    kitSync(station);
+    Kit.sync(station);
     StationUi.cache.delete(station.id);
     StationSize.refresh(station);
-    stationFill(station);
-    stationAutoName(station);
+    StationAuto.fill(station);
+    StationName.apply(station);
   }
 }

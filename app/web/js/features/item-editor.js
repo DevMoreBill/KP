@@ -59,7 +59,7 @@ let EDIT=null;
 
 const ED_TABS=[['main','Основное'],['kit','Состав станции'],['layout','Компоновка'],['ai','✨ Заполнить с ИИ'],['desc','Описание и фото'],['spec','Характеристики'],['opts','Опции и услуги']];
 // вкладки позиции: «Состав станции» — только у станций в контейнере (и у сборок, заведённых раньше), «Компоновка» — у станций
-const edTabs = x => { const st=!!stationOf(x), T=ED_TABS.filter(([k])=>(k!=='kit' || canKit(x)) && (k!=='layout' || StationUi.enabled(x)) && (k!=='ai' || (FEAT.on('ai') && !st)));
+const edTabs = x => { const st=!!Kit.station(x), T=ED_TABS.filter(([k])=>(k!=='kit' || Kit.can(x)) && (k!=='layout' || StationUi.enabled(x)) && (k!=='ai' || (FEAT.on('ai') && !st)));
   return st ? [...T.filter(([k])=>k==='kit' || k==='layout'), ...T.filter(([k])=>k!=='kit' && k!=='layout')] : T; };   // станция: состав и компоновка — первыми
 
 function featId(f){ if(!f.id) f.id=uid(); return f.id; }
@@ -78,7 +78,7 @@ function featImage(x,f){ return (x.gallery||[]).find(g=>{ const L=linkOf(x,g); r
 
 function openEditor(i, tab){
   if (S.items[i] && autoLogo(S.items[i])) persist();
-  EDIT={i, tab: tab||(S.items[i] && stationOf(S.items[i]) ? 'kit' : 'main')}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
+  EDIT={i, tab: tab||(S.items[i] && Kit.station(S.items[i]) ? 'kit' : 'main')}; const d=$('#edlg'); renderEditor(); if(!d.open) d.showModal();
 }
 
 function closeEditor(){ const d=$('#edlg'); EDIT=null; if(d.open) d.close(); renderForm(); persist(); StationImages.syncAll().then(ch=>{ if (ch) renderForm(); }); }
@@ -133,8 +133,8 @@ function edSetMain(it, j){
 
 // станция: главное фото — общий вид изделия (титул и строка КП); можно взять фото любого элемента состава
 function edStationPhoto(x,i){
-  if (!(typeof stationOf==='function' && stationOf(x))) return '';
-  const ps=kitParts(x).map((p,j)=>({p,j})).filter(o=>o.p.photo && o.p.photo.src), cur=x.photo && x.photo.src;
+  if (!(typeof Kit!=='undefined' && Kit.station(x))) return '';
+  const ps=Kit.parts(x).map((p,j)=>({p,j})).filter(o=>o.p.photo && o.p.photo.src), cur=x.photo && x.photo.src;
   const from=cur ? ps.find(o=>o.p.photo.src===cur) : null;
   return `<div class="st-ph"><p class="st-phn"><b>Это фото станции целиком</b> — оно стоит в строке КП и на титульном листе. Лучше всего — общий вид станции или контейнера.
       ${from?`Сейчас — фото элемента «${esc(from.p.name||'без названия')}» из состава.`:x.photo&&x.photo.gen==='st3d'?'Сейчас — 3D-вид с вкладки «Компоновка»: он сам обновляется при изменении состава и контейнера.':cur?'Сейчас — своё фото.':StationUi.enabled(x)?'Фото пока нет — 3D-вид станции вставляется с вкладки «Компоновка».':'Фото пока нет.'}
@@ -167,7 +167,7 @@ function edDesc(x,i){
         <button class="lnk" type="button" data-a="galMain" data-i="${i}" data-j="${j}" title="Сделать главным фото позиции (текущее главное встанет на его место)">★ Главное</button>
         <button class="icon" type="button" data-a="galDel" data-i="${i}" data-j="${j}" aria-label="Удалить">✕</button></div></div>`).join('');
   const schemeSlots=(t.gallerySlots||[]).filter(s=>WIDE_RX.test(s));
-  const isSt=typeof stationOf==='function' && !!stationOf(x);
+  const isSt=typeof Kit!=='undefined' && !!Kit.station(x);
   return `<div class="ed-sec"><p class="sub">${isSt?'Главное фото станции и логотип':'Главное фото и логотип'}</p>${edStationPhoto(x,i)}
      <div class="media2"><div>${drop(x.photo,'photo',i,`<b>${isSt?'Главное фото станции':'Главное фото'}</b><br>нажмите, перетащите файл или картинку с сайта,<br>или вставьте из буфера (Ctrl+V).<br><small>Белые поля обрежутся сами.</small>`)}${edMainPick(x,i)}${field('Подпись под фото',`${P}.photoCaption`,{ph:'Исполнение в кожухе'})}</div>
        <div>${drop(x.logo,'logo',i,attrsOf(x).maker?(logoFor(attrsOf(x).maker)?'Логотип производителя':'Логотип производителя (PNG) — у «'+esc(attrsOf(x).maker)+'» в каталоге логотипа нет'):'Логотип подставится сам, если указать производителя (точное совпадение с каталогом)',true)}</div></div></div>

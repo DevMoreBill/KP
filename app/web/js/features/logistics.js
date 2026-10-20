@@ -17,13 +17,13 @@ class DealLogistics {
   static asm(){
     const d=S.deal; if (!d || !d.asm || d.asm.on===false) return null;
     const A=d.sup.find(z=>z.id===d.asm.sup); if (!A) return null;
-    const parts=kitLines(S).filter(l=>l.part); if (!parts.length) return null;
+    const parts=KitDoc.lines(S).filter(l=>l.part); if (!parts.length) return null;
     return { A, toAsm:new Set(parts.map(l=>DealSuppliers.of(l.id)).filter(id=>id!==A.id)) };
   }
   // груз сборщика: станция целиком — габариты контейнера, масса — сумма элементов (если у всех она есть)
   static stations(){
-    return S.items.filter(isKit).map(x=>{ const c=kitContainer(x), rows=[...((c&&c.rows)||[])];
-      const ms=kitParts(x).map(p=>{ const m=lgCargoOf([{rows:p.rows||[]}]).mass; return m>0 ? m*(+p.qty||1) : null; });
+    return S.items.filter(x=>Kit.has(x)).map(x=>{ const c=Kit.container(x), rows=[...((c&&c.rows)||[])];
+      const ms=Kit.parts(x).map(p=>{ const m=lgCargoOf([{rows:p.rows||[]}]).mass; return m>0 ? m*(+p.qty||1) : null; });
       if (ms.length && ms.every(m=>m>0)) rows.push({k:'Масса станции в сборе', v:String(Math.round(ms.reduce((a,b)=>a+b,0)*1000))+' кг'});
       // из модулей — каждый модуль отдельным местом: габариты модуля, масса — поровну
       const md=c && typeof StationMods!=='undefined' ? StationMods.of(c) : null;
@@ -33,8 +33,8 @@ class DealLogistics {
   // позиции поставщика: масса и габариты — из характеристик, свои правки — в s.lg.items
   static items(s){
     const own=(s.lg&&s.lg.items)||{}, asm=DealLogistics.asm();
-    const list = asm && asm.A===s ? [...DealLogistics.stations(), ...kitCargo().filter(x=>!String(x.id).includes('~') && DealSuppliers.of(x.id)===s.id)]
-      : kitCargo().filter(x=>DealSuppliers.of(x.id)===s.id);
+    const list = asm && asm.A===s ? [...DealLogistics.stations(), ...KitDoc.cargo().filter(x=>!String(x.id).includes('~') && DealSuppliers.of(x.id)===s.id)]
+      : KitDoc.cargo().filter(x=>DealSuppliers.of(x.id)===s.id);
     return list.filter(x=>String(x.name||'').trim()).map(x=>{
       const cg=lgCargoOf(x.groups), o=own[x.id]||{}, d=cg.dims||{};
       const pick=(k,auto)=>{ const v=LgCargoIn.val(o, k); return v!=null ? {v, own:true, t:LgCargoIn.text(o, k, v)} : {v:auto??null, own:false, t:LgCargoIn.text({}, k, auto??null)}; };
@@ -48,7 +48,7 @@ class DealLogistics {
     const asm=DealLogistics.asm(), toA=asm && asm.toAsm.has(s.id);        // элементы станции едут на сборку — до склада сборщика
     const to=String(lg.to ?? (toA ? (asm.A.wh||'') : (S.object&&S.object.address || S.clientAddr || ''))).trim();
     // стоимость груза (для страхования): у сборщика — станция целиком (все элементы) и его прочие позиции
-    const its=kitCargo().filter(x=>String(x.name||'').trim() && (asm && asm.A===s ? String(x.id).includes('~') || DealSuppliers.of(x.id)===s.id : DealSuppliers.of(x.id)===s.id));
+    const its=KitDoc.cargo().filter(x=>String(x.name||'').trim() && (asm && asm.A===s ? String(x.id).includes('~') || DealSuppliers.of(x.id)===s.id : DealSuppliers.of(x.id)===s.id));
     const value=its.reduce((a,x)=>{ const q=+x.qty||0; if (x.cost) return a+x.cost/100*q*(rateOf(x.costCur||'RUB')||0);
       return a+(x.price||0)/100*q*(rateOf(kpCur())||0); },0);
     // точные адреса (с координатами) — пока текст поля совпадает с выбранной подсказкой
@@ -123,7 +123,7 @@ class DealLogistics {
     const d=DealState.deal(), s=d.sup[k]; if (!s) return; const r=LG.res[s.id];
     if (!r || r.need || LG.busy[s.id]) return;
     const inp=DealLogistics.input(s), key=DealLogistics.quoteKey(r);
-    const its=kitCargo().filter(x=>String(x.name||'').trim() && DealSuppliers.of(x.id)===s.id);
+    const its=KitDoc.cargo().filter(x=>String(x.name||'').trim() && DealSuppliers.of(x.id)===s.id);
     const declared=its.reduce((a,x)=>a+(x.cost?x.cost/100*(+x.qty||0)*(rateOf(x.costCur||'RUB')||0):0),0);
     const body={ from:{name:r.from&&r.from.name, addr:String(s.wh||'').trim()||(r.from&&r.from.name), alt:DealLogistics.nearBig(r.from)}, to:{name:r.to&&r.to.name, addr:inp.to.addr, alt:DealLogistics.nearBig(r.to)}, km:r.km,
       places:inp.items.filter(x=>x.l&&x.w&&x.h&&x.m&&x.qty).map(x=>({l:x.l, w:x.w, h:x.h, m:x.m, qty:x.qty})),
@@ -265,7 +265,7 @@ class DealLogistics {
     const own=(s.lg&&s.lg.items)||{}, its=DealLogistics.items(s);
     let saved=0, pend=0; const noCat=[], fail=[];
     for (const id of Object.keys(own)){
-      const o=own[id], x=kitCargo().find(i=>i.id===id), it=its.find(i=>i.id===id); if (!x || !it) continue;
+      const o=own[id], x=KitDoc.cargo().find(i=>i.id===id), it=its.find(i=>i.id===id); if (!x || !it) continue;
       const v={l:it.l.v, w:it.w.v, h:it.h.v, m:it.m.v};
       const what={ dims:['l','w','h'].some(k=>LgCargoIn.has(o, k)) && v.l>0 && v.w>0 && v.h>0, mass:LgCargoIn.has(o, 'm') && v.m>0 };
       if (!what.dims && !what.mass) continue;

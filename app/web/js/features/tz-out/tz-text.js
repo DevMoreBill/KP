@@ -42,8 +42,8 @@ export class TzText {
   }
 
   static _ctx(doc, x, plan, org) {
-    const parts = kitParts(x);
-    const container = kitContainer(x) || {};
+    const parts = Kit.parts(x);
+    const container = Kit.container(x) || {};
     const equip = StationEquip.list(parts);
     return {
       d: doc,
@@ -56,7 +56,7 @@ export class TzText {
       pos: new Map(equip.filter(unit => unit.pos).map(unit => [unit.id, unit])),
       req: StationReq.plan(x),
       r: StationReq.of(x),
-      cl: CLIMATES.find(z => z[0] === container.climate),
+      cl: ContainerKind.CLIMATES.find(z => z[0] === container.climate),
       ok: plan.level !== 'error' && plan.geo && plan.geo.ext,
       no: 0,
     };
@@ -125,7 +125,9 @@ export class TzText {
     const { d: doc, x, c: container } = spec;
     this._h1(spec, 'Контейнер и его системы');
     doc.table([42, 128], ['Параметр', 'Требование'], TzContainer.rows(spec));
-    const off = CONT_SYSTEMS.filter(([id]) => !KitView.sysOn(x, container, id)).map(([, k]) => k.toLowerCase());
+    const off = ContainerKind.SYSTEMS.filter(([id]) => !KitView.sysOn(x, container, id)).map(([, k]) =>
+      k.toLowerCase(),
+    );
     if (off.length)
       doc.p(`Не требуются (не входят в поставку): ${off.join(', ')}.`, { after: 6, run: { color: '555555' } });
   }

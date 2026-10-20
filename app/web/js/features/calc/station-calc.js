@@ -84,7 +84,7 @@ export class StationCalc {
 
   /** Блокирующие ошибки: КП не сохраняется, пока их не исправят или не отметят «отклонения согласованы». */
   static errors(station) {
-    if (!StationUi.enabled(station) || !isKit(station)) return [];
+    if (!StationUi.enabled(station) || !Kit.has(station)) return [];
     const result = StationCalc.run(station);
     return result.accept ? result.errors.filter(err => /^Требования: «/.test(err.text)) : result.errors;
   }
@@ -168,7 +168,7 @@ export class StationCalc {
    * согласованные отклонения — всегда; заказчику — только расчёт и допущения (внутренние списки остаются в программе).
    */
   static docGroups(station) {
-    if (!StationUi.enabled(station) || !isKit(station)) return [];
+    if (!StationUi.enabled(station) || !Kit.has(station)) return [];
     const result = StationCalc.run(station);
     if (!result.sections.length) return [];
     const dev =
@@ -217,8 +217,8 @@ export class StationCalc {
   /** Требования (без имени файла ТЗ), контейнер, ссылка на «Состав изделия», версия правил. */
   static docHead(station, result) {
     const req = StationReq.line({ ...station, req: { ...(station.req || {}), src: null } });
-    const parts = kitParts(station).filter(part => part.role !== 'container' && String(part.name || '').trim());
-    const container = kitContainer(station);
+    const parts = Kit.parts(station).filter(part => part.role !== 'container' && String(part.name || '').trim());
+    const container = Kit.container(station);
     return {
       name: 'Приложение. Расчётная записка и состав станции',
       rows: [
@@ -227,7 +227,7 @@ export class StationCalc {
           ? [
               {
                 k: 'Контейнер',
-                v: [ctypeOf(container.ctype).name, container.size, container.ins, container.climate]
+                v: [ContainerKind.of(container.ctype).name, container.size, container.ins, container.climate]
                   .filter(Boolean)
                   .join(', '),
               },

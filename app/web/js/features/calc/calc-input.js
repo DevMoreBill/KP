@@ -32,7 +32,7 @@ export class CalcInput {
   /** {kind, cls, units, parts, recvIn, recvOut, req}. */
   static of(station) {
     const req = StationReq.of(station);
-    const parts = kitParts(station).filter(part => part.role !== 'container');
+    const parts = Kit.parts(station).filter(part => part.role !== 'container');
     const units = parts.map(part => {
       const kind = StationEquip.kindOf(part);
       const info = CalcInput.AIR_KINDS.test(kind) ? AirChain.info(part, kind) : {};

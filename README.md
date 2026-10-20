@@ -526,6 +526,13 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.157.0 — что сделано:** «чистый код», часть 22: состав станций и сборок — `kit.js` → ES-модули `features/kit/`:
+- `Kit` (элементы, контейнер, основное оборудование, закупка), `ContainerKind` (виды контейнеров, утепление, климат, системы), `ContainerPart` (строки контейнера), `StationAuto` / `StationName` / `StationAutoVal` (параметры, название и таблица станции из состава), `StationSpec`, `StationPurpose`, `KitPart`, `CatFeatures`, `KitPipe`, `KitCabinet`, `StationDefaults`, `KitDoc` (состав в документе КП, строки экономики, груз логистики), `PickFilter` / `PickFind` / `KitPick` (окно подбора из каталога), `KitActions` (кнопки и поля вкладки «Состав»);
+- глобальные функции и константы (`kitParts`, `isKit`, `stationOf`, `contApply`, `stationFill`, `stationAutoName`, `kitDocItem`, `kitLines`, `kitCargo`, `kitPickCat`, `pfList`, `CONTAINER_TYPES`, `CLIMATES`, `CONT_SYSTEMS` …) заменены методами и полями классов во всём интерфейсе; флаг `StationPurpose.feature(x, false)` → `StationPurpose.brief(x)`; окно подбора — `KitPick.open(i, {cats, role, name, preset, by})` вместо шести параметров;
+- «Списки и выборы» для контейнеров и состава: массивы теперь в ES-модуле (загружается после `lists.js`) — `ListDef` с `late: true` запоминает встроенный вариант и подставляет свой в `LISTS.ready` при загрузке модуля;
+- папка `kit` — в строгих правилах ESLint (`id-length`, `kp/jsdoc`);
+- проверено: слепок станций (2 891) совпал; функции состава старого и нового кода на 15 эталонных сценариях — побайтно (316 результатов: документ КП, экономика, логистика, контейнеры всех видов, действия и поля «Состава», фильтры подбора); «Списки и выборы» в браузере — встроенные, из браузера, с сервера, сброс.
+
 **3.156.0 — что сделано:** «чистый код», часть 21: интерфейс станций — `station-quick.js`, `station-fix.js`, `station-doc.js`, `station-ui.js` → ES-модули `features/station/`:
 - `StationQuick` («Подбор станции»), `StationParams`, `Spoiler`, `ExpertFix` (замечания — объект-список `FixList`, решения — таблица `FIXES` по виду), `StationDesign`, `StationDoc`, `StationBrief`, `StationUi` (вкладка «Компоновка» — `LayoutTab`), `StationSize` (флаг `apply(x, true)` → `refresh(x)`), `StationModsUi`, `IssueSpot`, `StationImages`; `StationUi.on` → `enabled`; без вложенных `?:`, методы до 50 строк, JSDoc, говорящие имена; мост `globalThis` для старых файлов;
 - папка `station` — в строгих правилах ESLint (`id-length`, `kp/jsdoc`);

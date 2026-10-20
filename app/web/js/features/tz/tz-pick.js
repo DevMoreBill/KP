@@ -443,13 +443,13 @@ export class TzPick {
 
   /** Высота внутри контейнера станции, мм; по оборудованию — наибольшая высота ряда. */
   static hmax(station) {
-    const grade = StationGeo.of(kitContainer(station) || { ctype: 'block' });
+    const grade = StationGeo.of(Kit.container(station) || { ctype: 'block' });
     return grade.int ? grade.int[2] : this._roadInner(grade)[2];
   }
 
   /** Полезная ширина помещения, мм; без размера — блок в ширину перевозки. */
   static wmax(station) {
-    const grade = StationGeo.of(kitContainer(station) || { ctype: 'block' });
+    const grade = StationGeo.of(Kit.container(station) || { ctype: 'block' });
     const innerWidth = grade.int && !grade.auto ? grade.int[1] : this._roadInner(grade)[1];
     return innerWidth - 2 * StationMatrix.gap();
   }
@@ -484,11 +484,11 @@ export class TzPick {
   static async assemble(station, need) {
     const added = StationReq.ensureParts(station);
     const note = await this.run(station, need);
-    kitSync(station);
+    Kit.sync(station);
     StationUi.cache.delete(station.id);
     StationSize.refresh(station);
-    stationFill(station);
-    stationAutoName(station);
+    StationAuto.fill(station);
+    StationName.apply(station);
     return [note, added.length ? `Добавлено по ТЗ: ${added.join(', ')}` : ''].filter(Boolean).join('. ');
   }
 
@@ -507,7 +507,7 @@ export class TzPick {
   /** Подбор с защитой состава: чего в каталоге не нашлось — прежнее оборудование этого вида остаётся. */
   static async run(station, need) {
     const drop = this.DROP[need.kind] || /^$/;
-    const before = kitParts(station).filter(
+    const before = Kit.parts(station).filter(
       part => part.role !== 'container' && drop.test(StationEquip.kindOf(part) || ''),
     );
     const note = await TzFit.fit(station, need);
@@ -525,9 +525,9 @@ export class TzPick {
       return (air.recs || []).some(rec => rec.cat === k && !rec.replace);
     };
     for (const k of new Set(before.map(part => StationEquip.kindOf(part)))) {
-      if (kitParts(station).some(part => StationEquip.kindOf(part) === k) || !need(k)) continue;
+      if (Kit.parts(station).some(part => StationEquip.kindOf(part) === k) || !need(k)) continue;
       const old = before.filter(part => StationEquip.kindOf(part) === k);
-      const index = kitParts(station).findIndex(part => part.role === 'container');
+      const index = Kit.parts(station).findIndex(part => part.role === 'container');
       station.kit.parts.splice(index < 0 ? station.kit.parts.length : index, 0, ...old);
       kept.push(...old.map(part => part.name));
     }
@@ -546,7 +546,7 @@ export class TzPick {
       got: [],
       miss: [],
       add: [],
-      keep: kitParts(station).filter(part => part.role === 'container' || !drop.test(StationEquip.kindOf(part) || '')),
+      keep: Kit.parts(station).filter(part => part.role === 'container' || !drop.test(StationEquip.kindOf(part) || '')),
       pool: this.stationPool(cats),
       H: this.hmax(station),
     };

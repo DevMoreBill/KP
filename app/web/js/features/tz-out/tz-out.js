@@ -19,7 +19,7 @@ export class TzOut {
   /** Скачать ТЗ на сборку станции (позиция i). */
   static async download(i) {
     const x = S.items[i];
-    if (!x || !stationOf(x) || !isKit(x)) {
+    if (!x || !Kit.station(x) || !Kit.has(x)) {
       toast('ТЗ на сборку — для станции в контейнере с составом');
       return;
     }
@@ -35,7 +35,7 @@ export class TzOut {
     const blob = await this.make(x);
     const name = `${this.NAME(x.name) || 'станция'}${S.number ? ` — КП ${this.NAME(S.number)}` : ''}`;
     saveFileA(`ТЗ на сборку — ${name}.docx`, blob);
-    const container = kitContainer(x) || {};
+    const container = Kit.container(x) || {};
     const booklet = StationPaint.book(container) && container.paintFile; // буклет окраски в PDF — вторым файлом рядом с ТЗ
     if (booklet && booklet.pdf) saveFileA(`Буклет окраски — ${name}.pdf`, await (await fetch(booklet.src)).blob());
   }
@@ -96,7 +96,7 @@ export class TzOut {
 
   /** Окраска заказчика: буклет-картинка и макеты рисунков на стенах (PDF буклета — отдельным файлом). */
   static async _paint(app, x, ok) {
-    const container = kitContainer(x) || {};
+    const container = Kit.container(x) || {};
     const booklet = StationPaint.book(container) && container.paintFile;
     const arts = StationPaint.arts(container);
     if (!booklet && !arts.length) return;

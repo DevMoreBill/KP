@@ -81,7 +81,7 @@ class NewStation {
   static kind(t){ return /comp/.test(t.id) ? 'comp' : /dgu/.test(t.id) ? 'dgu' : /pump/.test(t.id) ? 'pump' : ''; }
   /** контейнер одной строкой */
   static cont(){
-    const S=this.S, c=ctypeOf(S.ctype), flex=!!StationGeo.FLEX[S.ctype], n=Mm.text;
+    const S=this.S, c=ContainerKind.of(S.ctype), flex=!!StationGeo.FLEX[S.ctype], n=Mm.text;
     return `${c.name}${flex ? ` — размер по оборудованию, в габарите перевозки (ширина до ${n(StationGeo.ROAD_W)} мм)` : c.size ? ` (${c.size})` : ''}; утепление ${S.ins}; ${S.climate}`;
   }
   static html(t){
@@ -92,9 +92,9 @@ class NewStation {
     return `<p class="muted nw-lead">Что нужно заказчику (* — обязательно) — программа подберёт оборудование из каталога, контейнер, компоновку и изображения для КП. Всё можно поправить в карточке станции.</p>
       <div class="ns-g">${F.map(fld).join('')}</div>
       <div class="ns-c"><span class="muted">Контейнер:</span> <span>${esc(this.cont())}</span> <button class="link" type="button" data-nw="nsCont">${S.cont ? 'скрыть' : 'другой'}</button></div>
-      ${S.cont ? `<div class="ns-row"><label class="f"><span>Тип</span><select id="nsCt">${CONTAINER_TYPES.map(c=>opt(c.id, c.name, S.ctype===c.id)).join('')}</select></label>
-        <label class="f"><span>Утепление</span><select id="nsIns">${CONTAINER_INS.map(v=>opt(v, v, v===S.ins)).join('')}</select></label>
-        <label class="f"><span>Климатическое исполнение</span><select id="nsCl">${CLIMATES.map(c=>opt(c[0], c[0]+' — '+c[1], c[0]===S.climate)).join('')}</select></label></div>` : ''}
+      ${S.cont ? `<div class="ns-row"><label class="f"><span>Тип</span><select id="nsCt">${ContainerKind.TYPES.map(c=>opt(c.id, c.name, S.ctype===c.id)).join('')}</select></label>
+        <label class="f"><span>Утепление</span><select id="nsIns">${ContainerKind.INSULATION.map(v=>opt(v, v, v===S.ins)).join('')}</select></label>
+        <label class="f"><span>Климатическое исполнение</span><select id="nsCl">${ContainerKind.CLIMATES.map(c=>opt(c[0], c[0]+' — '+c[1], c[0]===S.climate)).join('')}</select></label></div>` : ''}
       <div class="ns-pv" id="nsPv">${this.pvHtml(t)}</div>
       <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${NW.busy ? ' disabled' : ''}>${NW.busy ? 'Подбираю…' : this.ready() ? 'Взять в КП' : 'Подобрать станцию'}</button>
         ${NW.where==='kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
@@ -105,7 +105,7 @@ class NewStation {
     el.classList.toggle('bad', !!bad); let s=el.parentNode.querySelector('small.err'); if (bad){ if (!s){ s=document.createElement('small'); s.className='err'; el.after(s); } s.textContent=bad; } else if (s) s.remove();
     this.later(); }
   static change(el){ const S=this.S;
-    if (el.id==='nsCt'){ S.ctype=el.value; const c=ctypeOf(S.ctype); if (c.ins) S.ins=c.ins; if (c.climate) S.climate=c.climate; }
+    if (el.id==='nsCt'){ S.ctype=el.value; const c=ContainerKind.of(S.ctype); if (c.ins) S.ins=c.ins; if (c.climate) S.climate=c.climate; }
     else if (el.id==='nsIns') S.ins=el.value; else if (el.id==='nsCl') S.climate=el.value;
     nwDraw(); this.later(); }
 
@@ -131,7 +131,7 @@ class NewStation {
     const pv=this.pv; if (!pv || pv.key!==this.key()) return '';
     if (pv.busy) return '<p class="muted ns-pv-w">Подбираю станцию…</p>';
     if (pv.err || !pv.x) return `<p class="msg err">Не получилось подобрать: ${esc(pv.err||'')}</p>`;
-    const x=pv.x, plan=StationUi.enabled(x) ? StationUi.plan(x) : null, c=kitContainer(x), n=Mm.text;
+    const x=pv.x, plan=StationUi.enabled(x) ? StationUi.plan(x) : null, c=Kit.container(x), n=Mm.text;
     const size=plan && plan.geo && plan.geo.ext ? `${n(plan.geo.ext[0])} × ${n(plan.geo.ext[1])} × ${n(plan.geo.ext[2])} мм` : '';
     const miss=String(StationReq.of(x).pick||'').match(/В каталоге нет: ([^]*?)(?: — добавьте вручную|$)/);
     const bad=plan && plan.level==='error' ? (plan.issues.find(i=>i.level==='error')||{}).text : '', wide=plan && (plan.issues||[]).find(i=>i.wide);
@@ -139,7 +139,7 @@ class NewStation {
     const img=plan && plan.level!=='error' && plan.geo && plan.geo.ext ? `<img src="${esc(StationUi.url(StationView3D.svg(plan, StationUi.meta(x, plan))))}" alt="3D-вид станции">` : '';
     return `<div class="ns-pv-b"><div class="ns-pv-t"><b>${esc(String(x.name||t.item))}</b>
         ${StationQuick.lines(x).map(l=>`<div>${esc(l)}</div>`).join('')}
-        ${c ? `<div class="muted">${esc(ctypeOf(c.ctype).name)}${size ? ', '+esc(size) : ''}${mode ? ' — '+esc(mode) : ''}</div>` : ''}
+        ${c ? `<div class="muted">${esc(ContainerKind.of(c.ctype).name)}${size ? ', '+esc(size) : ''}${mode ? ' — '+esc(mode) : ''}</div>` : ''}
         ${bad ? `<p class="msg err">✕ ${esc(bad)}</p>` : wide ? `<p class="msg warn">⚠ ${esc(wide.text.split('.')[0])}</p>` : ''}
         ${miss ? `<p class="msg warn">⚠ В каталоге не нашлось: ${esc(miss[1])}</p>` : ''}</div>${img}</div>`;
   }
@@ -147,9 +147,9 @@ class NewStation {
   static make(t){
     const it=newItem(); it.attrs={ cat:t.id }; it.page=true; it.features=[]; it.kit={ parts:[] };
     const req=Object.fromEntries(Object.entries(this.S.req).map(([k, v])=>[k, String(v).trim()]).filter(([, v])=>v)); if (Object.keys(req).length) it.req=req;
-    const c=kitNewContainer(this.S.ctype); contApply(c, { ins:this.S.ins, climate:this.S.climate }); it.kit.parts.push(c);
+    const c=ContainerPart.create(this.S.ctype); ContainerPart.apply(c, { ins:this.S.ins, climate:this.S.climate }); it.kit.parts.push(c);
     StationDefaults.add(it, t.id);      // глушитель и бак ДГУ, трубопроводная обвязка
-    kitSync(it); stationFill(it); stationAutoName(it);
+    Kit.sync(it); StationAuto.fill(it); StationName.apply(it);
     return it;
   }
   /** проверка ввода: ошибка — подсказка и фокус на поле; need — главное поле обязательно */
@@ -165,7 +165,7 @@ class NewStation {
     const it=this.make(t); nwFinish(it, 'kit', NW.where==='kp' ? i=>StationQuick.pick(i) : null); }
   /** «Выбрать вручную»: станция и окно каталога основного оборудования (по требованиям — рекомендуемый первым) */
   static main(t){ if (!this.ok(t, false)) return; const it=this.make(t);
-    nwFinish(it, 'kit', i=>{ if (NW.where!=='kp') return; kitPickCat(i, t.station.main, 'main', '', KitNeed.mainPreset(S.items[i]) || { test:c=>!TzPick.mobile(c), need:'Укажите производительность в «Подборе станции» — покажем подходящие и рекомендуемый первым. Сейчас — все стационарные.' }); }); }
+    nwFinish(it, 'kit', i=>{ if (NW.where!=='kp') return; KitPick.open(i, { cats:t.station.main, role:'main', preset:KitNeed.mainPreset(S.items[i]) || { test:c=>!TzPick.mobile(c), need:'Укажите производительность в «Подборе станции» — покажем подходящие и рекомендуемый первым. Сейчас — все стационарные.' } }); }); }
   static empty(t){ nwFinish(this.make(t), 'kit'); }
 }
 
@@ -179,7 +179,7 @@ function nwFinish(it, tab, after){
     const x=S.items[0]; Object.assign(x, {_src:src, _srcProps:props, _srcUrl:url, _srcImgs:imgs, _aiStep:it._aiStep, _aiMsg:it._aiMsg});
     EDIT.tab=tab; renderEditor(); if (after) after(0); return;
   }
-  const blank=S.items.length===1 && !S.items[0].name.trim() && !S.items[0].price && !isKit(S.items[0]);
+  const blank=S.items.length===1 && !S.items[0].name.trim() && !S.items[0].price && !Kit.has(S.items[0]);
   if (blank) S.items=[it]; else S.items.push(it);
   if (STEP!=='equip') STEP='equip';
   renderForm(); persist(); openEditor(S.items.indexOf(it), tab); if (after) after(S.items.indexOf(it));

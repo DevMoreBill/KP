@@ -131,9 +131,9 @@ export class StationDoc {
   }
 
   static _extraRows(item, plan, has) {
-    const container = kitContainer(item) || {};
+    const container = Kit.container(item) || {};
     const mass = plan.mass;
-    const climate = CLIMATES.find(row => row[0] === container.climate);
+    const climate = ContainerKind.CLIMATES.find(row => row[0] === container.climate);
     const rows = [];
     if (!has('^Габарит'))
       rows.push({
@@ -150,7 +150,7 @@ export class StationDoc {
     if (!has('^Контейнер'))
       rows.push({
         k: 'Контейнер',
-        v: [ctypeOf(container.ctype).name, container.ins ? `утепление ${container.ins}` : '']
+        v: [ContainerKind.of(container.ctype).name, container.ins ? `утепление ${container.ins}` : '']
           .filter(Boolean)
           .join(', '),
         hl: false,
@@ -179,12 +179,12 @@ export class StationBrief {
    */
   static facts(item) {
     const type = typeById(attrsOf(item).cat);
-    const main = kitMainPart(item);
+    const main = Kit.main(item);
     const lines = [`Изделие: ${type.item || type.name} — «${String(item.name || '').trim()}».`];
     const kpi = mainLine(item, this.KPI);
     if (kpi) lines.push(`Основные параметры: ${kpi}.`);
     if (main) lines.push(`Основное оборудование: ${main.name}${this._qty(main)}.`);
-    const rest = kitParts(item).filter(
+    const rest = Kit.parts(item).filter(
       part => part !== main && part.role !== 'container' && String(part.name || '').trim(),
     );
     if (rest.length) lines.push(`Состав: ${rest.map(part => part.name.trim() + this._qty(part)).join('; ')}.`);
@@ -204,7 +204,7 @@ export class StationBrief {
 
   /** описания основных агрегатов (до DESC_MAX знаков) */
   static _descs(item) {
-    return kitParts(item)
+    return Kit.parts(item)
       .filter(part => StationDoc.card(part))
       .map(part => [
         part,

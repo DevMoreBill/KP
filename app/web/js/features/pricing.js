@@ -129,7 +129,7 @@ function applyCalc(x){ if (x.priceManual || !x.cost || marginOf(x)==null) return
 
 let _autoRates=false;
 
-function autoRates(){ const need=[kpCur(),...S.items.filter(x=>x.cost).map(x=>x.costCur||'RUB'),...S.items.flatMap(x=>kitParts(x).filter(p=>p.cost).map(p=>p.costCur||'RUB'))].filter(c=>c!=='RUB'&&!(rateOf(c)>0)); if(need.length && !_autoRates){ _autoRates=true; loadCBR(true).finally(()=>{_autoRates=false;}); } }
+function autoRates(){ const need=[kpCur(),...S.items.filter(x=>x.cost).map(x=>x.costCur||'RUB'),...S.items.flatMap(x=>Kit.parts(x).filter(p=>p.cost).map(p=>p.costCur||'RUB'))].filter(c=>c!=='RUB'&&!(rateOf(c)>0)); if(need.length && !_autoRates){ _autoRates=true; loadCBR(true).finally(()=>{_autoRates=false;}); } }
 
 /** курс ЦБ: кнопка «Курс ЦБ» — все валюты; onlyEmpty (сама программа: нет курса нужной валюты) — только пустые,
  *  договорной курс, введённый вручную, не заменяется */
@@ -149,7 +149,7 @@ async function loadCBR(onlyEmpty=false){
 
 function pricingBlock(){
   const P=S.pricing, cur=kpCur();
-  const need=[...new Set([cur,...S.items.map(x=>x.cost&&!isKit(x)?(x.costCur||'RUB'):null),...S.items.flatMap(x=>kitParts(x).filter(p=>p.cost).map(p=>p.costCur||'RUB'))].filter(c=>c&&c!=='RUB'))];
+  const need=[...new Set([cur,...S.items.map(x=>x.cost&&!Kit.has(x)?(x.costCur||'RUB'):null),...S.items.flatMap(x=>Kit.parts(x).filter(p=>p.cost).map(p=>p.costCur||'RUB'))].filter(c=>c&&c!=='RUB'))];
   const missing=need.filter(c=>!(rateOf(c)>0));
   const rateTxt=['USD','EUR','CNY'].map(c=>`<span class="rt${need.includes(c)?' need':''}${need.includes(c)&&!(rateOf(c)>0)?' bad-t':''}">${c}&nbsp;<b data-rshow="${c}">${esc(P.rates[c]||'—')}</b></span>`).join('');
   const rateInp=c=>`<label class="f"><span>1 ${c}, руб.</span><input type="text" inputmode="decimal" class="num${need.includes(c)&&!(rateOf(c)>0)?' bad':''}" data-rate="${c}" value="${esc(P.rates[c]||'')}" placeholder="0,0000"></label>`;

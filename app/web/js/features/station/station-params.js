@@ -102,7 +102,7 @@ export class StationParams {
    */
   static changed(item) {
     setTimeout(() => {
-      if (typeof stationFill === 'function') stationFill(item);
+      if (typeof StationAuto !== 'undefined') StationAuto.fill(item);
       persist();
     }, 0);
   }

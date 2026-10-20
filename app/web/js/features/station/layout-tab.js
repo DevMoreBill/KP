@@ -20,10 +20,10 @@ export class LayoutTab {
     const plan = StationUi.plan(item);
     if (plan.level === 'none')
       return `<div class="ed-sec stl"><p class="stl-none">${esc(plan.text)}</p>${this.how()}</div>`;
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     const opts = StationUi.opts(item);
     const [cls, title] = this._head(plan);
-    const dims = this._dims(plan, ctypeOf(container.ctype));
+    const dims = this._dims(plan, ContainerKind.of(container.ctype));
     const issues = this._issues(item, plan);
     const pics = plan.level !== 'error' && plan.geo.ext;
     const meta = StationUi.meta(item, plan);

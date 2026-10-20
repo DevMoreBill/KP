@@ -16,7 +16,7 @@ export class StationUi {
    * @returns {boolean}
    */
   static enabled(item) {
-    return !!item && typeof stationOf === 'function' && !!stationOf(item) && FEAT.on('stLayout');
+    return !!item && typeof Kit !== 'undefined' && !!Kit.station(item) && FEAT.on('stLayout');
   }
 
   /**
@@ -27,8 +27,8 @@ export class StationUi {
   static input(item) {
     const req = typeof StationReq !== 'undefined' ? StationReq : null;
     return {
-      cont: this._cont(kitContainer(item)),
-      parts: kitParts(item),
+      cont: this._cont(Kit.container(item)),
+      parts: Kit.parts(item),
       air: this.opts(item).air,
       recv: req ? req.recv(item) : 'after',
       recvOut: req ? req.recvOut(item) : false,
@@ -62,7 +62,7 @@ export class StationUi {
    * @returns {string}
    */
   static badge(item) {
-    if (!this.enabled(item) || !kitContainer(item)) return '';
+    if (!this.enabled(item) || !Kit.container(item)) return '';
     const plan = this.plan(item);
     if (!plan || plan.level === 'none') return '';
     const count = (plan.issues || []).filter(issue => issue.level === 'error' || issue.level === 'warn').length;
@@ -113,7 +113,7 @@ export class StationUi {
    * @returns {boolean}
    */
   static blocked(item) {
-    if (!this.enabled(item) || !isKit(item)) return false;
+    if (!this.enabled(item) || !Kit.has(item)) return false;
     const plan = this.plan(item);
     return plan.level === 'error' && !plan.assumed;
   }
@@ -125,13 +125,13 @@ export class StationUi {
    * @returns {object}
    */
   static meta(item, plan) {
-    const container = kitContainer(item);
+    const container = Kit.container(item);
     const developer = String((S.manager || {}).name || '')
       .trim()
       .replace(/\s+/g, ' ');
     return {
       title: String(item.name || '').trim() || 'Станция в контейнере',
-      cont: container ? ctypeOf(container.ctype).name : 'Контейнер',
+      cont: container ? ContainerKind.of(container.ctype).name : 'Контейнер',
       colorText: plan.colorText ? `цвет ${plan.colorText}` : '',
       org: this.org(),
       dev: this.short(developer),
@@ -226,7 +226,7 @@ export class StationUi {
    */
   static fix(suggest, index) {
     const size = suggest.size ? ` ${suggest.size.map(side => Mm.text(side)).join(' × ')} мм` : '';
-    const text = ctypeOf(suggest.ctype).name + size;
+    const text = ContainerKind.of(suggest.ctype).name + size;
     const lead = suggest.smaller ? 'Достаточно' : 'Поместится';
     return `<button class="btn primary" type="button" data-a="stlFix" data-i="${index}" data-ct="${esc(suggest.ctype)}"${suggest.size ? ` data-size="${esc(suggest.size.join(' × '))}"` : ''}>${lead}: ${esc(text)} — заменить</button>`;
   }
@@ -238,7 +238,7 @@ export class StationUi {
    * @returns {string}
    */
   static chip(item, index) {
-    if (!this.enabled(item) || !kitContainer(item)) return '';
+    if (!this.enabled(item) || !Kit.container(item)) return '';
     const plan = this.plan(item);
     if (plan.level === 'none') return '';
     const [cls, text] = this._chipState(plan);
@@ -260,18 +260,20 @@ export class StationUi {
    */
   static act(action, index, button) {
     const item = S.items[index];
-    const container = item && kitContainer(item);
+    const container = item && Kit.container(item);
     if (!container) return false;
     if (action === 'stlFix') {
-      contApply(container, {
+      ContainerPart.apply(container, {
         ctype: button.dataset.ct,
         size: button.dataset.size || '',
         sizeAuto: !!StationGeo.FLEX[button.dataset.ct],
       });
       StationSize.apply(item);
-      stationFill(item);
-      stationAutoName(item);
-      toast(`Контейнер заменён: ${ctypeOf(container.ctype).name}. Проверьте закупку контейнера в составе станции.`);
+      StationAuto.fill(item);
+      StationName.apply(item);
+      toast(
+        `Контейнер заменён: ${ContainerKind.of(container.ctype).name}. Проверьте закупку контейнера в составе станции.`,
+      );
       return true;
     }
     if (action === 'stlAuto') {
