@@ -328,6 +328,8 @@ MIGRATIONS = [
      ALTER TABLE crm_tasks DROP COLUMN step;
      """,
     ),
+    # строка поиска клиента: телефон с добавочным и короткий городской номер (пересчёт при миграции)
+    ('2027-18-client-phones', '', ''),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -551,7 +553,7 @@ def kp_cols(meta) -> tuple:
 
 
 def _fill_client_search(store, conn) -> None:
-    """Миграция 2027-16-client-contacts: строка поиска клиента — с контактами."""
+    """Миграции 2027-16-client-contacts и 2027-18-client-phones: строка поиска клиента — с контактами."""
     for cid, doc in conn.execute('SELECT id, doc FROM clients').fetchall():
         try:
             data = json.loads(doc)
@@ -666,6 +668,7 @@ MIGRATION_FILL = {
     '2027-10-crm': _fill_crm,
     '2027-12-indexes': _fill_feed,
     '2027-16-client-contacts': _fill_client_search,
+    '2027-18-client-phones': _fill_client_search,
 }
 
 

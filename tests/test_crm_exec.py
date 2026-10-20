@@ -38,6 +38,15 @@ class ClientSearchTest(unittest.TestCase):
         self.assertEqual(found['match']['contact']['name'], 'Иванов Иван Петрович')
         self.assertNotIn('match', self.st.clients_search('ромашка', 10)['items'][0], 'по названию — без отметки контакта')
 
+    def test_extension_and_local(self):
+        """телефон с добавочным — это телефон, а не ФИО; короткий городской номер контакта тоже находится"""
+        self.st.client_put('inn7703000003', {'id': 'inn7703000003', 'name': 'ООО «Василёк»', 'inn': '7703000003', 'contacts': [
+            {'name': 'Сидоров', 'phone': '+7 (495) 765-43-21 доб. 105'}, {'name': 'Склад', 'phone': '98-76-50'}]})
+        self.assertEqual(self.names('+7 495 765-43-21 доб. 105'), ['ООО «Василёк»'])
+        self.assertEqual(self.names('84957654321'), ['ООО «Василёк»'])
+        self.assertEqual(self.names('987650'), ['ООО «Василёк»'])
+        self.assertEqual(self.st.clients_search('+7 495 765-43-21, доб.: 7', 10)['items'][0]['match']['by'], 'телефон')
+
     def test_match_and_refill(self):
         from client_match import ClientMatch
         cards = ClientMatch(self.st).any_of(phones=['+79161234567'], emails=['ivanov@romashka.ru'])

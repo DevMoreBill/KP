@@ -9,14 +9,27 @@ class ContactKey:
 
     PHONE_DIGITS = 10
     PHONE_MIN = 7
+    LOCAL_MIN = 6  # городской номер без кода в карточке — тоже в строку поиска
     WORD_MIN = 2
     EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
     PHONE_RE = re.compile(r'^[\d\s()+.\-]+$')
+    EXTENSION_RE = re.compile(r'\s*,?\s*(?:доб|вн|ext)\b.*$|\s*#.*$', re.I)
+
+    @classmethod
+    def number(cls, value) -> str:
+        """Номер без добавочного («+7 495 123-45-67 доб. 12» → «+7 495 123-45-67»)."""
+        return cls.EXTENSION_RE.sub('', str(value or '')).strip()
 
     @classmethod
     def phone(cls, value) -> str:
-        digits = re.sub(r'\D', '', str(value or ''))
+        digits = re.sub(r'\D', '', cls.number(value))
         return digits[-cls.PHONE_DIGITS :] if len(digits) >= cls.PHONE_MIN else ''
+
+    @classmethod
+    def phone_index(cls, value) -> str:
+        """Телефон для строки поиска: как phone, короткий городской (от LOCAL_MIN цифр) — как есть."""
+        digits = re.sub(r'\D', '', cls.number(value))
+        return digits[-cls.PHONE_DIGITS :] if len(digits) >= cls.LOCAL_MIN else ''
 
     @classmethod
     def email(cls, value) -> str:
@@ -34,7 +47,8 @@ class ContactKey:
         value = str(text or '').strip()
         if cls.email(value):
             return 'email'
-        if cls.PHONE_RE.match(value) and cls.phone(value):
+        number = cls.number(value)
+        if cls.PHONE_RE.match(number) and cls.phone(number):
             return 'phone'
         return 'name' if len(cls.words(value)) >= 1 else ''
 
@@ -51,8 +65,8 @@ class ContactKey:
         """Добавка к строке поиска клиента: имена, телефоны (10 цифр) и почта контактов."""
         parts: list[str] = []
         for row in cls.contacts(doc):
-            parts += [str(row.get('name') or ''), cls.phone(row.get('phone')), cls.email(row.get('email'))]
-            parts += [cls.phone(row.get('mobile'))]
+            parts += [str(row.get('name') or ''), cls.phone_index(row.get('phone')), cls.email(row.get('email'))]
+            parts += [cls.phone_index(row.get('mobile'))]
         return ' '.join(part for part in parts if part)
 
 
