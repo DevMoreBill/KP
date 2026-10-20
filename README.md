@@ -526,6 +526,12 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.137.0 — что сделано:** «чистый код», часть 2: `features/rules/` и `features/rules-doc/` — говорящие имена,
+в том числе поля классов (`RulesPanel.root`, `layout`, `ruleEdit`, `ruleQuery`, `statusFilter`; `LayoutEditor.panel`,
+`work`, `query`; `LayoutForm.editor`; `RuleEdit.panel`, `value`); `StationRules.v` → `StationRules.value`,
+`LayoutForm.OF` → `OPTIONS`; внутренние методы — закрытые, у открытых — описание. HTML вкладки «Нормы станций», правка
+правил, наборы и документ правил сверены с прежним кодом побайтно; прогон в браузере — без ошибок.
+
 **3.136.0 — что сделано:** «чистый код», часть 1 (решение владельца 20.10 по статье testdriven.io «Clean Code in
 Python»): новые проверки ESLint для готовых папок (`CLEAN` в `eslint.config.mjs`) — `id-length` (имена не короче 3 знаков,
 кроме `i j k`, координат `x y z x0 x1 y0 y1 z0 z1 dx dy dz` и `id ok kw el db of _`) и `kp/jsdoc` (у открытого метода —

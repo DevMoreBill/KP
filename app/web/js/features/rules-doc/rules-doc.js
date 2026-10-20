@@ -6,22 +6,26 @@ export class StationRulesDoc {
   static KIND = { dryer: 'Осушители', filter: 'Фильтры', genset: 'ДГУ' };
 
   /** Значение правила текстом: число, таблица [[x, y]], список, параметры {ключ: значение}. */
-  static val(v, unit) {
-    const n = x => (typeof x === 'number' ? String(x).replace('.', ',').replace('-', '−') : String(x));
-    let t;
-    if (Array.isArray(v))
-      t = v.every(r => Array.isArray(r) && r.length === 2)
-        ? v.map(([x, y]) => `${n(x)} → ${n(y)}`).join('; ')
-        : v.map(x => (Array.isArray(x) ? x.map(n).join(' — ') : n(x))).join('; ');
-    else if (v && typeof v === 'object')
-      t = Object.entries(v)
-        .map(([k, x]) => `${k}: ${x && typeof x === 'object' ? this.val(x) : n(x)}`)
+  static val(value, unit) {
+    const num = x => (typeof x === 'number' ? String(x).replace('.', ',').replace('-', '−') : String(x));
+    let text;
+    if (Array.isArray(value))
+      text = value.every(row => Array.isArray(row) && row.length === 2)
+        ? value.map(([x, y]) => `${num(x)} → ${num(y)}`).join('; ')
+        : value.map(x => (Array.isArray(x) ? x.map(num).join(' — ') : num(x))).join('; ');
+    else if (value && typeof value === 'object')
+      text = Object.entries(value)
+        .map(([k, x]) => `${k}: ${x && typeof x === 'object' ? this.val(x) : num(x)}`)
         .join('; ');
-    else t = n(v);
-    return unit && !Array.isArray(v) && (!v || typeof v !== 'object') ? `${t} ${unit}` : t;
+    else text = num(value);
+    return unit && !Array.isArray(value) && (!value || typeof value !== 'object') ? `${text} ${unit}` : text;
   }
-  static src(s) {
-    return [s && s.doc, s && s.item].filter(Boolean).join(', ') + (s && s.url ? ` — ${s.url}` : '');
+  /** Источник правила одной строкой. */
+  static src(source) {
+    return (
+      [source && source.doc, source && source.item].filter(Boolean).join(', ') +
+      (source && source.url ? ` — ${source.url}` : '')
+    );
   }
 
   /** Правила с сервера (действующая версия). */
@@ -29,15 +33,16 @@ export class StationRulesDoc {
     return (await api('/api/rules/stations')).rules;
   }
 
+  /** Скачать документ «Инженерные правила и источники». */
   static async download() {
     try {
-      const d = await this.load();
+      const data = await this.load();
       saveFileA(
-        `Инженерные правила и источники — ${String(d.version || '').replace(/[\\/:*?"<>|]+/g, ' ')}.docx`,
-        await this.make(d),
+        `Инженерные правила и источники — ${String(data.version || '').replace(/[\\/:*?"<>|]+/g, ' ')}.docx`,
+        await this.make(data),
       );
-    } catch (e) {
-      toast(`Не удалось подготовить документ: ${(e && e.message) || e}`);
+    } catch (err) {
+      toast(`Не удалось подготовить документ: ${(err && err.message) || err}`);
     }
   }
 
@@ -50,88 +55,101 @@ export class StationRulesDoc {
   static FACTOR = { p: 'давление, бар', inlet: 'вход, °C', ambient: 'окружающая, °C' };
 
   /** Документ .docx (Blob). */
-  static make(d) {
-    const w = new DocxWriter({
+  static make(data) {
+    const doc = new DocxWriter({
       title: 'Инженерные правила и источники',
       author: typeof StationUi !== 'undefined' ? StationUi.org() : 'ПНЕВМОТЕХ',
-      footer: `Инженерные правила и источники — версия ${d.version || ''}`,
+      footer: `Инженерные правила и источники — версия ${data.version || ''}`,
     });
-    const R = d.rules || [];
-    this._intro(w, d, R);
-    this._digest(w);
-    const groups = this._groups(w, R);
-    this._series(w, d.series || [], groups.length + 1);
-    this._unconfirmed(w, R);
-    return w.pack('blob');
+    const rules = data.rules || [];
+    this._intro(doc, data, rules);
+    this._digest(doc);
+    const groups = this._groups(doc, rules);
+    this._series(doc, data.series || [], groups.length + 1);
+    this._unconfirmed(doc, rules);
+    return doc.pack('blob');
   }
 
-  static _intro(w, d, R) {
-    const cnt = k => R.filter(r => r.status === k).length;
-    w.title1('Инженерные правила и источники');
-    w.p(
-      `Расчёт модульных станций (компрессорных и дизель-генераторных) — версия правил ${d.version || '—'} от ${d.date || '—'}. Правил: ${R.length}; подтверждено источником — ${cnt('confirmed')}, отраслевая практика — ${cnt('practice')}, требует подтверждения — ${cnt('unconfirmed')}. Данных производителей по сериям: ${(d.series || []).length}.`,
+  static _intro(doc, data, rules) {
+    const cnt = k => rules.filter(rule => rule.status === k).length;
+    doc.title1('Инженерные правила и источники');
+    doc.p(
+      `Расчёт модульных станций (компрессорных и дизель-генераторных) — версия правил ${data.version || '—'} от ${data.date || '—'}. Правил: ${rules.length}; подтверждено источником — ${cnt('confirmed')}, отраслевая практика — ${cnt('practice')}, требует подтверждения — ${cnt('unconfirmed')}. Данных производителей по сериям: ${(data.series || []).length}.`,
       { align: 'center' },
     );
-    w.h1('Как читать');
-    w.items(this.HOW);
+    doc.h1('Как читать');
+    doc.items(this.HOW);
   }
 
-  static _digest(w) {
-    w.h1('Свод правил компоновки');
-    w.p(
+  static _digest(doc) {
+    doc.h1('Свод правил компоновки');
+    doc.p(
       'Как программа компонует станцию — по действующим значениям этой версии правил (правятся в «Настройки → Инженерные правила станций → Правила компоновки»).',
     );
-    for (const s of LayoutDigest.sections()) {
-      w.p(s.h, { run: { b: true }, keep: true });
-      w.items(s.items);
+    for (const line of LayoutDigest.sections()) {
+      doc.p(line.h, { run: { b: true }, keep: true });
+      doc.items(line.items);
     }
   }
 
-  static _groups(w, R) {
-    const groups = [...new Set(R.map(r => r.group || 'Прочее'))];
-    groups.forEach((g, gi) => {
-      w.h1(`${gi + 1}. ${g}`);
-      const rows = R.filter(r => (r.group || 'Прочее') === g).map((r, k) => this._ruleRow(r, `${gi + 1}.${k + 1}`));
-      w.table([10, 46, 44, 60, 20], ['№', 'Правило', 'Значение', 'Источник', 'Статус'], rows);
+  static _groups(doc, rules) {
+    const groups = [...new Set(rules.map(rule => rule.group || 'Прочее'))];
+    groups.forEach((group, index) => {
+      doc.h1(`${index + 1}. ${group}`);
+      const rows = rules
+        .filter(rule => (rule.group || 'Прочее') === group)
+        .map((rule, k) => this._ruleRow(rule, `${index + 1}.${k + 1}`));
+      doc.table([10, 46, 44, 60, 20], ['№', 'Правило', 'Значение', 'Источник', 'Статус'], rows);
     });
     return groups;
   }
 
-  static _ruleRow(r, no) {
+  static _ruleRow(rule, index) {
     const title = [
-      [r.title, { b: true }],
-      ...(r.note ? [[`\n${r.note}`, { sz: 8.5, color: '5E6984' }]] : []),
-      [`\n${r.id}`, { sz: 8, color: '8A94A8' }],
+      [rule.title, { b: true }],
+      ...(rule.note ? [[`\n${rule.note}`, { sz: 8.5, color: '5E6984' }]] : []),
+      [`\n${rule.id}`, { sz: 8, color: '8A94A8' }],
     ];
-    return [no, title, this.val(r.value, r.unit), this.src(r.source), this.STATUS[r.status] || r.status];
+    return [
+      index,
+      title,
+      this.val(rule.value, rule.unit),
+      this.src(rule.source),
+      this.STATUS[rule.status] || rule.status,
+    ];
   }
 
-  static _series(w, S, no) {
-    if (!S.length) return;
-    w.h1(`${no}. Данные производителей по сериям`);
-    w.p(
+  static _series(doc, series, index) {
+    if (!series.length) return;
+    doc.h1(`${index}. Данные производителей по сериям`);
+    doc.p(
       'Поправочные коэффициенты производителя применяются, если позиция каталога относится к серии (производитель и выражение по названию, модели, серии). Производительность с поправками = номинал × Fдавление × Fвход × Fокружающая.',
     );
-    const factors = s =>
-      Object.entries(s.f || {})
-        .map(([k, T]) => `${this.FACTOR[k] || k}: ${this.val(T)}`)
+    const factors = entry =>
+      Object.entries(entry.f || {})
+        .map(([k, table]) => `${this.FACTOR[k] || k}: ${this.val(table)}`)
         .join('\n');
-    const rows = S.map(s => [
-      `${this.KIND[s.kind] || s.kind}, ${s.maker}`,
+    const rows = series.map(entry => [
+      `${this.KIND[entry.kind] || entry.kind}, ${entry.maker}`,
       [
-        [s.title || '', { b: true }],
-        [`\n${s.note || ''}`, { sz: 8.5, color: '5E6984' }],
+        [entry.title || '', { b: true }],
+        [`\n${entry.note || ''}`, { sz: 8.5, color: '5E6984' }],
       ],
-      factors(s),
-      this.src(s.source),
+      factors(entry),
+      this.src(entry.source),
     ]);
-    w.table([28, 34, 70, 48], ['Вид, производитель', 'Серия', 'Поправки', 'Источник'], rows);
+    doc.table([28, 34, 70, 48], ['Вид, производитель', 'Серия', 'Поправки', 'Источник'], rows);
   }
 
-  static _unconfirmed(w, R) {
-    const U = R.filter(r => r.status === 'unconfirmed');
-    if (!U.length) return;
-    w.h1('Требует подтверждения — что запросить');
-    w.items(U.map(r => `${r.title} (${r.id}) — сейчас ${this.val(r.value, r.unit)}${r.note ? `. ${r.note}` : ''}`));
+  static _unconfirmed(doc, rules) {
+    const unconfirmed = rules.filter(rule => rule.status === 'unconfirmed');
+    if (!unconfirmed.length) return;
+    doc.h1('Требует подтверждения — что запросить');
+    doc.items(
+      unconfirmed.map(
+        rule =>
+          `${rule.title} (${rule.id}) — сейчас ${this.val(rule.value, rule.unit)}${rule.note ? `. ${rule.note}` : ''}`,
+      ),
+    );
   }
 }

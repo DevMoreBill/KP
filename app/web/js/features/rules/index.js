@@ -6,9 +6,9 @@ export const RULES = { StationRules };
 Object.assign(globalThis, RULES);
 
 // «Инженерные правила и источники (DOCX)» в расчёте станции: документ — модулем по первому нажатию
-globalThis.document?.addEventListener('click', e => {
-  if (!e.target.closest?.('[data-rulesdoc]')) return;
+globalThis.document?.addEventListener('click', event => {
+  if (!event.target.closest?.('[data-rulesdoc]')) return;
   LazyJs.load('rules-doc/index.js')
     .then(() => StationRulesDoc.download())
-    .catch(er => toast(er.message));
+    .catch(err => toast(err.message));
 });

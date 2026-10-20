@@ -152,7 +152,7 @@ export class StationMass {
 
   /** Наибольшая масса брутто морского контейнера по типу (правило mass.iso_max), кг. */
   static max(type) {
-    const v = StationRules.v('mass.iso_max') || {};
+    const v = StationRules.value('mass.iso_max') || {};
     if (v[type]) return v[type];
     const kind = [
       [/^sea40/, v.sea40],
@@ -163,7 +163,7 @@ export class StationMass {
 
   /** Грузоподъёмность ветви стропа, т: S = Q / (n · cos α), n — ветвей в расчёте (РД 10-33-93, п. 2.1.4). */
   static wll(mass, S) {
-    const n = Math.max(1, +StationRules.v('sling.legs') || 2);
+    const n = Math.max(1, +StationRules.value('sling.legs') || 2);
     const t = mass / 1000;
     const a = Math.max(0, ...S.legs.map(q => q.deg || 0));
     return {

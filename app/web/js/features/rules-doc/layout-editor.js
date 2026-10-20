@@ -9,106 +9,109 @@ export class LayoutEditor {
   static TIGHT = 600;
 
   constructor(panel) {
-    this.p = panel;
-    this.w = null;
-    this.q = '';
+    this.panel = panel;
+    this.work = null;
+    this.query = '';
     this.form = new LayoutForm(this);
   }
 
-  static label(k) {
+  static _label(k) {
     return LayoutForm.label(k);
   }
 
-  static rule(d, id) {
-    return (d?.rules || []).find(r => r.id === id);
+  /** Правило id из файла правил data. */
+  static rule(data, id) {
+    return (data?.rules || []).find(entry => entry.id === id);
   }
 
-  static copy(v) {
-    return JSON.parse(JSON.stringify(v));
+  static _copy(value) {
+    return JSON.parse(JSON.stringify(value));
   }
 
   /** Матрица v поверх значений программы (недостающее — из StationMatrix.DEF). */
-  static merge(v) {
-    const D = StationMatrix.DEF;
-    const src = v && typeof v === 'object' ? v : {};
-    const mx = {};
-    for (const k of Object.keys(D)) {
-      mx[k] = LayoutEditor.copy(src[k] && typeof src[k] === 'object' ? { ...D[k], ...src[k] } : D[k]);
+  static merge(value) {
+    const defs = StationMatrix.DEF;
+    const src = value && typeof value === 'object' ? value : {};
+    const merged = {};
+    for (const k of Object.keys(defs)) {
+      merged[k] = LayoutEditor._copy(src[k] && typeof src[k] === 'object' ? { ...defs[k], ...src[k] } : defs[k]);
     }
-    return mx;
+    return merged;
   }
 
   /** Значения по умолчанию — из файла поставки (сервер: layoutDef), без него — заложенные в программу. */
   defs() {
-    const L = this.p.layoutDef || {};
+    const layoutDef = this.panel.layoutDef || {};
     return {
-      m: LayoutEditor.merge(L['layout.matrix']),
-      a: LayoutEditor.copy(L['norm.aisle'] || LayoutEditor.AISLE),
-      t: Number(L['norm.aisle_tight'] || LayoutEditor.TIGHT),
-      c: LayoutEditor.copy(L['clear.kind'] || this.w?.c || {}),
+      m: LayoutEditor.merge(layoutDef['layout.matrix']),
+      a: LayoutEditor._copy(layoutDef['norm.aisle'] || LayoutEditor.AISLE),
+      t: Number(layoutDef['norm.aisle_tight'] || LayoutEditor.TIGHT),
+      c: LayoutEditor._copy(layoutDef['clear.kind'] || this.work?.c || {}),
     };
   }
 
   /** Рабочая копия: матрица, проходы, отступы. */
   load() {
-    const R = id => LayoutEditor.rule(this.p.data, id)?.value;
-    this.w = {
-      m: LayoutEditor.merge(R('layout.matrix')),
-      a: LayoutEditor.copy(R('norm.aisle') || LayoutEditor.AISLE),
-      t: Number(R('norm.aisle_tight') || LayoutEditor.TIGHT),
-      c: LayoutEditor.copy(R('clear.kind') || {}),
+    const ruleValue = id => LayoutEditor.rule(this.panel.data, id)?.value;
+    this.work = {
+      m: LayoutEditor.merge(ruleValue('layout.matrix')),
+      a: LayoutEditor._copy(ruleValue('norm.aisle') || LayoutEditor.AISLE),
+      t: Number(ruleValue('norm.aisle_tight') || LayoutEditor.TIGHT),
+      c: LayoutEditor._copy(ruleValue('clear.kind') || {}),
     };
   }
 
+  /** Разметка формы по рабочей копии. */
   html() {
-    if (!this.w) this.load();
+    if (!this.work) this.load();
     return this.form.html();
   }
 
+  /** Скрыть разделы формы, где нет искомого параметра. */
   filter(root) {
     this.form.filter(root);
   }
 
   /** Строка после правки — на месте: «изменено» и «↺» без перерисовки формы (ввод в следующее поле не пропадёт). */
-  static mark(r) {
-    const el = r.querySelector('[data-mx]');
-    if (!el || r.dataset.lpd == null) return;
-    const v = el.type === 'checkbox' ? String(el.checked) : el.value.trim().replace(/\s+/g, '').replace(',', '.');
-    const num = Number(v);
-    const chg = String(v !== '' && !Number.isNaN(num) ? num : v) !== r.dataset.lpd;
-    r.classList.toggle('chg', chg);
-    const b = r.querySelector('[data-lpdef]');
-    if (b) b.hidden = !chg;
+  static mark(row) {
+    const el = row.querySelector('[data-mx]');
+    if (!el || row.dataset.lpd == null) return;
+    const value = el.type === 'checkbox' ? String(el.checked) : el.value.trim().replace(/\s+/g, '').replace(',', '.');
+    const num = Number(value);
+    const chg = String(value !== '' && !Number.isNaN(num) ? num : value) !== row.dataset.lpd;
+    row.classList.toggle('chg', chg);
+    const defButton = row.querySelector('[data-lpdef]');
+    if (defButton) defButton.hidden = !chg;
   }
 
   /** Набор → форма (только стратегия подбора; нормы отступов не меняются). */
   usePreset(id) {
-    const v = LayoutParams.preset(id);
-    if (!v) return;
-    for (const [k, x] of Object.entries(v)) {
-      const [g, f] = k.split('.');
-      this.w.m[g][f] = x;
+    const preset = LayoutParams.preset(id);
+    if (!preset) return;
+    for (const [k, x] of Object.entries(preset)) {
+      const [group, field] = k.split('.');
+      this.work.m[group][field] = x;
     }
   }
 
   /** Поля окна → рабочая копия; ошибка ввода — текстом с названием поля. */
   read(root) {
     for (const el of root.querySelectorAll('[data-mx]')) {
-      const [t, path] = el.dataset.mx.split('|');
-      this._put(t, path, LayoutEditor._value(el, t, path));
+      const [type, path] = el.dataset.mx.split('|');
+      this._put(type, path, LayoutEditor._value(el, type, path));
     }
-    (this.w.m.sides.rows || []).forEach((r, j) => {
-      const on = [...root.querySelectorAll(`[data-mxs="${j}"]`)].filter(c => c.checked);
-      r.s = on.map(c => c.value).join('') || 'Ф';
+    (this.work.m.sides.rows || []).forEach((row, j) => {
+      const checked = [...root.querySelectorAll(`[data-mxs="${j}"]`)].filter(box => box.checked);
+      row.s = checked.map(box => box.value).join('') || 'Ф';
     });
   }
 
-  static _value(el, t, path) {
+  static _value(el, type, path) {
     if (el.type === 'checkbox') return el.checked;
     if (el.tagName === 'SELECT') {
       return /^-?\d+$/.test(el.value) && !/\.(a|b|of)$/.test(path) ? Number(el.value) : el.value;
     }
-    return LayoutEditor._number(el, t === 'm' ? LayoutParams.field(...path.split('.')) : null);
+    return LayoutEditor._number(el, type === 'm' ? LayoutParams.field(...path.split('.')) : null);
   }
 
   static _label(el) {
@@ -117,88 +120,92 @@ export class LayoutEditor {
     return (el.closest('tr,label') || el).textContent.trim().slice(0, 60);
   }
 
-  static _number(el, f) {
-    const s = el.value.trim().replace(/\s+/g, '').replace(',', '.');
-    const v = Number(s);
-    if (!s || !Number.isFinite(v) || v < 0) throw new Error(`Не число: «${el.value}» — ${LayoutEditor._label(el)}`);
-    if (f && (v < f.lo || v > f.hi)) {
-      const u = f.u && f.u !== 'доля' ? ` ${f.u}` : '';
-      const range = `от ${LayoutParams.show({}, f.lo)} до ${LayoutParams.show({}, f.hi)}${u}`;
+  static _number(el, field) {
+    const text = el.value.trim().replace(/\s+/g, '').replace(',', '.');
+    const value = Number(text);
+    if (!text || !Number.isFinite(value) || value < 0)
+      throw new Error(`Не число: «${el.value}» — ${LayoutEditor._label(el)}`);
+    if (field && (value < field.lo || value > field.hi)) {
+      const unitText = field.u && field.u !== 'доля' ? ` ${field.u}` : '';
+      const range = `от ${LayoutParams.show({}, field.lo)} до ${LayoutParams.show({}, field.hi)}${unitText}`;
       throw new Error(`${LayoutEditor._label(el)}: ${range}`);
     }
-    return v;
+    return value;
   }
 
-  static _set(o, path, v) {
+  static _set(obj, path, value) {
     const k = path.split('.');
     const last = k.pop();
-    const x = k.reduce((y, p) => y[p], o);
-    x[last] = v;
+    const x = k.reduce((y, key) => y[key], obj);
+    x[last] = value;
   }
 
-  _put(t, path, v) {
-    const w = this.w;
+  _put(type, path, value) {
+    const work = this.work;
     const put = {
-      m: () => this._putMatrix(path, v),
-      c: () => LayoutEditor._set(w.c, path, v),
+      m: () => this._putMatrix(path, value),
+      c: () => LayoutEditor._set(work.c, path, value),
       a: () => {
-        w.a[Number(path)] = v;
+        work.a[Number(path)] = value;
       },
       t: () => {
-        w.t = v;
+        work.t = value;
       },
       r: () => {
-        const r = (w.m.rotate.rows || []).find(q => q.kind === path);
-        if (r) r.on = v;
+        const row = (work.m.rotate.rows || []).find(entry => entry.kind === path);
+        if (row) row.on = value;
       },
-    }[t];
+    }[type];
     put?.();
   }
 
-  _putMatrix(path, v) {
+  _putMatrix(path, value) {
     if (/^sides\.rows\.\d+\.door$/.test(path)) {
-      LayoutEditor._set(this.w.m, path, Boolean(v));
-    } else if (/^sides\.rows\.\d+\.tilt$/.test(path) && !v) {
+      LayoutEditor._set(this.work.m, path, Boolean(value));
+    } else if (/^sides\.rows\.\d+\.tilt$/.test(path) && !value) {
       const k = path.split('.');
-      delete this.w.m.sides.rows[Number(k[2])][k[3]];
-    } else LayoutEditor._set(this.w.m, path, v);
+      delete this.work.m.sides.rows[Number(k[2])][k[3]];
+    } else LayoutEditor._set(this.work.m, path, value);
   }
 
   /** «↺»: одно значение — по умолчанию программы */
   def(path) {
-    const [t, p] = path.split('|'),
-      D = this.defs();
-    if (t === 'm') {
-      const [g, k] = p.split('.');
-      this.w.m[g][k] = LayoutEditor.copy(D.m[g][k]);
-    } else if (t === 'a') this.w.a[+p] = D.a[+p];
-    else if (t === 't') this.w.t = D.t;
+    const [type, key] = path.split('|'),
+      defs = this.defs();
+    if (type === 'm') {
+      const [group, k] = key.split('.');
+      this.work.m[group][k] = LayoutEditor._copy(defs.m[group][k]);
+    } else if (type === 'a') this.work.a[+key] = defs.a[+key];
+    else if (type === 't') this.work.t = defs.t;
   }
+  /** Добавить строку в таблицу пар матрицы. */
   add(root) {
     this.read(root);
-    this.w.m.pair.rows.push({ a: 'other', b: 'other', base: 500, k: 0, of: '', min: 300, close: false });
+    this.work.m.pair.rows.push({ a: 'other', b: 'other', base: 500, k: 0, of: '', min: 300, close: false });
   }
+  /** Удалить строку j таблицы пар матрицы. */
   del(root, j) {
     this.read(root);
-    this.w.m.pair.rows.splice(j, 1);
+    this.work.m.pair.rows.splice(j, 1);
   }
   /** все значения компоновки — как в файле поставки (матрица, проходы, отступы по видам) */
   reset() {
-    this.w = this.defs();
+    this.work = this.defs();
   }
   /** новая версия правил с этими значениями */
   build() {
-    const w = this.w;
-    if (w.a[1] > w.a[0]) throw new Error('Проход оператора: «допустимо» больше «рекомендуется»');
-    if (w.t < 600) throw new Error('Проход в крайнем случае — не меньше 600 мм (решение ПНЕВМОТЕХ)');
-    if (w.m.service.min > w.m.service.max) throw new Error('Сервисные ворота: «ширина не меньше» больше «не больше»');
-    for (const r of w.m.pair.rows)
-      if (r.min > Math.max(r.base, 0) && !r.k)
+    const work = this.work;
+    if (work.a[1] > work.a[0]) throw new Error('Проход оператора: «допустимо» больше «рекомендуется»');
+    if (work.t < 600) throw new Error('Проход в крайнем случае — не меньше 600 мм (решение ПНЕВМОТЕХ)');
+    if (work.m.service.min > work.m.service.max)
+      throw new Error('Сервисные ворота: «ширина не меньше» больше «не больше»');
+    for (const row of work.m.pair.rows)
+      if (row.min > Math.max(row.base, 0) && !row.k)
         throw new Error(
-          `Пара ${LayoutEditor.label(r.a)} ↔ ${LayoutEditor.label(r.b)}: «плотно» больше «рекомендуется»`,
+          `Пара ${LayoutEditor._label(row.a)} ↔ ${LayoutEditor._label(row.b)}: «плотно» больше «рекомендуется»`,
         );
-    return RuleEdit.version(this.p.data, d => {
-      RuleEdit.set(d, 'layout.matrix', w.m, {
+    return RuleEdit.version(this.panel.data, draft => {
+      RuleEdit.set(draft, 'layout.matrix', work.m, {
         id: 'layout.matrix',
         group: 'Компоновка',
         title: 'Матрица расстановки оборудования',
@@ -206,7 +213,7 @@ export class LayoutEditor {
         unit: 'мм',
         source: { doc: 'Решение ПНЕВМОТЕХ' },
       });
-      RuleEdit.set(d, 'norm.aisle', w.a, {
+      RuleEdit.set(draft, 'norm.aisle', work.a, {
         id: 'norm.aisle',
         group: 'Нормы помещения',
         title: 'Проход обслуживания: рекомендуемый, допустимый',
@@ -214,7 +221,7 @@ export class LayoutEditor {
         unit: 'мм',
         source: { doc: 'Решение ПНЕВМОТЕХ' },
       });
-      RuleEdit.set(d, 'norm.aisle_tight', w.t, {
+      RuleEdit.set(draft, 'norm.aisle_tight', work.t, {
         id: 'norm.aisle_tight',
         group: 'Компоновка',
         title: 'Проход оператора в крайнем случае',
@@ -222,7 +229,7 @@ export class LayoutEditor {
         unit: 'мм',
         source: { doc: 'Решение ПНЕВМОТЕХ' },
       });
-      RuleEdit.set(d, 'clear.kind', w.c, {
+      RuleEdit.set(draft, 'clear.kind', work.c, {
         id: 'clear.kind',
         group: 'Компоновка',
         title: 'Отступы от стен и соседнего оборудования',
