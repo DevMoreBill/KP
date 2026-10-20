@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from bitrix_rules import BitrixRules
 from crm import DealBook, Stages, TaskBook
@@ -52,7 +53,7 @@ class BitrixApi:
         match = re.match(r'^(https?://.+/rest/\d+/)([A-Za-z0-9]+)/?$', str(url or ''))
         return (match.group(1) + '••••' + match.group(2)[-3:] + '/') if match else ''
 
-    def call(self, method, params=None) -> object:
+    def call(self, method, params=None) -> Any:
         """Результат метода (result); список — (result, next) через call_raw. BitrixError — понятным текстом."""
         return self.call_raw(method, params).get('result')
 
@@ -492,8 +493,8 @@ class BitrixSync:
         self.links, self.queue, self.log = BitrixLinks(store), BitrixQueue(store), BitrixLog(store)
         self.opener = opener
         self.files = files or self._kp_files
-        self._api = None
-        self._rules = None
+        self._api: BitrixApi | None = None
+        self._rules: BitrixRules | None = None
 
     @property
     def rules(self) -> BitrixRules:
@@ -632,7 +633,7 @@ class BitrixSync:
         if not self.LOCK.acquire(blocking=False):
             return {'busy': True}
         try:
-            res = {'sent': 0, 'failed': 0, 'pulled': 0, 'created': 0, 'tasks': 0}
+            res: dict[str, Any] = {'sent': 0, 'failed': 0, 'pulled': 0, 'created': 0, 'tasks': 0}
             try:
                 self._prepare()
             except BitrixError as exc:
@@ -806,7 +807,7 @@ class BitrixSync:
             )
         return cid
 
-    def _preset(self) -> object:
+    def _preset(self) -> Any:
         conf = self.conf.get()
         if conf.get('preset'):
             return conf['preset']
@@ -818,13 +819,13 @@ class BitrixSync:
         self.conf.mark(preset=pid)
         return pid
 
-    def _user_of(self, mid: str) -> object:
+    def _user_of(self, mid: str) -> Any:
         return (self.conf.get().get('users') or {}).get(str(mid or ''))
 
     def _mid_of(self, uid: str) -> str | None:
         return next((mid for mid, u in (self.conf.get().get('users') or {}).items() if str(u) == str(uid)), None)
 
-    def _stage_of(self, key, cat=None) -> object:
+    def _stage_of(self, key, cat=None) -> Any:
         return self.rules.stages(cat).get(key)
 
     def _key_of(self, stage_id, sem='', cat=None) -> str | None:
@@ -986,7 +987,7 @@ class BitrixSync:
         def out(k) -> bool:
             return rules.allow(rules.field(k)['dir'], 'out')
 
-        fields = {}
+        fields: dict = {}
         if out('sum'):
             fields.update(OPPORTUNITY=round((deal.get('sum') or 0) / 100, 2), CURRENCY_ID='RUB')
         if rules.flow('company') != 'off':
@@ -1623,14 +1624,16 @@ class BitrixDryApi:
     }
 
     def __init__(self, api, labels=None) -> None:
-        self.api, self.rec, self.count = api, [], 0
+        self.api = api
+        self.rec: list = []
+        self.count = 0
         self.host = api.host
         self.labels = labels or {}
 
     def list(self, method, params=None, limit: int = 5000) -> list:
         return self.api.list(method, params, limit)
 
-    def call(self, method, params=None) -> object:
+    def call(self, method, params=None) -> Any:
         if not self.WRITE.search(method):
             return self.api.call(method, params)
         self.count += 1
@@ -1810,7 +1813,7 @@ class BitrixImport:
 
     def _inns(self, cids) -> dict:
         ids = sorted({str(cid) for cid in cids if cid and str(cid) != '0'})
-        out = {}
+        out: dict = {}
         for i in range(0, len(ids), 50):
             for row in self.sync.api.list(
                 'crm.requisite.list',

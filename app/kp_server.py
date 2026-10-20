@@ -49,9 +49,9 @@ class GzipCache:
 
     def __init__(self, max_n, level) -> None:
         self.max_n, self.level = max_n, level
-        self.cache = {}
+        self.cache: dict = {}
         self.lock = threading.Lock()
-        self.locks = {}  # одна сборка на метку: одновременные запросы ждут её
+        self.locks: dict = {}  # одна сборка на метку: одновременные запросы ждут её
 
     def building(self, tag) -> threading.Lock:
         with self.lock:

@@ -13,6 +13,7 @@ import urllib.parse
 import zlib
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from typing import Any
 
 import admin
 import ai_llm
@@ -68,10 +69,10 @@ from server_log import ServerLog
 from storage import Conflict, with_rev
 
 _COUNTERPARTIES = None
-_LOGOS = {}  # логотипы производителей: {rev — версия каталога, text — готовый ответ}
+_LOGOS: dict = {}  # логотипы производителей: {rev — версия каталога, text — готовый ответ}
 
 
-def counterparties() -> object:
+def counterparties() -> Any:
     """Справочник контрагентов и проверки (создаётся после подготовки папок данных)."""
     global _COUNTERPARTIES
     if _COUNTERPARTIES is None:
@@ -125,7 +126,7 @@ class CbrCache:
     """Курсы и ключевая ставка ЦБ: удачный ответ — в базу; ЦБ недоступен — последний сохранённый (stale)."""
 
     RETRY = 600
-    _failed = {}
+    _failed: dict = {}
 
     @classmethod
     def get(cls, key, fetch) -> dict:
@@ -159,7 +160,7 @@ class CbrCache:
 PASS = object()  # обработчик: «не мой случай» — ищем следующий маршрут
 
 
-_ROUTES = []  # (регулярное выражение, методы или None, класс, имя метода) — в порядке объявления
+_ROUTES: list = []  # (регулярное выражение, методы или None, класс, имя метода) — в порядке объявления
 
 
 def route(pattern: str, methods: str | tuple | None = None):
@@ -192,7 +193,7 @@ class Controller(metaclass=ControllerMeta):
 
     def __getattr__(
         self, name
-    ) -> object:  # self.send_json(...) → handler.send_json(...); self.server, self.path, self.headers
+    ) -> Any:  # self.send_json(...) → handler.send_json(...); self.server, self.path, self.headers
         return getattr(self.handler, name)
 
     def json_body(self) -> dict:
@@ -236,12 +237,12 @@ class Router:
     def __init__(self, routes=None) -> None:
         self.routes = routes if routes is not None else _ROUTES
 
-    def dispatch(self, handler) -> object:
+    def dispatch(self, handler) -> Any:
         method = 'GET' if handler.command == 'HEAD' else handler.command
         u = urllib.parse.urlsplit(handler.path)
         path = urllib.parse.unquote(u.path)
         query = dict(urllib.parse.parse_qsl(u.query, keep_blank_values=True, encoding='utf-8'))
-        ctrl = {}
+        ctrl: dict = {}
         for regex, methods, cls, attr in self.routes:
             if methods is not None and method not in methods:
                 continue
@@ -265,7 +266,7 @@ class WebIndex:
     """index.html с меткой версии в адресе каждого файла интерфейса: браузер хранит файлы, пока они не изменятся."""
 
     REF = re.compile(r'((?:src|href)=")(/web/[^"?#]+)(")')
-    cache = {}  # {(метка index.html, метки файлов): готовые байты}
+    cache: dict = {}  # {(метка index.html, метки файлов): готовые байты}
 
     @staticmethod
     def tag(path) -> str:
@@ -793,7 +794,7 @@ class KpController(Controller):
 
     # PDF сохранённого КП: создаётся рядом с .docx (тем же именем), скачивается сотрудниками по сети
     @route(r'/api/kp/([^/]+)/pdf')
-    def pdf(self, kid: str) -> object:
+    def pdf(self, kid: str) -> Any:
         path = self.kp_docx(safe_id(kid))
         if not path:
             return self.not_found('Файл КП не найден')
@@ -1655,7 +1656,9 @@ class ClientCardController(Controller):
         )
         rows = [rec for rec in res['items'] if key(rec)]
         rows.sort(key=lambda rec: (rec.get('date') or '', rec.get('number') or ''), reverse=True)
-        by_status, total, people = {}, 0, {}
+        by_status: dict = {}
+        total = 0
+        people: dict = {}
         for rec in rows:
             status = admin.KpJournal.status(rec)
             rub = admin.econ_rub(rec)[0] or 0
@@ -1713,7 +1716,7 @@ class CrmController(Controller):
     MID = re.compile(r'^[A-Za-z0-9_:-]{0,64}$')
 
     @staticmethod
-    def safe(func) -> object:
+    def safe(func) -> Any:
         """Сделки — дополнение к КП: сбой в них не мешает сохранить КП (подробности — в журнал сервера)."""
         try:
             return func()
@@ -1756,7 +1759,7 @@ class CrmController(Controller):
     def on_kp(cls, handler, kid: str) -> str | None:
         """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую."""
         meta = TrackController._obj(store().kp_get(kid, 'meta'))
-        want = str(meta.get('dealId') or '')[:40]
+        want: Any = str(meta.get('dealId') or '')[:40]
         if want and want != 'new':
             deal = DealBook(store()).get(want)
             uid, _name, everyone = cls.who(handler)

@@ -141,7 +141,7 @@ def set_access(store, mid: str, data: dict, hash_password) -> dict:
     if data.get('password'):
         check_password(data['password'])
     password = hash_password(data['password']) if data.get('password') else None  # медленный хеш — до блокировки базы
-    drop = []
+    drop: list = []
     rec = AccessRecord.update(store, mid, lambda rec, acc: AccessRecord.edit(rec, acc, mid, data, password, drop))
     if drop:
         drop_sessions(store, mid)
@@ -178,7 +178,7 @@ class UserSession:
     @staticmethod
     def count(store) -> dict:
         """Открытые входы по менеджерам: {id: число}."""
-        out = {}
+        out: dict = {}
         for v in _sessions(store).values():
             out[v.get('mid')] = out.get(v.get('mid'), 0) + 1
         return out

@@ -189,7 +189,7 @@ class ReminderList:
 
     def collect(self, rows, mine) -> list[dict]:
         """rows — [(id, meta-dict, track-dict, state-dict)] доступных КП; mine(meta) — КП этого менеджера."""
-        out = []
+        out: list = []
         for kid, meta, track, state in rows:
             if mine(meta):
                 out.extend(self._of(kid, meta, track, state))
@@ -288,7 +288,7 @@ class MailTemplate:
 class MailRate:
     """Писем клиентам от одного сотрудника в час — не больше srv-значения kp.mailPerHour (письма уходят с адреса компании)."""
 
-    SENT = {}
+    SENT: dict = {}
     LOCK = threading.Lock()
 
     @classmethod

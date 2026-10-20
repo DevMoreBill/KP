@@ -16,7 +16,9 @@ class TzParse:
     def __init__(self, text) -> None:
         self.text = re.sub(r'[ \t\xa0]+', ' ', str(text or ''))
         self.low = self.text.lower()
-        self.req, self.found, self.conflicts = {}, [], []
+        self.req: dict = {}
+        self.found: list = []
+        self.conflicts: list = []
         self.paged = '\f' in self.text
 
     @classmethod
@@ -65,7 +67,7 @@ class TzParse:
 
     def conflict(self, key, label, hits) -> None:
         """разные значения одного параметра в ТЗ: hits — [(значение, совпадение)]; одинаковые (до 2 %) — не противоречие."""
-        vals = []
+        vals: list = []
         for v, match in hits:
             if v is None or any(abs(v - x[0]) <= 0.02 * max(abs(v), abs(x[0]), 1e-9) for x in vals):
                 continue

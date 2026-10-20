@@ -10,6 +10,7 @@ import tempfile
 import threading
 import zipfile
 from datetime import datetime
+from typing import Any
 
 from defaults import SrvVal
 
@@ -1575,7 +1576,7 @@ class Store:
 
     def kp_states(self, ids) -> dict:
         """{id КП: состояние строкой} — одним запросом на 500 КП (отчёт по позициям), а не запросом на каждое."""
-        out = {}
+        out: dict = {}
         for i in range(0, len(ids), 500):
             part = ids[i : i + 500]
             out.update(
@@ -1639,7 +1640,7 @@ class Store:
             'WHERE kp_id=? ORDER BY id DESC',
             (kid,),
         ):
-            metas = {}
+            metas: dict = {}
             try:
                 metas = json.loads(meta or '{}') or {}
             except ValueError:
@@ -1756,7 +1757,7 @@ class Store:
             (inn, json.dumps(doc, ensure_ascii=False), _now()),
         )
 
-    def kv_get(self, key, default=None) -> object:
+    def kv_get(self, key, default=None) -> Any:
         row = self.one('SELECT value FROM kv WHERE key=?', (key,))
         if not row:
             return default

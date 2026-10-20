@@ -8,6 +8,7 @@ import re
 import zipfile
 from collections.abc import Iterator
 from datetime import datetime
+from typing import Any
 from xml.sax.saxutils import escape, quoteattr
 
 
@@ -37,7 +38,7 @@ class XmlTree:
         return f'<{tag}{attrs}>{escape(text)}</{tag}>'
 
     @classmethod
-    def value(cls, elem) -> object:
+    def value(cls, elem) -> Any:
         type_attr = elem.get('t')
         if type_attr == 'z':
             return None
@@ -55,7 +56,7 @@ class XmlTree:
         return elem.text or ''
 
     @staticmethod
-    def parse(data) -> object:
+    def parse(data) -> Any:
         from xml.etree import ElementTree
 
         if b'<!DOCTYPE' in data or b'<!ENTITY' in data:
@@ -156,7 +157,8 @@ class XlsxData:
 
     def _columns(self, rows) -> list:
         """Столбцы таблицы: [(ключ строки 2, путь (k,) или (k, sub), json?)]; вложенные объекты — раскрыты одним уровнем."""
-        order, vals = [], {}
+        order = []
+        vals: dict = {}
         for rec in rows:
             for k, v in rec.items():
                 if k not in vals:
@@ -169,7 +171,7 @@ class XlsxData:
             if not self.KEY.match(str(k)):
                 continue  # ключ с «.» или «:» — в общем столбце «_more:json»
             values = vals[k]
-            subs = {}
+            subs: dict = {}
             flat = all(isinstance(v, dict) and v for v in values) and all(
                 self.KEY.match(str(key)) for v in values for key in v
             )
@@ -465,9 +467,9 @@ class XlsxData:
         )
         rid = {}
         for rel in re.findall(r'<Relationship [^>]*>', rels):
-            i, id_match = re.search(r'\bId="([^"]+)"', rel), re.search(r'\bTarget="([^"]+)"', rel)
-            if i and id_match:
-                rid[i.group(1)] = id_match.group(1)
+            id_found, target_found = re.search(r'\bId="([^"]+)"', rel), re.search(r'\bTarget="([^"]+)"', rel)
+            if id_found and target_found:
+                rid[id_found.group(1)] = target_found.group(1)
         out = {}
         for part in re.finditer(r'<sheet\b[^>]*>', workbook):
             name_match, rel_id = (
@@ -481,32 +483,32 @@ class XlsxData:
             if path not in names:
                 continue
             x = z.read(path).decode('utf-8', 'replace')
-            rows = {}
+            rows: dict = {}
             for row_match in re.finditer(r'<row\b([^>]*?)(?:/>|>(.*?)</row>)', x, re.S):
-                row_num = re.search(r'\br="(\d+)"', row_match.group(1))
-                row_num = int(row_num.group(1)) if row_num else len(rows) + 1
-                cells = {}
+                row_attr = re.search(r'\br="(\d+)"', row_match.group(1))
+                row_num = int(row_attr.group(1)) if row_attr else len(rows) + 1
+                cells: dict = {}
                 for cell_match in re.finditer(r'<c\b([^>]*?)(?:/>|>(.*?)</c>)', row_match.group(2) or '', re.S):
                     attrs, inner = cell_match.group(1), cell_match.group(2) or ''
                     ref = re.search(r'\br="([A-Z]+)\d*"', attrs)
                     col_ix = cls._col_index(ref.group(1)) if ref else len(cells)
-                    id_match = re.search(r'\bt="(\w+)"', attrs)
-                    id_match = id_match.group(1) if id_match else 'n'
-                    if id_match == 'inlineStr':
-                        v = cls._text(''.join(re.findall(r'<t[^>]*>(.*?)</t>', inner, re.S)))
+                    type_match = re.search(r'\bt="(\w+)"', attrs)
+                    cell_type = type_match.group(1) if type_match else 'n'
+                    if cell_type == 'inlineStr':
+                        v: Any = cls._text(''.join(re.findall(r'<t[^>]*>(.*?)</t>', inner, re.S)))
                     else:
                         val_match = re.search(r'<v>(.*?)</v>', inner, re.S)
                         if not val_match:
                             continue
                         v = cls._text(val_match.group(1))
-                        if id_match == 's':
+                        if cell_type == 's':
                             try:
                                 v = strings[int(v)]
                             except (ValueError, IndexError):
                                 continue
-                        elif id_match == 'b':
+                        elif cell_type == 'b':
                             v = v.strip() == '1'
-                        elif id_match == 'n':
+                        elif cell_type == 'n':
                             v = cls._number(v)
                     if v != '':
                         cells[col_ix] = v
@@ -545,7 +547,7 @@ class XlsxData:
             raise ValueError(
                 'Это не книга, выгруженная из программы: нет служебного листа «_kp» (не удаляйте скрытые листы)'
             )
-        longs = {}
+        longs: dict = {}
         for long_row in sorted(book.get(self.LONG_SHEET, {}).items()):
             cell = long_row[1]
             if isinstance(cell.get(0), int) and isinstance(cell.get(1), int):
@@ -578,7 +580,7 @@ class XlsxData:
             keys = {cell: str(k).strip() for cell, k in (rows.get(2) or {}).items() if str(k).strip()}
             recs = []
             for row_num in sorted(long_row for long_row in rows if long_row > 2):
-                rec = {}
+                rec: dict = {}
                 for cell, key in keys.items():
                     if cell not in rows[row_num]:
                         continue
@@ -621,7 +623,7 @@ class XlsxData:
         return doc
 
     @staticmethod
-    def _get(root, path) -> object:
+    def _get(root, path) -> Any:
         v = root
         for step in path:
             v = v.get(step) if isinstance(v, dict) else None
@@ -663,7 +665,11 @@ class YmlData:
         tag = self._tag
         items = (doc.get('sections') or {}).get('catalog')
         items = items if isinstance(items, list) else []
-        cats, cur = {}, lambda code: 'RUR' if code in ('RUB', 'RUR', '', None) else str(code)
+        cats: dict = {}
+
+        def cur(code: object) -> str:
+            return 'RUR' if code in ('RUB', 'RUR', '', None) else str(code)
+
         for x in items:
             cur_code = str(((x.get('attrs') or {}) if isinstance(x, dict) else {}).get('cat') or '')
             cats.setdefault(cur_code, len(cats) + 1)
@@ -851,7 +857,7 @@ class DataFile:
         raise ValueError('Этот файл загружается не здесь')
 
     @classmethod
-    def _norm(cls, v, top=True) -> object:
+    def _norm(cls, v, top=True) -> Any:
         if isinstance(v, bool) or v is None:
             return v
         if isinstance(v, float) and v.is_integer() and abs(v) < 1e15:

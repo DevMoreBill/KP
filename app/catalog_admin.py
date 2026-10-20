@@ -166,7 +166,7 @@ class TrashBin:
 
     def items(self, etype='') -> dict:
         rows = self.store.trash_list()
-        counts = {}
+        counts: dict = {}
         for row in rows:
             counts[row['entityType']] = counts.get(row['entityType'], 0) + 1
         return {'items': [row for row in rows if not etype or row['entityType'] == etype], 'counts': counts}
@@ -201,7 +201,7 @@ class XlsxBook:
     BAD = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f]')
 
     def __init__(self) -> None:
-        self.sheets = []
+        self.sheets: list = []
 
     def add(self, title, head, rows) -> None:
         name = re.sub(r'[\[\]:*?/\\]', ' ', str(title or 'Лист')).strip()[:31] or 'Лист'
@@ -530,7 +530,8 @@ class CatalogExport:
         return out
 
     def _xlsx(self, items, cols, opts) -> tuple:
-        book, groups = XlsxBook(), {}
+        book = XlsxBook()
+        groups: dict = {}
         for rec in items:
             groups.setdefault(rec['cat'] or 'Без категории', []).append(rec)
         for cat, rows in sorted(groups.items(), key=lambda pair: pair[0]):

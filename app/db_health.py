@@ -4,6 +4,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta
+from typing import Any
 
 from storage import DbZip
 
@@ -29,7 +30,7 @@ class DbHealth:
 
     def run(self) -> dict:
         started = time.time()
-        res = {
+        res: dict[str, Any] = {
             'at': datetime.now().isoformat(timespec='seconds'),
             'integrity': DbZip.integrity(self.store.path, quick=True),
         }
@@ -71,7 +72,7 @@ class DbHealth:
             for item in load_types().get('types') or []
             if isinstance(item, dict) and item.get('role') != 'accessory'
         }
-        groups = {}
+        groups: dict = {}
         for cid, name, cat in self.store.all('SELECT id, name, cat FROM catalog'):
             if cat in main and name:
                 groups.setdefault((cat, self._key(name)), []).append({'id': cid, 'name': name})

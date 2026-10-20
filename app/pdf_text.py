@@ -3,6 +3,7 @@
 import base64
 import re
 import zlib
+from typing import Any
 
 from defaults import SrvVal
 
@@ -51,7 +52,7 @@ class _Lexer:
             else:
                 break
 
-    def token(self) -> object:
+    def token(self) -> Any:
         """Следующий объект: число, строка (bytes), Name, list, dict, Ref, Op или None в конце."""
         self.skip()
         data, size = self.data, self.size
@@ -73,7 +74,7 @@ class _Lexer:
             return bytes.fromhex(hex_digits.decode('ascii'))
         if char == 0x5B:  # [ массив ]
             self.pos += 1
-            out = []
+            out: list = []
             while True:
                 self.skip()
                 if self.pos >= size:
@@ -155,7 +156,7 @@ class _Lexer:
         return bytes(out)
 
     def _dict(self) -> dict:
-        out = {}
+        out: dict = {}
         while True:
             self.skip()
             if self.pos >= self.size:
@@ -274,7 +275,7 @@ class Doc:
             except (IndexError, ValueError):
                 pass
 
-    def get(self, v, depth=0) -> object:
+    def get(self, v, depth=0) -> Any:
         while isinstance(v, Ref) and depth < 20:
             v = self.objs.get(v.num)
             depth += 1
@@ -294,7 +295,7 @@ class Doc:
         for trailer in self.trailers:
             if isinstance(trailer.get('Root'), Ref):
                 root = self.get(trailer['Root'])
-        out = []
+        out: list = []
         if isinstance(root, dict):
             self._walk(self.get(root.get('Pages')), {}, out, 0)
         if not out:  # нет дерева страниц — по порядку объектов
@@ -442,7 +443,7 @@ def _run(doc, data, res, out, fonts, depth=0) -> None:
     fdict = doc.get(res.get('Font')) or {} if isinstance(res, dict) else {}
     xobj = doc.get(res.get('XObject')) or {} if isinstance(res, dict) else {}
     lexer, stack, font = _Lexer(data), [], None
-    line = []
+    line: list = []
     last_y = None
     pos = {'fs': 10.0, 'run': 0}  # размер шрифта; знаков, выведенных с последнего сдвига (Td)
 
@@ -528,13 +529,17 @@ def text(data, need_text=True) -> dict:
     if len(data) > max_mb * 1024 * 1024:
         raise ValueError(f'файл больше {max_mb} МБ')
     doc = Doc(data)
-    pages, fonts, parts, per, size = doc.pages(), {}, [], [], 0
+    pages = doc.pages()
+    fonts: dict = {}
+    parts = []
+    per = []
+    size = 0
     for page, res in pages:
         contents = page.get('Contents')
         streams = doc.get(contents)
         refs = streams if isinstance(streams, list) else [contents]
         data = b'\n'.join(doc.stream(ref) for ref in refs)
-        lines = []
+        lines: list = []
         try:
             _run(doc, data, res, lines, fonts)
         except RecursionError:

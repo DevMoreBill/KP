@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime, timedelta
+from typing import Any
 
 import version
 from defaults import SrvVal
@@ -142,7 +143,7 @@ class ReleaseSource:
     class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
         """Файл выпуска отдаётся по ссылке на хранилище — туда токен не передаётся."""
 
-        def redirect_request(self, req, stream, code, msg, headers, newurl) -> object:
+        def redirect_request(self, req, stream, code, msg, headers, newurl) -> Any:
             new_req = super().redirect_request(req, stream, code, msg, headers, newurl)
             if new_req is not None:
                 new_req.headers.pop('Authorization', None)
@@ -157,7 +158,7 @@ class ReleaseSource:
             )
         )
 
-    def _open(self, url, accept) -> object:
+    def _open(self, url, accept) -> Any:
         req = urllib.request.Request(url, headers=self._headers(accept))
         try:
             return urllib.request.build_opener(self._NoAuthRedirect()).open(req, timeout=self.TIMEOUT)

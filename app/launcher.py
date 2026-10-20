@@ -39,7 +39,7 @@ class Launcher:
         self.frozen = bool(getattr(sys, 'frozen', False))
         self.root = os.path.dirname(os.path.abspath(sys.executable if self.frozen else __file__))
         self.upd = os.path.join(self.root, 'update')
-        self.finder = None
+        self.finder: _UpdateFinder | None = None
         self.update_version = ''
 
     @staticmethod

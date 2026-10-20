@@ -20,7 +20,8 @@ TYPES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp')  # �
 
 def logos(store) -> dict:
     """{производитель в нижнем регистре: {maker, src, w, h}}: закреплённый, иначе из папки логотипов, иначе самый частый."""
-    groups, names = {}, {}
+    groups: dict = {}
+    names: dict = {}
     col = {k: f"CASE WHEN json_valid(doc) THEN json_extract(doc, '$.logo.{k}') END" for k in ('src', 'w', 'h')}
     rows = store.all(
         f'SELECT maker, src, w, h, COUNT(*) FROM (SELECT maker, {col["src"]} AS src, {col["w"]} AS w, {col["h"]} AS h '

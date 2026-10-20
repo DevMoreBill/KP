@@ -52,7 +52,7 @@ class DbCopy:
     @classmethod
     def listing(cls, folder: str) -> list:
         """Ежедневные копии в папке, новые первыми: по одной записи на дату (file — ZIP, если есть; files — все файлы даты)."""
-        by_date = {}
+        by_date: dict = {}
         if folder and os.path.isdir(folder):
             for name in os.listdir(folder):
                 match = cls.NAME_RE.match(name)
@@ -80,7 +80,8 @@ class DbCopy:
         )
         days = sorted(set(dates), reverse=True)
         keep = set(days[:daily])
-        weeks, months = {}, {}
+        weeks: dict = {}
+        months: dict = {}
         for day_text in days:
             day = date.fromisoformat(day_text)
             weeks.setdefault(day.isocalendar()[:2], day_text)
@@ -217,7 +218,7 @@ def archive_audit(store, data_dir: str, years=None) -> int:
         return 0
     folder = os.path.join(data_dir, 'backup', 'audit-archive')
     os.makedirs(folder, exist_ok=True)
-    by_year = {}
+    by_year: dict = {}
     for row in rows:
         by_year.setdefault(str(row[1])[:4] or 'unknown', []).append(dict(zip(cols, row, strict=False)))
     for y, recs in by_year.items():

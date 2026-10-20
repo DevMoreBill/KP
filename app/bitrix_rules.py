@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from typing import Any
 
 DIRS = ('both', 'in', 'out', 'off')
 OUT = ('out', 'off')
@@ -238,7 +239,7 @@ class BitrixRules:
         if 'mode' in data:
             new['mode'] = pick(data['mode'], ('both', 'in', 'out'), 'направление обмена') or 'both'
         if 'flow' in data:
-            flow = data['flow'] if isinstance(data['flow'], dict) else {}
+            flow: Any = data['flow'] if isinstance(data['flow'], dict) else {}
             new['flow'] = {
                 k: pick(flow.get(k), DIRS, f'направление «{v}»') for k, v in cls.KINDS.items() if flow.get(k)
             }

@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from typing import Any
 
 KEY_RX = re.compile(r'^[\w.\-ёЁ ]{1,80}$')
 FIELD_RX = re.compile(r'^[A-Za-z0-9_]{1,30}$')
@@ -29,7 +30,7 @@ class ListStore:
         for raw in rows:
             if not isinstance(raw, dict) or len(raw) > MAX_FIELDS:
                 raise ValueError(f'Список «{key}»: неверная строка')
-            row = {}
+            row: dict[str, Any] = {}
             for field, v in raw.items():
                 if not FIELD_RX.match(str(field)):
                     raise ValueError(f'Список «{key}»: неверное поле {str(field)[:30]}')

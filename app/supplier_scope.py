@@ -2,6 +2,7 @@
 
 import json
 import re
+from typing import Any
 
 
 class SupplierScope:
@@ -38,7 +39,7 @@ class SupplierScope:
             for feed in feeds
             if feed.get('id')
         }
-        self.makers = {}
+        self.makers: dict = {}
         for sup in self.sups:  # точное название раньше списка производителей — как в окне каталога
             for maker in sup.get('makers') or []:
                 self.makers.setdefault(self.key(maker), sup.get('name') or '')
@@ -63,7 +64,8 @@ class SupplierScope:
 
     def groups(self) -> list[dict]:
         """[{name, count, dir}] — по убыванию числа позиций; dir — поставщик есть в справочнике; «Без поставщика» — в конце."""
-        cnt, title = {}, {}
+        cnt: dict = {}
+        title: dict = {}
         for _, feed, maker in self._rows():
             name = self.name_of(feed, maker) or self.NONE
             k = self.key(name)
@@ -151,7 +153,7 @@ class ExportScope:
 
     def summary(self) -> dict:
         """Сочетания для окна выгрузки: {rows: [{cat, maker, sup, feed, n}], feeds: {id: название}} — счётчики считает окно."""
-        cnt = {}
+        cnt: dict = {}
         for _cid, cat, maker, sup, feed in self._rows():
             k = (cat, maker, sup, feed)
             cnt[k] = cnt.get(k, 0) + 1
@@ -211,7 +213,7 @@ class CatalogFilter:
     def clean(filt) -> dict:
         if not isinstance(filt, dict):
             raise ValueError('Неверный фильтр каталога')
-        out = {}
+        out: dict[str, Any] = {}
         for k in ('cat', 'maker', 'sup', 'q'):
             v = filt.get(k) or ''
             if not isinstance(v, str) or len(v) > 200:
@@ -253,7 +255,8 @@ class CatalogFilter:
             return ok
         words = norm(filt.get('q', '')).split()[:8]
         want, out = set(ok), []
-        sql, args = 'SELECT id, light FROM catalog', ()
+        sql = 'SELECT id, light FROM catalog'
+        args: tuple = ()
         if words:
             sql += ' WHERE ' + ' AND '.join("search LIKE ? ESCAPE '\\'" for _ in words)
             args = tuple(like_arg(word) for word in words)

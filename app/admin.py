@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.parse
 from datetime import date, datetime, timedelta
+from typing import Any
 
 import auth_users
 from config import BadRequest
@@ -135,7 +136,7 @@ class AdminSessions:
         return hashlib.sha256(tok.encode('utf-8')).hexdigest() if tok else ''
 
     @staticmethod
-    def _store() -> object:
+    def _store() -> Any:
         from config import store
 
         return store()
@@ -257,7 +258,7 @@ def is_admin(handler, need_csrf=True) -> bool:
 class LoginGuard:
     """Защита входа от подбора паролей (менеджеры и администраторы): неверные попытки считаются по адресу компьютера."""
 
-    FAILS = {}
+    FAILS: dict = {}
     WRONG = 'Неверный логин или пароль'
     _dummy = None
 
@@ -555,7 +556,7 @@ class KpJournal:
             return '[]'  # без разбора нельзя убрать чужую экономику — лучше пусто, чем лишнее
         return json.dumps(cls.rows(handler, rows), ensure_ascii=False)
 
-    _cache = {}  # (версия журнала, поиск, автор, вид) → разобранные описания КП; последние 8 отборов
+    _cache: dict = {}  # (версия журнала, поиск, автор, вид) → разобранные описания КП; последние 8 отборов
     _lock = threading.Lock()
 
     @classmethod
@@ -592,7 +593,7 @@ class KpJournal:
             ],
         )
         # воронка — по всему отбору без фильтра статуса: сколько КП и на какую сумму в каждом статусе
-        funnel = {}
+        funnel: dict = {}
         for rec in rows:
             stage = funnel.setdefault(cls.status(rec), {'n': 0, 'sum': 0})
             stage['n'] += 1
@@ -643,7 +644,7 @@ def log(handler, store, action, etype=None, eid=None, before=None, after=None, r
 ABSENT = '__absent__'
 
 
-def _short(v, limit: int = 20000) -> object:
+def _short(v, limit: int = 20000) -> Any:
     text = json.dumps(v, ensure_ascii=False)
     return v if len(text) <= limit else {'__truncated__': len(text)}
 
@@ -652,7 +653,7 @@ def diff(before, after, skip=()) -> tuple:
     """Только изменённые поля: ({поле: было}, {поле: стало}); отсутствующее поле — ABSENT."""
     before_obj, after_obj = before or {}, after or {}
 
-    def norm(v) -> object:
+    def norm(v) -> Any:
         return ABSENT if v in (None, '', [], {}) else v  # пустое и отсутствующее поле — одно и то же
 
     keys = [
@@ -666,7 +667,7 @@ def diff(before, after, skip=()) -> tuple:
     return {k: _short(before_obj.get(k, ABSENT)) for k in keys}, {k: _short(after_obj.get(k, ABSENT)) for k in keys}
 
 
-def _loads(text) -> object:
+def _loads(text) -> Any:
     try:
         return json.loads(text) if text else None
     except Exception:
@@ -754,7 +755,7 @@ def _refuse(handler, store=None, action=None, etype=None, eid=None, text=DENIED)
     return True
 
 
-def guard(handler, store, method, path) -> object:
+def guard(handler, store, method, path) -> Any:
     """Вызывается до обычного маршрута."""
     from settings_history import SettingsHistory
 
@@ -883,7 +884,7 @@ def guard(handler, store, method, path) -> object:
     match = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/meta$', path)
     if match and method == 'PUT':
         old = _loads(store.kp_get(match.group(1), 'meta'))
-        new = _body_obj(handler)
+        new: Any = _body_obj(handler)
         keep = ('number', 'client', 'sum', 'positions', 'manager', 'file')
         before_part = {k: old.get(k) for k in keep} if old else None
         after_part = {k: new.get(k) for k in keep}
@@ -1222,7 +1223,7 @@ class AdminApi:
                 check_new_password(password)
             except ValueError as exc:
                 return self.err(400, str(exc))
-            u = {
+            u: Any = {
                 'login': login,
                 'name': str(data.get('name') or '').strip()[:80] or login,
                 'pw': hash_password(password),
@@ -1291,7 +1292,7 @@ class AdminApi:
                 }
             )
         if sub == 'feeds' and method == 'POST':
-            feed = feeds.feed_save(store, self.data())
+            feed: Any = feeds.feed_save(store, self.data())
             self.log(
                 'edit_settings',
                 'settings',
@@ -1300,7 +1301,7 @@ class AdminApi:
                 {'url': feed['url'] or feed.get('kind'), 'name': feed['name']},
             )
             return self.ok(feed)
-        match = re.match(
+        match: Any = re.match(
             r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|loadplan|rebuild|purge|unblock)$',
             sub,
         )
@@ -1324,7 +1325,7 @@ class AdminApi:
             if isinstance(data.get('driveHints'), dict):
                 feed_copy['driveHints'] = {k: str(data['driveHints'].get(k) or '')[:400] for k in ('belt', 'direct')}
             if 'discount' in data:
-                x = feeds.parse_number(data.get('discount'))
+                x: Any = feeds.parse_number(data.get('discount'))
                 feed_copy['discount'] = x if x and 0 < x < 100 else None
             return self.ok(feeds.discount_plan(store, feed_copy))
         if method != 'POST':
@@ -1496,7 +1497,7 @@ class AdminApi:
                         for acc in auth_users.access(store).values()
                     ):
                         return self.err(400, 'Сначала задайте логин и пароль хотя бы одному менеджеру')
-                    before = auth_users.enabled(store)
+                    before: Any = auth_users.enabled(store)
                     auth_users.set_enabled(store, enabled, actor_login or 'admin')
                     self.log('toggle_user_login', 'settings', 'userLogin', {'enabled': before}, {'enabled': enabled})
                 if 'help' in payload:  # «Забыли пароль?» на экране входа: к кому обращаться
@@ -1513,7 +1514,7 @@ class AdminApi:
                     'help': auth_users.LoginInfo.help(store),
                 }
             )
-        acc = re.match(r'^access/([A-Za-z0-9_-]{1,64})/(reset|logout)$', sub)
+        acc: Any = re.match(r'^access/([A-Za-z0-9_-]{1,64})/(reset|logout)$', sub)
         if acc and method == 'POST':
             return self.access_act(acc.group(1), acc.group(2), actor_login)
         acc = re.match(r'^access/([A-Za-z0-9_-]{1,64})$', sub)
@@ -1522,7 +1523,7 @@ class AdminApi:
             if not any(x.get('id') == mid for x in (_loads(store.managers_list()) or [])):
                 return self.err(404, 'Менеджер не найден')
             payload = self.data()
-            rec = auth_users.set_access(store, mid, payload, hash_password)
+            rec: Any = auth_users.set_access(store, mid, payload, hash_password)
             info = {k: payload[k] for k in ('login', 'perms', 'blocked', 'clear') if k in payload}
             if payload.get('password'):
                 info['password'] = 'изменён'
@@ -2286,12 +2287,12 @@ class AdminApi:
             count += bool(data)
         return self.ok({'deleted': count})
 
-    def desk(self) -> object:
+    def desk(self) -> Any:
         from catalog_admin import ModerationDesk
 
         return ModerationDesk(self.store, actor(self.handler, True)[1], self.log)
 
-    def review(self, eid, act, reason) -> object:
+    def review(self, eid, act, reason) -> Any:
         return self.desk().review(eid, act, reason)
 
     def trash(self, method, sub, query) -> None:
@@ -2359,7 +2360,7 @@ class AdminApi:
         self.log('rollback_edit', 'product', entry['entityId'], before_diff, dict(after_diff, __audit__=aid))
         return self.ok()
 
-    def bundle(self) -> object:
+    def bundle(self) -> Any:
         from data_bundle import DataBundle
 
         return DataBundle(os.path.join(os.path.dirname(self.store.path), 'img'))
@@ -2376,7 +2377,14 @@ class AdminApi:
         from data_file import DataFile
         from supplier_scope import SupplierScope
 
-        store, out, items, catalog, keep, ids, docs, src = self.store, {}, 0, '[]', None, None, None, None
+        store = self.store
+        out: dict = {}
+        items = 0
+        catalog = '[]'
+        keep = None
+        ids = None
+        docs = None
+        src: tuple = None
         fmt = DataFile.fmt(fmt, 'zip' if images else 'json')
         if fmt == 'yml':
             # YML — каталог для сайтов и маркетплейсов: только каталог и без закупки (она при загрузке остаётся в базе)
@@ -2497,13 +2505,13 @@ class AdminApi:
         self.log('export_db', 'db', ','.join(sections), None, dict(info, bytes=len(data), **more))
         return self.handler.send(200, ctype, data, self.handler.attachment(f'КП_выгрузка_{what}_{stamp}{ext}'))
 
-    def data_file(self) -> object:
+    def data_file(self) -> Any:
         """Форматы выгрузки: подписи столбцов Excel — из справочника категорий, ссылки на фото в YML — адрес программы."""
         from data_file import DataFile
         from equipment_types import load_types
 
         types = {tdef.get('id'): tdef for tdef in load_types()['types'] if isinstance(tdef, dict)}
-        labels = {}
+        labels: dict = {}
         for tdef in types.values():
             for field in tdef.get('fields') or []:
                 if isinstance(field, dict) and field.get('key') and field.get('label'):
@@ -2764,7 +2772,8 @@ class AdminApi:
             ]
             errors += [f'{section}: запись {i + 1} без обязательных полей {", ".join(req[section])}' for i in bad[:5]]
             # то, на чём запись споткнулась бы посередине загрузки, — видно уже в предпросмотре и пропускается
-            more, seen = [], {}
+            more = []
+            seen: dict = {}
             for i, x in enumerate(rows):
                 if i in bad:
                     continue
@@ -3047,7 +3056,7 @@ def stats(store) -> dict:
             }
         )[0]
 
-    mgr = {}
+    mgr: dict = {}
     for _, x in days:
         k = x.get('manager') or '—'
         mgr_item = mgr.setdefault(k, {'name': k, 'count': 0, 'sum': 0})
@@ -3086,7 +3095,7 @@ def stats(store) -> dict:
     month_ago = (now - timedelta(days=30)).isoformat(timespec='seconds')
     active_ago = (now - timedelta(days=active)).isoformat(timespec='seconds')
 
-    def _one(sql, *args) -> object:
+    def _one(sql, *args) -> Any:
         return store.one(sql, args)[0]
 
     approved = _one("SELECT COUNT(*) FROM pending_edits WHERE status='approved'")

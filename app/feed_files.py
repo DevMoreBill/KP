@@ -12,6 +12,7 @@ import re
 import urllib.parse
 import zipfile
 from datetime import datetime
+from typing import Any
 
 import images
 from defaults import SrvVal
@@ -377,7 +378,7 @@ def _url_cat(url) -> str:
     return ' / '.join(out)
 
 
-def _jget(item, key) -> object:
+def _jget(item, key) -> Any:
     for k in JSON_KEYS[key]:
         for key_variant in (k, k.capitalize()):
             if key_variant in item:
@@ -394,7 +395,7 @@ SITE_TAIL = re.compile(
 
 def _join_lines(text) -> str:
     """Строки, разорванные посреди фразы, — обратно в абзацы."""
-    paras = []
+    paras: list = []
     for raw_line in str(text or '').replace('\r', '').split('\n'):
         line = re.sub(r'\s+', ' ', raw_line).strip()
         if not line:
@@ -451,7 +452,7 @@ def _json_specs(specs) -> list:
 
 # картинки внутри JSON: {"assets": {"exdm-blok": "data:image/jpeg;base64,…"}, "items": [{"images": ["asset:exdm-blok", …]}]}
 # (вырезки из каталогов производителя). В позиции — адрес «kpa:<хеш содержимого>», сами данные — здесь до загрузки фото.
-ASSETS = {}
+ASSETS: dict = {}
 ASSET_MAX = 8 * 1024 * 1024
 
 
@@ -476,7 +477,7 @@ def _data_uri(v) -> tuple | None:
 def _json_assets(obj) -> dict:
     """{"ключ": "data:image/…;base64,…"} → {"ключ": "kpa:<хеш>"}; данные — в ASSETS."""
     raw = obj.get('assets') if isinstance(obj, dict) else None
-    out = {}
+    out: dict = {}
     if not isinstance(raw, dict):
         return out
     if len(ASSETS) > 4000:
@@ -768,9 +769,9 @@ def read_xlsx(data) -> list:
     )
     rid = {}
     for rel in re.findall(r'<Relationship [^>]*>', rels):
-        i, id_match = re.search(r'\bId="([^"]+)"', rel), re.search(r'\bTarget="([^"]+)"', rel)
-        if i and id_match:
-            rid[i.group(1)] = id_match.group(1)
+        id_found, target_found = re.search(r'\bId="([^"]+)"', rel), re.search(r'\bTarget="([^"]+)"', rel)
+        if id_found and target_found:
+            rid[id_found.group(1)] = target_found.group(1)
     out = []
     for sheet_match in re.finditer(r'<sheet\b[^>]*>', workbook):
         tag = sheet_match.group(0)
@@ -782,22 +783,22 @@ def read_xlsx(data) -> list:
         if path not in names:
             continue
         x = z.read(path).decode('utf-8', 'replace')
-        rows = {}
+        rows: dict = {}
         for row_match in re.finditer(r'<row\b[^>]*?(?:\br="(\d+)")?[^>]*>(.*?)</row>', x, re.S):
             row_num = int(row_match.group(1)) if row_match.group(1) else len(rows) + 1
-            cells = {}
+            cells: dict = {}
             for cell_match in re.finditer(r'<c\b([^>]*?)(?:/>|>(.*?)</c>)', row_match.group(2), re.S):
                 attrs, inner = cell_match.group(1), cell_match.group(2) or ''
                 ref = re.search(r'\br="([A-Z]+)\d*"', attrs)
                 col_ix = _col(ref.group(1)) if ref else len(cells)
-                id_match = re.search(r'\bt="(\w+)"', attrs)
-                id_match = id_match.group(1) if id_match else ''
-                if id_match == 'inlineStr':
-                    v = html_mod.unescape(''.join(re.findall(r'<t[^>]*>(.*?)</t>', inner, re.S)))
+                type_match = re.search(r'\bt="(\w+)"', attrs)
+                cell_type = type_match.group(1) if type_match else ''
+                if cell_type == 'inlineStr':
+                    v: Any = html_mod.unescape(''.join(re.findall(r'<t[^>]*>(.*?)</t>', inner, re.S)))
                 else:
                     val_match = re.search(r'<v>(.*?)</v>', inner, re.S)
                     v = html_mod.unescape(val_match.group(1)) if val_match else ''
-                    if id_match == 's' and v:
+                    if cell_type == 's' and v:
                         try:
                             v = strings[int(v)]
                         except (ValueError, IndexError):
@@ -935,7 +936,8 @@ def _opt_name(text) -> str:
 def parse_price(data) -> tuple:
     """XLSX прайса → (строки с ценами, опциями и характеристиками, валюта, столбцы)."""
     book = read_xlsx(data)
-    out, sheets = [], []
+    out: list = []
+    sheets = []
     for sname, rows in book:
         hrs = [i for i, row in enumerate(rows) if any(str(v).strip() in HEAD_WORDS for v in row.values())]
         if not hrs:
@@ -990,9 +992,9 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
         and any(re.fullmatch(r'\d+(?:[.,]\d+)?\s*бар', str(v).strip()) for v in rows[high].values())
     ):
         high += 1  # шапка из двух строк: «Производительность» над «6 бар / 8 бар / 10 бар»
-    head = {}
+    head: dict = {}
     for i in range(low, high):
-        vals = {col: re.sub(r'\s+', ' ', str(v)).strip() for col, v in rows[i].items()}
+        vals: Any = {col: re.sub(r'\s+', ' ', str(v)).strip() for col, v in rows[i].items()}
         if i < head_row and len(set(vals.values()) - {''}) <= 1:
             continue  # подзаголовок таблицы над шапкой («Модернизированные винтовые компрессоры…»)
         wide = {
@@ -1030,9 +1032,9 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
             cur = CUR_WORDS.get(cur_match.group(1).lower(), '') if cur_match else ''
     group = ''
     if head_row > 0:  # подзаголовок таблицы над шапкой
-        v = {str(x).strip() for x in rows[head_row - 1].values()} - {''}
-        if len(v) == 1 and len(rows[head_row - 1]) >= 4:
-            group = _group_name(v.pop())
+        subtitles = {str(x).strip() for x in rows[head_row - 1].values()} - {''}
+        if len(subtitles) == 1 and len(rows[head_row - 1]) >= 4:
+            group = _group_name(subtitles.pop())
     items = []
     for i in range((unit_row if unit_row is not None else head_row) + 1, end):
         row = rows[i]
@@ -1269,7 +1271,7 @@ def clean_desc(text) -> str:
     desc_text = LIST_HEAD_RX.sub(_list_items, desc_text)
     desc_text = re.sub(r'["«»]{2,}|\s*"\s*;|\s*"(?=\s|$)|(?<=\s)"\s*', ' ', desc_text)  # сломанные кавычки из CSV
     desc_text = re.sub(r'\s*[►▪■●♦➢➤✓]\s*(?=[А-ЯA-Zа-я0-9])|\s+-\s+(?=[А-Я])', '\n• ', desc_text)
-    keep = {}  # заголовки блоков отдельной строкой («Исполнения и опции:») — не разбирать на подзаголовки
+    keep: dict = {}  # заголовки блоков отдельной строкой («Исполнения и опции:») — не разбирать на подзаголовки
     for lab in sorted(BLOCK_LABELS, key=len, reverse=True):
         tok = f'\x00{len(keep)}\x00'
         cleaned = re.sub(r'(?m)^\s*' + re.escape(lab) + r':\s*$', tok, desc_text)
@@ -1579,7 +1581,7 @@ def _spec_rows(k, v) -> list:
     return [_spec_fix(k, v)]
 
 
-_SPEC_SEEN = {}  # подпись характеристики → класс: одни и те же подписи у тысяч позиций разбираются один раз
+_SPEC_SEEN: dict = {}  # подпись характеристики → класс: одни и те же подписи у тысяч позиций разбираются один раз
 
 
 def spec_class(key) -> str:
@@ -1672,7 +1674,8 @@ def _spec_fix(k, v) -> tuple:
 
 def merge_specs(parse_rows, price_specs) -> list:
     """Характеристики: парс, затем прайс; одинаковые параметры — значение прайса (точнее)."""
-    rows, idx = [], {}
+    rows: list = []
+    idx = {}
     for k, v in (row for pair in parse_rows for row in _spec_rows(*pair)):
         if SPEC_DROP.match(k) or not v:
             continue
@@ -1747,7 +1750,7 @@ def _model_key(text) -> str:
 
 def _model_set(text) -> frozenset | None:
     """Те же слова модели, но как множество — порядок слов в прайсе и на сайте бывает разным («EAGLE-N VSD 132 7,5 BAR» и «EAGLE-N 132-7,5 VSD»)."""
-    words = []
+    words: list = []
     for word_raw in re.split(r'[\s/]+', str(text or '').replace('–', '-').replace('—', '-')):
         word = word_raw.strip('(),;')
         if (
@@ -1815,7 +1818,9 @@ def cfg_compatible(cfg_a, cfg_b) -> bool:
 
 def unique_names(pages) -> list:
     """Одинаковые названия в парсе — уникальными по исполнению (давление, ресивер, D); копии — убираются."""
-    groups, out, seen = {}, [], set()
+    groups: dict = {}
+    out = []
+    seen = set()
     for page_rec in pages:
         groups.setdefault(page_rec['name'], []).append(page_rec)
     for page in pages:
@@ -1843,7 +1848,7 @@ def unique_names(pages) -> list:
             continue  # та же позиция на сайте дважды
         seen.add(sig)
         out.append(page_rec)
-    names = {}
+    names: dict = {}
     for page_rec in out:
         names.setdefault(page_rec['name'], []).append(page_rec)
     for name, lst in names.items():  # всё ещё одинаковые (разная производительность) — с номером варианта
@@ -1854,7 +1859,12 @@ def unique_names(pages) -> list:
 
 def match_prices(pages, prices) -> tuple:
     """Каждой позиции парса — строка прайса по исполнению, названию, модели, коду изделия."""
-    by_norm, by_key, by_model, by_short, by_set, by_cfg = {}, {}, {}, {}, {}, {}
+    by_norm: dict = {}
+    by_key: dict = {}
+    by_model: dict = {}
+    by_short: dict = {}
+    by_set: dict = {}
+    by_cfg: dict = {}
     for price in prices:
         if (
             len(price['name']) > 90 or len(price['name'].split()) > 9
@@ -1875,7 +1885,8 @@ def match_prices(pages, prices) -> tuple:
         if model_set:
             by_set.setdefault(model_set, []).append(price)
 
-    by_code, by_sig = {}, {}
+    by_code: dict = {}
+    by_sig: dict = {}
     for price in prices:
         for code in {_code(price['name']), _code(price['short'])} - {''}:
             by_code.setdefault(code, []).append(price)
@@ -1977,7 +1988,7 @@ def _code_run(text) -> list:
     if i is None:
         return []
 
-    def short_up(token) -> object:
+    def short_up(token) -> Any:
         return re.fullmatch(r'[A-ZА-ЯЁ][A-ZА-ЯЁ-]*', token) and len(token.replace('-', '')) <= 5
 
     first, second = i, i + 1
@@ -2071,7 +2082,7 @@ def _by_code(name, by_code) -> dict | None:
 
 def parse_stock(data) -> list:
     """XLSX остатков → [{sku, name, brand, qty, wh: {склад: шт}, transit, prod, eta, promo, sheet}]."""
-    out = {}
+    out: dict = {}
     for sname, rows in read_xlsx(data):
         head_row = next(
             (
@@ -2088,7 +2099,7 @@ def parse_stock(data) -> list:
             continue
         head = {col: re.sub(r'\s+', ' ', str(v)).strip().lower() for col, v in rows[head_row].items()}
 
-        def pick(regex, head=head) -> object:
+        def pick(regex, head=head) -> Any:
             return next((col_ix for col_ix, title in sorted(head.items()) if re.match(regex, title)), None)
 
         sku, name = pick(r'^(артикул|код)'), pick(r'^(номенклатура|наименование|название|модель)')
@@ -2103,7 +2114,7 @@ def parse_stock(data) -> list:
         ]
         qty = pick(r'^(остат|кол-?во|количеств|наличи)')
         if qty is None and status is None:
-            nums = {}
+            nums: dict = {}
             for row in data_rows:
                 for col_key, v in row.items():
                     if col_key not in (sku, name) and _num(v) is not None:
@@ -2119,7 +2130,7 @@ def parse_stock(data) -> list:
             qty_val = _num(row.get(qty)) if qty is not None else 1
             qty_val = max(0, int(qty_val)) if qty_val else 0
             status_val = str(row.get(status, '') if status is not None else '').strip().lower()
-            warehouse = re.sub(r'\s+', ' ', str(row.get(whc, '') if whc is not None else '')).strip()
+            warehouse: Any = re.sub(r'\s+', ' ', str(row.get(whc, '') if whc is not None else '')).strip()
             key = (
                 str(row.get(brand, '')).strip().lower() if brand is not None else '',
                 _sku_key(sku_val) or _sku_key(name_match),
@@ -2202,7 +2213,8 @@ def _merge_stock(rows) -> dict:
 
 def stock_index(stock) -> tuple:
     """Указатели по строкам остатков: (артикул → строка, код изделия → [кандидаты для _by_code], подпись модели → [(признаки, строка)])."""
-    by_sku, by_code = {}, {}
+    by_sku: dict = {}
+    by_code: dict = {}
     for row in stock:
         if row['sku']:
             by_sku.setdefault(_sku_key(row['sku']), []).append(row)
@@ -2218,7 +2230,7 @@ def stock_index(stock) -> tuple:
             code_rows[code] = [
                 {'name': row['name'], 'short': row['sku'], 'price': row['qty'], 'r': row} for row in rows
             ]
-    by_sig = {}  # «EXDM 7,5/10 IP 54» ↔ «Винтовой компрессор EXELUTE EXDM 7.5/10 IP54»
+    by_sig: dict = {}  # «EXDM 7,5/10 IP 54» ↔ «Винтовой компрессор EXELUTE EXDM 7.5/10 IP54»
     for row in stock:
         core, opt = _sig(row['name'])
         if len(core) >= 2 and any(re.search(r'\d', x) for x in core):
@@ -2304,7 +2316,8 @@ def build_feed(feed, pages, prices, param_name, stock=None) -> dict:
     """→ {shop, date, cats, offers} как у feeds.parse(): позиции парса с ценой из прайса."""
     pages = unique_names(pages)
     hit, stats = match_prices(pages, prices) if prices else ({}, {'matched': 0, 'how': {}, 'priceOnly': len(prices)})
-    cats, offers = {}, {}
+    cats: dict = {}
+    offers: dict = {}
     maker = (
         re.split(r'[,;]', feed.get('maker') or '')[0]
     ).strip()  # «EXELUTE, LUPAMAT» — у позиции своя марка из парса
@@ -2377,7 +2390,7 @@ def build_feed(feed, pages, prices, param_name, stock=None) -> dict:
                 cur0,
             )
     offs = list(offers.values())
-    logos = {}  # логотипы марок из JSON-парса: {марка: kpa:…}
+    logos: dict = {}  # логотипы марок из JSON-парса: {марка: kpa:…}
     for page in pages:
         if page.get('logo'):
             logos.setdefault(page.get('brand') or maker, page['logo'])
@@ -2419,7 +2432,7 @@ def model_cfg(model, text='') -> dict:
     model_text = re.sub(r'\([^)]*\)', ' ', str(model or '').replace('\\', '')).upper().replace(',', '.')
     model_text = re.sub(r'(?<=\d)\s*[XХ×]\s*(?=\d)', 'X', model_text)  # «2х270», «2 × 270» → «2X270»
     low_text = str(text or '').lower()
-    cfg = {'ser': set(), 'size': None, 'p': None, 'rec': None, 'dry': False, 'vsd': False, 'w': False}
+    cfg: dict[str, Any] = {'ser': set(), 'size': None, 'p': None, 'rec': None, 'dry': False, 'vsd': False, 'w': False}
     nums = []
     for tok in re.split(r'[\s/]+', model_text):
         if not tok:

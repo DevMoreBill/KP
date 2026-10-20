@@ -251,7 +251,10 @@ class ChinaFreight:
         extra = self._money(req.get('extra'), rates, 'Расходы в Китае') if add_extra else 0
         ins = self._money(req.get('ins'), rates, 'Страхование') if add_ins else 0
         today = today or date.today().isoformat()
-        offers, after, errors, groups = [], [], [], {}
+        offers = []
+        after = []
+        errors = []
+        groups: dict = {}
         for row in self.rates().get('rows') or []:
             scope = row.get('scope') or 'border'
             if row.get('kind') != kind:

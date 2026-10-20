@@ -139,7 +139,7 @@ class ServerLog:
     def records(self) -> list[dict]:
         """Все записи от старых к новым: [{at, level, text, detail}]."""
         self._flush()
-        out = []
+        out: list = []
         for path in self.files():
             try:
                 with open(path, encoding='utf-8', errors='replace') as file:

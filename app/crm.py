@@ -442,7 +442,7 @@ class DealBook:
         return count
 
     def _adopt(self, conn) -> int:
-        names = {}
+        names: dict = {}
         for mid, doc in conn.execute('SELECT id, doc FROM managers').fetchall():
             name = str(_obj(doc).get('name') or '').strip().lower()
             if name:
@@ -467,7 +467,8 @@ class DealBook:
             )
             rows.append((who, client, day, kid, meta_obj, track_obj, mid))
         rows.sort(key=lambda rec: (rec[0], rec[1], rec[2], rec[3]))
-        groups, last = [], None
+        groups: list = []
+        last = None
         for row in rows:
             group = groups[-1] if groups else None
             if (

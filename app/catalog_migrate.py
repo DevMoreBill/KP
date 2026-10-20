@@ -320,7 +320,7 @@ def run(store, types_builtin, types_user, img_dir: str, backup_dir: str, log=pri
     ]
     tmap = {tdef['id']: tdef for tdef in types}
     names = {tdef.get('id'): tdef for tdef in (types_user or [])}
-    titles = {}
+    titles: dict = {}
     for tdef in types:
         for k in (tdef.get('name'), tdef.get('coverTitle')):
             if k:
@@ -330,7 +330,11 @@ def run(store, types_builtin, types_user, img_dir: str, backup_dir: str, log=pri
     makers = sorted(
         {str((doc.get('attrs') or {}).get('maker') or '').strip() for doc in docs} - {''}, key=len, reverse=True
     )
-    moved, filled, photos, logos, nophoto = {}, 0, 0, 0, []
+    moved: dict = {}
+    filled = 0
+    photos = 0
+    logos = 0
+    nophoto = []
     changed = set()
     for doc in docs:
         attrs = dict(doc.get('attrs') or {})
@@ -383,7 +387,7 @@ def run(store, types_builtin, types_user, img_dir: str, backup_dir: str, log=pri
             changed.add(doc['id'])
 
     # фото и логотипы по аналогии: та же категория и производитель
-    by_cat = {}
+    by_cat: dict = {}
     for doc in docs:
         by_cat.setdefault((doc.get('attrs') or {}).get('cat'), []).append(doc)
     for doc in docs:

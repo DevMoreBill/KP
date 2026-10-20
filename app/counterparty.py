@@ -8,6 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from defaults import SrvVal
 from net import Net
@@ -48,7 +49,7 @@ class LimitError(Exception):
     """Лимит запросов сервиса проверки на сегодня исчерпан."""
 
 
-def http_json(url, data=None, headers=None, method=None) -> object:
+def http_json(url, data=None, headers=None, method=None) -> Any:
     """Запрос к API → разобранный JSON. data: dict/list — JSON (если Content-Type: application/json) или форма; bytes — как есть."""
     hdrs = {'User-Agent': 'Mozilla/5.0 (KP-Pnevmotekh)', 'Accept': 'application/json'}
     hdrs.update(headers or {})
@@ -81,7 +82,7 @@ def valid_inn(inn) -> bool:
     return False
 
 
-def dig(data, *path, default=None) -> object:
+def dig(data, *path, default=None) -> Any:
     """Безопасное чтение вложенных полей: g(d, 'Статус', 'Наим')."""
     cur = data
     for k in path:
@@ -290,7 +291,7 @@ class GirBo:
         return 'ответ в неожиданном формате'
 
     @classmethod
-    def _get(cls, host, path, params=None) -> object:
+    def _get(cls, host, path, params=None) -> Any:
         return http_json(
             host + path + ('?' + urllib.parse.urlencode(params) if params else ''),
             headers={

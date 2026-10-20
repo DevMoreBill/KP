@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 from datetime import date, datetime, timedelta
+from typing import Any
 
 import defaults
 import workcal
@@ -285,7 +286,7 @@ def number(v) -> float | None:
         return None
 
 
-def _find(obj, pred, depth=0) -> object:
+def _find(obj, pred, depth=0) -> Any:
     """Первый вложенный объект, для которого pred(obj) истинно (обход словарей и списков вглубь до 6 уровней)."""
     if depth > 6:
         return None
@@ -307,7 +308,7 @@ class Http:
     SECRET = re.compile(r'(?i)((?:token|access_token|appkey|api_?key|key|secret|password|client_secret)=)[^&\s"\'<>]+')
 
     @staticmethod
-    def call(url, data=None, headers=None, method=None) -> object:
+    def call(url, data=None, headers=None, method=None) -> Any:
         """Запрос с переходом по 307/308: перевозчик переехал на новый адрес — POST повторяется туда же (urllib сам этого не делает)."""
         for _ in range(3):
             try:
@@ -421,7 +422,7 @@ class Carrier:
         return '' if (frm_alt, dst_alt) == (frm.get('name'), dst.get('name')) else f' ({frm_alt} → {dst_alt})'
 
     @classmethod
-    def _cached(cls, store, name, loader) -> object:
+    def _cached(cls, store, name, loader) -> Any:
         """Справочник из kv «lgdict:<name>»; старше DICT_DAYS — загружается заново."""
         cid = store.kv_get('lgdict:' + name) or {}
         try:
@@ -565,11 +566,12 @@ class AtiDirections:
     """Направления «Средних ставок» ATI.SU по городам: справочник читается один раз на расчёт."""
 
     def __init__(self, store) -> None:
-        self.store, self._idx = store, None
+        self.store = store
+        self._idx: dict | None = None
 
     def find(self, frm, dst) -> dict | None:
         if self._idx is None:
-            idx = {}
+            idx: dict = {}
             for direction in Ati.directions(self.store):
                 idx.setdefault((cnorm(direction['from']), cnorm(direction['to'])), direction)
             self._idx = idx
@@ -741,7 +743,9 @@ class Dellin(Carrier):
     @classmethod
     def pickup_days(cls, store=None) -> list:
         """Ближайшие рабочие дни начиная с завтрашнего: по производственному календарю (праздники, переносы), без него — пн–пт."""
-        day, out, cal = date.today(), [], {}
+        day = date.today()
+        out: list = []
+        cal = {}
         while len(out) < cls.DATE_TRIES:
             day += timedelta(days=1)
             if day.year not in cal:
@@ -795,7 +799,7 @@ class Kit(Carrier):
     DOCS_FROM = 50000  # ₽: от этой объявленной стоимости КИТ требует признак документов, подтверждающих стоимость
 
     @classmethod
-    def _call(cls, store, path, body) -> object:
+    def _call(cls, store, path, body) -> Any:
         """POST JSON с токеном Bearer. Ошибки — понятным текстом: 401 — токен, 429 — лимит, 422 — поля."""
         headers = {'Authorization': 'Bearer ' + keys(store).get('kitToken', ''), 'Content-Type': 'application/json'}
         try:
@@ -944,7 +948,7 @@ class Cdek(Carrier):
 
     CODE, NAME, SITE, WHOSE, KEYS = 'cdek', 'СДЭК', 'https://www.cdek.ru/ru/calculate', 'СДЭК', ('cdekId', 'cdekSecret')
     HINT_403 = '. Если ключи верны — защита сайта СДЭК не пропускает запросы с этого компьютера'
-    _tokens = {}  # идентификатор клиента → (токен, годен до)
+    _tokens: dict = {}  # идентификатор клиента → (токен, годен до)
 
     @classmethod
     def _headers(cls, store) -> dict:
@@ -1150,9 +1154,9 @@ class Nrg(Carrier):
         return f'{v or 0:,.0f} ₽'.replace(',', ' ')
 
     @classmethod
-    def _call(cls, store, path, data=None) -> object:
+    def _call(cls, store, path, data=None) -> Any:
         """v4 с токеном — один адрес; v2 — основной и резервный. При 5xx / обрыве связи — повтор через паузу."""
-        err = None
+        err: Any = None
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': BROWSER_UA}
         tok = cls.token(store)
         if tok:
@@ -1302,7 +1306,7 @@ class Jde(Carrier):
 
         def load() -> dict:
             j = Http.call(cls._url(store, 'base') + f'/geo/search?mode={mode}')
-            best = {}
+            best: dict = {}
             for row in j if isinstance(j, list) else []:
                 name = cnorm((row or {}).get('city'))
                 if not name or not row.get('code'):
@@ -1391,7 +1395,9 @@ class DeliveryQuote:
         self.places = self.cargo(req.get('places'))
         self.unload = number(req.get('unload')) or 0
         self.providers = providers(store)
-        self.offers, self.errors, self.stamp = [], [], _now()
+        self.offers: list = []
+        self.errors: list = []
+        self.stamp = _now()
 
     # пределы груза в запросе (в запросе размеры места — м, масса — т): больше — ошибка ввода (400), а не расчёт на миллионы мест
     MAX_ROWS, MAX_UNITS, MAX_M, MAX_T = 100, 1000, 30, 100

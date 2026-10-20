@@ -16,6 +16,7 @@ import zlib
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
+from typing import Any
 from xml.etree import ElementTree
 
 import catalog_migrate
@@ -29,8 +30,8 @@ from storage import Conflict, WriteBatch
 
 KV_KEY = 'feeds'
 IMAGE_STORE = None  # хранилище изображений data/img (images.ImageStore) — задаёт kp_server при запуске
-JOBS = {}  # id фида → {kind, state, done, total, msg, startedAt, result}
-_CACHE = {}  # id фида → (время, url, разобранный фид) — предпросмотр и загрузка без повторного скачивания
+JOBS: dict = {}  # id фида → {kind, state, done, total, msg, startedAt, result}
+_CACHE: dict = {}  # id фида → (время, url, разобранный фид) — предпросмотр и загрузка без повторного скачивания
 _LOCK = threading.Lock()
 STOCK_TAGS = ('count', 'quantity', 'stock_quantity', 'stock', 'amount', 'qty', 'instock', 'in_stock')
 STOCK_PARAM = re.compile(r'^(остаток|остатки|наличие|в наличии|количество( на складе)?|склад)$', re.I)
@@ -709,7 +710,9 @@ def page_apply(html, props) -> str:
 
 
 # проверенные картинки со страницы (адрес → время, тип, байты): скачиваются один раз — при выборе и при сохранении
-_PROBE, _PROBE_LOCK, PROBE_TTL = {}, threading.Lock(), 900
+_PROBE: dict = {}
+_PROBE_LOCK = threading.Lock()
+PROBE_TTL = 900
 
 
 def _probe_get(url) -> tuple | None:
@@ -991,7 +994,8 @@ def parse(data) -> dict:
         )
         name = _txt(el, 'name') or ' '.join(x for x in (prefix, vendor, model) if x)
         params = []
-        qty, warehouses = None, {}
+        qty = None
+        warehouses: dict = {}
         for cat_path in el.findall('param'):
             param_name = re.sub(
                 r'\s+', ' ', re.sub(r'[\xad\u200b-\u200d\ufeff]', '', cat_path.get('name') or '')
@@ -1142,14 +1146,14 @@ def load(store, feed_cfg, fresh=False) -> dict:
 
 def preview(store, feed_cfg, types) -> dict:
     feed = load(store, feed_cfg, fresh=True)
-    by_cat = {}
+    by_cat: dict = {}
     for offer in feed['offers']:
         by_cat.setdefault(offer['cat'], []).append(offer)
     linked = {doc.get('feed', {}).get('oid') for doc in _feed_docs(store, feed_cfg['id'])}
     cats = []
     for cid, offs in sorted(by_cat.items(), key=lambda x: (feed['cats'].get(x[0]) or {}).get('path') or x[0]):
         cat = feed['cats'].get(cid) or {'path': 'Без категории' if not cid else f'Категория {cid}'}
-        kinds = {}
+        kinds: dict = {}
         for offer in offs:
             k = item_cat(offer, types) or 'other'
             kinds[k] = kinds.get(k, 0) + 1
@@ -1163,7 +1167,7 @@ def preview(store, feed_cfg, types) -> dict:
                 'inCatalog': sum(1 for offer in offs if offer['oid'] in linked),
             }
         )
-    param_names = {}
+    param_names: dict = {}
     for offer in feed['offers']:
         for param in offer['params']:
             param_names[param['k']] = param_names.get(param['k'], 0) + 1
@@ -1238,7 +1242,7 @@ def _sum_txt(k, v, u) -> str | None:
     num_rx = r'(\d+(?:[.,]\d+)?)'
     match = re.match(r'^' + num_rx + r'(?:\s*\+\s*' + num_rx + r')+', v)
     if match and '+' in match.group(0):
-        tot = sum(parse_number(x) for x in re.findall(num_rx, match.group(0)))
+        tot: Any = sum(parse_number(x) for x in re.findall(num_rx, match.group(0)))
     else:
         match = re.match(r'^' + num_rx + r'\s*[хx×*]\s*(\d)\b', v)
         if not match:
@@ -1401,7 +1405,7 @@ class FeedPurge:
     def preview(cls, store, feed, cat='') -> dict:
         """{total, cats: [{cat, title, n}], picked, sample: [названия], excluded}"""
         docs = _feed_docs(store, feed['id'])
-        cats = {}
+        cats: dict = {}
         for doc in docs:
             cat_name, title = cls._cat(doc)
             x = cats.setdefault(cat_name, {'cat': cat_name, 'title': title or cat_name or 'без категории', 'n': 0})
@@ -1625,7 +1629,10 @@ class FeedRules:
         existing = {(card.get('feed') or {}).get('oid'): card for card in _feed_docs(store, feed_cfg['id'])}
         files, built = feed_cfg.get('kind') == 'files', bool(feed_cfg.get('built'))
         tnames = {tdef.get('id'): tdef.get('name') for tdef in types}
-        rows, cnt, brands, prices = [], {'add': 0, 'update': 0, 'same': 0, 'skip': 0}, {}, []
+        rows: list = []
+        cnt = {'add': 0, 'update': 0, 'same': 0, 'skip': 0}
+        brands: dict = {}
+        prices = []
         for offer in feed['offers']:
             maker = maker_of(offer, feed_cfg)
             if maker:
@@ -1691,14 +1698,16 @@ def feed_unbuild(store, fid: str) -> None:
 def build_plan(store, feed, offs, feed_docs=None) -> dict:
     """Соответствие позиций каталога и парса → {links, dups, keep, new}."""
     docs = (_feed_docs(store, feed['id']) if feed_docs is None else list(feed_docs)) + _maker_cards(store, feed)
-    by_url, by_name = {}, {}
+    by_url = {}
+    by_name: dict = {}
     ocfg = []
     for i, offer in enumerate(offs):
         if offer.get('url'):
             by_url[offer['url'].rstrip('/').lower()] = i
         by_name.setdefault(feed_files.name_key(offer['name']), i)
         ocfg.append(_offer_cfg(offer))
-    by_lat, by_code = {}, {}
+    by_lat: dict = {}
+    by_code: dict = {}
     for i, cfg in enumerate(ocfg):
         if feed_files.lat_series(cfg) and cfg['size'] is not None:
             by_lat.setdefault((feed_files.lat_series(cfg), cfg['size']), []).append(i)
@@ -1710,14 +1719,14 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
         feed_info = doc.get('feed') or {}
         if feed_info.get('url') and feed_info['url'].rstrip('/').lower() in by_url:
             pairs.append((0, 0, by_url[feed_info['url'].rstrip('/').lower()], doc['id']))
-        i = by_name.get(feed_files.name_key(doc.get('name')))
-        if i is not None:
-            pairs.append((1, 0, i, doc['id']))
+        offer_ix = by_name.get(feed_files.name_key(doc.get('name')))
+        if offer_ix is not None:
+            pairs.append((1, 0, offer_ix, doc['id']))
         cfg = _doc_cfg(doc)
         pressures = _pressures(doc)
         lat, lat_hit = feed_files.lat_series(cfg), False
-        for i in by_lat.get((lat, cfg['size']), []) if lat and cfg['size'] is not None else []:
-            offer_cfg = ocfg[i]
+        for offer_ix in by_lat.get((lat, cfg['size']), []) if lat and cfg['size'] is not None else []:
+            offer_cfg = ocfg[offer_ix]
             if offer_cfg['vsd'] != cfg['vsd'] or offer_cfg['w'] != cfg['w'] or offer_cfg['dry'] != cfg['dry']:
                 continue
             if (cfg['rec'] is None) != (offer_cfg['rec'] is None) or (
@@ -1729,20 +1738,20 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
                 continue
             own = parse_number((doc.get('attrs') or {}).get('pressure'))
             rank = 0 if own and offer_pressure == (7.5 if own == 7 else own) else (1 + (offer_pressure or 0) / 100)
-            pairs.append((2, rank, i, doc['id']))
+            pairs.append((2, rank, offer_ix, doc['id']))
             lat_hit = True
-        for i, rank in [] if lat_hit else _code_pairs(doc, offs, ocfg, by_code):
-            pairs.append((3, rank, i, doc['id']))
+        for offer_ix, rank in [] if lat_hit else _code_pairs(doc, offs, ocfg, by_code):
+            pairs.append((3, rank, offer_ix, doc['id']))
     pairs.sort(key=lambda x: (x[0], x[1], x[2]))
     by_id = {doc['id']: doc for doc in docs}
     links, taken_o, taken_d = {}, set(), set()
-    for _prio, _rank, i, did in pairs:
+    for _prio, _rank, offer_ix, did in pairs:
         cand_docs.add(did)
-        if i in taken_o or did in taken_d:
+        if offer_ix in taken_o or did in taken_d:
             continue
-        taken_o.add(i)
+        taken_o.add(offer_ix)
         taken_d.add(did)
-        links[offs[i]['oid']] = by_id[did]
+        links[offs[offer_ix]['oid']] = by_id[did]
     dups = [by_id[x] for x in cand_docs if x not in taken_d]
     keep = [doc for doc in docs if doc['id'] not in cand_docs]
     return {
@@ -1946,7 +1955,10 @@ def _set_cost(doc, kop, cur, feed, changes, offer=None) -> None:
         return
     if offer and offer.get('dealer'):
         new = round(offer['dealer'] * 100)
-        disc = {'pct': round((1 - new / kop) * 100, 1) if kop and new < kop else 0, 'label': 'дилерская цена по прайсу'}
+        disc: Any = {
+            'pct': round((1 - new / kop) * 100, 1) if kop and new < kop else 0,
+            'label': 'дилерская цена по прайсу',
+        }
     else:
         pct, label = (
             (offer['disc'], 'скидка дилера по прайсу') if offer and offer.get('disc') else discount_for(feed, doc)
@@ -1965,7 +1977,7 @@ def _set_cost(doc, kop, cur, feed, changes, offer=None) -> None:
 
 def _price_part(doc, offer, feed, today) -> list:
     """РРЦ, наличие, цена КП и закупка позиции по предложению фида; → список изменений [(поле, было, стало, валюта)]."""
-    changes = []
+    changes: list = []
     if not offer['price'] and offer.get('dealer'):  # в прайсе только цена для дилера (Tewatt)
         _set_cost(doc, 0, offer['cur'], feed, changes, offer)
         doc['costAt'] = today
@@ -2744,7 +2756,12 @@ def import_feed(
         dget, dsave, derr = _page_getter(store)
         photo = _placeholders(feed['offers'])
         pstat = {'img': 0, 'noimg': []}  # страниц товара: с фото / открылись, но фото не найдено
-        added, updated, same, price_ch, stock_ch, errors = 0, 0, 0, [], [], []
+        added = 0
+        updated = 0
+        same = 0
+        price_ch: list = []
+        stock_ch: list = []
+        errors = []
 
         def one(offer_item) -> tuple:
             try:
@@ -2827,7 +2844,7 @@ def import_feed(
                 ensure_ascii=False,
             )
 
-        pend = []
+        pend: list = []
 
         def flush() -> None:
             """Накопленные позиции — одной транзакцией (WriteBatch): потоки скачивания в это время не ждут базу."""
@@ -3096,7 +3113,10 @@ def check_feed(store, feed_cfg, author: str = '', log=print, types=None) -> dict
         docs = _feed_docs(store, feed_cfg['id'])
         j['total'] = len(docs)
         today = date.today().isoformat()
-        price_ch, stock_ch, gone, upd = [], [], [], 0
+        price_ch: list = []
+        stock_ch: list = []
+        gone = []
+        upd = 0
         logo_fill, logo_save = _logo_filler(store, IMAGE_STORE, feed)
         for doc in docs:
             card = doc
@@ -3228,7 +3248,7 @@ def _mark(store, fid: str, kind, res) -> None:
 
 def _placeholders(offers) -> set:
     """Картинка-заглушка «нет фото»: одна и та же у товаров из многих разных разделов фида."""
-    cats = {}
+    cats: dict = {}
     for offer in offers:
         for u in offer['pictures'][:1]:
             cats.setdefault(u, set()).add(offer['cat'])

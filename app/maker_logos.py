@@ -32,7 +32,9 @@ class MakerLogos:
         """[{maker, n, logo, pinned}] по убыванию числа позиций."""
         import imgfetch
 
-        cur, pins, groups = imgfetch.logos(self.store), self.pins(), {}
+        cur = imgfetch.logos(self.store)
+        pins = self.pins()
+        groups: dict = {}
         for maker, name in self.store.all(
             "SELECT maker, COUNT(*) FROM catalog WHERE maker IS NOT NULL AND maker <> '' GROUP BY maker"
         ):
