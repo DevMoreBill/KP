@@ -49,6 +49,7 @@
     "app/server_task.py",
     "app/settings_history.py",
     "app/station_rules.py",
+    "app/storage.py",
     "app/supplier_scope.py",
     "app/tz_parse.py",
     "app/update_sign.py",
