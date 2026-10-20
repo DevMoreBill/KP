@@ -77,6 +77,7 @@ class UnitTest(unittest.TestCase):
 
     def test_sheet_patch(self):
         from catalog_patch import CatalogPatch, CatalogSheet
+        from data_file import Load
         st = TempStore(self).store
         fill(st)
         head = [['Код', 'Название', 'Модель', 'Мощность'], ['id', 'name', 'a:model', 'a:power']]
@@ -92,7 +93,7 @@ class UnitTest(unittest.TestCase):
         self.assertTrue(CatalogSheet.is_book(data))
         p = CatalogSheet(st).patch(data, 'книга.xlsx')
         self.assertTrue(CatalogPatch.is_patch(p))
-        res = CatalogPatch(st).run(p, True, 'тест')
+        res = CatalogPatch(st).run(p, Load.APPLY, 'тест')
         self.assertEqual(res['patch']['missing'], 1)
         self.assertEqual(res['patch']['conflictCount'], 1, 'модель a2 изменена после выгрузки')
         a1 = json.loads(st.catalog_get('a1'))

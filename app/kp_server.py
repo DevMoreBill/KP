@@ -30,7 +30,7 @@ from config import (
     ROOT,
     SERVER_MODE,
     BadRequest,
-    message_box,
+    MessageBox,
     store,
 )
 from data_setup import FreshBase, prepare_dirs, sync_counter_with_files
@@ -138,6 +138,7 @@ class Handler(BaseHTTPRequestHandler):
     # без задержки Нейгла: иначе ~40 мс на ответ
     disable_nagle_algorithm = True
     timeout = 120  # простаивающее соединение закрывается
+    GZIP_FROM = 20000
     # браузер закрыл соединение (и WinError 64, 1236) — не ошибка сервера
     GONE = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)
     GONE_WIN = (64, 1236)
@@ -180,23 +181,26 @@ class Handler(BaseHTTPRequestHandler):
         if gzipped is not None:
             extra['Content-Encoding'] = 'gzip'
             extra['Vary'] = 'Accept-Encoding'
-            return self.send(200, ctype, gzipped, extra, compressed=True)
+            return self.send_gzipped(200, ctype, gzipped, extra)
         return self.send(200, ctype, data, extra)
 
-    def send(self, code, ctype, body, extra=None, compressed=False) -> None:
+    def send(self, code, ctype, body, extra=None) -> None:
         data = body if isinstance(body, bytes) else str(body).encode('utf-8')
-        gzipped = (
-            not compressed
-            and len(data) > 20000
+        if (
+            len(data) > self.GZIP_FROM
             and 'gzip' in (self.headers.get('Accept-Encoding') or '')
-            and (ctype.startswith(('application/json', 'text/')))
-        )
-        if gzipped:
-            data = gzip.compress(data, 5)
+            and ctype.startswith(('application/json', 'text/'))
+        ):
+            return self.send_gzipped(code, ctype, gzip.compress(data, 5), extra)
+        return self._write(code, ctype, data, extra or {})
+
+    def send_gzipped(self, code, ctype, data: bytes, extra=None) -> None:
+        """Тело уже сжато gzip."""
+        return self._write(code, ctype, data, dict(extra or {}, **{'Content-Encoding': 'gzip'}))
+
+    def _write(self, code, ctype, data: bytes, extra: dict) -> None:
         self.send_response(code)
         self.send_header('Content-Type', ctype)
-        if gzipped:
-            self.send_header('Content-Encoding', 'gzip')
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         if 'Cache-Control' not in (extra or {}):
@@ -232,9 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                     if len(data) < JSON_GZIP_MIN:
                         return self.send(200, 'application/json; charset=utf-8', data, extra)
                     hit = JSON_GZIP.put(etag, data)
-        return self.send(
-            200, 'application/json; charset=utf-8', hit, dict(extra, **{'Content-Encoding': 'gzip'}), compressed=True
-        )
+        return self.send_gzipped(200, 'application/json; charset=utf-8', hit, extra)
 
     @staticmethod
     def _json_bytes(obj) -> bytes:
@@ -473,7 +475,7 @@ def main() -> int:
     import importlib.util
 
     if importlib.util.find_spec('sqlite3') is None:  # база данных программы; без модуля программа работать не может
-        message_box(
+        MessageBox.error(
             'В сборке программы нет модуля базы данных SQLite.\n\n'
             'Пересоберите EXE из актуального проекта (kp.spec не должен исключать sqlite3) '
             'или скачайте готовую сборку из GitHub Actions.'
@@ -537,7 +539,7 @@ def main() -> int:
         if StartCheck.armed() and StartCheck.code_error(exc):
             raise  # ошибка в коде обновления: launcher.py вернёт прежнюю версию и запустит её
         if 'malformed' in str(exc) or 'not a database' in str(exc):
-            message_box(
+            MessageBox.error(
                 'Файл базы данных повреждён:\n{}\n\n{}\n\n'
                 'Так бывает, когда kp.sqlite3 подменяют вручную при оставшихся рядом файлах kp.sqlite3-wal и kp.sqlite3-shm.\n'
                 'Что сделать: остановить программу, удалить kp.sqlite3-wal и kp.sqlite3-shm, затем положить на место kp.sqlite3 '
@@ -548,7 +550,7 @@ def main() -> int:
                 )
             )
             return 1
-        message_box(f'Не удалось подготовить папки данных:\n{DATA_DIR}\n\n{exc}')
+        MessageBox.error(f'Не удалось подготовить папки данных:\n{DATA_DIR}\n\n{exc}')
         return 1
     try:  # каталог под новую структуру категорий — один раз; перед этим копия базы в data/backup
         if fresh:  # новая база: переносить в новую структуру нечего
@@ -567,16 +569,15 @@ def main() -> int:
     except Exception as exc:
         ServerLog.failure('обновление каталога или раскладка изображений (будут повторены при следующем запуске)', exc)
     if DATA_DIR.startswith('\\\\'):
-        message_box(
+        MessageBox.info(
             f'Папка данных указана в сети ({DATA_DIR}).\n\nБазу данных нельзя держать в общей сетевой папке — '
             'при одновременной работе она может повредиться. Для работы всем отделом используйте '
-            'сервер отдела (server-setup\\1. Установить сервер отдела.bat), а dataDir оставьте пустым.',
-            error=False,
+            'сервер отдела (server-setup\\1. Установить сервер отдела.bat), а dataDir оставьте пустым.'
         )
     httpd, port = start_server()
     if not httpd:
         ServerLog.failure(f'запуск: все порты заняты ({BASE_PORT}…)')
-        message_box('Не удалось запустить сервер: все порты заняты.')
+        MessageBox.error('Не удалось запустить сервер: все порты заняты.')
         return 1
     ServerLog.note(f'Сервер работает: порт {port}')
     # ночное обновление (если включено в «Обновлениях»): проверка раз в полчаса, установка — и перезапуск этого сервера

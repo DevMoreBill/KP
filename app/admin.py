@@ -16,6 +16,7 @@ from typing import Any
 
 import auth_users
 from config import BadRequest
+from data_file import Load
 from defaults import SrvVal
 from storage import Conflict
 
@@ -167,8 +168,19 @@ class AdminSessions:
             v['saved'] = v['last']
 
     @classmethod
-    def get(cls, tok, touch=True) -> dict | None:
-        """Действующая сессия по токену из cookie или None."""
+    def get(cls, tok) -> dict | None:
+        """Действующая сессия по токену из cookie или None; запрос продлевает сессию."""
+        with LOCK:
+            sess = cls.peek(tok)
+            if sess:
+                sess['last'] = time.time()
+                if sess['last'] - sess.get('saved', 0) > cls.SAVE_EVERY:
+                    cls._save()
+            return sess
+
+    @classmethod
+    def peek(cls, tok) -> dict | None:
+        """Действующая сессия по токену или None, без продления (проверка прав, журнал)."""
         if not tok:
             return None
         k = cls.key(tok)
@@ -176,16 +188,21 @@ class AdminSessions:
             sess = cls._all().get(k)
             if not sess:
                 return None
-            now = time.time()
-            if now - sess['last'] > SrvVal.get(cls._store(), 'srv.adminIdleMin') * 60:
+            if time.time() - sess['last'] > SrvVal.get(cls._store(), 'srv.adminIdleMin') * 60:
                 cls._all().pop(k, None)
                 cls._save()
                 return None
-            if touch:
-                sess['last'] = now
-                if now - sess.get('saved', 0) > cls.SAVE_EVERY:
-                    cls._save()
             return sess
+
+    @classmethod
+    def of(cls, handler) -> dict | None:
+        """Сессия администратора запроса без продления."""
+        return cls.peek(_cookie_token(handler))
+
+    @staticmethod
+    def allows(handler, method: str) -> bool:
+        """Администратор: чтение (GET) — по сессии, изменение — по сессии и токену X-CSRF-Token."""
+        return is_admin(handler) if method != 'GET' else session(handler) is not None
 
     @classmethod
     def start(cls, handler, user=None) -> tuple:
@@ -242,16 +259,17 @@ def _cookie_token(handler) -> str:
     return ''
 
 
-def session(handler, touch=True) -> dict | None:
+def session(handler) -> dict | None:
     """Действующая сессия администратора или None (по cookie; 15 минут бездействия — сессия закрывается)."""
-    return AdminSessions.get(_cookie_token(handler), touch)
+    return AdminSessions.get(_cookie_token(handler))
 
 
-def is_admin(handler, need_csrf=True) -> bool:
+def is_admin(handler) -> bool:
+    """Администратор с токеном X-CSRF-Token — для изменений."""
     sess = session(handler)
     if not sess:
         return False
-    return not need_csrf or hmac.compare_digest(
+    return hmac.compare_digest(
         (handler.headers.get('X-CSRF-Token') or '').encode('utf-8'), str(sess['csrf']).encode('utf-8')
     )
 
@@ -340,7 +358,7 @@ def _client_ip(handler) -> str:
 
 def actor(handler, admin=None) -> tuple:
     """Кто действует: администратор (по сессии) или менеджер, выбранный в программе (заголовки запроса)."""
-    sess = session(handler, touch=False)
+    sess = AdminSessions.of(handler)
     if admin is None:
         admin = sess is not None
     uid = urllib.parse.unquote(handler.headers.get('X-KP-User-Id') or '')[:64]
@@ -361,7 +379,7 @@ DEAL_KEYS_META = ('deal', 'econ')
 
 def login_on(handler) -> bool:
     """Вход менеджеров по паролю включён и запрос — не от администратора: права проверяются."""
-    return bool(getattr(handler, '_kp_login', False)) and session(handler, touch=False) is None
+    return bool(getattr(handler, '_kp_login', False)) and AdminSessions.of(handler) is None
 
 
 def perm(handler, key) -> bool:
@@ -384,7 +402,7 @@ def kp_access(handler, store, kid: str) -> bool:
     """Открыть / сохранить КП: своё — всегда, чужое — с правом «КП других менеджеров»; нового КП ещё нет — можно."""
     meta = _loads(store.kp_get(kid, 'meta')) or _loads(store.kp_get(kid, 'state'))
     if not meta and store.kp_trashed(kid):
-        return session(handler, touch=False) is not None
+        return AdminSessions.of(handler) is not None
     if not login_on(handler):
         return True
     meta = meta or _loads(store.kp_last_version_meta(kid))
@@ -392,7 +410,7 @@ def kp_access(handler, store, kid: str) -> bool:
 
 
 def deal_allowed(handler, doc) -> bool:
-    if session(handler, touch=False) is not None:
+    if AdminSessions.of(handler) is not None:
         return True
     if login_on(handler):
         return perm(handler, 'dealView') and (own_kp(handler, doc) or perm(handler, 'kpOthers'))
@@ -428,7 +446,7 @@ class KpManagerLock:
     @classmethod
     def apply(cls, handler, store, field, text) -> str:
         u = getattr(handler, '_kp_user', None)
-        if not (login_on(handler) and u) or session(handler, touch=False) is not None:
+        if not (login_on(handler) and u) or AdminSessions.of(handler) is not None:
             return text
         try:
             data = json.loads(text)
@@ -472,7 +490,7 @@ def kp_in(handler, store, kid: str, field, text) -> str:
     if not isinstance(new_doc, dict) or not isinstance(old_doc, dict):
         return text
     u = getattr(handler, '_kp_user', None)
-    if login_on(handler) and u and session(handler, touch=False) is None and old_doc.get('authorId'):
+    if login_on(handler) and u and AdminSessions.of(handler) is None and old_doc.get('authorId'):
         new_doc['authorId'] = old_doc[
             'authorId'
         ]  # автор КП не меняется запросом менеджера («передать» КП коллеге нельзя)
@@ -773,7 +791,7 @@ def guard(handler, store, method, path) -> Any:
     if (
         handler._kp_login
         and not handler._kp_user
-        and session(handler, touch=False) is None
+        and AdminSessions.of(handler) is None
         and path not in ('/api/version', '/api/ping')
     ):
         handler.send(401, 'text/plain; charset=utf-8', 'Нужно войти в программу: логин и пароль менеджера')
@@ -782,7 +800,7 @@ def guard(handler, store, method, path) -> Any:
     if (
         handler._kp_user
         and handler._kp_user.get('mustChange')
-        and session(handler, touch=False) is None
+        and AdminSessions.of(handler) is None
         and path not in ('/api/version', '/api/ping')
     ):
         handler.send(
@@ -796,7 +814,7 @@ def guard(handler, store, method, path) -> Any:
     from features import FeatureAccess
 
     off = FeatureAccess(store).blocked(
-        method, path, lambda: (session(handler, touch=False) is not None, actor(handler, admin=False)[0] or '')
+        method, path, lambda: (AdminSessions.of(handler) is not None, actor(handler, admin=False)[0] or '')
     )
     if off:
         return _refuse(handler, text=f'Функция «{off}» выключена администратором')
@@ -837,7 +855,7 @@ def guard(handler, store, method, path) -> Any:
         )
     if path.startswith(('/api/logistics/carriers', '/api/logistics/china')):
         what = 'chinaRates' if 'china' in path else 'carrierApi'
-        if not is_admin(handler, need_csrf=(method != 'GET')):
+        if not AdminSessions.allows(handler, method):
             return _refuse(handler, store, 'edit_settings' if method != 'GET' else None, 'settings', what)
         if method == 'PUT':
             return lambda: log(handler, store, 'edit_settings', 'settings', what, None, {what: True}, admin=True)
@@ -1023,7 +1041,7 @@ def auth_api(handler, store, method, sub) -> None:
             {
                 'enabled': auth_users.enabled(store),
                 'user': u,
-                'admin': session(handler, touch=False) is not None,
+                'admin': AdminSessions.of(handler) is not None,
                 'perms': [{'key': k, 'label': label} for k, label, _ in auth_users.PERMS],
                 **auth_users.LoginInfo.public(store),
             },
@@ -1063,9 +1081,9 @@ def auth_api(handler, store, method, sub) -> None:
                     'Срок временного пароля истёк — попросите администратора сбросить пароль ещё раз',
                 )
             return LoginGuard.wrong(handler, addr)
-        remember = data.get('remember', True) is not False
+        term = auth_users.Term.LONG if data.get('remember', True) is not False else auth_users.Term.SHORT
         LoginGuard.ok(addr)
-        tok = auth_users.UserSession.start(store, mid, remember)
+        tok = auth_users.UserSession.start(store, mid, term)
         auth_users.touch_login(store, mid)
         store.audit_add(
             {
@@ -1083,7 +1101,7 @@ def auth_api(handler, store, method, sub) -> None:
         return send(
             200,
             {'ok': True, 'mustChange': auth_users.TempPassword.of(rec) is not None},
-            {'Set-Cookie': auth_users.UserSession.cookie(tok, remember)},
+            {'Set-Cookie': auth_users.UserSession.cookie(tok, term)},
         )
     handler._kp_user = auth_users.current(handler, store) if auth_users.enabled(store) else None
     if sub == 'logout' and method == 'POST':
@@ -1267,7 +1285,7 @@ class AdminApi:
                 {'Set-Cookie': 'kp_admin=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict'},
             )
         # дальше — только администратор; изменения — с CSRF-токеном
-        if not is_admin(handler, need_csrf=(method != 'GET')):
+        if not AdminSessions.allows(handler, method):
             if method != 'GET':
                 log(handler, store, 'admin_request', 'admin', sub, result='failed', admin=False)
             return self.err(401, 'Войдите в «Настройки» — сессия закрыта или истекла')
@@ -1453,7 +1471,7 @@ class AdminApi:
 
     def route(self, method, sub, query) -> None:
         store = self.store
-        actor_login = (session(self.handler, touch=False) or {}).get('login', '')
+        actor_login = (AdminSessions.of(self.handler) or {}).get('login', '')
         if (
             sub in ('system', 'attention', 'restart', 'folder', 'log', 'log/download', 'alerts', 'alerts/test')
             or sub == 'update'
@@ -1500,7 +1518,8 @@ class AdminApi:
                     ):
                         return self.err(400, 'Сначала задайте логин и пароль хотя бы одному менеджеру')
                     before: Any = auth_users.enabled(store)
-                    auth_users.set_enabled(store, enabled, actor_login or 'admin')
+                    toggle = auth_users.UserLogin.enable if enabled else auth_users.UserLogin.disable
+                    toggle(store, actor_login or 'admin')
                     self.log('toggle_user_login', 'settings', 'userLogin', {'enabled': before}, {'enabled': enabled})
                 if 'help' in payload:  # «Забыли пароль?» на экране входа: к кому обращаться
                     before = auth_users.LoginInfo.help(store)
@@ -1775,7 +1794,7 @@ class AdminApi:
                     if section in SECTIONS
                 ],
                 cats=cats,
-                images=query.get('images') == '1',
+                fallback='zip' if query.get('images') == '1' else 'json',
                 sup=(query.get('sup') or '').strip() or None,
                 pick=pick,
                 fmt=query.get('fmt'),
@@ -1839,7 +1858,7 @@ class AdminApi:
             return self.ok(
                 self.import_file(
                     self.handler.body(),
-                    apply=(sub == 'import/file'),
+                    Load.APPLY if sub == 'import/file' else Load.PREVIEW,
                     sections=query.get('sections'),
                     name=query.get('name') or '',
                     mode=query.get('mode') if query.get('mode') in ('edits', 'auto') else 'all',
@@ -1848,7 +1867,8 @@ class AdminApi:
         if sub == 'export/sqlite' and method == 'GET':
             return self.export_sqlite()
         if sub in ('import/preview', 'import') and method == 'POST':
-            return self.ok(self.import_(self.data(), apply=(sub == 'import'), sections=query.get('sections')))
+            load = Load.APPLY if sub == 'import' else Load.PREVIEW
+            return self.ok(self.import_(self.data(), load, sections=query.get('sections')))
         if sub == 'import/sqlite' and method == 'POST':
             return self.ok(self.import_sqlite(self.handler.body(), query.get('name', '')))
         if sub.startswith('maint'):
@@ -2374,7 +2394,9 @@ class AdminApi:
             for cat, count in self.store.all('SELECT cat, COUNT(*) FROM catalog GROUP BY cat ORDER BY cat')
         ]
 
-    def export(self, sections, cats=None, images=False, sup=None, pick=None, fmt=None, flt=None, prices=None) -> None:
+    def export(
+        self, sections, cats=None, fallback='json', sup=None, pick=None, fmt=None, flt=None, prices=None
+    ) -> None:
         """Выбранные разделы базы файлом в любом формате (DataFile: xlsx, json, xml, yml, zip — решение владельца 18.10)."""
         from data_file import DataFile
         from supplier_scope import SupplierScope
@@ -2387,7 +2409,7 @@ class AdminApi:
         ids = None
         docs = None
         src: tuple | None = None
-        fmt = DataFile.fmt(fmt, 'zip' if images else 'json')
+        fmt = DataFile.fmt(fmt, fallback)
         if fmt == 'yml':
             # YML — каталог для сайтов и маркетплейсов: только каталог и без закупки (она при загрузке остаётся в базе)
             if 'catalog' not in sections and not sup:
@@ -2666,15 +2688,12 @@ class AdminApi:
         except ValueError:
             return False
 
-    def _dup_in_file(self, x, seen, add=False) -> str:
+    DUP_KEYS = {'name': 'фамилия и имя', 'email': 'e-mail', 'mobile': 'мобильный телефон', 'ext': 'добавочный номер'}
+
+    def _dup_in_file(self, x, seen) -> str:
         """Повтор менеджера внутри одного файла (те же ключи, что manager_dup для базы). → что совпало или ''."""
-        what = {'name': 'фамилия и имя', 'email': 'e-mail', 'mobile': 'мобильный телефон', 'ext': 'добавочный номер'}
+        what = self.DUP_KEYS
         keys = self.store.manager_keys(x)
-        if add:
-            for what_key in what:
-                if keys.get(what_key):
-                    seen.setdefault((what_key, keys[what_key]), x.get('id'))
-            return ''
         return next(
             (
                 what[what_key]
@@ -2684,8 +2703,16 @@ class AdminApi:
             '',
         )
 
-    def import_(self, data, apply: bool, sections=None, mode='all', fmt='json') -> dict:
-        """Проверка схемы и предпросмотр (что добавится / обновится); apply — запись после копии базы."""
+    def _remember_in_file(self, x, seen) -> None:
+        """Ключи менеджера — в «уже встречались в файле»."""
+        keys = self.store.manager_keys(x)
+        for what_key in self.DUP_KEYS:
+            if keys.get(what_key):
+                seen.setdefault((what_key, keys[what_key]), x.get('id'))
+
+    def import_(self, data, load: Load, sections=None, mode='all', fmt='json') -> dict:
+        """Проверка схемы и предпросмотр (что добавится / обновится); Load.APPLY — запись после копии базы."""
+        apply = load is Load.APPLY
         if (
             not isinstance(data, dict)
             or data.get('format') != 'kp-backup'
@@ -2794,7 +2821,7 @@ class AdminApi:
                         )
                     )
                 if section == 'managers':
-                    self._dup_in_file(x, seen, add=True)
+                    self._remember_in_file(x, seen)
                 if i in more:
                     continue
                 if section == 'kp' and not store.kp_import_ok(x):
@@ -2930,10 +2957,12 @@ class AdminApi:
             'conflicts': conflicts,
         }
 
-    def import_file(self, data, apply: bool, sections=None, name='', mode='all') -> dict:
+    def import_file(self, data, load: Load, sections=None, name='', mode='all') -> dict:
         """Файл любого формата выгрузки → предпросмотр или запись (копия базы перед записью)."""
         from catalog_patch import CatalogPatch, CatalogSheet
         from data_file import DataFile
+
+        apply = load is Load.APPLY
 
         kind = DataFile.sniff(data)
         if kind in ('sqlite', 'sqlite-zip'):
@@ -2956,7 +2985,7 @@ class AdminApi:
         ):  # правки каталога: только перечисленные поля позиций, цены и остатки не трогаются
             if z:
                 z.close()
-            res = CatalogPatch(self.store).run(patch_res, apply, actor(self.handler, True)[1], self.import_backup)
+            res = CatalogPatch(self.store).run(patch_res, load, actor(self.handler, True)[1], self.import_backup)
             if apply:
                 self.log(
                     'import_db',
@@ -2974,7 +3003,7 @@ class AdminApi:
         if mode == 'auto':  # Excel — по умолчанию «только изменённое в файле», остальное — «всё как в файле»
             mode = 'edits' if kind == 'xlsx' else 'all'
         try:
-            res = self.import_(patch_res, apply, sections, mode, kind)
+            res = self.import_(patch_res, load, sections, mode, kind)
             res['images'] = bundle.plan(imgs) if imgs else None
             res['fmt'] = kind
             if apply and imgs:

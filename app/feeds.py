@@ -2853,12 +2853,11 @@ def import_feed(
             with WriteBatch(store, 10**9):
                 for pend_offer, old, cid, doc, change_list in pend:
                     try:
-                        store.catalog_put(
+                        store.catalog_stage(
                             cid,
                             json.dumps(doc, ensure_ascii=False),
                             author or ('Фид «{}»'.format(feed_cfg['name'])),
                             revs.get(cid) if old else None,
-                            commit=False,
                         )
                         added += 0 if old else 1
                         updated += 1 if old else 0

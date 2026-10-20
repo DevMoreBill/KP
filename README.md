@@ -526,6 +526,13 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.153.0 — что сделано:** «чистый код», часть 18: без логических флагов в параметрах, этап 1 (56 → 31):
+- проверка `tests/test_names.py::test_flags` — параметр со значением `True/False` по умолчанию или типом `bool` запрещён в модулях списка «flags» (`tests/code_style.json`, 45 из 62);
+- `Store`: `catalog_get_rev`, `client_get_rev`, `managers_list_rev`, `pending_docs`, `catalog_stage` (запись в пачке `WriteBatch`), `backup_checked`; `DbZip.quick_check`;
+- администратор: `AdminSessions.peek/of` (без продления сессии), `AdminSessions.allows(handler, method)` (GET — сессия, изменение — и токен CSRF);
+- вход менеджеров: `UserLogin.enable/disable`, срок входа — `auth_users.Term.LONG/SHORT`; функции программы — `features.Viewer` (администратор или менеджер);
+- загрузка файлов: `data_file.Load.PREVIEW/APPLY` (`import_`, `import_file`, `CatalogPatch.run`); ответы сервера — `send` и `send_gzipped`; окно сообщения — `MessageBox.error/info`.
+
 **3.152.0 — что сделано:** «чистый код», часть 17: mypy для сервера, этап 3 — замечаний 138 → 0:
 - mypy входит в `tests/code_style.py` (а значит, в `run_all.py` и CI): `mypy==2.4.0`, весь сервер `app/*.py`, настройки — `pyproject.toml`; хук сессии ставит ту же версию;
 - проверки ввода на границе принимают любое значение (`values: object`, `maker: object`, `login: object`) — тип проверяют сами; номера записей — `str | int`;

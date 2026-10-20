@@ -6,6 +6,7 @@ import secrets
 import threading
 import time
 from datetime import datetime
+from enum import Enum
 
 from defaults import SrvVal
 
@@ -33,17 +34,30 @@ def enabled(store) -> bool:
     return bool(((store.kv_get('settings') or {}).get('userLogin') or {}).get('enabled'))
 
 
-def set_enabled(store, enabled: bool, author: str) -> None:
-    settings = store.kv_get('settings') or {}
-    settings['userLogin'] = {
-        **(settings.get('userLogin') or {}),
-        'enabled': bool(enabled),
-        'updatedAt': _now(),
-        'updatedBy': author,
-    }
-    store.kv_set('settings', settings)
-    if not enabled:
+class UserLogin:
+    """Вход менеджеров по паролю: включение и выключение (выключение закрывает все входы)."""
+
+    @classmethod
+    def enable(cls, store, author: str) -> None:
+        cls._mark(store, {'enabled': True}, author)
+
+    @classmethod
+    def disable(cls, store, author: str) -> None:
+        cls._mark(store, {'enabled': False}, author)
         store.kv_set('userSessions', {})
+
+    @staticmethod
+    def _mark(store, state: dict, author: str) -> None:
+        settings = store.kv_get('settings') or {}
+        settings['userLogin'] = {**(settings.get('userLogin') or {}), **state, 'updatedAt': _now(), 'updatedBy': author}
+        store.kv_set('settings', settings)
+
+
+class Term(Enum):
+    """Срок входа менеджера: «запомнить» (дни, cookie с Max-Age) или до закрытия браузера (часы)."""
+
+    LONG = 'long'
+    SHORT = 'short'
 
 
 def access(store) -> dict:
@@ -162,11 +176,11 @@ class UserSession:
     """Сессия менеджера после входа."""
 
     @staticmethod
-    def start(store, mid: str, remember: bool = True) -> str:
+    def start(store, mid: str, term: Term = Term.LONG) -> str:
         tok = secrets.token_urlsafe(32)
         ttl = (
             SrvVal.get(store, 'srv.userSessionDays') * 86400
-            if remember
+            if term is Term.LONG
             else SrvVal.get(store, 'srv.userShortHours') * 3600
         )
         with LOCK:
@@ -194,11 +208,11 @@ class UserSession:
         return len(sessions) - len(left)
 
     @staticmethod
-    def cookie(tok: str, remember: bool = True) -> str:
+    def cookie(tok: str, term: Term = Term.LONG) -> str:
         """Set-Cookie: пустой tok — удалить cookie (выход)."""
         if not tok:
             return f'{COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'
-        age = f'; Max-Age={SrvVal.now("srv.userSessionDays") * 86400}' if remember else ''
+        age = f'; Max-Age={SrvVal.now("srv.userSessionDays") * 86400}' if term is Term.LONG else ''
         return f'{COOKIE}={tok}; Path=/{age}; HttpOnly; SameSite=Strict'
 
 

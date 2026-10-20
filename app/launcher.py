@@ -189,7 +189,7 @@ class Launcher:
             import config
 
             if not config.SERVER_MODE:
-                return config.message_box(text)
+                return config.MessageBox.error(text)
         except Exception:
             pass
         try:

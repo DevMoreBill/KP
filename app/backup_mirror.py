@@ -188,7 +188,7 @@ class MirrorBackup:
             except ValueError as exc:
                 raise RuntimeError(f'копия не прошла проверку: {exc}') from exc
             return
-        res = DbZip.integrity(path, quick=True)
+        res = DbZip.quick_check(path)
         if res != 'ok':
             raise RuntimeError('копия не прошла проверку: ' + res)
 

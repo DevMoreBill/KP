@@ -5,6 +5,8 @@ import json
 import re
 from typing import Any
 
+from data_file import Load
+
 
 class CatalogPatch:
     FORMAT = 'kp-catalog-patch'
@@ -173,8 +175,9 @@ class CatalogPatch:
                 doc[k] = v
         return doc
 
-    def run(self, data: dict, apply: bool, author: str = '', backup=None) -> dict:
+    def run(self, data: dict, load: Load, author: str = '', backup=None) -> dict:
         """Предпросмотр или запись. backup() — копия базы перед записью. → отчёт для окна загрузки."""
+        apply = load is Load.APPLY
         plan = self.plan(data)
         fields = sum(len(change) for _, _, change in plan['items'])
         written = 0

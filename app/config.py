@@ -34,20 +34,34 @@ MIME = {
 }
 
 
-def message_box(text: str, error: bool = True) -> None:
+class MessageBox:
     """Окно сообщения: у EXE без консоли другого способа нет."""
-    if os.name == 'nt':
-        try:
-            import ctypes
 
-            ctypes.windll.user32.MessageBoxW(None, text, APP_TITLE, 0x10 if error else 0x40)
-            return
+    ICON_ERROR = 0x10
+    ICON_INFO = 0x40
+
+    @classmethod
+    def error(cls, text: str) -> None:
+        cls._show(text, cls.ICON_ERROR)
+
+    @classmethod
+    def info(cls, text: str) -> None:
+        cls._show(text, cls.ICON_INFO)
+
+    @staticmethod
+    def _show(text: str, icon: int) -> None:
+        if os.name == 'nt':
+            try:
+                import ctypes
+
+                ctypes.windll.user32.MessageBoxW(None, text, APP_TITLE, icon)
+                return
+            except Exception:
+                pass
+        try:
+            print(text, file=sys.stderr)
         except Exception:
             pass
-    try:
-        print(text, file=sys.stderr)
-    except Exception:
-        pass
 
 
 def read_text(path: str) -> str:

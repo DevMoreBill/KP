@@ -48,7 +48,7 @@ from config import (
 from crm import CrmBoard, DealBook, Stages, TaskBook
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
-from features import FeatureAccess
+from features import FeatureAccess, Viewer
 from images import ImageStore
 from kp_files import KpFiles
 from kp_templates import (
@@ -401,7 +401,7 @@ class PartiesController(Controller):
                 saved = counterparties().save_keys(self.body())
             return self.send_json(saved)
         pub = counterparties().keys_public()
-        if admin.session(self.handler, touch=False) is None:  # менеджеру — «задан / не задан» и лимиты, без маски ключа
+        if admin.AdminSessions.of(self.handler) is None:  # менеджеру — «задан / не задан» и лимиты, без маски ключа
             pub = {k: v for k, v in pub.items() if not k.endswith('Mask')}
         return self.send_json(pub)
 
@@ -424,7 +424,7 @@ class PartiesController(Controller):
     def client(self, cid) -> Any:
         cid = safe_id(cid)
         if self.method == 'GET':
-            client = store().client_get(cid, rev=True)
+            client = store().client_get_rev(cid)
             return self.send_json(client) if client else self.text(404, 'Клиент не найден')
         self.json_body()  # не объект JSON — 400
         return self.send_json(
@@ -508,10 +508,10 @@ class SystemController(Controller):
         if (
             getattr(self.handler, '_kp_login', False)
             and not self.handler._kp_user
-            and admin.session(self.handler, touch=False) is None
+            and admin.AdminSessions.of(self.handler) is None
         ):
             return self.send_json(base)  # до входа — без папок, путей и состава базы
-        far = not self.is_local() and admin.session(self.handler, touch=False) is None  # по сети — без путей сервера
+        far = not self.is_local() and admin.AdminSessions.of(self.handler) is None  # по сети — без путей сервера
         return self.send_json(
             {
                 'ok': True,
@@ -588,7 +588,7 @@ class CatalogController(Controller):
 
     @route(r'/api/catalog/([^/]+)', 'GET')  # запись позиции — PUT в admin.guard (модерация, права)
     def item(self, cid) -> Any:
-        doc = store().catalog_get(safe_id(cid), rev=True)
+        doc = store().catalog_get_rev(safe_id(cid))
         return self.send_json(doc) if doc else self.not_found()
 
     # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
@@ -633,7 +633,7 @@ class CatalogController(Controller):
 class ManagersController(Controller):
     @route(r'/api/managers', 'GET')
     def managers(self) -> Any:
-        return self.send_cached('mgr-' + store().data_rev('managers'), lambda: store().managers_list(rev=True))
+        return self.send_cached('mgr-' + store().data_rev('managers'), lambda: store().managers_list_rev())
 
     @route(r'/api/managers/([^/]+)', 'PUT')
     def manager(self, mid: str) -> Any:
@@ -868,7 +868,7 @@ class KpFilesController(Controller):
 
     def _kp_ok(self, kid: str) -> bool:
         """КП есть в журнале; КП в корзине — только администратору (его документы ждут восстановления)."""
-        return store().kp_get(kid, 'meta') is not None or admin.session(self.handler, touch=False) is not None
+        return store().kp_get(kid, 'meta') is not None or admin.AdminSessions.of(self.handler) is not None
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files', ('GET', 'POST'))
     def files(self, kid: str) -> Any:
@@ -1302,7 +1302,7 @@ class TrackController(Controller):
     def reminders(self) -> None:
         handler = self.handler
         uid, name, _ = admin.actor(handler, admin=False)
-        everyone = admin.session(handler, touch=False) is not None and not uid
+        everyone = admin.AdminSessions.of(handler) is not None and not uid
 
         def mine(meta_obj) -> bool:
             if everyone:
@@ -1340,7 +1340,7 @@ class TrackController(Controller):
     def _features(self) -> dict:
         """Функции программы, доступные тому, кто прислал запрос."""
         return FeatureAccess(store()).for_user(
-            admin.session(self.handler, touch=False) is not None, admin.actor(self.handler, admin=False)[0] or ''
+            Viewer(admin.AdminSessions.of(self.handler) is not None, admin.actor(self.handler, admin=False)[0] or '')
         )
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/mailform', 'GET')  # письмо клиенту: адреса и текст по умолчанию
@@ -1542,7 +1542,7 @@ class DraftsController(Controller):
         return (
             row['owner'] == self._who()[0]
             or (row['kind'] == 'draft' and not row['owner'])
-            or admin.session(self.handler, touch=False) is not None
+            or admin.AdminSessions.of(self.handler) is not None
         )
 
     @route(r'/api/(drafts|presets)', 'GET')
@@ -1635,9 +1635,9 @@ class ClientCardController(Controller):
     MAX_NOTES = 200
 
     def _client(self, cid, inn) -> dict | None:
-        client = store().client_get(safe_id(cid), rev=True) if cid else None
+        client = store().client_get_rev(safe_id(cid)) if cid else None
         if not client and inn:
-            client = store().client_get('inn' + inn, rev=True)
+            client = store().client_get_rev('inn' + inn)
         return client
 
     @route(r'/api/clientcard', 'GET')
@@ -1695,7 +1695,7 @@ class ClientCardController(Controller):
         uid, name = admin.actor(self.handler, admin=False)[0] or '', admin.actor(self.handler)[1] or ''
         notes = [note for note in (client.get('notes') or []) if isinstance(note, dict)]
         if data.get('del'):
-            mine = admin.session(self.handler, touch=False) is not None
+            mine = admin.AdminSessions.of(self.handler) is not None
             keep = [note for note in notes if not (note.get('at') == data['del'] and (mine or note.get('uid') == uid))]
             if len(keep) == len(notes):
                 return self.text(403, 'Удалить можно только свою заметку')
@@ -1773,7 +1773,7 @@ class CrmController(Controller):
     @staticmethod
     def who(handler) -> tuple:
         uid, name, _ = admin.actor(handler, admin=False)
-        everyone = admin.session(handler, touch=False) is not None or admin.perm(handler, 'kpOthers')
+        everyone = admin.AdminSessions.of(handler) is not None or admin.perm(handler, 'kpOthers')
         return uid or '', name or '', everyone
 
     def _scope(self, query) -> list | None:

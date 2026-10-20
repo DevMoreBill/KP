@@ -58,7 +58,7 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(DbCopy.daily(self.st, self.data).get('at'), rec.get('at'), 'повтор в тот же день не копирует')
         x = os.path.join(self.work, 'x.sqlite3')
         DbZip.unpack(rec['file'], x)
-        self.assertEqual(DbZip.integrity(x, quick=True), 'ok')
+        self.assertEqual(DbZip.quick_check(x), 'ok')
         c = sqlite3.connect(x)
         try:
             self.assertEqual(c.execute('select count(*) from catalog').fetchone()[0], self.st.catalog_count())
@@ -125,14 +125,14 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(len([n for n in names if n.startswith('kp-')]), 5, names)
 
     def test_5_store_backup(self):
-        z = self.st.backup(os.path.join(self.work, 'one.zip'), check=True)
+        z = self.st.backup_checked(os.path.join(self.work, 'one.zip'))
         self.assertTrue(zipfile.is_zipfile(z))
         s = self.st.backup(os.path.join(self.work, 'one.sqlite3'))
         with open(s, 'rb') as f:
             self.assertEqual(f.read(16), b'SQLite format 3\x00')
         dst = os.path.join(self.work, 'two.zip')
         self.touch(self.work, 'two.zip.tmp', b'garbage' * 100)
-        self.st.backup(dst, check=True)
+        self.st.backup_checked(dst)
         self.assertTrue(zipfile.is_zipfile(dst) and not os.path.exists(dst + '.tmp'), 'копия поверх остатка прерванной')
 
     def test_6_leftovers(self):

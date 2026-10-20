@@ -32,7 +32,7 @@ class DbHealth:
         started = time.time()
         res: dict[str, Any] = {
             'at': datetime.now().isoformat(timespec='seconds'),
-            'integrity': DbZip.integrity(self.store.path, quick=True),
+            'integrity': DbZip.quick_check(self.store.path),
         }
         res['noCat'] = self._no_category()
         res['dups'] = self._duplicates()

@@ -8,6 +8,7 @@ import re
 import zipfile
 from collections.abc import Iterator
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from xml.sax.saxutils import escape, quoteattr
 
@@ -392,8 +393,9 @@ class XlsxData:
         return len(v) if isinstance(v, list) else 0
 
     @staticmethod
-    def _sheet_tag(num: int, name: str, hidden: bool) -> str:
-        name = escape(name, {'"': '&quot;'})
+    def _sheet_tag(num: int, sheet: tuple) -> str:
+        title, _, hidden = sheet
+        name = escape(title, {'"': '&quot;'})
         state = ' state="hidden"' if hidden else ''
         return f'<sheet name="{name}" sheetId="{num}"{state} r:id="rId{num}"/>'
 
@@ -418,7 +420,7 @@ class XlsxData:
         workbook = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
-            + ''.join(self._sheet_tag(i + 1, name_match, hid) for i, (name_match, _, hid) in enumerate(sheets))
+            + ''.join(self._sheet_tag(i + 1, sheet) for i, sheet in enumerate(sheets))
             + '</sheets></workbook>'
         )
         wrels = (
@@ -763,6 +765,13 @@ class YmlData:
         return '\n'.join(out).encode('utf-8')
 
 
+class Load(Enum):
+    """Загрузка файла: предпросмотр (что изменится, без записи) или запись."""
+
+    PREVIEW = 'preview'
+    APPLY = 'apply'
+
+
 class DataFile:
     """Форматы выгрузки и загрузки документа программы (общий список для всех вариантов выгрузки)."""
 
@@ -857,15 +866,22 @@ class DataFile:
         raise ValueError('Этот файл загружается не здесь')
 
     @classmethod
-    def _norm(cls, v, top=True) -> Any:
+    def _norm_top(cls, v) -> Any:
+        """Поле записи: у словаря пустые поля верхнего уровня отбрасываются."""
+        if isinstance(v, dict):
+            return {k: cls._norm(x) for k, x in v.items() if not (x is None or x == '')}
+        return cls._norm(v)
+
+    @classmethod
+    def _norm(cls, v) -> Any:
         if isinstance(v, bool) or v is None:
             return v
         if isinstance(v, float) and v.is_integer() and abs(v) < 1e15:
             return int(v)
         if isinstance(v, dict):
-            return {k: cls._norm(x, False) for k, x in v.items() if not (top and (x is None or x == ''))}
+            return {k: cls._norm(x) for k, x in v.items()}
         if isinstance(v, list):
-            return [cls._norm(x, False) for x in v]
+            return [cls._norm(x) for x in v]
         return v
 
     @classmethod
@@ -873,7 +889,7 @@ class DataFile:
         """Отпечаток записи: без служебных полей и skip; пустые поля и 10 = 10.0 — одинаково во всех форматах."""
         if isinstance(rec, dict):
             rec = {
-                k: (cls._norm(v, True) if isinstance(v, dict) else cls._norm(v, False))
+                k: cls._norm_top(v)
                 for k, v in rec.items()
                 if k not in cls.TECH and k not in skip and v is not None and v != ''
             }

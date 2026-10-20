@@ -225,6 +225,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.91.0** (14.10) — доставка из Китая до границы РФ, только админка (`china_freight.ChinaFreight`, kv `chinaRates`, `/api/logistics/china`, клиент `ChinaFreightTab`): ATI.SU по направлениям из Китая + ставки экспедиторов в валюте по курсу ЦБ.
 - **3.92.0** (16.10) — ЖелДорЭкспедиция (`logistics_api.Jde`): открытый расчёт без ключа, сборный и крупногабаритный груз (до 20 т, надбавка за негабарит по размерам места), забор и доставка; крупногабарит — только ЖДЭ из сборных.
 - **3.93.0** (16.10) — справочные документы к КП (`kp_files.KpFiles`, таблица `kp_files`, `data/kp_files`, клиент `KpFilesPanel`, вложения письма) и окно входа (`LoginGuard`, `UserSession`, `LoginInfo`, `LoginForm`, `AuthScreen`, `AdminLogin`).
+- **3.153.0** (20.10) — чистый код, ч. 18: без флагов, этап 1 (56 → 31), `test_flags` и список «flags»; `Store.*_rev`, `AdminSessions.peek/of/allows`, `auth_users.Term`, `UserLogin`, `features.Viewer`, `data_file.Load`, `Handler.send_gzipped`, `MessageBox`.
 - **3.152.0** (20.10) — чистый код, ч. 17: mypy, этап 3 (138 → 0), mypy — в `tests/code_style.py` и CI; `BitrixApi.portal_of`, `Carrier.quote`, `DataFile.out_sheets`.
 - **3.151.0** (20.10) — чистый код, ч. 16: mypy, этап 2 (325 → 138): `Store.scalar`, `_require`, моржовые проверки типов.
 - **3.150.0** (20.10) — чистый код, ч. 15: mypy сервера, этап 1 (950 → 325 замечаний), настройки в `pyproject.toml`.

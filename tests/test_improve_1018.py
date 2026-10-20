@@ -95,13 +95,13 @@ class StoreTest(unittest.TestCase):
         st = self.st
         with WriteBatch(st, 3) as b:
             for i in range(7):
-                st.catalog_put('w%d' % i, json.dumps({'name': 'W%d' % i}), commit=False)
+                st.catalog_stage('w%d' % i, json.dumps({'name': 'W%d' % i}))
                 b.step()
         self.assertEqual(st.catalog_count(), 7)
         self.assertFalse(st.conn().in_transaction)
         with self.assertRaises(ZeroDivisionError):
             with WriteBatch(st, 100):
-                st.catalog_put('w9', json.dumps({'name': 'W9'}), commit=False)
+                st.catalog_stage('w9', json.dumps({'name': 'W9'}))
                 1 / 0
         self.assertIsNone(st.catalog_get('w9'), 'сбой — пачка откатывается')
 

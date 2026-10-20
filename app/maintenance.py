@@ -104,7 +104,7 @@ class DbCopy:
             dst = os.path.join(folder, f'kp-{today}.zip')
             rec: dict[str, Any] = {'at': _now(), 'file': dst}
             try:
-                store.backup(dst, check=True)
+                store.backup_checked(dst)
                 for x in have:  # прежняя копия за сегодня (например, без сжатия) — заменена архивом
                     for name in x['files']:
                         if name != dst and os.path.isfile(name):
@@ -274,7 +274,7 @@ def db_maintenance(store, vacuum=None) -> dict:
             'at': _now(),
             'before': size0,
             'after': db_size(store),
-            'check': DbZip.integrity(store.path, quick=True),
+            'check': DbZip.quick_check(store.path),
         }
     rec['optimize'] = {'at': _now(), 'bytes': db_size(store)}
     _save(store, **rec)

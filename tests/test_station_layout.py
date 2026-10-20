@@ -34,7 +34,7 @@ class StationLayoutJs(unittest.TestCase):
 
 class StationLayoutFeature(unittest.TestCase):
     def test_feature_switch(self):
-        from features import FEATURES, FeatureAccess
+        from features import FEATURES, FeatureAccess, Viewer
         from storage import Store
         tmp = tempfile.mkdtemp(prefix='kp-stl-')
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -43,9 +43,9 @@ class StationLayoutFeature(unittest.TestCase):
         self.assertTrue(fa.for_user()['stLayout'], 'включена по умолчанию')
         fa.save({'stLayout': {'on': False}}, author='проверка')
         self.assertFalse(fa.for_user()['stLayout'])
-        self.assertFalse(fa.for_user(is_admin=False, uid='m1')['stLayout'])
+        self.assertFalse(fa.for_user(Viewer(admin=False, uid='m1'))['stLayout'])
         fa.save({'stLayout': None})
-        self.assertTrue(fa.for_user(is_admin=False, uid='m1')['stLayout'], 'встроенное значение вернулось')
+        self.assertTrue(fa.for_user(Viewer(admin=False, uid='m1'))['stLayout'], 'встроенное значение вернулось')
 
     def test_feature_keys_match(self):
         from features import FEATURES

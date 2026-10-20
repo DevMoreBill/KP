@@ -1,7 +1,9 @@
 """Дополнительные функции программы («Настройки → Функции программы»): кому видны, какие адреса закрыты."""
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
+from typing import ClassVar
 
 # ключ: (встроенное значение, название)
 FEATURES = {
@@ -50,6 +52,18 @@ ROUTES = [
 ]
 
 
+@dataclass(frozen=True)
+class Viewer:
+    """Кто спрашивает о функциях: администратор или менеджер (id)."""
+
+    admin: bool
+    uid: str = ''
+    ADMIN: ClassVar['Viewer']
+
+
+Viewer.ADMIN = Viewer(admin=True)
+
+
 class FeatureAccess:
     """Настройка функций хранилища и доступ пользователя к ним."""
 
@@ -64,9 +78,9 @@ class FeatureAccess:
         """{ключ: {on, who, users}}; старое значение да / нет — {on, who: all}."""
         own = ((self.store.kv_get('settings') or {}).get('features')) or {}
         own = own if isinstance(own, dict) else {}
-        return {k: self._norm(own.get(k), desc) for k, (desc, _) in FEATURES.items()}
+        return {k: self._norm(own.get(k), k) for k in FEATURES}
 
-    def _norm(self, v, default: bool) -> dict:
+    def _norm(self, v, key: str) -> dict:
         if isinstance(v, bool):
             v = {'on': v}
         v = v if isinstance(v, dict) else {}
@@ -76,20 +90,21 @@ class FeatureAccess:
             if who == 'users'
             else []
         )
-        return {'on': bool(v['on']) if isinstance(v.get('on'), bool) else default, 'who': who, 'users': users}
+        builtin = FEATURES[key][0]
+        return {'on': bool(v['on']) if isinstance(v.get('on'), bool) else builtin, 'who': who, 'users': users}
 
     @staticmethod
-    def allowed(cfg: dict, key: str, is_admin: bool, uid: str) -> bool:
+    def allowed(cfg: dict, key: str, viewer: Viewer) -> bool:
         conf = cfg.get(key) or {'on': True, 'who': 'all'}
         if not conf['on']:
             return False
-        if conf['who'] == 'all' or is_admin:
+        if conf['who'] == 'all' or viewer.admin:
             return True
-        return conf['who'] == 'users' and bool(uid) and uid in conf['users']
+        return conf['who'] == 'users' and bool(viewer.uid) and viewer.uid in conf['users']
 
-    def for_user(self, is_admin: bool = True, uid: str = '') -> dict[str, bool]:
+    def for_user(self, viewer: Viewer = Viewer.ADMIN) -> dict[str, bool]:
         cfg = self.config()
-        return {k: self.allowed(cfg, k, is_admin, uid) for k in FEATURES}
+        return {k: self.allowed(cfg, k, viewer) for k in FEATURES}
 
     def is_on(self, key: str) -> bool:
         return self.config()[key]['on']
@@ -130,6 +145,5 @@ class FeatureAccess:
         """Название недоступной пользователю функции адреса или None; who() → (администратор ли, id менеджера)."""
         for pattern, regex, key in ROUTES:
             if (pattern is None or pattern == method) and regex.match(path):
-                is_admin, uid = who()
-                return None if self.allowed(self.config(), key, is_admin, uid) else FEATURES[key][1]
+                return None if self.allowed(self.config(), key, Viewer(*who())) else FEATURES[key][1]
         return None

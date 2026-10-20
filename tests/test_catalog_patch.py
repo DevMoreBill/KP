@@ -8,6 +8,7 @@ import unittest
 
 from kit import SampleData, TempStore
 from catalog_patch import CatalogPatch
+from data_file import Load
 
 
 class CatalogPatchTest(unittest.TestCase):
@@ -33,11 +34,11 @@ class CatalogPatchTest(unittest.TestCase):
                  {'id': b['id'], 'name': b['name'], 'why': 'ступень', 'attrs': {'stage': [None, 'Пылевой (после адсорбционного осушителя)']},
                   'features': {'was': CatalogPatch.digest(b.get('features')), 'new': feats}}]
         backups = []
-        r = self.cp.run(self.patch(items), False, 'проверка', lambda: backups.append(1))
+        r = self.cp.run(self.patch(items), Load.PREVIEW, 'проверка', lambda: backups.append(1))
         self.assertEqual((r['applied'], r['patch']['items'], r['patch']['fields'], r['patch']['written']), (False, 2, 6, 0), r)
         self.assertEqual(self.doc(a['id']), a, 'предпросмотр ничего не пишет')
         self.assertEqual(backups, [], 'копия базы — только перед записью')
-        r = self.cp.run(self.patch(items), True, 'проверка', lambda: backups.append(1))
+        r = self.cp.run(self.patch(items), Load.APPLY, 'проверка', lambda: backups.append(1))
         self.assertEqual((r['patch']['written'], r['report']['catalog']['updated'], backups), (2, 2, [1]), r)
         x = self.doc(a['id'])
         self.assertEqual((x['attrs']['oilFree'], x['attrs']['flow'], x['spec']), ('Нет', 12.5, 'Новое описание'))
@@ -45,7 +46,7 @@ class CatalogPatchTest(unittest.TestCase):
         self.assertEqual((x['price'], x['cost'], x['groups']), (price, cost, a['groups']), 'цены, закупка и таблицы не тронуты')
         y = self.doc(b['id'])
         self.assertEqual((y['attrs']['stage'], y['features']), ('Пылевой (после адсорбционного осушителя)', feats))
-        r = self.cp.run(self.patch(items), True, 'проверка', lambda: backups.append(1))
+        r = self.cp.run(self.patch(items), Load.APPLY, 'проверка', lambda: backups.append(1))
         self.assertEqual((r['patch']['items'], r['patch']['same'], r['patch']['written'], len(backups)), (0, 6, 0, 1), 'повторная загрузка — без изменений')
 
     def test_conflicts_missing_and_errors(self):
@@ -62,7 +63,7 @@ class CatalogPatchTest(unittest.TestCase):
                  {'id': 'tst-0004', 'attrs': {'bad key': [1, 2]}},
                  {'id': 'tst-0004', 'set': {'cost': [1, 2]}},
                  {'id': '../x', 'attrs': {}}]
-        r = self.cp.run(self.patch(items), True, 'проверка')
+        r = self.cp.run(self.patch(items), Load.APPLY, 'проверка')
         p = r['patch']
         self.assertEqual((p['items'], p['fields'], p['missing'], p['conflictCount']), (1, 1, 1, 2), p)
         self.assertEqual(len(r['errors']), 4, r['errors'])
@@ -77,7 +78,7 @@ class CatalogPatchTest(unittest.TestCase):
                   {'format': CatalogPatch.FORMAT, 'version': 1, 'items': 'x'}, []):
             with self.subTest(d=str(d)[:40]):
                 with self.assertRaises(ValueError):
-                    self.cp.run(d, False)
+                    self.cp.run(d, Load.PREVIEW)
         self.assertFalse(CatalogPatch.is_patch({'format': 'kp-backup'}))
         self.assertEqual(CatalogPatch.norm(10.0), CatalogPatch.norm('10'))
         self.assertEqual(CatalogPatch.digest(None), CatalogPatch.digest([]))

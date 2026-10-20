@@ -421,11 +421,20 @@ class DbZip:
         return dst
 
     @staticmethod
-    def integrity(path, quick=False) -> str:
-        """Проверка файла базы встроенной проверкой SQLite: 'ok' или текст ошибки."""
+    def integrity(path) -> str:
+        """Полная проверка файла базы встроенной проверкой SQLite: 'ok' или текст ошибки."""
+        return DbZip._pragma_check(path, 'PRAGMA integrity_check')
+
+    @staticmethod
+    def quick_check(path) -> str:
+        """Быстрая проверка файла базы (без сверки индексов): 'ok' или текст ошибки."""
+        return DbZip._pragma_check(path, 'PRAGMA quick_check')
+
+    @staticmethod
+    def _pragma_check(path, pragma: str) -> str:
         conn = sqlite3.connect(path, timeout=30)
         try:
-            row = conn.execute('PRAGMA quick_check' if quick else 'PRAGMA integrity_check').fetchall()
+            row = conn.execute(pragma).fetchall()
             return 'ok' if [x[0] for x in row] == ['ok'] else '; '.join(str(x[0]) for x in row[:5])
         finally:
             conn.close()
@@ -780,40 +789,53 @@ class Store:
     def catalog_full(self) -> str:
         return '[' + self.joined('SELECT doc AS x FROM catalog ORDER BY name') + ']'
 
-    def catalog_get(self, cid, rev=False) -> str | None:
-        row = self.one('SELECT doc, rev FROM catalog WHERE id=?', (cid,))
-        return (with_rev(row[0], row[1]) if rev else row[0]) if row else None
+    def catalog_get(self, cid) -> str | None:
+        row = self.one('SELECT doc FROM catalog WHERE id=?', (cid,))
+        return row[0] if row else None
 
-    def catalog_put(self, cid, text, author: str = '', base_rev=None, commit=True) -> int:
+    def catalog_get_rev(self, cid) -> str | None:
+        """Позиция каталога с номером правки (_rev) — для совместной правки."""
+        row = self.one('SELECT doc, rev FROM catalog WHERE id=?', (cid,))
+        return with_rev(row[0], row[1]) if row else None
+
+    def catalog_put(self, cid, text, author: str = '', base_rev=None) -> int:
+        with self.lock:
+            conn = self.conn()
+            rev = self._catalog_row(conn, cid, text, author, base_rev)
+            conn.commit()
+        return rev
+
+    def catalog_stage(self, cid, text, author: str = '', base_rev=None) -> int:
+        """Запись позиции без фиксации — фиксирует пачка WriteBatch вызывающего."""
+        with self.lock:
+            return self._catalog_row(self.conn(), cid, text, author, base_rev)
+
+    def _catalog_row(self, conn, cid, text, author, base_rev) -> int:
         doc = json.loads(text)
         doc['id'] = cid
         doc.pop('_rev', None)
         attrs = picked if isinstance(picked := doc.get('attrs'), dict) else {}
-        with self.lock:
-            conn = self.conn()
-            rev = self._next_rev(conn, 'catalog', cid, base_rev)
-            seq = self._cat_seq(conn)
-            conn.execute(
-                'INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by, seq, search, feed_id) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                (
-                    cid,
-                    json.dumps(doc, ensure_ascii=False),
-                    json.dumps(light_of(doc), ensure_ascii=False),
-                    doc.get('name', ''),
-                    attrs.get('cat', ''),
-                    attrs.get('maker', ''),
-                    _now(),
-                    rev,
-                    str(author or '')[:120],
-                    seq,
-                    cat_search(doc),
-                    feed_of(doc),
-                ),
-            )
-            conn.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
-            if commit:
-                conn.commit()
+        rev = self._next_rev(conn, 'catalog', cid, base_rev)
+        seq = self._cat_seq(conn)
+        conn.execute(
+            'INSERT OR REPLACE INTO catalog (id, doc, light, name, cat, maker, updated, rev, updated_by, seq, search, feed_id) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            (
+                cid,
+                json.dumps(doc, ensure_ascii=False),
+                json.dumps(light_of(doc), ensure_ascii=False),
+                doc.get('name', ''),
+                attrs.get('cat', ''),
+                attrs.get('maker', ''),
+                _now(),
+                rev,
+                str(author or '')[:120],
+                seq,
+                cat_search(doc),
+                feed_of(doc),
+            ),
+        )
+        conn.execute('DELETE FROM catalog_gone WHERE id=?', (cid,))
         return rev
 
     def _cat_seq(self, conn) -> int:
@@ -1178,8 +1200,18 @@ class Store:
             conn.commit()
             return cur.lastrowid or 0
 
-    def pending_list(self, status='pending', with_docs=False) -> list:
-        cols = f'id, product_id, kind, {"before, after" if with_docs else "NULL, NULL"}, user_id, user_name, created, status, reviewed_by, reviewed_at, reason'
+    def pending_list(self, status='pending') -> list:
+        """Правки на модерации без содержимого (до и после)."""
+        return self._pending_rows(status, 'NULL, NULL')
+
+    def pending_docs(self, status='pending') -> list:
+        """Правки на модерации с содержимым (до и после)."""
+        return self._pending_rows(status, 'before, after')
+
+    def _pending_rows(self, status, docs_cols: str) -> list:
+        cols = (
+            f'id, product_id, kind, {docs_cols}, user_id, user_name, created, status, reviewed_by, reviewed_at, reason'
+        )
         rows = self.all(f'SELECT {cols} FROM pending_edits WHERE status=? ORDER BY id DESC', (status,))
         return [dict(zip(self.PENDING_COLS, row, strict=False)) for row in rows]
 
@@ -1320,9 +1352,14 @@ class Store:
                 self.customs_put('cat:' + cat, '', duty, '', 'перенос')
         self.write("DELETE FROM kv WHERE key='dealProfiles'")
 
-    def managers_list(self, rev=False) -> str:
+    def managers_list(self) -> str:
+        rows = self.all('SELECT doc FROM managers ORDER BY name COLLATE NOCASE')
+        return '[' + ','.join(row[0] for row in rows) + ']'
+
+    def managers_list_rev(self) -> str:
+        """Менеджеры с номерами правки (_rev) — для совместной правки."""
         rows = self.all('SELECT doc, rev FROM managers ORDER BY name COLLATE NOCASE')
-        return '[' + ','.join(with_rev(row[0], row[1]) if rev else row[0] for row in rows) + ']'
+        return '[' + ','.join(with_rev(row[0], row[1]) for row in rows) + ']'
 
     @staticmethod
     def manager_keys(doc) -> dict:
@@ -1731,12 +1768,14 @@ class Store:
         )
         return {'total': total, 'items': [dict(json.loads(row[0]), _rev=row[1] or 0) for row in rows]}
 
-    def client_get(self, cid, rev=False) -> dict | None:
+    def client_get(self, cid) -> dict | None:
+        row = self.one('SELECT doc FROM clients WHERE id=?', (cid,))
+        return json.loads(row[0]) if row else None
+
+    def client_get_rev(self, cid) -> dict | None:
+        """Клиент с номером правки (_rev) — для совместной правки."""
         row = self.one('SELECT doc, rev FROM clients WHERE id=?', (cid,))
-        if not row:
-            return None
-        data = json.loads(row[0])
-        return dict(data, _rev=row[1] or 0) if rev else data
+        return dict(json.loads(row[0]), _rev=row[1] or 0) if row else None
 
     def client_put(self, cid, doc, author: str = '', base_rev=None) -> int:
         doc = {k: v for k, v in doc.items() if k != '_rev'} if isinstance(doc, dict) else doc
@@ -1781,8 +1820,21 @@ class Store:
             except Exception as exc:  # история не должна мешать сохранению настроек
                 print('История настроек не записана:', exc)
 
-    def backup(self, dst, check=False) -> str:
+    def backup(self, dst) -> str:
         """Согласованная копия базы «на ходу» (встроенный механизм SQLite backup)."""
+        return self._backup(dst, lambda tmp: None)
+
+    def backup_checked(self, dst) -> str:
+        """Копия базы; архив .zip перед упаковкой проходит полную проверку SQLite."""
+        return self._backup(dst, self._verify_copy)
+
+    @staticmethod
+    def _verify_copy(tmp) -> None:
+        res = DbZip.integrity(tmp)
+        if res != 'ok':
+            raise ValueError('копия не прошла проверку: ' + res)
+
+    def _backup(self, dst, verify) -> str:
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         if DbZip.is_zip(dst):
             tmp = dst + '.tmp'
@@ -1791,10 +1843,7 @@ class Store:
                     if os.path.exists(tmp + ext):
                         os.remove(tmp + ext)
                 self.backup(tmp)
-                if check:
-                    res = DbZip.integrity(tmp)
-                    if res != 'ok':
-                        raise ValueError('копия не прошла проверку: ' + res)
+                verify(tmp)
                 return DbZip.pack(tmp, dst)
             finally:
                 for ext in ('', '-wal', '-shm', '-journal'):

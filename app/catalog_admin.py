@@ -9,16 +9,16 @@ from datetime import datetime
 from xml.sax.saxutils import escape as xml_escape
 from xml.sax.saxutils import quoteattr
 
-from admin import AUTO_KEYS, LABELS, _loads, actor, diff, is_admin, log, session
+from admin import AUTO_KEYS, LABELS, AdminSessions, _loads, actor, diff, is_admin, log, session
 
 
 def power(handler, key, method='GET') -> bool:
     """Особое право (auth_users.STRICT): администратор — всегда; менеджер — только вошедший по паролю и с этим правом."""
-    if is_admin(handler, need_csrf=(method != 'GET')):
+    if AdminSessions.allows(handler, method):
         return True
     u = getattr(handler, '_kp_user', None)
     return bool(
-        getattr(handler, '_kp_login', False) and session(handler, touch=False) is None and u and u['perms'].get(key)
+        getattr(handler, '_kp_login', False) and AdminSessions.of(handler) is None and u and u['perms'].get(key)
     )
 
 
@@ -54,7 +54,7 @@ class ModerationDesk:
     def items(self, status, limit: int | None = None) -> list[dict]:
         """Правки со статусом status, новые первыми: название, изменённые поля, устарела ли (товар изменён после отправки)."""
         out = []
-        for pend in self.store.pending_list(status, with_docs=True)[:limit]:
+        for pend in self.store.pending_docs(status)[:limit]:
             after = _loads(pend['after']) or {}
             pend['name'] = after.get('name', pend['productId'])
             pend['cat'] = (after.get('attrs') or {}).get('cat') or ''
@@ -811,7 +811,7 @@ class CatalogDesk:
             before,
             after,
             result=result,
-            admin=is_admin(self.handler, need_csrf=False) or None,
+            admin=session(self.handler) is not None or None,
         )
 
     def _deny(self, what, action=None) -> bool:
