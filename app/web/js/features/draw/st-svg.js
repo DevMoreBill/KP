@@ -1,20 +1,26 @@
 export class StSvg {
-  static f(v) {
-    return Math.round(v * 10) / 10;
+  /** Число для SVG: до 0,1. */
+  static fmt(value) {
+    return Math.round(value * 10) / 10;
   }
-  static pts(P) {
-    return P.map(p => `${this.f(p[0])},${this.f(p[1])}`).join(' ');
+  /** Точки многоугольника для атрибута points. */
+  static points(points) {
+    return points.map(point => `${this.fmt(point[0])},${this.fmt(point[1])}`).join(' ');
   }
-  static poly(P, fill, stroke, sw = 1, extra = '') {
-    return `<polygon points="${this.pts(P)}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"` : ''}${extra}/>`;
+  /** Многоугольник. */
+  static poly(points, fill, stroke, strokeW = 1, extra = '') {
+    return `<polygon points="${this.points(points)}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${strokeW}" stroke-linejoin="round"` : ''}${extra}/>`;
   }
-  static line([x1, y1], [x2, y2], stroke, sw = 1, extra = '') {
-    return `<line x1="${this.f(x1)}" y1="${this.f(y1)}" x2="${this.f(x2)}" y2="${this.f(y2)}" stroke="${stroke}" stroke-width="${sw}"${extra}/>`;
+  /** Отрезок. */
+  static line([x1, y1], [x2, y2], stroke, strokeW = 1, extra = '') {
+    return `<line x1="${this.fmt(x1)}" y1="${this.fmt(y1)}" x2="${this.fmt(x2)}" y2="${this.fmt(y2)}" stroke="${stroke}" stroke-width="${strokeW}"${extra}/>`;
   }
-  static rect([x, y, w, h], fill, stroke, sw = 1, extra = '') {
-    return `<rect x="${this.f(x)}" y="${this.f(y)}" width="${this.f(Math.max(0, w))}" height="${this.f(Math.max(0, h))}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw}"` : ''}${extra}/>`;
+  /** Прямоугольник. */
+  static rect([x, y, width, height], fill, stroke, strokeW = 1, extra = '') {
+    return `<rect x="${this.fmt(x)}" y="${this.fmt(y)}" width="${this.fmt(Math.max(0, width))}" height="${this.fmt(Math.max(0, height))}" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${strokeW}"` : ''}${extra}/>`;
   }
-  static doc(W, H, body, defs = '') {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif"><defs>${defs}</defs>${body}</svg>`;
+  /** Документ SVG. */
+  static doc(width, height, body, defs = '') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Arial, Helvetica, sans-serif"><defs>${defs}</defs>${body}</svg>`;
   }
 }

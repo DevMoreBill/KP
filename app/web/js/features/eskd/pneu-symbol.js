@@ -1,129 +1,142 @@
 /** Условные графические обозначения пневмосхем (ГОСТ 2.780…2.782-96 по ISO 1219-1; арматура — ГОСТ 2.785-70). */
 export class PneuSymbol {
   /** Компрессор: окружность, незачернённый треугольник (пневматика) вершиной к выходу — вверх. */
-  static compressor(sh, cx, cy, r = 5) {
-    sh.circle(cx, cy, r, 'bold', '#fff');
-    const t = r * 0.6;
-    sh.poly(
+  static compressor(sheet, centerX, centerY, radius = 5) {
+    sheet.circle(centerX, centerY, radius, 'bold', '#fff');
+    const tri = radius * 0.6;
+    sheet.poly(
       [
-        [cx, cy - r],
-        [cx - t * 0.62, cy - r + t],
-        [cx + t * 0.62, cy - r + t],
+        [centerX, centerY - radius],
+        [centerX - tri * 0.62, centerY - radius + tri],
+        [centerX + tri * 0.62, centerY - radius + tri],
       ],
       'bold',
       '#fff',
     );
-    return { out: [cx, cy - r], inl: [cx, cy + r], shaft: [cx - r, cy] };
+    return { out: [centerX, centerY - radius], inl: [centerX, centerY + radius], shaft: [centerX - radius, centerY] };
   }
   /** Электродвигатель привода: окружность с буквой M, вал — двойная линия. */
-  static motor(sh, cx, cy, x2, r = 3.4) {
-    sh.line(cx + r, cy - 0.55, x2, cy - 0.55, 'bold');
-    sh.line(cx + r, cy + 0.55, x2, cy + 0.55, 'bold');
-    sh.circle(cx, cy, r, 'bold', '#fff');
-    const h = r < 3 ? 2.5 : 3.5;
-    sh.text(cx, cy + h * 0.46, 'M', h, { a: 'middle' });
+  static motor(sheet, centerX, centerY, x2, radius = 3.4) {
+    sheet.line(centerX + radius, centerY - 0.55, x2, centerY - 0.55, 'bold');
+    sheet.line(centerX + radius, centerY + 0.55, x2, centerY + 0.55, 'bold');
+    sheet.circle(centerX, centerY, radius, 'bold', '#fff');
+    const textH = radius < 3 ? 2.5 : 3.5;
+    sheet.text(centerX, centerY + textH * 0.46, 'M', textH, { a: 'middle' });
   }
   /** Ресивер: горизонтальная «капсула», вход и выход по бокам, слив снизу. */
-  static receiver(sh, cx, cy, w = 16, h = 7) {
-    sh.rect([cx - w / 2, cy - h / 2, w, h], 'bold', '#fff', h / 2);
-    return { inl: [cx - w / 2, cy], out: [cx + w / 2, cy], top: cy - h / 2, bot: [cx, cy + h / 2] };
+  static receiver(sheet, centerX, centerY, width = 16, height = 7) {
+    sheet.rect([centerX - width / 2, centerY - height / 2, width, height], 'bold', '#fff', height / 2);
+    return {
+      inl: [centerX - width / 2, centerY],
+      out: [centerX + width / 2, centerY],
+      top: centerY - height / 2,
+      bot: [centerX, centerY + height / 2],
+    };
   }
-  static diamond(sh, cx, cy, a) {
-    sh.poly(
+  static _diamond(sheet, centerX, centerY, half) {
+    sheet.poly(
       [
-        [cx - a, cy],
-        [cx, cy - a],
-        [cx + a, cy],
-        [cx, cy + a],
+        [centerX - half, centerY],
+        [centerX, centerY - half],
+        [centerX + half, centerY],
+        [centerX, centerY + half],
       ],
       'bold',
       '#fff',
     );
   }
   /** Фильтр: drain — 'auto' | 'manual' | '' (без отвода); element=false — влагоотделитель. */
-  static filter(sh, [cx, cy], a = 5, drain = 'auto', element = true) {
-    this.diamond(sh, cx, cy, a);
-    const yc = cy + a * 0.45;
-    const half = a * 0.55;
-    if (element) sh.line(cx, cy - a, cx, drain ? yc : cy + a, 'dash');
+  static filter(sheet, [centerX, centerY], halfSize = 5, drain = 'auto', element = true) {
+    this._diamond(sheet, centerX, centerY, halfSize);
+    const drainY = centerY + halfSize * 0.45;
+    const half = halfSize * 0.55;
+    if (element) sheet.line(centerX, centerY - halfSize, centerX, drain ? drainY : centerY + halfSize, 'dash');
     if (drain) {
-      sh.line(cx - half, yc, cx + half, yc, 'bold');
+      sheet.line(centerX - half, drainY, centerX + half, drainY, 'bold');
       if (drain === 'auto')
-        sh.poly(
+        sheet.poly(
           [
-            [cx - half * 0.5, yc + 0.35],
-            [cx + half * 0.5, yc + 0.35],
-            [cx, yc + half * 0.55],
+            [centerX - half * 0.5, drainY + 0.35],
+            [centerX + half * 0.5, drainY + 0.35],
+            [centerX, drainY + half * 0.55],
           ],
           'thin',
         );
     }
-    return { inl: [cx - a, cy], out: [cx + a, cy], bot: [cx, cy + a] };
+    return {
+      inl: [centerX - halfSize, centerY],
+      out: [centerX + halfSize, centerY],
+      bot: [centerX, centerY + halfSize],
+    };
   }
   /** Осушитель: ромб с двумя хордами у вершин. */
-  static dryer(sh, cx, cy, a = 6) {
-    this.diamond(sh, cx, cy, a);
-    const d = a * 0.42;
-    sh.line(cx - d, cy - a + d, cx + d, cy - a + d, 'bold');
-    sh.line(cx - d, cy + a - d, cx + d, cy + a - d, 'bold');
-    return { inl: [cx - a, cy], out: [cx + a, cy], bot: [cx, cy + a] };
+  static dryer(sheet, centerX, centerY, half = 6) {
+    this._diamond(sheet, centerX, centerY, half);
+    const inset = half * 0.42;
+    sheet.line(centerX - inset, centerY - half + inset, centerX + inset, centerY - half + inset, 'bold');
+    sheet.line(centerX - inset, centerY + half - inset, centerX + inset, centerY + half - inset, 'bold');
+    return { inl: [centerX - half, centerY], out: [centerX + half, centerY], bot: [centerX, centerY + half] };
   }
   /** Генератор азота (кислорода): прямоугольник с обозначением газа. */
-  static generator(sh, cx, cy, gas, m = 1) {
-    sh.rect([cx - 6 * m, cy - 4.5 * m, 12 * m, 9 * m], 'bold', '#fff');
-    sh.text(cx, cy + 1.6, gas || 'N₂', 3.5, { a: 'middle' });
-    return { inl: [cx - 6 * m, cy], out: [cx + 6 * m, cy], bot: [cx, cy + 4.5 * m] };
+  static generator(sheet, centerX, centerY, gas, scale = 1) {
+    sheet.rect([centerX - 6 * scale, centerY - 4.5 * scale, 12 * scale, 9 * scale], 'bold', '#fff');
+    sheet.text(centerX, centerY + 1.6, gas || 'N₂', 3.5, { a: 'middle' });
+    return {
+      inl: [centerX - 6 * scale, centerY],
+      out: [centerX + 6 * scale, centerY],
+      bot: [centerX, centerY + 4.5 * scale],
+    };
   }
   /** Запорный кран (ГОСТ 2.785-70): два треугольника вершинами друг к другу; vertical — на вертикальной линии. */
-  static valve(sh, [cx, cy], s = 2, { vertical, closed } = {}) {
-    const P = vertical
+  static valve(sheet, [centerX, centerY], size = 2, { vertical, closed } = {}) {
+    const points = vertical
       ? [
-          [cx - s * 0.6, cy - s],
-          [cx + s * 0.6, cy - s],
-          [cx - s * 0.6, cy + s],
-          [cx + s * 0.6, cy + s],
+          [centerX - size * 0.6, centerY - size],
+          [centerX + size * 0.6, centerY - size],
+          [centerX - size * 0.6, centerY + size],
+          [centerX + size * 0.6, centerY + size],
         ]
       : [
-          [cx - s, cy - s * 0.6],
-          [cx - s, cy + s * 0.6],
-          [cx + s, cy - s * 0.6],
-          [cx + s, cy + s * 0.6],
+          [centerX - size, centerY - size * 0.6],
+          [centerX - size, centerY + size * 0.6],
+          [centerX + size, centerY - size * 0.6],
+          [centerX + size, centerY + size * 0.6],
         ];
-    sh.poly(P, 'bold', closed ? '#000' : '#fff'); // нормально закрытый — зачернён
+    sheet.poly(points, 'bold', closed ? '#000' : '#fff'); // нормально закрытый — зачернён
   }
   /** Клапан предохранительный угловой (ГОСТ 2.785-70): вход снизу, выход вбок, пружина сверху; выход в атмосферу. */
-  static safety(sh, cx, cy, s = 1.8) {
-    sh.poly(
+  static safety(sheet, centerX, centerY, size = 1.8) {
+    sheet.poly(
       [
-        [cx, cy],
-        [cx - s * 0.6, cy + s],
-        [cx + s * 0.6, cy + s],
+        [centerX, centerY],
+        [centerX - size * 0.6, centerY + size],
+        [centerX + size * 0.6, centerY + size],
       ],
       'bold',
       '#fff',
     );
-    sh.poly(
+    sheet.poly(
       [
-        [cx, cy],
-        [cx + s, cy - s * 0.6],
-        [cx + s, cy + s * 0.6],
+        [centerX, centerY],
+        [centerX + size, centerY - size * 0.6],
+        [centerX + size, centerY + size * 0.6],
       ],
       'bold',
       '#fff',
     );
     const z = [
-      [cx, cy],
-      [cx, cy - 0.6],
+      [centerX, centerY],
+      [centerX, centerY - 0.6],
     ];
-    for (let i = 0; i < 4; i++) z.push([cx + (i % 2 ? -0.8 : 0.8), cy - 0.95 - i * 0.5]);
-    z.push([cx, cy - 3]);
-    sh.poly(z, 'thin', 'none', true);
-    sh.line(cx + s, cy, cx + s + 1.2, cy, 'bold');
-    this.vent(sh, cx + s + 1.2, cy);
+    for (let i = 0; i < 4; i++) z.push([centerX + (i % 2 ? -0.8 : 0.8), centerY - 0.95 - i * 0.5]);
+    z.push([centerX, centerY - 3]);
+    sheet.poly(z, 'thin', 'none', true);
+    sheet.line(centerX + size, centerY, centerX + size + 1.2, centerY, 'bold');
+    this.vent(sheet, centerX + size + 1.2, centerY);
   }
   /** Выпуск в атмосферу (ISO 1219-1): незачернённый треугольник на конце линии. */
-  static vent(sh, x, y) {
-    sh.poly(
+  static vent(sheet, x, y) {
+    sheet.poly(
       [
         [x, y - 0.9],
         [x, y + 0.9],
@@ -134,63 +147,69 @@ export class PneuSymbol {
     );
   }
   /** Манометр (ГОСТ 2.781-96): окружность со стрелкой. */
-  static gauge(sh, cx, cy, r = 1.8) {
-    sh.circle(cx, cy, r, 'bold', '#fff');
-    sh.line(cx + r * 0.5, cy + r * 0.5, cx - r * 0.45, cy - r * 0.45, 'thin');
-    sh.poly(
+  static gauge(sheet, centerX, centerY, radius = 1.8) {
+    sheet.circle(centerX, centerY, radius, 'bold', '#fff');
+    sheet.line(
+      centerX + radius * 0.5,
+      centerY + radius * 0.5,
+      centerX - radius * 0.45,
+      centerY - radius * 0.45,
+      'thin',
+    );
+    sheet.poly(
       [
-        [cx - r * 0.62, cy - r * 0.62],
-        [cx - r * 0.62 + 0.85, cy - r * 0.62 + 0.3],
-        [cx - r * 0.62 + 0.3, cy - r * 0.62 + 0.85],
+        [centerX - radius * 0.62, centerY - radius * 0.62],
+        [centerX - radius * 0.62 + 0.85, centerY - radius * 0.62 + 0.3],
+        [centerX - radius * 0.62 + 0.3, centerY - radius * 0.62 + 0.85],
       ],
       'thin',
       '#000',
     );
   }
   /** Насос (ГОСТ 2.782-96): окружность, зачернённый треугольник (гидравлика) вершиной к выходу — вверх. */
-  static pump(sh, cx, cy, r = 5) {
-    sh.circle(cx, cy, r, 'bold', '#fff');
-    const t = r * 0.6;
-    sh.poly(
+  static pump(sheet, centerX, centerY, radius = 5) {
+    sheet.circle(centerX, centerY, radius, 'bold', '#fff');
+    const tri = radius * 0.6;
+    sheet.poly(
       [
-        [cx, cy - r],
-        [cx - t * 0.62, cy - r + t],
-        [cx + t * 0.62, cy - r + t],
+        [centerX, centerY - radius],
+        [centerX - tri * 0.62, centerY - radius + tri],
+        [centerX + tri * 0.62, centerY - radius + tri],
       ],
       'bold',
       '#000',
     );
-    return { out: [cx, cy - r], inl: [cx, cy + r] };
+    return { out: [centerX, centerY - radius], inl: [centerX, centerY + radius] };
   }
   /** Клапан обратный (ГОСТ 2.785-70). */
-  static check(sh, cx, cy, s = 2) {
-    sh.poly(
+  static check(sheet, centerX, centerY, size = 2) {
+    sheet.poly(
       [
-        [cx - s * 0.6, cy + s],
-        [cx + s * 0.6, cy + s],
-        [cx, cy],
+        [centerX - size * 0.6, centerY + size],
+        [centerX + size * 0.6, centerY + size],
+        [centerX, centerY],
       ],
       'bold',
       '#fff',
     );
-    sh.poly(
+    sheet.poly(
       [
-        [cx - s * 0.6, cy - s],
-        [cx + s * 0.6, cy - s],
-        [cx, cy],
+        [centerX - size * 0.6, centerY - size],
+        [centerX + size * 0.6, centerY - size],
+        [centerX, centerY],
       ],
       'bold',
       '#000',
     );
   }
   /** Гидробак мембранный (гидроаккумулятор): вертикальная «капсула» с мембраной, подключение сверху. */
-  static membrane(sh, cx, top, w = 8, h = 12) {
-    sh.rect([cx - w / 2, top, w, h], 'bold', '#fff', w / 2);
-    sh.line(cx - w / 2, top + h * 0.45, cx + w / 2, top + h * 0.45, 'thin');
+  static membrane(sheet, centerX, top, width = 8, height = 12) {
+    sheet.rect([centerX - width / 2, top, width, height], 'bold', '#fff', width / 2);
+    sheet.line(centerX - width / 2, top + height * 0.45, centerX + width / 2, top + height * 0.45, 'thin');
   }
   /** Стрелка направления потока на линии. */
-  static flow(sh, x, y, dir = 1) {
-    sh.poly(
+  static flow(sheet, x, y, dir = 1) {
+    sheet.poly(
       [
         [x + dir * 1.1, y],
         [x - dir * 0.9, y - 0.8],

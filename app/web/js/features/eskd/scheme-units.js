@@ -5,101 +5,125 @@ import { SchemeLayout } from './scheme-layout.js';
 /** Аппараты на линии пневмосхемы. */
 export class SchemeUnits {
   /** Аппарат на линии. */
-  static node(sh, n) {
-    const { u } = n;
-    const r = u.air || {};
-    if (u.kind === 'receiver') return SchemeUnits.receiver(sh, n);
-    if (u.kind === 'dryer' && r.type === 'gen') {
-      PneuSymbol.generator(sh, n.x, n.y, /кислород|O2|О2/i.test(u.name || '') ? 'O₂' : 'N₂', n.m);
-      SchemeUnits.label(sh, n);
+  static node(sheet, node) {
+    const { u: unit } = node;
+    const air = unit.air || {};
+    if (unit.kind === 'receiver') return SchemeUnits.receiver(sheet, node);
+    if (unit.kind === 'dryer' && air.type === 'gen') {
+      PneuSymbol.generator(sheet, node.x, node.y, /кислород|O2|О2/i.test(unit.name || '') ? 'O₂' : 'N₂', node.m);
+      SchemeUnits.label(sheet, node);
       return null;
     }
-    if (u.kind === 'dryer') return SchemeUnits.dryer(sh, n);
-    const g = r.grade;
-    const drain = g === 'carbon' || g === 'dust' ? '' : 'auto';
-    const s = PneuSymbol.filter(sh, [n.x, n.y], 5 * n.m, drain, g !== 'sep');
-    SchemeUnits.label(sh, n);
-    return drain ? s.bot : null;
+    if (unit.kind === 'dryer') return SchemeUnits.dryer(sheet, node);
+    const grade = air.grade;
+    const drain = grade === 'carbon' || grade === 'dust' ? '' : 'auto';
+    const symbol = PneuSymbol.filter(sheet, [node.x, node.y], 5 * node.m, drain, grade !== 'sep');
+    SchemeUnits.label(sheet, node);
+    return drain ? symbol.bot : null;
   }
 
   /** Номер позиции у обозначения. */
-  static label(sh, { u, x, y, m, flip }) {
-    const [dx, dl] = SchemeLayout.lab(u);
-    sh.text(flip ? x - dx * m : x + dx * m, y - dl * m, String(u.pos), 3.5, flip ? { a: 'end' } : undefined);
+  static label(sheet, { u: unit, x, y, m: scale, flip }) {
+    const [dx, lift] = SchemeLayout.lab(unit);
+    sheet.text(
+      flip ? x - dx * scale : x + dx * scale,
+      y - lift * scale,
+      String(unit.pos),
+      3.5,
+      flip ? { a: 'end' } : undefined,
+    );
   }
 
   /** Ресивер: предохранительный клапан, манометр, кран слива. */
-  static receiver(sh, { u, x, y, m }) {
-    const s = PneuSymbol.receiver(sh, x, y, 16 * m, 7 * m);
-    sh.line(x + 3.5 * m, s.top, x + 3.5 * m, s.top - 2.6 * m, 'bold');
-    PneuSymbol.safety(sh, x + 3.5 * m, s.top - 2.6 * m, 1.8 * m);
-    sh.line(x - 4 * m, s.top, x - 4 * m, s.top - 2.2 * m, 'bold');
-    PneuSymbol.gauge(sh, x - 4 * m, s.top - 2.2 * m - 1.8 * m, 1.8 * m);
-    sh.line(x, y + 3.5 * m, x, y + 6 * m, 'bold');
-    PneuSymbol.valve(sh, [x, y + 7.8 * m], 1.6 * m, { vertical: true });
-    sh.text(x - 8.5 * m, y - 4.5 * m, String(u.pos), 3.5, { a: 'end' });
-    return [x, y + 9.4 * m];
+  static receiver(sheet, { u: unit, x, y, m: scale }) {
+    const symbol = PneuSymbol.receiver(sheet, x, y, 16 * scale, 7 * scale);
+    sheet.line(x + 3.5 * scale, symbol.top, x + 3.5 * scale, symbol.top - 2.6 * scale, 'bold');
+    PneuSymbol.safety(sheet, x + 3.5 * scale, symbol.top - 2.6 * scale, 1.8 * scale);
+    sheet.line(x - 4 * scale, symbol.top, x - 4 * scale, symbol.top - 2.2 * scale, 'bold');
+    PneuSymbol.gauge(sheet, x - 4 * scale, symbol.top - 2.2 * scale - 1.8 * scale, 1.8 * scale);
+    sheet.line(x, y + 3.5 * scale, x, y + 6 * scale, 'bold');
+    PneuSymbol.valve(sheet, [x, y + 7.8 * scale], 1.6 * scale, { vertical: true });
+    sheet.text(x - 8.5 * scale, y - 4.5 * scale, String(unit.pos), 3.5, { a: 'end' });
+    return [x, y + 9.4 * scale];
   }
 
   /** Осушитель: вне группы — байпас (обвод с нормально закрытым краном); у адсорбционного слива нет. */
-  static dryer(sh, n) {
-    const { x, y, m } = n;
-    const ads = (n.u.air || {}).type === 'ads';
-    const s = PneuSymbol.dryer(sh, x, y, 6 * m);
-    SchemeUnits.label(sh, n);
-    if (!n.bare) {
-      const xa = n.ltr ? x - 8.5 * m : x + 8.5 * m;
-      const xb = n.ltr ? x + 8.5 * m : x - 8.5 * m;
-      const yb = y - 12.5 * m;
-      sh.dot(xa, y, 0.6);
-      sh.dot(xb, y, 0.6);
-      sh.line(xa, y, xa, yb, 'bold');
-      sh.line(xb, y, xb, yb, 'bold');
-      sh.line(xa, yb, x - 1.8 * m, yb, 'bold');
-      sh.line(x + 1.8 * m, yb, xb, yb, 'bold');
-      PneuSymbol.valve(sh, [x, yb], 1.8 * m, { closed: true });
+  static dryer(sheet, node) {
+    const { x, y, m: scale } = node;
+    const ads = (node.u.air || {}).type === 'ads';
+    const symbol = PneuSymbol.dryer(sheet, x, y, 6 * scale);
+    SchemeUnits.label(sheet, node);
+    if (!node.bare) {
+      const inX = node.ltr ? x - 8.5 * scale : x + 8.5 * scale;
+      const outX = node.ltr ? x + 8.5 * scale : x - 8.5 * scale;
+      const topY = y - 12.5 * scale;
+      sheet.dot(inX, y, 0.6);
+      sheet.dot(outX, y, 0.6);
+      sheet.line(inX, y, inX, topY, 'bold');
+      sheet.line(outX, y, outX, topY, 'bold');
+      sheet.line(inX, topY, x - 1.8 * scale, topY, 'bold');
+      sheet.line(x + 1.8 * scale, topY, outX, topY, 'bold');
+      PneuSymbol.valve(sheet, [x, topY], 1.8 * scale, { closed: true });
     }
-    return ads ? null : s.bot;
+    return ads ? null : symbol.bot;
   }
 
   /** Одинаковые аппараты параллельно. */
-  static group(sh, n) {
-    const { x, y, m, ltr, r, par: U } = n;
-    const k = U.length;
-    const g = SchemeLayout.par(U[0], k);
-    const d = ltr ? 1 : -1;
-    const xs = x - d * g.hw * m;
-    const xe = x + d * g.hw * m;
-    const ys = U.map((u, i) => y + (i - (k - 1) / 2) * g.dy * m);
-    const xc = U.map((u, i) => x + d * (i - (k - 1) / 2) * g.sx * m);
-    sh.line(xs, ys[0], xs, ys[k - 1], 'bold');
-    sh.line(xe, ys[0], xe, ys[k - 1], 'bold');
-    sh.dot(xs, y, 0.6);
-    sh.dot(xe, y, 0.6);
+  static group(sheet, node) {
+    const { x, y, m: scale, ltr, r: row, par: units } = node;
+    const k = units.length;
+    const geom = SchemeLayout.par(units[0], k);
+    const dir = ltr ? 1 : -1;
+    const startX = x - dir * geom.hw * scale;
+    const endX = x + dir * geom.hw * scale;
+    const rowsY = units.map((unit, i) => y + (i - (k - 1) / 2) * geom.dy * scale);
+    const colsX = units.map((unit, i) => x + dir * (i - (k - 1) / 2) * geom.sx * scale);
+    sheet.line(startX, rowsY[0], startX, rowsY[k - 1], 'bold');
+    sheet.line(endX, rowsY[0], endX, rowsY[k - 1], 'bold');
+    sheet.dot(startX, y, 0.6);
+    sheet.dot(endX, y, 0.6);
     const out = [];
-    U.forEach((u, i) => {
-      SchemeUnits.branch(sh, { xs, xe, d, yi: ys[i], xi: xc[i], a: g.a * m, m });
-      const p = SchemeUnits.node(sh, { u, x: xc[i], y: ys[i], m, ltr, bare: true, flip: !ltr });
-      if (p) out.push({ x: p[0], y: p[1], r });
+    units.forEach((unit, i) => {
+      SchemeUnits.branch(sheet, {
+        xs: startX,
+        xe: endX,
+        d: dir,
+        yi: rowsY[i],
+        xi: colsX[i],
+        a: geom.a * scale,
+        m: scale,
+      });
+      const symbol = SchemeUnits.node(sheet, {
+        u: unit,
+        x: colsX[i],
+        y: rowsY[i],
+        m: scale,
+        ltr,
+        bare: true,
+        flip: !ltr,
+      });
+      if (symbol) out.push({ x: symbol[0], y: symbol[1], r: row });
     });
-    if (n.n > k) {
-      const [dx, dl] = SchemeLayout.lab(U[0]);
-      const w = EskdSheet.tw(String(U[0].pos), 3.5) + 1.2;
-      sh.text(xc[0] + d * (dx * m + w), ys[0] - dl * m, `${n.n} шт.`, 2.5, { a: ltr ? 'start' : 'end' });
+    if (node.n > k) {
+      const [dx, lift] = SchemeLayout.lab(units[0]);
+      const labelW = EskdSheet.textWidth(String(units[0].pos), 3.5) + 1.2;
+      sheet.text(colsX[0] + dir * (dx * scale + labelW), rowsY[0] - lift * scale, `${node.n} шт.`, 2.5, {
+        a: ltr ? 'start' : 'end',
+      });
     }
     return out;
   }
 
   /** Ветвь группы: линия с кранами до и после аппарата (xi ± a). */
-  static branch(sh, { xs, xe, d, yi, xi, a, m }) {
-    const v = 1.8 * m;
-    const xv0 = xs + d * 4 * m;
-    const xv1 = xe - d * 4 * m;
-    sh.line(xs, yi, xv0 - d * v, yi, 'bold');
-    PneuSymbol.valve(sh, [xv0, yi], v);
-    sh.line(xv0 + d * v, yi, xi - d * a, yi, 'bold');
-    sh.line(xi + d * a, yi, xv1 - d * v, yi, 'bold');
-    PneuSymbol.valve(sh, [xv1, yi], v);
-    sh.line(xv1 + d * v, yi, xe, yi, 'bold');
+  static branch(sheet, { xs: startX, xe: endX, d: dir, yi: rowY, xi: inletX, a: arrow, m: scale }) {
+    const valveGap = 1.8 * scale;
+    const xv0 = startX + dir * 4 * scale;
+    const xv1 = endX - dir * 4 * scale;
+    sheet.line(startX, rowY, xv0 - dir * valveGap, rowY, 'bold');
+    PneuSymbol.valve(sheet, [xv0, rowY], valveGap);
+    sheet.line(xv0 + dir * valveGap, rowY, inletX - dir * arrow, rowY, 'bold');
+    sheet.line(inletX + dir * arrow, rowY, xv1 - dir * valveGap, rowY, 'bold');
+    PneuSymbol.valve(sheet, [xv1, rowY], valveGap);
+    sheet.line(xv1 + dir * valveGap, rowY, endX, rowY, 'bold');
   }
 }

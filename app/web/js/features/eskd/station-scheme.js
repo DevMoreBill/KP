@@ -8,41 +8,47 @@ import { SchemeUnits } from './scheme-units.js';
 export class StationScheme {
   /** Есть ли что рисовать: в расстановке — компрессорная с цепочкой подготовки воздуха. */
   static ok(plan) {
-    return !!(plan && plan.air && (plan.air.units || []).some(u => u.kind === 'compressor'));
+    return !!(plan && plan.air && (plan.air.units || []).some(unit => unit.kind === 'compressor'));
   }
 
+  /** Лист схемы пневматической принципиальной (SVG). */
   static svg(plan, meta = {}) {
-    return new StationScheme(plan, meta).draw();
+    return new StationScheme(plan, meta)._draw();
   }
 
   constructor(plan, meta) {
     this.plan = plan;
     this.meta = meta;
-    this.a = plan.air;
-    this.U = this.a.units || [];
-    this.comps = this.U.filter(u => u.kind === 'compressor');
-    this.chain = this.U.filter(u => u.kind !== 'compressor');
-    this.pipe = (plan.piping || []).find(p => p.pos != null);
-    this.cond = this.a.cond || [];
+    this.air = plan.air;
+    this.units = this.air.units || [];
+    this.comps = this.units.filter(unit => unit.kind === 'compressor');
+    this.chain = this.units.filter(unit => unit.kind !== 'compressor');
+    this.pipe = (plan.piping || []).find(pipe => pipe.pos != null);
+    this.cond = this.air.cond || [];
     this.dry =
-      this.U.some(x => x.kind === 'dryer' && (x.air || {}).type !== 'gen') || this.comps.some(x => (x.air || {}).dryer);
-    this.sh = new EskdSheet('A4');
+      this.units.some(x => x.kind === 'dryer' && (x.air || {}).type !== 'gen') ||
+      this.comps.some(x => (x.air || {}).dryer);
+    this.sheet = new EskdSheet('A4');
   }
 
-  draw() {
-    const { sh, meta } = this;
-    const yN = this.texts();
-    const comp = this.comps.flatMap(u => Array.from({ length: Math.min(u.qty || 1, 4) }, () => u)).slice(0, 6);
+  _draw() {
+    const { sheet, meta } = this;
+    const notesY = this.texts();
+    const comp = this.comps.flatMap(unit => Array.from({ length: Math.min(unit.qty || 1, 4) }, () => unit)).slice(0, 6);
     const nodes = this.nodes();
-    const tw = t => EskdSheet.tw(t, 2.5);
-    const outW = Math.max(tw('К потребителю'), this.a.cls ? tw(`класс ${this.a.cls}`) : 0);
-    const G = SchemeLayout.layout({ nc: comp.length, nodes, wide: comp.some(StationScheme.built), outW }, 30, yN - 6);
-    this.compressors(comp, G);
-    const P = nodes.map((n, i) => ({ ...n, ...G.pos[i], y: G.Y[G.pos[i].r], m: G.m }));
-    const st = this.line(P, G);
-    this.outlet(st, G);
-    this.drains(st.drains, G);
-    sh.frame({
+    const textW = text => EskdSheet.textWidth(text, 2.5);
+    const outW = Math.max(textW('К потребителю'), this.air.cls ? textW(`класс ${this.air.cls}`) : 0);
+    const grid = SchemeLayout.layout(
+      { nc: comp.length, nodes, wide: comp.some(StationScheme.built), outW },
+      30,
+      notesY - 6,
+    );
+    this.compressors(comp, grid);
+    const placed = nodes.map((node, i) => ({ ...node, ...grid.pos[i], y: grid.Y[grid.pos[i].r], m: grid.m }));
+    const state = this.line(placed, grid);
+    this.outlet(state, grid);
+    this.drains(state.drains, grid);
+    sheet.frame({
       name: meta.title || 'Станция компрессорная',
       doc: 'Схема пневматическая принципиальная',
       code: EskdSheet.code(meta.org, this.plan.hash, 'П3'),
@@ -52,77 +58,80 @@ export class StationScheme {
       dev: meta.dev,
       date: meta.date,
     });
-    return sh.svg();
+    return sheet.svg();
   }
 
   /** Встроенные в компрессор осушитель или фильтры. */
-  static built(u) {
-    return !!((u.air || {}).dryer || (u.air || {}).filter);
+  static built(unit) {
+    return !!((unit.air || {}).dryer || (unit.air || {}).filter);
   }
 
   /** Строки перечня: позиции цепочки, очистка конденсата, обвязка. */
   rows() {
-    const by = new Map();
-    for (const u of this.U) {
-      const r = by.get(u.pos);
-      if (r) r.qty += u.qty || 1;
-      else by.set(u.pos, { u, qty: u.qty || 1 });
+    const byPos = new Map();
+    for (const unit of this.units) {
+      const entry = byPos.get(unit.pos);
+      if (entry) entry.qty += unit.qty || 1;
+      else byPos.set(unit.pos, { u: unit, qty: unit.qty || 1 });
     }
-    const pp = this.pipe;
+    const pipe = this.pipe;
     return [
-      ...by.values(),
-      ...this.cond.map(c => ({ u: { pos: c.pos, kind: 'cond', brief: c.brief, name: c.name }, qty: c.qty || 1 })),
-      ...(pp ? [{ u: { pos: pp.pos, kind: 'piping', brief: pp.name }, qty: 1 }] : []),
-    ].sort((p, q) => p.u.pos - q.u.pos);
+      ...byPos.values(),
+      ...this.cond.map(cond => ({
+        u: { pos: cond.pos, kind: 'cond', brief: cond.brief, name: cond.name },
+        qty: cond.qty || 1,
+      })),
+      ...(pipe ? [{ u: { pos: pipe.pos, kind: 'piping', brief: pipe.name }, qty: 1 }] : []),
+    ].sort((first, second) => first.u.pos - second.u.pos);
   }
 
   /** Примечание в перечне. */
-  note(u) {
-    const r = u.air || {};
-    const by = {
+  note(unit) {
+    const air = unit.air || {};
+    const byKind = {
       compressor: () =>
         [
-          r.dryer ? 'встроенный осушитель' : '',
-          r.filter ? 'встроенные фильтры' : '',
-          r.vsd ? 'частотное регулирование' : '',
+          air.dryer ? 'встроенный осушитель' : '',
+          air.filter ? 'встроенные фильтры' : '',
+          air.vsd ? 'частотное регулирование' : '',
         ]
           .filter(Boolean)
           .join(', '),
-      dryer: () => ({ ads: 'адсорбционный', gen: 'генератор' })[r.type] || 'рефрижераторный',
-      receiver: () => [this.recvWhere(r), r.out ? 'снаружи' : ''].filter(Boolean).join(', '),
-      filter: () => (AirChain.GRADES[r.grade] ? AirChain.GRADES[r.grade].short : ''),
+      dryer: () => ({ ads: 'адсорбционный', gen: 'генератор' })[air.type] || 'рефрижераторный',
+      receiver: () => [this.recvWhere(air), air.out ? 'снаружи' : ''].filter(Boolean).join(', '),
+      filter: () => (AirChain.GRADES[air.grade] ? AirChain.GRADES[air.grade].short : ''),
       cond: () => 'очистка конденсата',
       piping: () => 'краны, клапаны, манометры',
     };
-    const s = by[u.kind] ? by[u.kind]() : '';
-    return u.kind === 'dryer' && r.filters ? `${s}, встроенные фильтры` : s;
+    const text = byKind[unit.kind] ? byKind[unit.kind]() : '';
+    return unit.kind === 'dryer' && air.filters ? `${text}, встроенные фильтры` : text;
   }
 
   /** Где ресивер по ходу воздуха. */
-  recvWhere(r) {
-    if (r.role !== 'dry') return this.dry ? 'до осушителя' : '';
+  recvWhere(recv) {
+    if (recv.role !== 'dry') return this.dry ? 'до осушителя' : '';
     if (this.dry) return 'после осушителя';
-    return this.U.some(x => x.kind === 'filter') ? 'после фильтров' : '';
+    return this.units.some(x => x.kind === 'filter') ? 'после фильтров' : '';
   }
 
   /** Перечень элементов и указания над основной надписью; возвращает верх указаний. */
   texts() {
-    const { sh, a, pipe } = this;
+    const { sheet, air, pipe } = this;
     const rows = this.rows();
     const yList = 237 - 12 - (6 + rows.length * 6);
-    const cells = rows.map(({ u, qty }) => [
-      [String(u.pos), 'c'],
-      u.brief || u.name || '',
+    const cells = rows.map(({ u: unit, qty }) => [
+      [String(unit.pos), 'c'],
+      unit.brief || unit.name || '',
       [String(qty), 'c'],
-      this.note(u),
+      this.note(unit),
     ]);
-    sh.table([20, yList], [14, 95, 12, 64], ['Поз.', 'Наименование', 'Кол.', 'Примечание'], cells, [6, 6, 2.5]);
-    sh.text(20 + 92.5, yList - 2.5, 'Перечень элементов', 3.5, { a: 'middle' });
-    const qn = G => G.reduce((s, u) => s + (u.qty || 1), 0);
+    sheet.table([20, yList], [14, 95, 12, 64], ['Поз.', 'Наименование', 'Кол.', 'Примечание'], cells, [6, 6, 2.5]);
+    sheet.text(20 + 92.5, yList - 2.5, 'Перечень элементов', 3.5, { a: 'middle' });
+    const qtyOf = group => group.reduce((sum, unit) => sum + (unit.qty || 1), 0);
     const bypass = AirChain.groups(this.chain).some(
-      G => qn(G) === 1 && G[0].kind === 'dryer' && (G[0].air || {}).type !== 'gen',
+      group => qtyOf(group) === 1 && group[0].kind === 'dryer' && (group[0].air || {}).type !== 'gen',
     );
-    const out = this.U.filter(u => u.kind === 'receiver' && (u.air || {}).out);
+    const out = this.units.filter(unit => unit.kind === 'receiver' && (unit.air || {}).out);
     const many = out.length > 1 || (out.length && (out[0].qty || 1) > 1);
     const notes = [
       `Арматура (запорные краны, предохранительный клапан, манометр, отвод конденсата) показана условно${pipe ? `; входит в обвязку поз. ${pipe.pos}` : ''}.`,
@@ -131,153 +140,161 @@ export class StationScheme {
       bypass
         ? 'У осушителя — байпас: обводная линия с краном (нормально закрыт), на входе и выходе осушителя — краны; осушитель обслуживают без остановки подачи воздуха.'
         : '',
-      a.cls ? `На выходе — класс чистоты сжатого воздуха ${a.cls} по ISO 8573-1.` : '',
+      air.cls ? `На выходе — класс чистоты сжатого воздуха ${air.cls} по ISO 8573-1.` : '',
       out.length
-        ? `${many ? 'Ресиверы' : 'Ресивер'} поз. ${[...new Set(out.map(u => u.pos))].join(', ')} — снаружи контейнера, на площадке; подключение через стену — с запорной арматурой.`
+        ? `${many ? 'Ресиверы' : 'Ресивер'} поз. ${[...new Set(out.map(unit => unit.pos))].join(', ')} — снаружи контейнера, на площадке; подключение через стену — с запорной арматурой.`
         : '',
     ].filter(Boolean);
-    const yN = yList - 8 - sh.paras([25, 0, 175], notes, 2.5, false);
-    sh.paras([25, yN, 175], notes, 2.5);
-    return yN;
+    const notesY = yList - 8 - sheet.paras([25, 0, 175], notes, 2.5, false);
+    sheet.paras([25, notesY, 175], notes, 2.5);
+    return notesY;
   }
 
   /** Узлы по ходу воздуха. */
   nodes() {
-    return AirChain.groups(this.chain).flatMap(G => {
-      const n = G.reduce((s, u) => s + (u.qty || 1), 0);
-      if (G[0].kind === 'receiver' || n < 2)
-        return G.flatMap(u =>
-          Array.from({ length: Math.min(u.qty || 1, 3) }, () => ({ u, w: 1, half: SchemeLayout.half(u), ex: 0 })),
+    return AirChain.groups(this.chain).flatMap(group => {
+      const count = group.reduce((sum, unit) => sum + (unit.qty || 1), 0);
+      if (group[0].kind === 'receiver' || count < 2)
+        return group.flatMap(unit =>
+          Array.from({ length: Math.min(unit.qty || 1, 3) }, () => ({
+            u: unit,
+            w: 1,
+            half: SchemeLayout.half(unit),
+            ex: 0,
+          })),
         );
-      const all = G.flatMap(u => Array(u.qty || 1).fill(u));
-      const pick = new Set(G.slice(0, 3).map(u => all.indexOf(u)));
+      const all = group.flatMap(unit => Array(unit.qty || 1).fill(unit));
+      const pick = new Set(group.slice(0, 3).map(unit => all.indexOf(unit)));
       for (let i = 0; i < all.length && pick.size < 3; i++) pick.add(i);
-      const U = [...pick].sort((p, q) => p - q).map(i => all[i]);
-      const g = SchemeLayout.par(U[0], U.length);
-      return [{ u: G[0], par: U, n, w: 2, half: g.hw, ex: g.ex }];
+      const units = [...pick].sort((first, second) => first - second).map(i => all[i]);
+      const geom = SchemeLayout.par(units[0], units.length);
+      return [{ u: group[0], par: units, n: count, w: 2, half: geom.hw, ex: geom.ex }];
     });
   }
 
   /** Компрессоры с двигателями столбцом слева, краны, коллектор; встроенное — внутри штрихпунктирной границы. */
-  compressors(comp, { m, xCol, dy, yT }) {
-    const { sh } = this;
-    const xM = 29 + 4 * (m - 1);
-    const xC = xM + 13 * m;
-    comp.forEach((u, i) => {
-      const yo = yT + i * dy;
-      const cy = yo + 8 * m;
-      const r = u.air || {};
-      PneuSymbol.motor(sh, xM, cy, xC - 5 * m, 3.4 * m);
-      PneuSymbol.compressor(sh, xC, cy, 5 * m);
-      sh.line(xC, cy - 5 * m, xC, yo, 'bold');
-      sh.line(xC, yo, xCol - 7.8 * m, yo, 'bold');
-      if (StationScheme.built(u)) {
-        if (r.dryer) PneuSymbol.dryer(sh, xC + 11 * m, yo, 4 * m);
-        if (r.filter) PneuSymbol.filter(sh, [xC + (r.dryer ? 22 : 11) * m, yo], 3.4 * m, 'auto');
-        sh.rect([xM - 5.5 * m, yo - 6.5 * m, xCol - 10 * m - (xM - 5.5 * m), 21.5 * m], 'axis');
-        sh.text(xM - 5.5 * m, yo - 6.5 * m - 1.2, String(u.pos), 3.5);
-      } else sh.text(xM - 3.4 * m, cy - 3.4 * m - 1.4, String(u.pos), 3.5, { a: 'middle' });
-      PneuSymbol.valve(sh, [xCol - 6 * m, yo], 1.8 * m);
-      sh.line(xCol - 4.2 * m, yo, xCol, yo, 'bold');
-      if (comp.length > 1) sh.dot(xCol, yo, 0.6);
+  compressors(comp, { m: scale, xCol, dy, yT: topY }) {
+    const { sheet } = this;
+    const motorX = 29 + 4 * (scale - 1);
+    const compX = motorX + 13 * scale;
+    comp.forEach((unit, i) => {
+      const rowTop = topY + i * dy;
+      const centerY = rowTop + 8 * scale;
+      const air = unit.air || {};
+      PneuSymbol.motor(sheet, motorX, centerY, compX - 5 * scale, 3.4 * scale);
+      PneuSymbol.compressor(sheet, compX, centerY, 5 * scale);
+      sheet.line(compX, centerY - 5 * scale, compX, rowTop, 'bold');
+      sheet.line(compX, rowTop, xCol - 7.8 * scale, rowTop, 'bold');
+      if (StationScheme.built(unit)) {
+        if (air.dryer) PneuSymbol.dryer(sheet, compX + 11 * scale, rowTop, 4 * scale);
+        if (air.filter) PneuSymbol.filter(sheet, [compX + (air.dryer ? 22 : 11) * scale, rowTop], 3.4 * scale, 'auto');
+        sheet.rect(
+          [motorX - 5.5 * scale, rowTop - 6.5 * scale, xCol - 10 * scale - (motorX - 5.5 * scale), 21.5 * scale],
+          'axis',
+        );
+        sheet.text(motorX - 5.5 * scale, rowTop - 6.5 * scale - 1.2, String(unit.pos), 3.5);
+      } else sheet.text(motorX - 3.4 * scale, centerY - 3.4 * scale - 1.4, String(unit.pos), 3.5, { a: 'middle' });
+      PneuSymbol.valve(sheet, [xCol - 6 * scale, rowTop], 1.8 * scale);
+      sheet.line(xCol - 4.2 * scale, rowTop, xCol, rowTop, 'bold');
+      if (comp.length > 1) sheet.dot(xCol, rowTop, 0.6);
     });
-    if (comp.length > 1) sh.line(xCol, yT, xCol, yT + (comp.length - 1) * dy, 'bold');
+    if (comp.length > 1) sheet.line(xCol, topY, xCol, topY + (comp.length - 1) * dy, 'bold');
   }
 
   /** Отрезок линии; горизонтальный длиннее 10 модулей — со стрелкой потока. */
-  seg(x1, y1, [x2, y2], m) {
-    this.sh.line(x1, y1, x2, y2, 'bold');
-    if (y1 === y2 && Math.abs(x2 - x1) > 10 * m) PneuSymbol.flow(this.sh, (x1 + x2) / 2, y1, x2 > x1 ? 1 : -1);
+  seg(x1, y1, [x2, y2], scale) {
+    this.sheet.line(x1, y1, x2, y2, 'bold');
+    if (y1 === y2 && Math.abs(x2 - x1) > 10 * scale) PneuSymbol.flow(this.sheet, (x1 + x2) / 2, y1, x2 > x1 ? 1 : -1);
   }
 
   /** Перенос линии на строку r — у правого (xR) или левого (xL) края. */
-  wrap(st, r, G) {
-    const ex = st.pr % 2 === 0 ? G.xR : G.xL;
-    this.seg(st.px, st.py, [ex, st.py], G.m);
-    this.sh.line(ex, st.py, ex, G.Y[r], 'bold');
-    Object.assign(st, { px: ex, py: G.Y[r], pr: r });
+  wrap(state, row, grid) {
+    const edgeX = state.pr % 2 === 0 ? grid.xR : grid.xL;
+    this.seg(state.px, state.py, [edgeX, state.py], grid.m);
+    this.sheet.line(edgeX, state.py, edgeX, grid.Y[row], 'bold');
+    Object.assign(state, { px: edgeX, py: grid.Y[row], pr: row });
   }
 
   /** Аппараты по ходу воздуха; возвращает конец линии {px, py, pr} и точки слива. */
-  line(P, G) {
-    const st = { px: G.xCol, py: G.yT, pr: 0, drains: [] };
-    for (const n of P) {
-      const w = n.half * G.m;
-      if (n.r !== st.pr) this.wrap(st, n.r, G);
-      this.seg(st.px, st.py, [n.ltr ? n.x - w : n.x + w, n.y], G.m);
-      if (n.par) st.drains.push(...SchemeUnits.group(this.sh, n));
+  line(placed, grid) {
+    const state = { px: grid.xCol, py: grid.yT, pr: 0, drains: [] };
+    for (const node of placed) {
+      const halfW = node.half * grid.m;
+      if (node.r !== state.pr) this.wrap(state, node.r, grid);
+      this.seg(state.px, state.py, [node.ltr ? node.x - halfW : node.x + halfW, node.y], grid.m);
+      if (node.par) state.drains.push(...SchemeUnits.group(this.sheet, node));
       else {
-        const d = SchemeUnits.node(this.sh, n);
-        if (d) st.drains.push({ x: d[0], y: d[1], r: n.r });
+        const symbol = SchemeUnits.node(this.sheet, node);
+        if (symbol) state.drains.push({ x: symbol[0], y: symbol[1], r: node.r });
       }
-      st.px = n.ltr ? n.x + w : n.x - w;
-      st.py = n.y;
+      state.px = node.ltr ? node.x + halfW : node.x - halfW;
+      state.py = node.y;
     }
-    return st;
+    return state;
   }
 
   /** Выход к потребителю: кран, стрелка, класс чистоты — за стрелкой, по ходу строки. */
-  outlet(st, G) {
-    const { sh, a } = this;
-    const m = G.m;
-    if (G.rows - 1 > st.pr) this.wrap(st, G.rows - 1, G);
-    const { px, py } = st;
-    const dir = st.pr % 2 === 0 ? 1 : -1;
-    const xv = px + dir * 7 * m;
-    const xo = px + dir * 14 * m;
-    const tip = xo + dir * 2.6;
-    const an = dir > 0 ? 'start' : 'end';
-    this.seg(px, py, [xv - dir * 1.8 * m, py], m);
-    PneuSymbol.valve(sh, [xv, py], 1.8 * m);
-    sh.line(xv + dir * 1.8 * m, py, xo, py, 'bold');
-    sh.arrow(tip, py, dir, 0);
-    sh.text(tip + dir * 1.2, py + 0.9, 'К потребителю', 2.5, { a: an });
-    if (a.cls) sh.text(tip + dir * 1.2, py + 4.8, `класс ${a.cls}`, 2.5, { a: an });
+  outlet(state, grid) {
+    const { sheet, air } = this;
+    const scale = grid.m;
+    if (grid.rows - 1 > state.pr) this.wrap(state, grid.rows - 1, grid);
+    const { px: fromX, py: fromY } = state;
+    const dir = state.pr % 2 === 0 ? 1 : -1;
+    const valveX = fromX + dir * 7 * scale;
+    const outX = fromX + dir * 14 * scale;
+    const tip = outX + dir * 2.6;
+    const anchor = dir > 0 ? 'start' : 'end';
+    this.seg(fromX, fromY, [valveX - dir * 1.8 * scale, fromY], scale);
+    PneuSymbol.valve(sheet, [valveX, fromY], 1.8 * scale);
+    sheet.line(valveX + dir * 1.8 * scale, fromY, outX, fromY, 'bold');
+    sheet.arrow(tip, fromY, dir, 0);
+    sheet.text(tip + dir * 1.2, fromY + 0.9, 'К потребителю', 2.5, { a: anchor });
+    if (air.cls) sheet.text(tip + dir * 1.2, fromY + 4.8, `класс ${air.cls}`, 2.5, { a: anchor });
   }
 
   /** Отвод конденсата: от сливов вниз к линии сбора под строкой. */
-  drains(D, G) {
+  drains(drains, grid) {
     const lab = this.cond.length ? `конденсат — к поз. ${this.cond[0].pos}` : 'конденсат';
-    for (const r of [...new Set(D.map(d => d.r))])
+    for (const row of [...new Set(drains.map(drain => drain.r))])
       this.drainRow(
-        D.filter(d => d.r === r),
-        r,
-        G,
+        drains.filter(drain => drain.r === row),
+        row,
+        grid,
         lab,
       );
   }
 
   /** Линия сбора строки r; подпись — за стрелкой, где не мешают перенос строки и компрессоры, иначе — под линией. */
-  drainRow(D, r, G, lab) {
-    const { sh } = this;
-    const lw = EskdSheet.tw(lab, 2.5);
-    const yd = G.Y[r] + (17 + G.ex[r]) * G.m;
-    const [x0, x1] = [Math.min(...D.map(d => d.x)), Math.max(...D.map(d => d.x))];
-    const ltr = r % 2 === 0;
-    const [lo, hi] = StationScheme.drainRoom(G, r, yd);
-    for (const d of D) sh.line(d.x, d.y, d.x, yd, 'drain');
-    const o = (ltr ? [1, -1] : [-1, 1])
-      .map(d => ({ d, xe: d > 0 ? x1 + 6 : x0 - 6 }))
-      .find(q => (q.d > 0 ? q.xe + 3.6 + lw <= hi : q.xe - 3.6 - lw >= lo));
-    if (o) {
-      sh.line(o.d > 0 ? x0 : x1, yd, o.xe, yd, 'drain');
-      sh.arrow(o.xe + o.d * 2.6, yd, o.d, 0);
-      sh.text(o.xe + o.d * 3.6, yd + 1.2, lab, 2.5, { a: o.d > 0 ? 'start' : 'end' });
+  drainRow(drains, row, grid, lab) {
+    const { sheet } = this;
+    const labelW = EskdSheet.textWidth(lab, 2.5);
+    const drainY = grid.Y[row] + (17 + grid.ex[row]) * grid.m;
+    const [x0, x1] = [Math.min(...drains.map(dir => dir.x)), Math.max(...drains.map(dir => dir.x))];
+    const ltr = row % 2 === 0;
+    const [low, high] = StationScheme.drainRoom(grid, row, drainY);
+    for (const dir of drains) sheet.line(dir.x, dir.y, dir.x, drainY, 'drain');
+    const side = (ltr ? [1, -1] : [-1, 1])
+      .map(dir => ({ d: dir, xe: dir > 0 ? x1 + 6 : x0 - 6 }))
+      .find(opt => (opt.d > 0 ? opt.xe + 3.6 + labelW <= high : opt.xe - 3.6 - labelW >= low));
+    if (side) {
+      sheet.line(side.d > 0 ? x0 : x1, drainY, side.xe, drainY, 'drain');
+      sheet.arrow(side.xe + side.d * 2.6, drainY, side.d, 0);
+      sheet.text(side.xe + side.d * 3.6, drainY + 1.2, lab, 2.5, { a: side.d > 0 ? 'start' : 'end' });
       return;
     }
-    const d = ltr ? 1 : -1;
-    const xe = d > 0 ? x1 + 4 : x0 - 4;
-    sh.line(d > 0 ? x0 : x1, yd, xe, yd, 'drain');
-    sh.arrow(xe + d * 2.6, yd, d, 0);
-    if (d > 0) sh.text(Math.max(lo + lw, Math.min(hi, xe + 2.6)), yd + 4.4, lab, 2.5, { a: 'end' });
-    else sh.text(Math.min(hi - lw, Math.max(lo, xe - 2.6)), yd + 4.4, lab, 2.5);
+    const dir = ltr ? 1 : -1;
+    const endX = dir > 0 ? x1 + 4 : x0 - 4;
+    sheet.line(dir > 0 ? x0 : x1, drainY, endX, drainY, 'drain');
+    sheet.arrow(endX + dir * 2.6, drainY, dir, 0);
+    if (dir > 0) sheet.text(Math.max(low + labelW, Math.min(high, endX + 2.6)), drainY + 4.4, lab, 2.5, { a: 'end' });
+    else sheet.text(Math.min(high - labelW, Math.max(low, endX - 2.6)), drainY + 4.4, lab, 2.5);
   }
 
   /** Где можно писать под строкой r: мимо переноса строки и столбца компрессоров — [lo, hi]. */
-  static drainRoom(G, r, yd) {
-    const ltr = r % 2 === 0;
-    const next = r < G.rows - 1;
-    if (!ltr && next) return [G.xL + 2, 200];
-    return [G.colBot < yd - 4 ? 26 : G.xCol + 2, ltr && next ? G.xR - 2 : 200];
+  static drainRoom(grid, row, drainY) {
+    const ltr = row % 2 === 0;
+    const next = row < grid.rows - 1;
+    if (!ltr && next) return [grid.xL + 2, 200];
+    return [grid.colBot < drainY - 4 ? 26 : grid.xCol + 2, ltr && next ? grid.xR - 2 : 200];
   }
 }

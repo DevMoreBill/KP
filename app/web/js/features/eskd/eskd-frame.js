@@ -2,12 +2,12 @@ import { EskdSheet } from './eskd-sheet.js';
 
 /** Рамка листа А4 и основная надпись. */
 export class EskdFrame {
-  static R = 205;
-  static B = 292;
-  static H = 2.5;
+  static RIGHT = 205;
+  static BOTTOM = 292;
+  static TEXT_H = 2.5;
 
   /** Линии формы 1 от правого нижнего угла рамки: вертикальные [x, y0, y1, тип]. */
-  static V1 = [
+  static LINES_V = [
     [185, 0, 55],
     [120, 0, 55],
     [130, 0, 55],
@@ -23,7 +23,7 @@ export class EskdFrame {
   ];
 
   /** Горизонтальные [y, x0, x1, тип]. */
-  static H1 = [
+  static LINES_H = [
     [55, 185, 0],
     [35, 185, 120],
     [30, 185, 120],
@@ -68,127 +68,139 @@ export class EskdFrame {
     [95, 'Справ. №'],
   ];
 
-  static X(v) {
-    return EskdFrame.R - v;
+  /** Отступ v от правого края рамки — координата x. */
+  static fromRight(value) {
+    return EskdFrame.RIGHT - value;
   }
 
-  static Y(v) {
-    return EskdFrame.B - v;
+  /** Отступ v от нижнего края рамки — координата y. */
+  static fromBottom(value) {
+    return EskdFrame.BOTTOM - value;
   }
 
   /** Tb — {name, doc, code, lit, mass, scale, sheet, sheets, org, dev, date, next}. */
-  static draw(sh, tb) {
-    sh.rect([20, 5, 185, 287], 'frame');
-    if (tb.next) EskdFrame.form2a(sh, tb);
-    else EskdFrame.form1(sh, tb);
-    EskdFrame.margin(sh, !tb.next);
-    EskdFrame.code26(sh, tb);
-    sh.text(95, 296, 'Копировал', EskdFrame.H);
-    sh.text(163, 296, `Формат ${sh.fmt}`, EskdFrame.H);
+  static draw(sheet, titleBlock) {
+    sheet.rect([20, 5, 185, 287], 'frame');
+    if (titleBlock.next) EskdFrame.form2a(sheet, titleBlock);
+    else EskdFrame._form1(sheet, titleBlock);
+    EskdFrame.margin(sheet, !titleBlock.next);
+    EskdFrame.code26(sheet, titleBlock);
+    sheet.text(95, 296, 'Копировал', EskdFrame.TEXT_H);
+    sheet.text(163, 296, `Формат ${sheet.fmt}`, EskdFrame.TEXT_H);
   }
 
-  static form1(sh, tb) {
-    const { X, Y } = EskdFrame;
-    for (const [x, a, b, t] of EskdFrame.V1) sh.line(X(x), Y(a), X(x), Y(b), t || 'frame');
-    for (const [y, a, b, t] of EskdFrame.H1) sh.line(X(a), Y(y), X(b), Y(y), t || 'frame');
-    const cell = (x, y, s, o = {}) =>
-      sh.text(X(x), Y(y) + (o.h || EskdFrame.H) / 2, s, o.h || EskdFrame.H, { a: o.a || 'middle' });
-    for (const [x, s] of EskdFrame.CHANGES) cell(x, 32.5, s);
-    for (const [y, s] of EskdFrame.SIGNS) cell(184.3, y, s, { a: 'start' });
-    EskdFrame.fields(tb, cell);
-    EskdFrame.name(sh, tb);
-    if (tb.code) {
-      const [t, hs] = EskdSheet.fit(tb.code, 116, 7, 3.5);
-      cell(60, 47.5, t, { h: hs });
+  static _form1(sheet, titleBlock) {
+    const { fromRight: fromRight, fromBottom: fromBottom } = EskdFrame;
+    for (const [x, start, end, type] of EskdFrame.LINES_V)
+      sheet.line(fromRight(x), fromBottom(start), fromRight(x), fromBottom(end), type || 'frame');
+    for (const [y, start, end, type] of EskdFrame.LINES_H)
+      sheet.line(fromRight(start), fromBottom(y), fromRight(end), fromBottom(y), type || 'frame');
+    const cell = (x, y, text, opts = {}) =>
+      sheet.text(fromRight(x), fromBottom(y) + (opts.h || EskdFrame.TEXT_H) / 2, text, opts.h || EskdFrame.TEXT_H, {
+        a: opts.a || 'middle',
+      });
+    for (const [x, text] of EskdFrame.CHANGES) cell(x, 32.5, text);
+    for (const [y, text] of EskdFrame.SIGNS) cell(184.3, y, text, { a: 'start' });
+    EskdFrame.fields(titleBlock, cell);
+    EskdFrame.name(sheet, titleBlock);
+    if (titleBlock.code) {
+      const [type, textH] = EskdSheet.fit(titleBlock.code, 116, 7, 3.5);
+      cell(60, 47.5, type, { h: textH });
     }
-    if (tb.org) {
-      const L = EskdSheet.wrap(tb.org, 47, 3.5).slice(0, 2);
-      L.forEach((s, i) => {
-        const [t, hs] = EskdSheet.fit(s, 47, 3.5, 2.5);
-        sh.text(X(25), Y(7.5) + hs / 2 + (i - (L.length - 1) / 2) * 4.6, t, hs, { a: 'middle' });
+    if (titleBlock.org) {
+      const lines = EskdSheet.wrap(titleBlock.org, 47, 3.5).slice(0, 2);
+      lines.forEach((text, i) => {
+        const [type, textH] = EskdSheet.fit(text, 47, 3.5, 2.5);
+        sheet.text(fromRight(25), fromBottom(7.5) + textH / 2 + (i - (lines.length - 1) / 2) * 4.6, type, textH, {
+          a: 'middle',
+        });
       });
     }
   }
 
   /** Разработчик, дата, литера, масса, масштаб, лист и листов. */
-  static fields(tb, cell) {
-    const h = EskdFrame.H;
-    if (tb.dev) {
-      const [s, hs] = EskdSheet.fit(tb.dev, 21.5, h, 1.8);
-      cell(167.3, 27.5, s, { a: 'start', h: hs });
+  static fields(titleBlock, cell) {
+    const textH = EskdFrame.TEXT_H;
+    if (titleBlock.dev) {
+      const [text, fittedH] = EskdSheet.fit(titleBlock.dev, 21.5, textH, 1.8);
+      cell(167.3, 27.5, text, { a: 'start', h: fittedH });
     }
-    const dt = EskdSheet.date(tb.date) || tb.date;
-    if (dt) cell(125, 27.5, dt, { h: EskdSheet.fit(dt, 9.4, h, 1.6)[1] });
-    for (const [x, s] of [
+    const date = EskdSheet.date(titleBlock.date) || titleBlock.date;
+    if (date) cell(125, 27.5, date, { h: EskdSheet.fit(date, 9.4, textH, 1.6)[1] });
+    for (const [x, text] of [
       [42, 'Лит.'],
       [26.5, 'Масса'],
       [9, 'Масштаб'],
     ])
-      cell(x, 37.5, s);
-    if (tb.lit) cell(47.5, 27.5, tb.lit, { h: 3.5 });
-    if (tb.mass) cell(26.5, 27.5, tb.mass, { h: EskdSheet.fit(tb.mass, 16, 3.5, 2.5)[1] });
-    if (tb.scale) cell(9, 27.5, tb.scale, { h: EskdSheet.fit(tb.scale, 17, 3.5, 2.5)[1] });
+      cell(x, 37.5, text);
+    if (titleBlock.lit) cell(47.5, 27.5, titleBlock.lit, { h: 3.5 });
+    if (titleBlock.mass) cell(26.5, 27.5, titleBlock.mass, { h: EskdSheet.fit(titleBlock.mass, 16, 3.5, 2.5)[1] });
+    if (titleBlock.scale) cell(9, 27.5, titleBlock.scale, { h: EskdSheet.fit(titleBlock.scale, 17, 3.5, 2.5)[1] });
     cell(49, 17.5, 'Лист', { a: 'start' });
     cell(29, 17.5, 'Листов', { a: 'start' });
-    if (tb.sheet) cell(36, 17.5, String(tb.sheet));
-    if (tb.sheets) cell(8.5, 17.5, String(tb.sheets));
+    if (titleBlock.sheet) cell(36, 17.5, String(titleBlock.sheet));
+    if (titleBlock.sheets) cell(8.5, 17.5, String(titleBlock.sheets));
   }
 
   /** Графа 1 (70 × 25 мм): наименование изделия и документа — крупно, если помещается, иначе мельче. */
-  static name(sh, tb) {
-    for (const [hh, nmax] of [
+  static name(sheet, titleBlock) {
+    for (const [textH, nmax] of [
       [3.5, 3],
       [3, 4],
       [2.5, 5],
     ]) {
-      const dl = EskdSheet.wrap(tb.doc || '', 66, hh);
-      const nl = EskdSheet.wrap(tb.name || '', 66, hh);
-      const lh = hh * 1.3;
-      const room = Math.floor((23.5 - dl.length * lh) / lh);
-      if (!(nl.length > Math.min(nmax, room) && hh > 2.5)) {
-        const L = nl.slice(0, room);
-        if (nl.length > room) L[room - 1] = EskdSheet.fit(`${L[room - 1]} ${nl[room]}`, 66, hh, hh)[0];
-        const all = [...L, ...dl];
-        const y0 = EskdFrame.Y(27.5) - (all.length * lh) / 2 + hh * 0.95;
-        all.forEach((t, i) => sh.text(EskdFrame.X(85), y0 + i * lh, t, hh, { a: 'middle' }));
+      const docLines = EskdSheet.wrap(titleBlock.doc || '', 66, textH);
+      const nameLines = EskdSheet.wrap(titleBlock.name || '', 66, textH);
+      const lineH = textH * 1.3;
+      const room = Math.floor((23.5 - docLines.length * lineH) / lineH);
+      if (!(nameLines.length > Math.min(nmax, room) && textH > 2.5)) {
+        const lines = nameLines.slice(0, room);
+        if (nameLines.length > room)
+          lines[room - 1] = EskdSheet.fit(`${lines[room - 1]} ${nameLines[room]}`, 66, textH, textH)[0];
+        const all = [...lines, ...docLines];
+        const y0 = EskdFrame.fromBottom(27.5) - (all.length * lineH) / 2 + textH * 0.95;
+        all.forEach((line, i) => sheet.text(EskdFrame.fromRight(85), y0 + i * lineH, line, textH, { a: 'middle' }));
         return;
       }
     }
   }
 
   /** Форма 2а: изменения, обозначение документа, номер листа. */
-  static form2a(sh, tb) {
-    const { X, Y, R, B, H: h } = EskdFrame;
-    sh.line(X(185), Y(15), R, Y(15), 'frame');
-    for (const x of [178, 168, 145, 130, 120, 10]) sh.line(X(x), Y(15), X(x), B, 'frame');
-    sh.line(X(185), Y(5), X(120), Y(5), 'frame');
-    sh.line(X(185), Y(10), X(120), Y(10), 'thin');
-    sh.line(X(10), Y(8), R, Y(8), 'frame');
-    for (const [x, t] of EskdFrame.CHANGES) sh.text(X(x), Y(2.5) + h / 2, t, h, { a: 'middle' });
-    sh.text(X(5), Y(11.5) + h / 2, 'Лист', h, { a: 'middle' });
-    if (tb.sheet) sh.text(X(5), Y(4) + 1.75, String(tb.sheet), 3.5, { a: 'middle' });
-    if (tb.code) {
-      const [t, hs] = EskdSheet.fit(tb.code, 104, 7, 3.5);
-      sh.text(X(65), Y(7.5) + hs / 2, t, hs, { a: 'middle' });
+  static form2a(sheet, titleBlock) {
+    const { fromRight: fromRight, fromBottom: fromBottom, RIGHT: right, BOTTOM: bottom, TEXT_H: textH } = EskdFrame;
+    sheet.line(fromRight(185), fromBottom(15), right, fromBottom(15), 'frame');
+    for (const x of [178, 168, 145, 130, 120, 10])
+      sheet.line(fromRight(x), fromBottom(15), fromRight(x), bottom, 'frame');
+    sheet.line(fromRight(185), fromBottom(5), fromRight(120), fromBottom(5), 'frame');
+    sheet.line(fromRight(185), fromBottom(10), fromRight(120), fromBottom(10), 'thin');
+    sheet.line(fromRight(10), fromBottom(8), right, fromBottom(8), 'frame');
+    for (const [x, text] of EskdFrame.CHANGES)
+      sheet.text(fromRight(x), fromBottom(2.5) + textH / 2, text, textH, { a: 'middle' });
+    sheet.text(fromRight(5), fromBottom(11.5) + textH / 2, 'Лист', textH, { a: 'middle' });
+    if (titleBlock.sheet)
+      sheet.text(fromRight(5), fromBottom(4) + 1.75, String(titleBlock.sheet), 3.5, { a: 'middle' });
+    if (titleBlock.code) {
+      const [text, fittedH] = EskdSheet.fit(titleBlock.code, 104, 7, 3.5);
+      sheet.text(fromRight(65), fromBottom(7.5) + fittedH / 2, text, fittedH, { a: 'middle' });
     }
   }
 
   /** Дополнительные графы на поле подшивки: 19–23 (внизу), на первом листе — и 24–25 (вверху). */
-  static margin(sh, full) {
-    for (const y of [292, 267, 232, 207, 182, 147]) sh.line(8, y, 20, y, 'frame');
-    if (full) for (const y of [5, 65, 125]) sh.line(8, y, 20, y, 'frame');
+  static margin(sheet, full) {
+    for (const y of [292, 267, 232, 207, 182, 147]) sheet.line(8, y, 20, y, 'frame');
+    if (full) for (const y of [5, 65, 125]) sheet.line(8, y, 20, y, 'frame');
     for (const x of [8, 13]) {
-      sh.line(x, 147, x, 292, 'frame');
-      if (full) sh.line(x, 5, x, 125, 'frame');
+      sheet.line(x, 147, x, 292, 'frame');
+      if (full) sheet.line(x, 5, x, 125, 'frame');
     }
-    for (const [y, s] of EskdFrame.MARGIN.slice(0, full ? 7 : 5)) sh.vtext(10.5, y, s, EskdFrame.H);
+    for (const [y, text] of EskdFrame.MARGIN.slice(0, full ? 7 : 5)) sheet.vtext(10.5, y, text, EskdFrame.TEXT_H);
   }
 
   /** Графа 26 — обозначение документа, повёрнутое на 180°. */
-  static code26(sh, tb) {
-    sh.rect([20, 5, 70, 14], 'frame');
-    if (!tb.code) return;
-    const [t, hs] = EskdSheet.fit(tb.code, 66, 5, 2.5);
-    sh.text(55, 12 - hs / 2, t, hs, { a: 'middle', rot: 180 });
+  static code26(sheet, titleBlock) {
+    sheet.rect([20, 5, 70, 14], 'frame');
+    if (!titleBlock.code) return;
+    const [text, fittedH] = EskdSheet.fit(titleBlock.code, 66, 5, 2.5);
+    sheet.text(55, 12 - fittedH / 2, text, fittedH, { a: 'middle', rot: 180 });
   }
 }

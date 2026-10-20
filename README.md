@@ -526,6 +526,17 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.138.0 — что сделано:** «чистый код», часть 3: `features/eskd/` — говорящие имена, в том числе поля рамки значка
+(`sheet`, `item`, `scale`, `width`, `height`, `centerX`, `centerY`, `minSide`), поля схем (`StationScheme.sheet`, `air`,
+`units`; `HydroScheme.sheet`, `pumps`, `req`) и члены классов (`EskdSheet.fmt`, `stroke`, `textWidth`, `ARROW`,
+`DOTS_PER_MM`; `EskdFrame.RIGHT`, `BOTTOM`, `TEXT_H`, `fromRight`, `fromBottom`; `HydroScheme.X_LEFT`); `IconUnits.tank` и
+`IconAir.refrig` разбиты на шаги; внутренние методы — закрытые, у открытых — описание. В исключения длины имени добавлены
+пары координат `x2 y2 z2` и словарь геометрии (`Le We He`, `Li Wi Hi`, `ox oy`). `features/draw/` — то же: поля
+чертежа (`plan`, `meta`, `geo`, `floorZ`, `roofItems`, `dguDoors`, `serviceFront`, `outside`, `field`, `scale`, `left`,
+`right`, `ground`, `sheetX`, `sheetZ` …), у частей — `this.drawing` вместо `this.o`; константы `WIDTH`, `HEIGHT`,
+`TITLE_TOP`, `AZIMUTH`, `ELEVATION`; числа — `Mm.text`; `View3dUnits.dguAlong` разбит на шаги; папка — под строгим ESLint.
+В слепок добавлены все листы чертежа: 2 891 результат (чертежи всех листов, схемы, значки, 3D-вид) совпал с прежним кодом.
+
 **3.137.0 — что сделано:** «чистый код», часть 2: `features/rules/` и `features/rules-doc/` — говорящие имена,
 в том числе поля классов (`RulesPanel.root`, `layout`, `ruleEdit`, `ruleQuery`, `statusFilter`; `LayoutEditor.panel`,
 `work`, `query`; `LayoutForm.editor`; `RuleEdit.panel`, `value`); `StationRules.v` → `StationRules.value`,

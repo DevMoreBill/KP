@@ -103,8 +103,8 @@ const jsdoc = {
 const KP = { rules: { 'no-undef': noUndef, jsdoc } };
 
 // папки, где уже наведён «чистый код» (решение владельца 20.10): говорящие имена и JSDoc у открытых методов
-const CLEAN = ['tz', 'tz-out', 'calc', 'rules', 'rules-doc'].map(d => `app/web/js/features/${d}/*.js`);
-const NAMES = { min: 3, properties: 'never', exceptions: ['i', 'j', 'k', 'x', 'y', 'z', 'x0', 'x1', 'y0', 'y1', 'z0', 'z1', 'dx', 'dy', 'dz', 'id', 'ok', 'kw', 'el', 'db', 'of', '_'] };
+const CLEAN = ['tz', 'tz-out', 'calc', 'rules', 'rules-doc', 'eskd', 'draw'].map(d => `app/web/js/features/${d}/*.js`);
+const NAMES = { min: 3, properties: 'never', exceptions: ['i', 'j', 'k', 'x', 'y', 'z', 'x0', 'x1', 'x2', 'y0', 'y1', 'y2', 'z0', 'z1', 'z2', 'dx', 'dy', 'dz', 'id', 'ok', 'kw', 'el', 'db', 'of', 'ox', 'oy', 'Li', 'Wi', 'Hi', 'Le', 'We', 'He', '_'] };
 
 // строгие правила переписанного кода (ES-модули): без вложенных «?:» и длинных цепочек условий, короткие методы
 const MODULES = SharedNames.files(JS_DIR).filter(f => ESM.test(fs.readFileSync(f, 'utf8'))).map(f => path.relative(ROOT, f).split(path.sep).join('/'));

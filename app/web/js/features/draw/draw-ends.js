@@ -1,329 +1,383 @@
+import { Mm } from '../layout/mm.js';
 import { EquipIcon } from '../eskd/equip-icon.js';
 import { EskdSheet } from '../eskd/eskd-sheet.js';
-import { StationLayout } from '../layout/station-layout.js';
 import { StationVent } from '../layout/station-vent.js';
 
 /** Виды с торцов: ворота, двери, жалюзи, колпаки, двери-жалюзи и выхлоп ДГУ, размеры. */
 export class DrawEnds {
-  constructor(o) {
-    this.o = o;
+  constructor(drawing) {
+    this.drawing = drawing;
   }
 
   /** Вид слева: торец у двери снаружи. */
-  end(sh, x0) {
-    const { k, We, oy, zf } = this.o;
-    const Z = v => this.o.Z(v);
-    const XL = y => x0 + (We - y) * k;
-    this.endBody(sh, XL, false);
-    const fu = this.o.fuel;
-    if (fu && fu.fill.wall === 'left') {
-      const b = Math.max(1.2, 220 * k);
-      const [yc, zc] = [XL(oy + fu.fill.y), Z(zf + fu.fill.z)];
-      sh.rect([yc - b / 2, zc - b / 2, b, b], 'main', '#fff');
-      sh.line(yc - b / 2, zc - b / 2 + 0.5, yc + b / 2, zc - b / 2 + 0.5, 'thin');
+  end(sheet, x0) {
+    const { scale: k, We, oy, floorZ: floorZ } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const toX = y => x0 + (We - y) * k;
+    this.endBody(sheet, toX, false);
+    const fuel = this.drawing.fuel;
+    if (fuel && fuel.fill.wall === 'left') {
+      const barW = Math.max(1.2, 220 * k);
+      const [fillX, fillZ] = [toX(oy + fuel.fill.y), toZ(floorZ + fuel.fill.z)];
+      sheet.rect([fillX - barW / 2, fillZ - barW / 2, barW, barW], 'main', '#fff');
+      sheet.line(fillX - barW / 2, fillZ - barW / 2 + 0.5, fillX + barW / 2, fillZ - barW / 2 + 0.5, 'thin');
     }
-    const [cw, chh] = this.endCorners(sh, XL);
-    if (this.o.g.sea) this.seaDoors(sh, XL, chh);
-    else this.leftOpenings(sh, XL, [cw, chh]);
-    const vent = v => this.louverEnd(sh, [XL(oy + v.u1), XL(oy + v.u0)], [Z(zf + v.z1), Z(zf + v.z0)], v.fan);
-    for (const v of this.o.vents('left', true)) vent(v);
-    this.roofHoods(sh, XL);
-    for (const v of this.o.vents('left')) vent(v);
-    for (const v of [...this.o.vents('left'), ...this.o.vents('left', true)].filter(q => q.hood))
-      this.hoodEnd(sh, XL, v);
-    this.endMufflers(sh, XL, false);
+    const [cornerW, chh] = this.endCorners(sheet, toX);
+    if (this.drawing.geo.sea) this.seaDoors(sheet, toX, chh);
+    else this.leftOpenings(sheet, toX, [cornerW, chh]);
+    const vent = louver =>
+      this.louverEnd(
+        sheet,
+        [toX(oy + louver.u1), toX(oy + louver.u0)],
+        [toZ(floorZ + louver.z1), toZ(floorZ + louver.z0)],
+        louver.fan,
+      );
+    for (const louver of this.drawing.vents('left', true)) vent(louver);
+    this.roofHoods(sheet, toX);
+    for (const louver of this.drawing.vents('left')) vent(louver);
+    for (const louver of [...this.drawing.vents('left'), ...this.drawing.vents('left', true)].filter(
+      hooded => hooded.hood,
+    ))
+      this.hoodEnd(sheet, toX, louver);
+    this.endMufflers(sheet, toX, false);
   }
 
   /** Шасси, корпус и крыша с торца (P — ширина → лист; rev — порядок вершин крыши для вида справа). */
-  endBody(sh, P, rev) {
-    const { k, We, He, rise: rz } = this.o;
-    const Z = v => this.o.Z(v);
-    const x0 = P(rev ? 0 : We);
-    if (this.o.dz) {
-      const [r, w] = [420 * k, 300 * k];
-      sh.rect([x0 + 40 * k, Z(0), We * k - 80 * k, 200 * k], 'main', '#fff');
-      for (const x of [x0 + 60 * k, x0 + We * k - 60 * k - w])
-        sh.rect([x, this.o.Yg - 2 * r, w, 2 * r], 'main', '#fff');
-      sh.line(x0 - 3, this.o.Yg, x0 + We * k + 3, this.o.Yg, 'thin');
+  endBody(sheet, toX, rev) {
+    const { scale: k, We, He, rise: rise } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const x0 = toX(rev ? 0 : We);
+    if (this.drawing.dz) {
+      const [wheel, wheelW] = [420 * k, 300 * k];
+      sheet.rect([x0 + 40 * k, toZ(0), We * k - 80 * k, 200 * k], 'main', '#fff');
+      for (const x of [x0 + 60 * k, x0 + We * k - 60 * k - wheelW])
+        sheet.rect([x, this.drawing.ground - 2 * wheel, wheelW, 2 * wheel], 'main', '#fff');
+      sheet.line(x0 - 3, this.drawing.ground, x0 + We * k + 3, this.drawing.ground, 'thin');
     }
-    sh.rect([x0, Z(He), We * k, He * k], 'main', '#fff');
-    if (!rz) return;
-    const roof = this.o.g.roof;
+    sheet.rect([x0, toZ(He), We * k, He * k], 'main', '#fff');
+    if (!rise) return;
+    const roof = this.drawing.geo.roof;
     if (roof === 'arch') {
-      const rc = ((We * We) / 4 + rz * rz) / (2 * rz);
-      const A = [];
+      const radius = ((We * We) / 4 + rise * rise) / (2 * rise);
+      const arc = [];
       for (let j = 0; j <= 16; j++) {
         const y = (We * j) / 16;
-        A.push([P(y), Z(He + rz - rc + Math.sqrt(Math.max(0, rc * rc - (y - We / 2) * (y - We / 2))))]);
+        arc.push([
+          toX(y),
+          toZ(He + rise - radius + Math.sqrt(Math.max(0, radius * radius - (y - We / 2) * (y - We / 2)))),
+        ]);
       }
-      sh.poly(A, 'main', '#fff');
+      sheet.poly(arc, 'main', '#fff');
       return;
     }
     // двускатная — конёк посередине; односкатная — выше у стены с дверью
-    const T =
+    const roofPts =
       roof === 'gable'
         ? [
-            [P(We), Z(He)],
-            [P(We / 2), Z(He + rz)],
-            [P(0), Z(He)],
+            [toX(We), toZ(He)],
+            [toX(We / 2), toZ(He + rise)],
+            [toX(0), toZ(He)],
           ]
         : [
-            [P(We), Z(He)],
-            [P(0), Z(He + rz)],
-            [P(0), Z(He)],
+            [toX(We), toZ(He)],
+            [toX(0), toZ(He + rise)],
+            [toX(0), toZ(He)],
           ];
-    sh.poly(rev ? T.reverse() : T, 'main', '#fff');
+    sheet.poly(rev ? roofPts.reverse() : roofPts, 'main', '#fff');
   }
 
   /** Угловые фитинги (стойки) и стыки модулей; возвращает размер фитинга [cw, chh]. */
-  endCorners(sh, P) {
-    const { k, We, He } = this.o;
-    const Z = v => this.o.Z(v);
-    const cw = Math.max(0.6, 160 * k);
+  endCorners(sheet, toX) {
+    const { scale: k, We, He } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const cornerW = Math.max(0.6, 160 * k);
     const chh = Math.max(0.6, 120 * k);
-    const [a, b] = [Math.min(P(0), P(We)), Math.max(P(0), P(We))];
+    const [low, high] = [Math.min(toX(0), toX(We)), Math.max(toX(0), toX(We))];
     for (const [x, y] of [
-      [a, Z(He)],
-      [b - cw, Z(He)],
-      [a, Z(0) - chh],
-      [b - cw, Z(0) - chh],
+      [low, toZ(He)],
+      [high - cornerW, toZ(He)],
+      [low, toZ(0) - chh],
+      [high - cornerW, toZ(0) - chh],
     ])
-      sh.rect([x, y, cw, chh], 'thin');
-    const md = this.o.p.geo.mods;
-    if (md && md.Lm) for (let j = 1; j < md.b; j++) sh.line(P(j * md.Wm), Z(He) - 2, P(j * md.Wm), Z(0) + 2, 'phantom');
-    return [cw, chh];
+      sheet.rect([x, y, cornerW, chh], 'thin');
+    const mods = this.drawing.plan.geo.mods;
+    if (mods && mods.Lm)
+      for (let j = 1; j < mods.b; j++)
+        sheet.line(toX(j * mods.Wm), toZ(He) - 2, toX(j * mods.Wm), toZ(0) + 2, 'phantom');
+    return [cornerW, chh];
   }
 
   /** Штатные двери морского контейнера: две створки, запорные штанги. */
-  seaDoors(sh, XL, chh) {
-    const { k, We, He } = this.o;
-    const Z = v => this.o.Z(v);
-    const xm = (XL(We) + XL(0)) / 2;
-    const [y1, y2] = [Z(He) + chh, Z(0) - chh];
-    sh.line(xm, y1, xm, y2, 'main');
-    for (const f of [0.18, 0.36, 0.64, 0.82]) {
-      const x = XL(We) + We * k * f;
-      sh.line(x, y1 + 0.6, x, y2 - 0.6, 'thin');
+  seaDoors(sheet, toX, chh) {
+    const { scale: k, We, He } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const midX = (toX(We) + toX(0)) / 2;
+    const [y1, y2] = [toZ(He) + chh, toZ(0) - chh];
+    sheet.line(midX, y1, midX, y2, 'main');
+    for (const frac of [0.18, 0.36, 0.64, 0.82]) {
+      const x = toX(We) + We * k * frac;
+      sheet.line(x, y1 + 0.6, x, y2 - 0.6, 'thin');
     }
   }
 
   /** Торец у входа блок-контейнера: стойки, ворота (и отсека бака), дверь оператора, дверь-жалюзи ДГУ. */
-  leftOpenings(sh, XL, [cw, chh]) {
-    const { We, He, oy, zf } = this.o;
-    const Z = v => this.o.Z(v);
-    sh.line(XL(We) + cw * 0.5, Z(He) + chh, XL(We) + cw * 0.5, Z(0) - chh, 'thin');
-    sh.line(XL(0) - cw * 0.5, Z(He) + chh, XL(0) - cw * 0.5, Z(0) - chh, 'thin');
-    for (const q of this.o.gts) if (q.wall === 'left') this.gateEnd(sh, XL, q);
-    if (this.o.fuel && this.o.fuel.gate) this.gateEnd(sh, XL, this.o.fuel.gate);
-    if (this.o.en && this.o.en.wall === 'left') this.doorEnd(sh, XL, this.o.en);
-    const d = this.o.dgL;
-    if (d) this.dguDoorView(sh, XL(oy + d.y1), XL(oy + d.y0), Z(zf + d.h), Z(zf));
+  leftOpenings(sheet, toX, [cornerW, chh]) {
+    const { We, He, oy, floorZ: floorZ } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    sheet.line(toX(We) + cornerW * 0.5, toZ(He) + chh, toX(We) + cornerW * 0.5, toZ(0) - chh, 'thin');
+    sheet.line(toX(0) - cornerW * 0.5, toZ(He) + chh, toX(0) - cornerW * 0.5, toZ(0) - chh, 'thin');
+    for (const gate of this.drawing.gates) if (gate.wall === 'left') this.gateEnd(sheet, toX, gate);
+    if (this.drawing.fuel && this.drawing.fuel.gate) this.gateEnd(sheet, toX, this.drawing.fuel.gate);
+    if (this.drawing.entry && this.drawing.entry.wall === 'left') this.doorEnd(sheet, toX, this.drawing.entry);
+    const door = this.drawing.dguLeft;
+    if (door) this.dguDoorView(sheet, toX(oy + door.y1), toX(oy + door.y0), toZ(floorZ + door.h), toZ(floorZ));
   }
 
   /** Колпаки выброса на крыше — с торца. */
-  roofHoods(sh, P) {
-    const { k, He, oy } = this.o;
-    const hz = Math.max(1, StationVent.HOOD * k);
-    for (const R of this.o.hoods())
-      sh.rect([Math.min(P(oy + R.y0), P(oy + R.y1)), this.o.Z(He) - hz, (R.y1 - R.y0) * k, hz], 'main', '#fff');
+  roofHoods(sheet, toX) {
+    const { scale: k, He, oy } = this.drawing;
+    const hoodH = Math.max(1, StationVent.HOOD * k);
+    for (const roof of this.drawing.hoods())
+      sheet.rect(
+        [
+          Math.min(toX(oy + roof.y0), toX(oy + roof.y1)),
+          this.drawing.sheetZ(He) - hoodH,
+          (roof.y1 - roof.y0) * k,
+          hoodH,
+        ],
+        'main',
+        '#fff',
+      );
   }
 
   /** Глушители с торца: вдоль — круг корпуса на опоре (справа — с выходом), поперёк — сбоку. */
-  endMufflers(sh, P, out) {
-    const { k, He, oy } = this.o;
-    const Z = v => this.o.Z(v);
-    for (const m of this.o.rf) {
-      if (m.dir === 'y+') {
-        this.o.side.mufflerAcross(sh, P, m);
+  endMufflers(sheet, toX, out) {
+    const { scale: k, He, oy } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    for (const muffler of this.drawing.roofItems) {
+      if (muffler.dir === 'y+') {
+        this.drawing.side.mufflerAcross(sheet, toX, muffler);
         continue;
       }
-      const xc = P(oy + m.y + m.d / 2);
-      const zc = Z(He + m.gap + m.d / 2);
-      sh.line(xc, Z(He), xc, Z(He + m.gap), 'main');
-      sh.circle(xc, zc, (m.d / 2) * k, 'main', '#fff');
-      if (out) sh.circle(xc, zc, Math.max(0.6, 60 * k), 'main', '#fff');
+      const midX = toX(oy + muffler.y + muffler.d / 2);
+      const midZ = toZ(He + muffler.gap + muffler.d / 2);
+      sheet.line(midX, toZ(He), midX, toZ(He + muffler.gap), 'main');
+      sheet.circle(midX, midZ, (muffler.d / 2) * k, 'main', '#fff');
+      if (out) sheet.circle(midX, midZ, Math.max(0.6, 60 * k), 'main', '#fff');
     }
   }
 
   /** Дверь-жалюзи ДГУ на виде. */
-  dguDoorView(sh, xa, xb, za, zb) {
-    const k = this.o.k;
-    const a = Math.min(xa, xb);
-    const b = Math.max(xa, xb);
-    const xm = (a + b) / 2;
-    this.louverEnd(sh, [a, xm], [za, zb]);
-    this.louverEnd(sh, [xm, b], [za, zb]);
-    sh.rect([a, za, b - a, zb - za], 'main');
-    for (const f of [0.15, 0.5, 0.85]) {
-      const z = za + (zb - za) * f;
-      const hl = Math.max(0.8, 120 * k);
-      sh.rect([a - 0.5, z, 0.8, hl], 'thin', '#000');
-      sh.rect([b - 0.3, z, 0.8, hl], 'thin', '#000');
+  dguDoorView(sheet, leftX, rightX, topZ, botZ) {
+    const k = this.drawing.scale;
+    const low = Math.min(leftX, rightX);
+    const high = Math.max(leftX, rightX);
+    const midX = (low + high) / 2;
+    this.louverEnd(sheet, [low, midX], [topZ, botZ]);
+    this.louverEnd(sheet, [midX, high], [topZ, botZ]);
+    sheet.rect([low, topZ, high - low, botZ - topZ], 'main');
+    for (const frac of [0.15, 0.5, 0.85]) {
+      const z = topZ + (botZ - topZ) * frac;
+      const pipeW = Math.max(0.8, 120 * k);
+      sheet.rect([low - 0.5, z, 0.8, pipeW], 'thin', '#000');
+      sheet.rect([high - 0.3, z, 0.8, pipeW], 'thin', '#000');
     }
-    for (const dx of [-0.7, 0.7]) sh.line(xm + dx, za + 0.6, xm + dx, zb - 0.6, 'thin');
+    for (const dx of [-0.7, 0.7]) sheet.line(midX + dx, topZ + 0.6, midX + dx, botZ - 0.6, 'thin');
   }
   /** Выхлоп ДГУ через стену на виде снаружи: гильза и отвод (окружности). */
-  exhaustView(sh, x, z) {
-    const r = Math.max(0.8, 55 * this.o.k);
-    sh.circle(x, z, r * 1.9, 'thin', '#fff');
-    sh.circle(x, z, r, 'main', '#fff');
+  exhaustView(sheet, x, z) {
+    const radius = Math.max(0.8, 55 * this.drawing.scale);
+    sheet.circle(x, z, radius * 1.9, 'thin', '#fff');
+    sheet.circle(x, z, radius, 'main', '#fff');
   }
   /** Распашные ворота на виде с торца: проём y0…y1 (мм внутри), две створки, запорные штанги; X — y → x на листе. */
-  gateEnd(sh, X, d) {
-    const Z = v => this.o.Z(v);
-    const xa = X(this.o.oy + d.y0);
-    const xb = X(this.o.oy + d.y1);
-    const za = Z(this.o.zf + d.h);
-    const zb = Z(this.o.zf);
-    const xm = (xa + xb) / 2;
-    const a = Math.min(xa, xb);
-    const w = Math.abs(xb - xa);
-    sh.rect([a, za, w, zb - za], 'main', '#fff');
-    sh.line(xm, za, xm, zb, 'main');
-    for (const dx of [-0.7, 0.7]) sh.line(xm + dx, za + 0.6, xm + dx, zb - 0.6, 'thin');
-    if (d.wicket) {
-      const ya = d.y0 + 80;
-      const wa = X(this.o.oy + ya);
-      const wb = X(this.o.oy + ya + d.wicket.w);
-      const zt = Z(this.o.zf + 60 + d.wicket.h);
-      const z0 = Z(this.o.zf + 60);
+  gateEnd(sheet, toX, door) {
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const leftX = toX(this.drawing.oy + door.y0);
+    const rightX = toX(this.drawing.oy + door.y1);
+    const topZ = toZ(this.drawing.floorZ + door.h);
+    const botZ = toZ(this.drawing.floorZ);
+    const midX = (leftX + rightX) / 2;
+    const low = Math.min(leftX, rightX);
+    const width = Math.abs(rightX - leftX);
+    sheet.rect([low, topZ, width, botZ - topZ], 'main', '#fff');
+    sheet.line(midX, topZ, midX, botZ, 'main');
+    for (const dx of [-0.7, 0.7]) sheet.line(midX + dx, topZ + 0.6, midX + dx, botZ - 0.6, 'thin');
+    if (door.wicket) {
+      const wicketY = door.y0 + 80;
+      const wicketL = toX(this.drawing.oy + wicketY);
+      const wicketR = toX(this.drawing.oy + wicketY + door.wicket.w);
+      const wicketZ = toZ(this.drawing.floorZ + 60 + door.wicket.h);
+      const z0 = toZ(this.drawing.floorZ + 60);
       // калитка в створке
-      sh.rect([Math.min(wa, wb), zt, Math.abs(wb - wa), z0 - zt], 'main');
+      sheet.rect([Math.min(wicketL, wicketR), wicketZ, Math.abs(wicketR - wicketL), z0 - wicketZ], 'main');
     }
   }
   /** Одностворчатая дверь оператора на виде с торца: полотно, ручка. */
-  doorEnd(sh, X, d) {
-    const Z = v => this.o.Z(v);
-    const xa = X(this.o.oy + d.y0);
-    const xb = X(this.o.oy + d.y1);
-    const za = Z(this.o.zf + d.h);
-    const zb = Z(this.o.zf);
-    const a = Math.min(xa, xb);
-    const w = Math.abs(xb - xa);
-    sh.rect([a, za, w, zb - za], 'main', '#fff');
-    const hx = a + w * 0.85;
-    const zh = Z(this.o.zf + 1000);
-    sh.line(hx, zh - 0.8, hx, zh + 0.8, 'main');
+  doorEnd(sheet, toX, door) {
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const leftX = toX(this.drawing.oy + door.y0);
+    const rightX = toX(this.drawing.oy + door.y1);
+    const topZ = toZ(this.drawing.floorZ + door.h);
+    const botZ = toZ(this.drawing.floorZ);
+    const low = Math.min(leftX, rightX);
+    const width = Math.abs(rightX - leftX);
+    sheet.rect([low, topZ, width, botZ - topZ], 'main', '#fff');
+    const handleX = low + width * 0.85;
+    const handleZ = toZ(this.drawing.floorZ + 1000);
+    sheet.line(handleX, handleZ - 0.8, handleX, handleZ + 0.8, 'main');
   }
   /** Маркиза на виде с торца. */
-  hoodEnd(sh, X, v) {
-    const Z = v => this.o.Z(v);
-    const H = v.hood;
-    const s = StationVent.HOOD_SIDE;
-    const zh = this.o.zf + v.z1 + StationVent.HOOD_LAP;
-    const xa = X(this.o.oy + v.u0 - s);
-    const xb = X(this.o.oy + v.u1 + s);
-    const a = Math.min(xa, xb);
-    const w = Math.abs(xb - xa);
-    const zt = Z(zh);
-    const zl = Z(zh - H.drop);
-    const la = Math.min(X(this.o.oy + v.u0), X(this.o.oy + v.u1));
-    const lw = Math.abs(X(this.o.oy + v.u1) - X(this.o.oy + v.u0));
-    sh.rect([a, zt, w, zl - zt], 'main', '#fff');
-    const z0 = Z(this.o.zf + v.z1);
-    const z1 = Math.min(zl, Z(this.o.zf + v.z0));
-    if (z1 > z0) sh.rect([la, z0, lw, z1 - z0], 'dash'); // жалюзи за козырьком
-    sh.line(a, zl - Math.max(0.4, 35 * this.o.k), a + w, zl - Math.max(0.4, 35 * this.o.k), 'thin'); // отбортовка кромки
+  hoodEnd(sheet, toX, louver) {
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const hood = louver.hood;
+    const side = StationVent.HOOD_SIDE;
+    const hoodZ = this.drawing.floorZ + louver.z1 + StationVent.HOOD_LAP;
+    const leftX = toX(this.drawing.oy + louver.u0 - side);
+    const rightX = toX(this.drawing.oy + louver.u1 + side);
+    const low = Math.min(leftX, rightX);
+    const width = Math.abs(rightX - leftX);
+    const topZ = toZ(hoodZ);
+    const lowZ = toZ(hoodZ - hood.drop);
+    const louverX = Math.min(toX(this.drawing.oy + louver.u0), toX(this.drawing.oy + louver.u1));
+    const louverW = Math.abs(toX(this.drawing.oy + louver.u1) - toX(this.drawing.oy + louver.u0));
+    sheet.rect([low, topZ, width, lowZ - topZ], 'main', '#fff');
+    const z0 = toZ(this.drawing.floorZ + louver.z1);
+    const z1 = Math.min(lowZ, toZ(this.drawing.floorZ + louver.z0));
+    if (z1 > z0) sheet.rect([louverX, z0, louverW, z1 - z0], 'dash'); // жалюзи за козырьком
+    sheet.line(
+      low,
+      lowZ - Math.max(0.4, 35 * this.drawing.scale),
+      low + width,
+      lowZ - Math.max(0.4, 35 * this.drawing.scale),
+      'thin',
+    ); // отбортовка кромки
   }
   /** Жалюзи на виде с торца: рамка и ламели. */
   /** Вентилятор в проёме жалюзи (вид снаружи): окружности осевых вентиляторов (число — по форме проёма). */
-  fanEnd(sh, xa, xb, za, zb) {
-    const w = Math.abs(xb - xa);
-    const h = Math.abs(zb - za);
-    const n = Math.max(1, Math.round(w / h));
-    const x0 = Math.min(xa, xb);
-    const r = Math.min(w / n, h) * 0.42;
-    for (let i = 0; i < n; i++) {
-      const cx = x0 + (w / n) * (i + 0.5);
-      const cz = (za + zb) / 2;
-      sh.circle(cx, cz, r, 'thin');
-      sh.circle(cx, cz, Math.max(0.3, r * 0.25), 'thin', '#fff');
+  fanEnd(sheet, leftX, rightX, topZ, botZ) {
+    const width = Math.abs(rightX - leftX);
+    const height = Math.abs(botZ - topZ);
+    const num = Math.max(1, Math.round(width / height));
+    const x0 = Math.min(leftX, rightX);
+    const radius = Math.min(width / num, height) * 0.42;
+    for (let i = 0; i < num; i++) {
+      const fanX = x0 + (width / num) * (i + 0.5);
+      const fanZ = (topZ + botZ) / 2;
+      sheet.circle(fanX, fanZ, radius, 'thin');
+      sheet.circle(fanX, fanZ, Math.max(0.3, radius * 0.25), 'thin', '#fff');
     }
   }
-  louverEnd(sh, [xa, xb], [za, zb], fan) {
-    const k = this.o.k;
-    sh.rect([Math.min(xa, xb), za, Math.abs(xb - xa), zb - za], 'main', '#fff');
-    for (let z = za + Math.max(0.8, 70 * k); z < zb - 0.4; z += Math.max(0.8, 70 * k))
-      sh.line(Math.min(xa, xb) + 0.4, z, Math.max(xa, xb) - 0.4, z, 'fine');
-    if (fan) this.fanEnd(sh, xa, xb, za, zb);
+  /** Жалюзи на виде с торца (с вентилятором — fan). */
+  louverEnd(sheet, [leftX, rightX], [topZ, botZ], fan) {
+    const k = this.drawing.scale;
+    sheet.rect([Math.min(leftX, rightX), topZ, Math.abs(rightX - leftX), botZ - topZ], 'main', '#fff');
+    for (let z = topZ + Math.max(0.8, 70 * k); z < botZ - 0.4; z += Math.max(0.8, 70 * k))
+      sheet.line(Math.min(leftX, rightX) + 0.4, z, Math.max(leftX, rightX) - 0.4, z, 'fine');
+    if (fan) this.fanEnd(sheet, leftX, rightX, topZ, botZ);
   }
   /** Вид справа: дальний торец снаружи. */
-  endR(sh, x0) {
-    const { k, oy, zf } = this.o;
-    const Z = v => this.o.Z(v);
-    const XR = y => x0 + y * k;
-    this.endBody(sh, XR, true);
-    this.endCorners(sh, XR);
-    const d = this.o.dg;
-    if (d) this.dguDoorView(sh, XR(oy + d.y0), XR(oy + d.y1), Z(zf + d.h), Z(zf));
-    const vent = v => this.louverEnd(sh, [XR(oy + v.u0), XR(oy + v.u1)], [Z(zf + v.z1), Z(zf + v.z0)], v.fan);
-    for (const v of this.o.vents('right')) vent(v);
-    for (const q of this.o.gts) if (q.wall === 'right' && !q.sea) this.gateEnd(sh, XR, q);
-    if (this.o.p.exit) this.doorEnd(sh, XR, this.o.p.exit);
-    for (const v of this.o.vents('right', true)) vent(v);
-    for (const v of [...this.o.vents('right'), ...this.o.vents('right', true)].filter(q => q.hood))
-      this.hoodEnd(sh, XR, v);
-    this.roofHoods(sh, XR);
-    for (const o of this.o.outs) this.o.side.flangeFace(sh, XR(oy + o.y), Z(zf + o.z));
-    this.endMufflers(sh, XR, true);
-    for (const it of [...this.o.ext].sort((a, c) => c.x - a.x))
-      EquipIcon.front(sh, it, [XR(oy + it.y), Z(zf + it.z + it.h), XR(oy + it.y + it.ly), Z(zf + it.z)]);
+  endR(sheet, x0) {
+    const { scale: k, oy, floorZ: floorZ } = this.drawing;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const toX = y => x0 + y * k;
+    this.endBody(sheet, toX, true);
+    this.endCorners(sheet, toX);
+    const door = this.drawing.dguRight;
+    if (door) this.dguDoorView(sheet, toX(oy + door.y0), toX(oy + door.y1), toZ(floorZ + door.h), toZ(floorZ));
+    const vent = louver =>
+      this.louverEnd(
+        sheet,
+        [toX(oy + louver.u0), toX(oy + louver.u1)],
+        [toZ(floorZ + louver.z1), toZ(floorZ + louver.z0)],
+        louver.fan,
+      );
+    for (const louver of this.drawing.vents('right')) vent(louver);
+    for (const gate of this.drawing.gates) if (gate.wall === 'right' && !gate.sea) this.gateEnd(sheet, toX, gate);
+    if (this.drawing.plan.exit) this.doorEnd(sheet, toX, this.drawing.plan.exit);
+    for (const louver of this.drawing.vents('right', true)) vent(louver);
+    for (const louver of [...this.drawing.vents('right'), ...this.drawing.vents('right', true)].filter(
+      gate => gate.hood,
+    ))
+      this.hoodEnd(sheet, toX, louver);
+    this.roofHoods(sheet, toX);
+    for (const out of this.drawing.outs) this.drawing.side.flangeFace(sheet, toX(oy + out.y), toZ(floorZ + out.z));
+    this.endMufflers(sheet, toX, true);
+    for (const item of [...this.drawing.outside].sort((first, second) => second.x - first.x))
+      EquipIcon.front(sheet, item, [
+        toX(oy + item.y),
+        toZ(floorZ + item.z + item.h),
+        toX(oy + item.y + item.ly),
+        toZ(floorZ + item.z),
+      ]);
   }
   /** Размеры видов с торцов: ширина — снизу, высота (и с крышей) — слева; у двери-жалюзи ДГУ — её размеры. */
-  endDims(sh, x0, left) {
-    const k = this.o.k;
-    const We = this.o.We;
-    const He = this.o.He;
-    const Z = v => this.o.Z(v);
-    const n = StationLayout.n;
-    const X = y => (left ? x0 + (We - y) * k : x0 + y * k);
-    const xa = Math.min(X(0), X(We));
-    const xb = Math.max(X(0), X(We));
-    sh.dimH([xa, xb], this.o.Yg + 8, n(We), [this.o.Yg, this.o.Yg]);
-    let xd = xa - 8;
-    sh.dimV([Z(He), Z(0)], xd, n(He), [xa, xa]);
-    if (this.o.rise) {
-      xd -= 7;
-      sh.dimV([Z(He + this.o.rise), Z(0)], xd, n(He + this.o.rise), [(xa + xb) / 2, xa]);
+  endDims(sheet, x0, left) {
+    const k = this.drawing.scale;
+    const We = this.drawing.We;
+    const He = this.drawing.He;
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const num = Mm.text;
+    const toX = y => (left ? x0 + (We - y) * k : x0 + y * k);
+    const leftX = Math.min(toX(0), toX(We));
+    const rightX = Math.max(toX(0), toX(We));
+    sheet.dimH([leftX, rightX], this.drawing.ground + 8, num(We), [this.drawing.ground, this.drawing.ground]);
+    let dimX = leftX - 8;
+    sheet.dimV([toZ(He), toZ(0)], dimX, num(He), [leftX, leftX]);
+    if (this.drawing.rise) {
+      dimX -= 7;
+      sheet.dimV([toZ(He + this.drawing.rise), toZ(0)], dimX, num(He + this.drawing.rise), [
+        (leftX + rightX) / 2,
+        leftX,
+      ]);
     }
-    const d = left ? this.o.dgL : this.o.dg; // у двери-жалюзи ДГУ — её размеры
-    if (d) {
-      const x1 = X(this.o.oy + d.y0);
-      const x2 = X(this.o.oy + d.y1);
-      sh.dimH([x1, x2], this.o.Yg + 15, n(d.w), [Z(this.o.zf), Z(this.o.zf)]);
-      sh.dimV([Z(this.o.zf + d.h), Z(this.o.zf)], xb + 6, n(d.h), [x2, x2]);
+    const door = left ? this.drawing.dguLeft : this.drawing.dguRight; // у двери-жалюзи ДГУ — её размеры
+    if (door) {
+      const x1 = toX(this.drawing.oy + door.y0);
+      const x2 = toX(this.drawing.oy + door.y1);
+      sheet.dimH([x1, x2], this.drawing.ground + 15, num(door.w), [toZ(this.drawing.floorZ), toZ(this.drawing.floorZ)]);
+      sheet.dimV([toZ(this.drawing.floorZ + door.h), toZ(this.drawing.floorZ)], rightX + 6, num(door.h), [x2, x2]);
     }
-    this.gateDims(sh, X, xb, left);
+    this.gateDims(sheet, toX, rightX, left);
   }
   /** Ворота в торце: ось торца (штрихпунктирная), ширина и высота проёма; смещённые — ось ворот и размер смещения. */
-  gateDims(sh, X, xb, left) {
-    const Z = v => this.o.Z(v);
-    const n = StationLayout.n;
-    const two = !left && this.o.dg;
-    const ax = X(this.o.We / 2);
-    for (const q of this.o.gts.filter(q => !q.sea && q.wall === (left ? 'left' : 'right'))) {
-      const x1 = X(this.o.oy + q.y0);
-      const x2 = X(this.o.oy + q.y1);
-      const lo = Math.min(x1, x2);
-      const hi = Math.max(x1, x2);
-      const gx = (lo + hi) / 2;
-      const yd = this.o.Yg + (two ? 22 : 15);
-      sh.line(ax, Z(this.o.He) - 3, ax, this.o.Yg + 3, 'axis');
-      if (!q.full) sh.dimH([lo, hi], yd, n(q.w), [Z(this.o.zf), Z(this.o.zf)]);
-      if (q.off) {
-        sh.line(gx, Z(this.o.zf + q.h) - 7, gx, this.o.Yg + 3, 'axis');
-        sh.dimH([Math.min(ax, gx), Math.max(ax, gx)], Z(this.o.zf + q.h) - 4, n(Math.abs(q.off)), [null, null], {
-          out: gx > ax ? 'r' : 'l',
-        });
+  gateDims(sheet, toX, rightX, left) {
+    const toZ = louver => this.drawing.sheetZ(louver);
+    const num = Mm.text;
+    const two = !left && this.drawing.dguRight;
+    const axisX = toX(this.drawing.We / 2);
+    for (const gate of this.drawing.gates.filter(gate => !gate.sea && gate.wall === (left ? 'left' : 'right'))) {
+      const x1 = toX(this.drawing.oy + gate.y0);
+      const x2 = toX(this.drawing.oy + gate.y1);
+      const low = Math.min(x1, x2);
+      const high = Math.max(x1, x2);
+      const gateX = (low + high) / 2;
+      const dimY = this.drawing.ground + (two ? 22 : 15);
+      sheet.line(axisX, toZ(this.drawing.He) - 3, axisX, this.drawing.ground + 3, 'axis');
+      if (!gate.full) sheet.dimH([low, high], dimY, num(gate.w), [toZ(this.drawing.floorZ), toZ(this.drawing.floorZ)]);
+      if (gate.off) {
+        sheet.line(gateX, toZ(this.drawing.floorZ + gate.h) - 7, gateX, this.drawing.ground + 3, 'axis');
+        sheet.dimH(
+          [Math.min(axisX, gateX), Math.max(axisX, gateX)],
+          toZ(this.drawing.floorZ + gate.h) - 4,
+          num(Math.abs(gate.off)),
+          [null, null],
+          {
+            out: gateX > axisX ? 'r' : 'l',
+          },
+        );
       } // над проёмом
-      sh.dimV([Z(this.o.zf + q.h), Z(this.o.zf)], xb + (two ? 12 : 6), n(q.h), [hi, hi]);
+      sheet.dimV([toZ(this.drawing.floorZ + gate.h), toZ(this.drawing.floorZ)], rightX + (two ? 12 : 6), num(gate.h), [
+        high,
+        high,
+      ]);
     }
   }
   /** Стрелка направления взгляда с буквой (ГОСТ 2.305): острие у контура, dir — куда смотрит (±1 по x). */
-  viewArrow(sh, x, y, dir, ch) {
-    const L = 7;
-    sh.line(x - dir * L, y, x - dir * EskdSheet.AR[0], y, 'thin');
-    sh.arrow(x, y, dir, 0);
-    sh.text(x - (dir * L) / 2, y - 1.6, ch, 5, { a: 'middle' });
+  viewArrow(sheet, x, y, dir, letter) {
+    const len = 7;
+    sheet.line(x - dir * len, y, x - dir * EskdSheet.ARROW[0], y, 'thin');
+    sheet.arrow(x, y, dir, 0);
+    sheet.text(x - (dir * len) / 2, y - 1.6, letter, 5, { a: 'middle' });
   }
 }

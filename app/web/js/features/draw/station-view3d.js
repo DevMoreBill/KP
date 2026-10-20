@@ -8,10 +8,10 @@ import { View3dUnits } from './view3d-units.js';
 
 /** 3D-вид станции в SVG (без WebGL): разрез — стенки со стороны зрителя срезаны до пояса, видно оборудование. */
 export class StationView3D {
-  static W = 1600;
-  static H = 1100;
-  static AZ = 30; // поворот вокруг вертикали, °
-  static EL = 24; // наклон взгляда сверху, °
+  static WIDTH = 1600;
+  static HEIGHT = 1100;
+  static AZIMUTH = 30;
+  static ELEVATION = 24;
   static DEFS =
     '<filter id="blur6" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter>' +
     '<filter id="blur18" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>';
@@ -22,19 +22,19 @@ export class StationView3D {
   }
 
   constructor(plan, meta) {
-    const g = plan.geo;
+    const geo = plan.geo;
     this.plan = plan;
-    this.g = g;
-    [this.Le, this.We, this.He] = g.ext;
+    this.g = geo;
+    [this.Le, this.We, this.He] = geo.ext;
     [this.Li, this.Wi, this.Hi] = plan.int;
     this.ox = (this.Le - this.Li) / 2;
     this.oy = (this.We - this.Wi) / 2;
     this.dz = plan.chassis ? meta.deck || 1150 : 0;
-    this.base = this.dz + StationGeo.zFloor(g.type);
+    this.base = this.dz + StationGeo.zFloor(geo.type);
     this.ceil = this.base + this.Hi;
     this.top = this.dz + this.He;
     this.rf = plan.roof || [];
-    this.O = (plan.outside || []).map(it => this.placed(it));
+    this.O = (plan.outside || []).map(item => this.placed(item));
     this.project();
     this.wall = plan.wallColor || '#CBD0CC';
     this.frame = plan.frameColor || RalColor.shade(this.wall, 0.7);
@@ -44,73 +44,84 @@ export class StationView3D {
   }
 
   /** Изделие с габаритом в координатах контейнера: X0…X1, Y0…Y1. */
-  placed(it) {
-    return { ...it, X0: this.ox + it.x, Y0: this.oy + it.y, X1: this.ox + it.x + it.lx, Y1: this.oy + it.y + it.ly };
+  placed(item) {
+    return {
+      ...item,
+      X0: this.ox + item.x,
+      Y0: this.oy + item.y,
+      X1: this.ox + item.x + item.lx,
+      Y1: this.oy + item.y + item.ly,
+    };
   }
 
   /** Проекция и масштаб — по габаритам контейнера (с шасси, глушителем и ресиверами снаружи). */
   project() {
-    const az = (StationView3D.AZ * Math.PI) / 180;
-    const el = (StationView3D.EL * Math.PI) / 180;
-    const [cs, sn, ce, se] = [Math.cos(az), Math.sin(az), Math.cos(el), Math.sin(el)];
-    const P0 = (x, y, z) => [x * cs - y * sn, -((x * sn + y * cs) * se + z * ce)];
-    const up = this.rf.length ? Math.max(...this.rf.map(m => m.gap + m.d)) : 0;
-    const xe = Math.max(this.Le, ...this.O.map(i => i.X1 + 400));
-    const zt = Math.max(this.top + up, ...this.O.map(i => this.base + i.z + i.h));
+    const azimuth = (StationView3D.AZIMUTH * Math.PI) / 180;
+    const el = (StationView3D.ELEVATION * Math.PI) / 180;
+    const [cosAz, sinAz, cosEl, sinEl] = [Math.cos(azimuth), Math.sin(azimuth), Math.cos(el), Math.sin(el)];
+    const rawProject = (x, y, z) => [x * cosAz - y * sinAz, -((x * sinAz + y * cosAz) * sinEl + z * cosEl)];
+    const roofUp = this.rf.length ? Math.max(...this.rf.map(muffler => muffler.gap + muffler.d)) : 0;
+    const xEnd = Math.max(this.Le, ...this.O.map(i => i.X1 + 400));
+    const zTop = Math.max(this.top + roofUp, ...this.O.map(i => this.base + i.z + i.h));
     const ext = [];
-    for (const x of [0, xe]) for (const y of [0, this.We]) for (const z of [0, zt]) ext.push(P0(x, y, z));
-    const [minX, maxX] = [Math.min(...ext.map(p => p[0])), Math.max(...ext.map(p => p[0]))];
-    const [minY, maxY] = [Math.min(...ext.map(p => p[1])), Math.max(...ext.map(p => p[1]))];
-    const { W } = StationView3D;
-    const H = Math.round(Math.max(760, Math.min(StationView3D.H, (W * 0.9 * (maxY - minY)) / (maxX - minX) / 0.84)));
-    const k = Math.min((W * 0.9) / (maxX - minX), (H * 0.84) / (maxY - minY));
-    const tx = (W - (maxX - minX) * k) / 2 - minX * k;
-    const ty = (H - (maxY - minY) * k) / 2 - minY * k + H * 0.02;
-    this.H = H;
+    for (const x of [0, xEnd]) for (const y of [0, this.We]) for (const z of [0, zTop]) ext.push(rawProject(x, y, z));
+    const [minX, maxX] = [Math.min(...ext.map(point => point[0])), Math.max(...ext.map(point => point[0]))];
+    const [minY, maxY] = [Math.min(...ext.map(point => point[1])), Math.max(...ext.map(point => point[1]))];
+    const width = StationView3D.WIDTH;
+    const height = Math.round(
+      Math.max(760, Math.min(StationView3D.HEIGHT, (width * 0.9 * (maxY - minY)) / (maxX - minX) / 0.84)),
+    );
+    const k = Math.min((width * 0.9) / (maxX - minX), (height * 0.84) / (maxY - minY));
+    const shiftX = (width - (maxX - minX) * k) / 2 - minX * k;
+    const shiftY = (height - (maxY - minY) * k) / 2 - minY * k + height * 0.02;
+    this.height = height;
     this.k = k;
     this.V = new StView(
       (x, y, z) => {
-        const p = P0(x, y, z);
-        return [p[0] * k + tx, p[1] * k + ty];
+        const point = rawProject(x, y, z);
+        return [point[0] * k + shiftX, point[1] * k + shiftY];
       },
       k,
-      se,
+      sinEl,
       StSvg,
     );
   }
 
+  /** Все грани в порядке удалённости — SVG. */
   draw() {
-    const { V, plan, dz } = this;
+    const { V: view, plan, dz } = this;
     const out = [];
-    const P = V.P;
-    const sh = [
-      P(-300, -250, 0),
-      P(this.Le + 500, -250, 0),
-      P(this.Le + 500, this.We + 450, 0),
-      P(-300, this.We + 450, 0),
+    const project = view.project;
+    const shadow = [
+      project(-300, -250, 0),
+      project(this.Le + 500, -250, 0),
+      project(this.Le + 500, this.We + 450, 0),
+      project(-300, this.We + 450, 0),
     ];
-    out.push(StSvg.poly(sh, '#000000', '', 0, ' opacity="0.10" filter="url(#blur18)"'));
-    if (dz) out.push(...V.chassis(this.Le, this.We, dz));
+    out.push(StSvg.poly(shadow, '#000000', '', 0, ' opacity="0.10" filter="url(#blur18)"'));
+    if (dz) out.push(...view.chassis(this.Le, this.We, dz));
     out.push(...this.back(), ...this.floor());
     // шкафы на стене прохода — на срезанной стене: не показываются
-    const items = plan.items.filter(it => !(it.mount === 'wall' && it.wall === 'front')).map(it => this.placed(it));
+    const items = plan.items
+      .filter(item => !(item.mount === 'wall' && item.wall === 'front'))
+      .map(item => this.placed(item));
     out.push(...this.louvers());
     const over = this.pipes(out, items);
     out.push(...this.equipment(items, over));
     if (this.O.length) out.push(...this.outside());
     out.push(...this.cutBand(), ...this.frontFrame());
-    for (const m of this.rf) out.push(...this.muffler(m));
+    for (const muffler of this.rf) out.push(...this.muffler(muffler));
     return StSvg.doc(
-      StationView3D.W,
-      this.H,
-      StSvg.rect([0, 0, StationView3D.W, this.H], '#ffffff') + out.join(''),
-      StationView3D.DEFS + V.defs.join(''),
+      StationView3D.WIDTH,
+      this.height,
+      StSvg.rect([0, 0, StationView3D.WIDTH, this.height], '#ffffff') + out.join(''),
+      StationView3D.DEFS + view.defs.join(''),
     );
   }
 
   /** Прямоугольник [x0, y0, z0] → [x1, y1, z1] в плоскости: по углам a, b, c, d. */
-  face(Q, fill, sw = 1, extra = '') {
-    return this.V.face(Q, fill, sw, extra);
+  face(quad, fill, strokeW = 1, extra = '') {
+    return this.V.face(quad, fill, strokeW, extra);
   }
 
   /** Задняя стена и дальний торец — изнутри; крыша в разрезе, швы обшивки или гофр, стойки сзади. */
@@ -161,7 +172,7 @@ export class StationView3D {
 
   /** Швы обшивки задней стены (у морского — гофр), стойки каркаса сзади. */
   backRibs() {
-    const { V, ox, oy, Li, Wi, Le, We, base, top, lining } = this;
+    const { V: view, ox, oy, Li, Wi, Le, We, base, top, lining } = this;
     const out = [];
     const y = oy + Wi - 1;
     if (this.g.sea)
@@ -180,16 +191,17 @@ export class StationView3D {
         );
     else
       for (let x = ox + 1150; x < ox + Li - 100; x += 1150)
-        out.push(V.line([x, y, base], [x, y, top], RalColor.shade(lining, 0.86), 1.2));
+        out.push(view.line([x, y, base], [x, y, top], RalColor.shade(lining, 0.86), 1.2));
     return [
       ...out,
-      ...V.box([0, We - 150, this.dz], [150, We, top], this.frame),
-      ...V.box([Le - 150, We - 150, this.dz], [Le, We, top], this.frame),
+      ...view.box([0, We - 150, this.dz], [150, We, top], this.frame),
+      ...view.box([Le - 150, We - 150, this.dz], [Le, We, top], this.frame),
     ];
   }
 
+  /** Пол и рифлёный настил. */
   floor() {
-    const { V, ox, oy, Li, Wi, base } = this;
+    const { V: view, ox, oy, Li, Wi, base } = this;
     const out = [
       this.face(
         [
@@ -201,142 +213,161 @@ export class StationView3D {
         '#b3b9bf',
       ),
     ];
-    for (let x = ox + 1250; x < ox + Li; x += 1250) out.push(V.line([x, oy, base], [x, oy + Wi, base], '#9aa1a8', 1.2));
+    for (let x = ox + 1250; x < ox + Li; x += 1250)
+      out.push(view.line([x, oy, base], [x, oy + Wi, base], '#9aa1a8', 1.2));
     return out;
   }
 
   /** Жалюзи по расчёту вентиляции на задней стене и в дальнем торце — изнутри (размеры — на чертеже). */
   louvers() {
     const { ox, oy, Li, Wi, base } = this;
-    const L = ((this.plan.vent && this.plan.vent.louvers) || []).filter(q => q.wall === 'back' || q.wall === 'right');
-    return L.map(q => {
-      const b = q.wall === 'back';
-      const a = b ? [ox + q.u0, oy + Wi - 2, base + q.z0] : [ox + Li - 2, oy + q.u0, base + q.z0];
-      const c = b ? [ox + q.u1, oy + Wi - 2, base + q.z1] : [ox + Li - 2, oy + q.u1, base + q.z1];
-      return this.V.louver(a, c, b ? 'y' : 'x');
+    const louvers = ((this.plan.vent && this.plan.vent.louvers) || []).filter(
+      louver => louver.wall === 'back' || louver.wall === 'right',
+    );
+    return louvers.map(louver => {
+      const onBack = louver.wall === 'back';
+      const start = onBack
+        ? [ox + louver.u0, oy + Wi - 2, base + louver.z0]
+        : [ox + Li - 2, oy + louver.u0, base + louver.z0];
+      const end = onBack
+        ? [ox + louver.u1, oy + Wi - 2, base + louver.z1]
+        : [ox + Li - 2, oy + louver.u1, base + louver.z1];
+      return this.V.louver(start, end, onBack ? 'y' : 'x');
     });
   }
 
   /** Труба: тёмный контур и светлый блик. */
-  tube(a, b, c, w) {
-    const { V } = this;
+  tube(start, end, color, width) {
+    const { V: view } = this;
     return (
-      V.line(a, b, RalColor.shade(c, 0.62), w + 2) +
-      V.line(a, b, c, w) +
-      V.line(a, b, RalColor.shade(c, 1.35), Math.max(1, w * 0.3))
+      view.line(start, end, RalColor.shade(color, 0.62), width + 2) +
+      view.line(start, end, color, width) +
+      view.line(start, end, RalColor.shade(color, 1.35), Math.max(1, width * 0.3))
     );
   }
 
   /** Трубопровод вдоль задней стены. */
   pipes(out, items) {
     const over = new Map();
-    const w = Math.max(4, 90 * this.k);
-    for (const pp of this.plan.piping || [])
-      for (const l of pp.lines) {
-        const c = PipeMaterial.idColor(l.medium, pp.color); // окраска по ГОСТ 14202-69
-        out.push(...this.main(l, c, w));
-        for (const b of l.branches) this.branch({ l, b, c, w }, items, out, over);
+    const width = Math.max(4, 90 * this.k);
+    for (const piping of this.plan.piping || [])
+      for (const line of piping.lines) {
+        const color = PipeMaterial.idColor(line.medium, piping.color); // окраска по ГОСТ 14202-69
+        out.push(...this.main(line, color, width));
+        for (const branch of line.branches) this.branch({ l: line, b: branch, c: color, w: width }, items, out, over);
       }
     return over;
   }
 
   /** Магистраль и выход к стене (через торец, заднюю стену или над проёмом). */
-  main(l, c, w) {
-    const [y, z] = [this.oy + l.y, this.base + l.z];
-    const out = StationLayout.runs(l).map(([a, b]) => this.tube([this.ox + a, y, z], [this.ox + b, y, z], c, w));
-    const op = this.O.length ? null : StationLayout.outPath(l, this.Wi);
-    if (!op) return out;
-    const Q = op.pts.map(([x, yy, zz]) => [this.ox + x, this.oy + yy, this.base + zz]);
-    for (let q = 1; q < Q.length; q++) out.push(this.tube(Q[q - 1], Q[q], c, w));
+  main(line, color, width) {
+    const [y, z] = [this.oy + line.y, this.base + line.z];
+    const out = StationLayout.runs(line).map(([start, end]) =>
+      this.tube([this.ox + start, y, z], [this.ox + end, y, z], color, width),
+    );
+    const outPath = this.O.length ? null : StationLayout.outPath(line, this.Wi);
+    if (!outPath) return out;
+    const points = outPath.pts.map(([x, localY, localZ]) => [this.ox + x, this.oy + localY, this.base + localZ]);
+    for (let index = 1; index < points.length; index++)
+      out.push(this.tube(points[index - 1], points[index], color, width));
     return out;
   }
 
   /** Отвод: подъём к коллектору входов, спуск на оборудование (в over) или по месту. */
-  branch({ l, b, c, w }, items, out, over) {
+  branch({ l: line, b: branch, c: color, w: width }, items, out, over) {
     const { ox, oy, base } = this;
-    const z = base + l.z;
-    const [p0, p1] = [
-      [ox + b.x, oy + b.y0, z],
-      [ox + b.x, oy + b.y1, z],
+    const z = base + line.z;
+    const [start, bend] = [
+      [ox + branch.x, oy + branch.y0, z],
+      [ox + branch.x, oy + branch.y1, z],
     ];
-    if (b.tee) {
-      out.push(this.tube(p0, p1, c, w) + this.tube(p1, [ox + b.x, oy + b.y1, base + b.z1], c, w));
+    if (branch.tee) {
+      out.push(
+        this.tube(start, bend, color, width) +
+          this.tube(bend, [ox + branch.x, oy + branch.y1, base + branch.z1], color, width),
+      );
       return;
     }
-    const t = this.tube(p0, p1, c, w * 0.8);
-    if (!(b.z1 < l.z)) {
-      out.push(t);
+    const tube = this.tube(start, bend, color, width * 0.8);
+    if (!(branch.z1 < line.z)) {
+      out.push(tube);
       return;
     }
-    const to = items.find(i => `${i.id}#${i.unit}` === b.to);
-    const zb = base + (to ? Math.min(b.z1, View3dUnits.top(to)) : b.z1);
-    over.set(b.to, (over.get(b.to) || '') + t + this.tube(p1, [ox + b.x, oy + b.y1, zb], c, w * 0.8));
+    const target = items.find(i => `${i.id}#${i.unit}` === branch.to);
+    const bottomZ = base + (target ? Math.min(branch.z1, View3dUnits.top(target)) : branch.z1);
+    over.set(
+      branch.to,
+      (over.get(branch.to) || '') +
+        tube +
+        this.tube(bend, [ox + branch.x, oy + branch.y1, bottomZ], color, width * 0.8),
+    );
   }
 
   /** Оборудование: тени, затем по глубине (дальнее — раньше), за каждым — спуск трубы на него. */
   equipment(items, over) {
-    const { V, base } = this;
+    const { V: view, base } = this;
     const out = [];
-    for (const it of items.filter(i => i.mount === 'floor' || i.mount === 'frame'))
+    for (const item of items.filter(i => i.mount === 'floor' || i.mount === 'frame'))
       out.push(
         this.face(
           [
-            [it.X0 + 60, it.Y0 + 40, base + 1],
-            [it.X1 + 160, it.Y0 + 40, base + 1],
-            [it.X1 + 160, it.Y1 + 120, base + 1],
-            [it.X0 + 60, it.Y1 + 120, base + 1],
+            [item.X0 + 60, item.Y0 + 40, base + 1],
+            [item.X1 + 160, item.Y0 + 40, base + 1],
+            [item.X1 + 160, item.Y1 + 120, base + 1],
+            [item.X0 + 60, item.Y1 + 120, base + 1],
           ],
           '#000000',
           0,
           ' opacity="0.16" filter="url(#blur6)"',
         ),
       );
-    const at = { vent: this.plan.vent, ox: this.ox, oy: this.oy, Li: this.Li, x0: this.plan.geo.x0 || 0 };
-    const ctx = { base, ceil: this.ceil, yWall: this.oy + this.Wi, at };
-    for (const it of V.order(items)) {
-      out.push(...View3dUnits.equip(V, it, ctx));
-      const t = over.get(`${it.id}#${it.unit}`);
-      if (t) out.push(t);
+    const spot = { vent: this.plan.vent, ox: this.ox, oy: this.oy, Li: this.Li, x0: this.plan.geo.x0 || 0 };
+    const ctx = { base, ceil: this.ceil, yWall: this.oy + this.Wi, at: spot };
+    for (const item of view.order(items)) {
+      out.push(...View3dUnits.equip(view, item, ctx));
+      const tubeSvg = over.get(`${item.id}#${item.unit}`);
+      if (tubeSvg) out.push(tubeSvg);
     }
     return out;
   }
 
   /** Ресиверы снаружи — за дальним торцом на площадке; трубопровод от торца к ним. */
   outside() {
-    const { V, O, base } = this;
-    const out = O.map(it =>
+    const { V: view, O: outside, base } = this;
+    const out = outside.map(item =>
       this.face(
         [
-          [it.X0 - 200, it.Y0 - 200, base + it.z],
-          [it.X1 + 200, it.Y0 - 200, base + it.z],
-          [it.X1 + 200, it.Y1 + 200, base + it.z],
-          [it.X0 - 200, it.Y1 + 200, base + it.z],
+          [item.X0 - 200, item.Y0 - 200, base + item.z],
+          [item.X1 + 200, item.Y0 - 200, base + item.z],
+          [item.X1 + 200, item.Y1 + 200, base + item.z],
+          [item.X0 - 200, item.Y1 + 200, base + item.z],
         ],
         '#b9b6ae',
       ),
     );
-    const l = (this.plan.piping || [])
-      .flatMap(q => q.lines)
-      .find(q => q.medium === 'air' && !q.header && q.x1 >= this.Li - 1);
-    if (l) out.push(...this.outPipe(l));
-    for (const it of V.order(O))
-      out.push(...View3dUnits.equip(V, it, { base, ceil: this.ceil, yWall: this.oy + this.Wi }));
+    const line = (this.plan.piping || [])
+      .flatMap(entry => entry.lines)
+      .find(entry => entry.medium === 'air' && !entry.header && entry.x1 >= this.Li - 1);
+    if (line) out.push(...this.outPipe(line));
+    for (const item of view.order(outside))
+      out.push(...View3dUnits.equip(view, item, { base, ceil: this.ceil, yWall: this.oy + this.Wi }));
     return out;
   }
 
-  outPipe(l) {
-    const c = PipeMaterial.idColor('air', '#8d949b');
-    const w = Math.max(4, 90 * this.k);
-    const xm = (this.Le + Math.min(...this.O.map(i => i.X0))) / 2;
-    const [y, z] = [this.oy + l.y, this.base + l.z];
-    const out = [this.tube([this.Le, y, z], [xm, y, z], c, w)];
-    for (const it of this.O) {
-      const yc = (it.Y0 + it.Y1) / 2;
-      const zi = this.base + it.z + Math.max(250, it.h * 0.22);
+  /** Трубопровод к ресиверам снаружи. */
+  outPipe(line) {
+    const color = PipeMaterial.idColor('air', '#8d949b');
+    const width = Math.max(4, 90 * this.k);
+    const midX = (this.Le + Math.min(...this.O.map(i => i.X0))) / 2;
+    const [y, z] = [this.oy + line.y, this.base + line.z];
+    const out = [this.tube([this.Le, y, z], [midX, y, z], color, width)];
+    for (const item of this.O) {
+      const midY = (item.Y0 + item.Y1) / 2;
+      const inletZ = this.base + item.z + Math.max(250, item.h * 0.22);
       out.push(
-        this.tube([xm, y, z], [xm, yc, z], c, w),
-        this.tube([xm, yc, z], [xm, yc, zi], c, w),
-        this.tube([xm, yc, zi], [it.X0, yc, zi], c, w),
+        this.tube([midX, y, z], [midX, midY, z], color, width),
+        this.tube([midX, midY, z], [midX, midY, inletZ], color, width),
+        this.tube([midX, midY, inletZ], [item.X0, midY, inletZ], color, width),
       );
     }
     return out;
@@ -344,43 +375,62 @@ export class StationView3D {
 
   /** Рама: передние стойки и верхние балки. */
   frontFrame() {
-    const { V, Le, We, top, dz, frame } = this;
+    const { V: view, Le, We, top, dz, frame } = this;
     return [
-      ...V.box([0, 0, dz], [150, 150, top], frame),
-      ...V.box([Le - 150, 0, dz], [Le, 150, top], frame),
-      ...V.box([0, 0, top - 110], [Le, 110, top], frame),
-      ...V.box([0, 0, top - 110], [110, We, top], frame),
+      ...view.box([0, 0, dz], [150, 150, top], frame),
+      ...view.box([Le - 150, 0, dz], [Le, 150, top], frame),
+      ...view.box([0, 0, top - 110], [Le, 110, top], frame),
+      ...view.box([0, 0, top - 110], [110, We, top], frame),
     ];
   }
 
   /** Глушитель на крыше. */
-  muffler(m) {
-    const { V, ox, oy, top, base } = this;
-    const r = m.d / 2;
-    const cz = top + m.gap + r;
+  muffler(muffler) {
+    const { V: view, ox, oy, top, base } = this;
+    const radius = muffler.d / 2;
+    const centerZ = top + muffler.gap + radius;
     const steel = '#8d949b';
-    const ex = m.exhaust && [ox + m.exhaust.x, oy + m.exhaust.y];
-    const pipe = ex && V.vcyl([...ex, 65], [base + m.exhaust.z, cz], steel, false);
-    if (m.dir === 'y+') {
-      const cx = ox + m.x + r;
-      const ya = oy + m.y;
-      return [...(pipe ? [pipe] : []), ...V.box([cx - r, ya, cz - r], [cx + r, ya + m.ly, cz + r], m.color)];
+    const exhaust = muffler.exhaust && [ox + muffler.exhaust.x, oy + muffler.exhaust.y];
+    const pipe = exhaust && view.vcyl([...exhaust, 65], [base + muffler.exhaust.z, centerZ], steel, false);
+    if (muffler.dir === 'y+') {
+      const centerX = ox + muffler.x + radius;
+      const startY = oy + muffler.y;
+      return [
+        ...(pipe ? [pipe] : []),
+        ...view.box(
+          [centerX - radius, startY, centerZ - radius],
+          [centerX + radius, startY + muffler.ly, centerZ + radius],
+          muffler.color,
+        ),
+      ];
     }
-    const x0 = ox + m.x;
-    const x1 = x0 + m.lx;
-    const cy = oy + m.y + r;
+    const x0 = ox + muffler.x;
+    const x1 = x0 + muffler.lx;
+    const centerY = oy + muffler.y + radius;
     const out = pipe
-      ? [pipe, V.line([...ex, cz], [ex[0], cy, cz], RalColor.shade(steel, 0.7), Math.max(3, 130 * this.k))]
+      ? [
+          pipe,
+          view.line(
+            [...exhaust, centerZ],
+            [exhaust[0], centerY, centerZ],
+            RalColor.shade(steel, 0.7),
+            Math.max(3, 130 * this.k),
+          ),
+        ]
       : [];
-    for (const f of [0.18, 0.82])
+    for (const frac of [0.18, 0.82])
       out.push(
-        ...V.box([x0 + m.lx * f - 40, cy - r * 0.7, top], [x0 + m.lx * f + 40, cy + r * 0.7, cz - r * 0.6], '#3a3f45'),
+        ...view.box(
+          [x0 + muffler.lx * frac - 40, centerY - radius * 0.7, top],
+          [x0 + muffler.lx * frac + 40, centerY + radius * 0.7, centerZ - radius * 0.6],
+          '#3a3f45',
+        ),
       );
-    out.push(V.hcyl([x0, x1], [cy, cz, r], m.color));
+    out.push(view.hcyl([x0, x1], [centerY, centerZ, radius], muffler.color));
     out.push(
-      m.dir === 'x-'
-        ? V.hcyl([x0 - m.outlet, x0], [cy, cz, 60], steel)
-        : V.hcyl([x1, x1 + m.outlet], [cy, cz, 60], steel),
+      muffler.dir === 'x-'
+        ? view.hcyl([x0 - muffler.outlet, x0], [centerY, centerZ, 60], steel)
+        : view.hcyl([x1, x1 + muffler.outlet], [centerY, centerZ, 60], steel),
     );
     return out;
   }
@@ -389,23 +439,23 @@ export class StationView3D {
   cutBand() {
     const { Le, We, dz, band, ox, oy, wall } = this;
     const cut = RalColor.mix('#dfe3e7', wall, 0.15);
-    const zb = dz + band;
+    const bandTop = dz + band;
     return [
       this.face(
         [
           [0, 0, dz],
           [0, We, dz],
-          [0, We, zb],
-          [0, 0, zb],
+          [0, We, bandTop],
+          [0, 0, bandTop],
         ],
         RalColor.shade(wall, 0.82),
       ),
       this.face(
         [
-          [0, 0, zb],
-          [ox, 0, zb],
-          [ox, We, zb],
-          [0, We, zb],
+          [0, 0, bandTop],
+          [ox, 0, bandTop],
+          [ox, We, bandTop],
+          [0, We, bandTop],
         ],
         cut,
       ),
@@ -413,17 +463,17 @@ export class StationView3D {
         [
           [0, 0, dz],
           [Le, 0, dz],
-          [Le, 0, zb],
-          [0, 0, zb],
+          [Le, 0, bandTop],
+          [0, 0, bandTop],
         ],
         wall,
       ),
       this.face(
         [
-          [0, 0, zb],
-          [Le, 0, zb],
-          [Le, oy, zb],
-          [0, oy, zb],
+          [0, 0, bandTop],
+          [Le, 0, bandTop],
+          [Le, oy, bandTop],
+          [0, oy, bandTop],
         ],
         cut,
       ),
@@ -434,51 +484,51 @@ export class StationView3D {
 
   /** Швы панелей пояса (у морского — гофр): p(d, z) — точка шва со сдвигом d вдоль стены. */
   bandRibs() {
-    const { V, Le, We, dz, band } = this;
+    const { V: view, Le, We, dz, band } = this;
     const sea = this.g.sea;
     const rib = sea ? 280 : 1150;
     const dark = RalColor.shade(this.wall, sea ? 0.9 : 0.8);
     const side = RalColor.shade(dark, sea ? 0.86 : 0.85);
-    const seam = (p, col) =>
+    const seam = (face, col) =>
       sea
-        ? this.face([p(0, dz), p(rib * 0.6, dz), p(rib * 0.6, dz + band), p(0, dz + band)], col, 0)
-        : V.line(p(0, dz), p(0, dz + band), col, 1.4);
+        ? this.face([face(0, dz), face(rib * 0.6, dz), face(rib * 0.6, dz + band), face(0, dz + band)], col, 0)
+        : view.line(face(0, dz), face(0, dz + band), col, 1.4);
     const out = [];
-    for (let x = rib; x < Le - 100; x += sea ? rib * 2 : rib) out.push(seam((d, z) => [x + d, -1, z], dark));
-    for (let y = rib; y < We - 100; y += sea ? rib * 2 : rib) out.push(seam((d, z) => [-1, y + d, z], side));
+    for (let x = rib; x < Le - 100; x += sea ? rib * 2 : rib) out.push(seam((offset, z) => [x + offset, -1, z], dark));
+    for (let y = rib; y < We - 100; y += sea ? rib * 2 : rib) out.push(seam((offset, z) => [-1, y + offset, z], side));
     return out;
   }
 
   /** В поясе: ворота в торце у входа (запорные штанги), дверь оператора в торце или в стене прохода. */
   bandDoors() {
-    const { V, plan, dz, band, ox, oy, wall } = this;
+    const { V: view, plan, dz, band, ox, oy, wall } = this;
     const out = [];
-    const G = [plan.gates, plan.gates2].find(q => q && q.wall === 'left');
-    if (G) {
-      const w = G.y1 - G.y0;
-      const y0 = oy + G.y0;
-      for (const f of [0.12, 0.38, 0.62, 0.88])
-        out.push(V.line([-6, y0 + w * f, dz + 40], [-6, y0 + w * f, dz + band], '#3b4148', 2.6));
-      out.push(V.line([-6, y0 + w / 2, dz], [-6, y0 + w / 2, dz + band], RalColor.shade(wall, 0.55), 1.6));
+    const gates = [plan.gates, plan.gates2].find(gate => gate && gate.wall === 'left');
+    if (gates) {
+      const width = gates.y1 - gates.y0;
+      const y0 = oy + gates.y0;
+      for (const frac of [0.12, 0.38, 0.62, 0.88])
+        out.push(view.line([-6, y0 + width * frac, dz + 40], [-6, y0 + width * frac, dz + band], '#3b4148', 2.6));
+      out.push(view.line([-6, y0 + width / 2, dz], [-6, y0 + width / 2, dz + band], RalColor.shade(wall, 0.55), 1.6));
     }
-    const en = plan.entry;
-    const leaf = Q => this.face(Q, RalColor.shade(wall, 0.93), 1.2);
-    if (en && en.wall === 'left' && !en.sea)
+    const entry = plan.entry;
+    const leaf = quad => this.face(quad, RalColor.shade(wall, 0.93), 1.2);
+    if (entry && entry.wall === 'left' && !entry.sea)
       out.push(
         leaf([
-          [-3, oy + en.y0, dz + 60],
-          [-3, oy + en.y1, dz + 60],
-          [-3, oy + en.y1, dz + band],
-          [-3, oy + en.y0, dz + band],
+          [-3, oy + entry.y0, dz + 60],
+          [-3, oy + entry.y1, dz + 60],
+          [-3, oy + entry.y1, dz + band],
+          [-3, oy + entry.y0, dz + band],
         ]),
       );
-    if (en && en.wall === 'front')
+    if (entry && entry.wall === 'front')
       out.push(
         leaf([
-          [ox + en.x0, -3, dz + 60],
-          [ox + en.x1, -3, dz + 60],
-          [ox + en.x1, -3, dz + band],
-          [ox + en.x0, -3, dz + band],
+          [ox + entry.x0, -3, dz + 60],
+          [ox + entry.x1, -3, dz + 60],
+          [ox + entry.x1, -3, dz + band],
+          [ox + entry.x0, -3, dz + band],
         ]),
       );
     return out;

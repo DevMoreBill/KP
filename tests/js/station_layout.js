@@ -11,6 +11,7 @@ for (const f of ['logistics-calc.js', 'rules/index.js', 'layout/index.js', 'eskd
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));   // файл инженерных правил
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
 if (GOLDEN){ GOLDEN.wrapText(StationLayout, 'solve', p=>[TzDoors.text(p), ...['heat', 'vent', 'snow', 'snowout', 'rec', 'light', 'power', 'fire', 'ops', 'x'].map(id=>TzSystems.text(id, 'V', p))]);
+  GOLDEN.wrapText(StationLayout, 'solve', p=>StationDrawing.sheets(p, {}));
   GOLDEN.wrap(StationLayout, ['solve']); GOLDEN.wrap(StationDrawing, ['svg']); GOLDEN.wrap(StationView3D, ['svg']); GOLDEN.wrap(StationScheme, ['svg']); GOLDEN.wrap(HydroScheme, ['svg']); GOLDEN.wrapScene(StScene); }
 
 class Check {
@@ -121,10 +122,10 @@ class Check {
     return { w, h };
   }
 
-  /** лист ЕСКД: А4 (210 × 297 мм, растр — EskdSheet.K точек на мм), надписи — внутри листа и не наезжают друг на друга
-   *  (ширина — по EskdSheet.tw; обозначение в графе 26 повёрнуто на 180° — не проверяется) */
+  /** лист ЕСКД: А4 (210 × 297 мм, растр — EskdSheet.DOTS_PER_MM точек на мм), надписи — внутри листа и не наезжают друг на друга
+   *  (ширина — по EskdSheet.textWidth; обозначение в графе 26 повёрнуто на 180° — не проверяется) */
   static sheet(s, label){
-    const sz=Check.svg(s, label), K=EskdSheet.K, [W, H]=EskdSheet.FMT.A4;
+    const sz=Check.svg(s, label), K=EskdSheet.DOTS_PER_MM, [W, H]=EskdSheet.FMT.A4;
     assert.ok(sz.w===W*K && sz.h===H*K && s.includes(`viewBox="0 0 ${W} ${H}"`), `${label}: лист ${sz.w}×${sz.h}`);
     const T=Check.texts(s);
     assert.strictEqual(T.length, (s.match(/<text /g)||[]).length, label+': надпись не в формате листа');
@@ -151,7 +152,7 @@ class Check {
       if (m[1]!=null){ G.push([+m[1], +m[2]]); continue; }
       if (m[0].startsWith('<g')){ G.push(null); continue; }
       if (m[0]==='</g>'){ G.pop(); continue; }
-      const x=+m[3], y=+m[4], h=+m[5]/EskdSheet.CAP, a=m[6]||'start', rot=+(m[7]||0), t=m[8].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'), w=EskdSheet.tw(t, h);
+      const x=+m[3], y=+m[4], h=+m[5]/EskdSheet.CAP, a=m[6]||'start', rot=+(m[7]||0), t=m[8].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'), w=EskdSheet.textWidth(t, h);
       let b; if (!rot){ const x0=a==='middle' ? x-w/2 : a==='end' ? x-w : x; b=[x0, y-h, x0+w, y+0.25*h]; }
       else { const y0=a==='middle' ? y-w/2 : a==='end' ? y : y-w; b=[x-h, y0, x+0.25*h, y0+w]; }
       const R=G.filter(Boolean).pop(); if (R) b=[R[0]-b[3], R[1]+b[0], R[0]-b[1], R[1]+b[2]];
@@ -727,7 +728,7 @@ Check.run('чертёж: листы А4 по ЕСКД', ()=>{
   const T4=Check.texts(L[3]).map(q=>q.t); assert.ok(T4.some(t=>/^В( \(|$)/.test(t)) && T4.some(t=>/^Г( \(|$)/.test(t)), 'лист 4: виды с торцов В и Г');
   assert.ok(T3.some(t=>/^Схема строповки/.test(t)) && T3.includes('ЦТ') && T3.some(t=>/«Место строповки»/.test(t)) && T3.some(t=>/«Центр тяжести»/.test(t)), 'лист 5: схема строповки, центр тяжести, знаки № 9 и № 12');
   assert.ok(Check.texts(d).some(q=>q.t==='Листов') && d.includes('>5<'), 'листов — 5');
-  assert.ok(sz.w===StationDrawing.W && sz.h===StationDrawing.H, 'лист А4');
+  assert.ok(sz.w===StationDrawing.WIDTH && sz.h===StationDrawing.HEIGHT, 'лист А4');
   assert.ok(!d.includes('<b>') && d.includes('&lt;b&gt;'), 'название экранировано');
   // основная надпись (форма 1) и дополнительные графы
   const T=Check.texts(d).map(q=>q.t);
@@ -874,11 +875,11 @@ Check.run('чертёжный шрифт osifont: встраивается в л
   const ttf=fs.readFileSync(path.join(ROOT, 'app', 'web', 'fonts', 'osifont-italic.ttf'));
   assert.ok(ttf.length>50000 && ttf.readUInt32BE(0)===0x00010000, 'TTF на месте');
   assert.ok(fs.existsSync(path.join(ROOT, 'app', 'web', 'fonts', 'osifont-NOTICE.txt')), 'при шрифте — лицензия');
-  const before=EskdSheet.tw('Технические требования', 3.5);
+  const before=EskdSheet.textWidth('Технические требования', 3.5);
   EskdSheet.FONT_DATA=ttf.toString('base64');
   try{
-    assert.strictEqual(EskdSheet.CAP, 1.352); assert.ok(EskdSheet.tw('Технические требования', 3.5)<before*0.85, 'osifont уже Arial');
-    assert.ok(EskdSheet.tw('→', 3.5)>0 && EskdSheet.tw('₽', 3.5)>0, 'знаков нет в шрифте — по Arial');
+    assert.strictEqual(EskdSheet.CAP, 1.352); assert.ok(EskdSheet.textWidth('Технические требования', 3.5)<before*0.85, 'osifont уже Arial');
+    assert.ok(EskdSheet.textWidth('→', 3.5)>0 && EskdSheet.textWidth('₽', 3.5)>0, 'знаков нет в шрифте — по Arial');
     const C2=(ctype, o)=>Object.assign(C(ctype), { sys:{ power:true, light:true, heat:true, vent:true } }, o||{});
     const cases=[[C2('block', { sizeAuto:true }), [comp, dryer, rec, flt, cab, P('Трубопровод', {}, { pipeMat:'steel' })]],
       [C2('sea20'), [P('Компрессор', { cat:'comp_screw', flow:6, pressure:8, size:'1300 × 800 × 1500' }, { role:'main', qty:2 }), P('Ресивер 900 л', { cat:'receiver', volume:900, size:'750 × 750 × 1900' }), P('Осушитель адсорбционный', { cat:'dryer_ads', flow:11, size:'1000 × 700 × 1800' }), P('Фильтр', { cat:'filter', size:'610*140' }, { qty:2 })]],

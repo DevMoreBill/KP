@@ -7,115 +7,130 @@ import { IconUnits } from './icon-units.js';
 /** Оборудование на габаритном чертеже — упрощённые рисунки, схематически сходные с изделием, в его пропорциях. */
 export class EquipIcon {
   /** Вид спереди (разрез А–А). */
-  static front(sh, it, [x0, y0, x1, y1]) {
-    const c = EquipIcon.ctx(sh, it, [x0, y0, x1, y1]);
-    if (!c) return;
-    c.side = !!it.rot || Math.abs(it.face) === 2;
-    c.rear = !c.side && it.face > 0;
-    const own = !c.side && !c.rear && it.pic;
-    if (own && sh.image([x0, y0, x1 - x0, y1 - y0], EquipIcon.src(it.pic.front), 'xMidYMax')) return;
-    EquipIcon.frontDraw(c);
+  static front(sheet, item, [x0, y0, x1, y1]) {
+    const frame = EquipIcon.ctx(sheet, item, [x0, y0, x1, y1]);
+    if (!frame) return;
+    frame.side = !!item.rot || Math.abs(item.face) === 2;
+    frame.rear = !frame.side && item.face > 0;
+    const own = !frame.side && !frame.rear && item.pic;
+    if (own && sheet.image([x0, y0, x1 - x0, y1 - y0], EquipIcon.src(item.pic.front), 'xMidYMax')) return;
+    EquipIcon._frontDraw(frame);
   }
 
-  static frontDraw(c) {
-    const { it } = c;
-    if (it.mount === 'pipe') IconAir.filter(c);
-    else if (it.shape === 'hcyl') IconAir.hreceiver(c, it.kind === 'receiver');
-    else if (it.shape === 'vcyl') IconAir.vreceiver(c, it.kind === 'receiver' ? 'receiver' : 'housing');
-    else (EquipIcon.FRONT[it.kind] || IconParts.box)(c);
+  static _frontDraw(frame) {
+    const { item } = frame;
+    if (item.mount === 'pipe') IconAir.filter(frame);
+    else if (item.shape === 'hcyl') IconAir.hreceiver(frame, item.kind === 'receiver');
+    else if (item.shape === 'vcyl') IconAir.vreceiver(frame, item.kind === 'receiver' ? 'receiver' : 'housing');
+    else (EquipIcon.FRONT[item.kind] || IconParts.box)(frame);
   }
 
   /** Рисунки спереди по виду оборудования. */
   static FRONT = {
-    compressor: c => {
-      if (c.it.look === 'piston') IconAir.piston(c);
-      else if ((c.it.air || {}).recv) IconAir.tankMounted(c);
-      else IconAir.screw(c);
+    compressor: frame => {
+      if (frame.item.look === 'piston') IconAir.piston(frame);
+      else if ((frame.item.air || {}).recv) IconAir.tankMounted(frame);
+      else IconAir.screw(frame);
     },
-    dryer: c => (StationLayout.twinDryer(c.it) ? IconAir.twin(c) : IconAir.refrig(c)),
-    filter: c => ((c.it.air || {}).grade === 'cond' ? IconAir.separator(c) : IconParts.box(c)),
-    cabinet: c => IconUnits.cabinet(c, c.it.mount === 'floor' || c.it.mount === 'frame'),
+    dryer: frame => (StationLayout.twinDryer(frame.item) ? IconAir.twin(frame) : IconAir.refrig(frame)),
+    filter: frame => ((frame.item.air || {}).grade === 'cond' ? IconAir.separator(frame) : IconParts.box(frame)),
+    cabinet: frame => IconUnits.cabinet(frame, frame.item.mount === 'floor' || frame.item.mount === 'frame'),
     // ДГУ: радиатор у входа — зеркально, поперёк — с торца
-    dgu: c => {
-      if (c.it.rad === 'back') IconUnits.dguEnd(c);
-      else if (c.it.rad === 'left') IconParts.mirror(c.sh, c.x0, c.x1, () => IconUnits.dgu(c));
-      else IconUnits.dgu(c);
+    dgu: frame => {
+      if (frame.item.rad === 'back') IconUnits.dguEnd(frame);
+      else if (frame.item.rad === 'left') IconParts.mirror(frame.sheet, frame.x0, frame.x1, () => IconUnits.dgu(frame));
+      else IconUnits.dgu(frame);
     },
-    pump: c => (c.h > c.w * 1.2 ? IconUnits.vpump(c) : IconUnits.pump(c)),
-    tank: c => IconUnits.tank(c),
+    pump: frame => (frame.height > frame.width * 1.2 ? IconUnits.vpump(frame) : IconUnits.pump(frame)),
+    tank: frame => IconUnits.tank(frame),
   };
 
   /** Рисунки сверху по виду оборудования. */
   static TOP = {
-    compressor: c => (c.it.look === 'piston' ? IconAir.pistonTop(c) : IconAir.screwTop(c)),
-    dryer: c => (StationLayout.twinDryer(c.it) ? IconAir.twinTop(c) : IconAir.refrigTop(c)),
-    cabinet: c => IconUnits.cabinetTop(c),
-    dgu: c => IconUnits.dguTop(c),
-    pump: c => (c.it.h > c.it.lx * 1.2 ? IconUnits.vpumpTop(c) : IconUnits.pumpTop(c)),
-    tank: c => IconUnits.tankTop(c),
+    compressor: frame => (frame.item.look === 'piston' ? IconAir.pistonTop(frame) : IconAir.screwTop(frame)),
+    dryer: frame => (StationLayout.twinDryer(frame.item) ? IconAir.twinTop(frame) : IconAir.refrigTop(frame)),
+    cabinet: frame => IconUnits.cabinetTop(frame),
+    dgu: frame => IconUnits.dguTop(frame),
+    pump: frame => (frame.item.h > frame.item.lx * 1.2 ? IconUnits.vpumpTop(frame) : IconUnits.pumpTop(frame)),
+    tank: frame => IconUnits.tankTop(frame),
   };
 
   /** Рисунок модели для SVG — только data:image (внешние адреса в картинку чертежа не попадают); адрес /img/… — из кэша загруженных (DrawPic, вкладка «Состав станции»). */
-  static src(s) {
-    const t = String(s || '');
-    if (t.startsWith('data:image/')) return t;
-    return typeof DrawPic !== 'undefined' ? DrawPic.data(t) : '';
+  static src(src) {
+    const text = String(src || '');
+    if (text.startsWith('data:image/')) return text;
+    return typeof DrawPic !== 'undefined' ? DrawPic.data(text) : '';
   }
 
   /** Вид сверху (разрез Б–Б): лицевая сторона — к проходу (вниз), к задней стене (вверх) или вдоль торца. */
-  static plan(sh, it, box) {
+  static plan(sheet, item, box) {
     const [x0, , x1] = box;
-    if (it.rot && it.mount !== 'pipe' && it.shape === 'box') EquipIcon.planAcross(sh, it, box);
-    else if (it.kind === 'dgu' && it.rad === 'left')
-      IconParts.mirror(sh, x0, x1, () => EquipIcon.plan(sh, { ...it, rad: null }, box)); // радиатор к торцу у входа
-    else EquipIcon.planDraw(sh, it, box);
+    if (item.rot && item.mount !== 'pipe' && item.shape === 'box') EquipIcon.planAcross(sheet, item, box);
+    else if (item.kind === 'dgu' && item.rad === 'left')
+      IconParts.mirror(sheet, x0, x1, () => EquipIcon.plan(sheet, { ...item, rad: null }, box)); // радиатор к торцу у входа
+    else EquipIcon._planDraw(sheet, item, box);
   }
 
   /** Повёрнуто поперёк: рисунок вдоль длины изделия, повёрнутый на 90° (ДГУ поперёк — радиатором к задней стене). */
-  static planAcross(sh, it, [x0, y0, x1, y1]) {
-    const f = EskdSheet.f;
-    const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
-    const [hw, hh] = [(y1 - y0) / 2, (x1 - x0) / 2];
-    const turned = { ...it, rot: false, rad: null, lx: it.ly, ly: it.lx, face: -1 };
-    sh.group(`rotate(${it.kind === 'dgu' && it.rad === 'back' ? -90 : 90} ${f(cx)} ${f(cy)})`, () =>
-      EquipIcon.plan(sh, turned, [cx - hw, cy - hh, cx + hw, cy + hh]),
+  static planAcross(sheet, item, [x0, y0, x1, y1]) {
+    const fmt = EskdSheet.fmt;
+    const [centerX, centerY] = [(x0 + x1) / 2, (y0 + y1) / 2];
+    const [halfW, halfH] = [(y1 - y0) / 2, (x1 - x0) / 2];
+    const turned = { ...item, rot: false, rad: null, lx: item.ly, ly: item.lx, face: -1 };
+    sheet.group(
+      `rotate(${item.kind === 'dgu' && item.rad === 'back' ? -90 : 90} ${fmt(centerX)} ${fmt(centerY)})`,
+      () => EquipIcon.plan(sheet, turned, [centerX - halfW, centerY - halfH, centerX + halfW, centerY + halfH]),
     );
   }
 
-  static planDraw(sh, it, box) {
-    const c = EquipIcon.ctx(sh, it, box);
-    if (!c) return;
-    const f = it.face;
-    c.front = { 2: 'r', '-2': 'l' }[f] || (f > 0 ? 't' : 'b');
-    if (EquipIcon.picTop(sh, it, c)) return;
-    if (it.mount === 'pipe') IconAir.filterTop(c);
-    else if (it.shape === 'vcyl') IconAir.vesselTop(c, it.kind === 'receiver');
-    else if (it.shape === 'hcyl') IconAir.hvesselTop(c);
-    else if (EquipIcon.TOP[it.kind]) EquipIcon.TOP[it.kind](c);
-    else c.sh.rect([c.x0, c.y0, c.w, c.h], 'main', '#fff');
+  static _planDraw(sheet, item, box) {
+    const frame = EquipIcon.ctx(sheet, item, box);
+    if (!frame) return;
+    const face = item.face;
+    frame.front = { 2: 'r', '-2': 'l' }[face] || (face > 0 ? 't' : 'b');
+    if (EquipIcon.picTop(sheet, item, frame)) return;
+    if (item.mount === 'pipe') IconAir.filterTop(frame);
+    else if (item.shape === 'vcyl') IconAir.vesselTop(frame, item.kind === 'receiver');
+    else if (item.shape === 'hcyl') IconAir.hvesselTop(frame);
+    else if (EquipIcon.TOP[item.kind]) EquipIcon.TOP[item.kind](frame);
+    else frame.sheet.rect([frame.x0, frame.y0, frame.width, frame.height], 'main', '#fff');
   }
 
   /** Свой рисунок модели сверху (лицевая сторона — внизу рисунка). */
-  static picTop(sh, it, c) {
-    const src = it.pic ? EquipIcon.src(it.pic.top) : '';
-    if (!src || (c.front !== 'b' && c.front !== 't')) return false;
-    const rect = [c.x0, c.y0, c.w, c.h];
-    if (c.front === 'b') return sh.image(rect, src);
-    const F = EskdSheet.f;
+  static picTop(sheet, item, frame) {
+    const src = item.pic ? EquipIcon.src(item.pic.top) : '';
+    if (!src || (frame.front !== 'b' && frame.front !== 't')) return false;
+    const rect = [frame.x0, frame.y0, frame.width, frame.height];
+    if (frame.front === 'b') return sheet.image(rect, src);
+    const fmt = EskdSheet.fmt;
     let ok = false;
-    sh.group(`rotate(180 ${F(c.cx)} ${F(c.cy)})`, () => {
-      ok = sh.image(rect, src);
+    sheet.group(`rotate(180 ${fmt(frame.centerX)} ${fmt(frame.centerY)})`, () => {
+      ok = sheet.image(rect, src);
     });
     return ok;
   }
 
   /** Рамка рисунка: k — мм листа на мм изделия; S(v, min) — размер детали в мм изделия на листе, не меньше min. */
-  static ctx(sh, it, [x0, y0, x1, y1]) {
-    const w = x1 - x0;
-    const h = y1 - y0;
-    if (!(w > 0.3 && h > 0.3)) return null;
-    const k = it.lx > 0 ? w / it.lx : 0.02;
-    const S = (v, min = 0) => Math.max(min, v * k);
-    return { sh, it, k, S, x0, y0, x1, y1, w, h, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, m: Math.min(w, h) };
+  static ctx(sheet, item, [x0, y0, x1, y1]) {
+    const width = x1 - x0;
+    const height = y1 - y0;
+    if (!(width > 0.3 && height > 0.3)) return null;
+    const k = item.lx > 0 ? width / item.lx : 0.02;
+    const scale = (value, min = 0) => Math.max(min, value * k);
+    return {
+      sheet,
+      item,
+      k,
+      scale,
+      x0,
+      y0,
+      x1,
+      y1,
+      width,
+      height,
+      centerX: (x0 + x1) / 2,
+      centerY: (y0 + y1) / 2,
+      minSide: Math.min(width, height),
+    };
   }
 }

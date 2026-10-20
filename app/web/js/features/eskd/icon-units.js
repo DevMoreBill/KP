@@ -4,448 +4,605 @@ import { IconParts } from './icon-parts.js';
 /** Рисунки шкафов, ДГУ с глушителем, насосов и баков (спереди и сверху). */
 export class IconUnits {
   /** Шкаф: дверь на петлях, ручка, панель оператора, лампы, вводной выключатель; сбоку — торец. */
-  static cabinet(c, floor) {
-    const { sh, S, x0, w, h } = c;
-    const pl = floor ? Math.min(S(100, 0.6), h * 0.08) : 0;
-    const yb = c.y1 - pl;
-    sh.rect([x0, c.y0, w, yb - c.y0], 'main', '#fff');
-    if (pl) sh.rect([x0, yb, w, pl], 'thin', '#fff');
-    if (c.m < 2.5) return;
-    if (c.side) IconUnits.cabinetEnd(c, yb);
-    else IconUnits.cabinetDoor(c, yb);
+  static cabinet(frame, floor) {
+    const { sheet, scale, x0, width, height } = frame;
+    const plinthH = floor ? Math.min(scale(100, 0.6), height * 0.08) : 0;
+    const baseY = frame.y1 - plinthH;
+    sheet.rect([x0, frame.y0, width, baseY - frame.y0], 'main', '#fff');
+    if (plinthH) sheet.rect([x0, baseY, width, plinthH], 'thin', '#fff');
+    if (frame.minSide < 2.5) return;
+    if (frame.side) IconUnits.cabinetEnd(frame, baseY);
+    else IconUnits.cabinetDoor(frame, baseY);
     if (!floor)
-      for (const f of [0.25, 0.5, 0.75])
-        sh.rect([x0 + w * f - Math.max(0.2, S(15)), yb, Math.max(0.4, S(30)), Math.max(0.4, S(45))], 'thin', '#fff'); // кабельные вводы
+      for (const frac of [0.25, 0.5, 0.75])
+        sheet.rect(
+          [x0 + width * frac - Math.max(0.2, scale(15)), baseY, Math.max(0.4, scale(30)), Math.max(0.4, scale(45))],
+          'thin',
+          '#fff',
+        ); // кабельные вводы
   }
 
   /** Сбоку — торец шкафа. */
-  static cabinetEnd(c, yb) {
-    const { sh, S, x1, w } = c;
-    const e = Math.min(w * 0.2, Math.max(0.3, S(25)));
-    sh.line(x1 - e, c.y0, x1 - e, yb, 'thin');
-    sh.rect([x1 - e * 0.6, c.y0 + (yb - c.y0) * 0.45, e * 1.2, (yb - c.y0) * 0.1], 'thin');
+  static cabinetEnd(frame, baseY) {
+    const { sheet, scale, x1, width } = frame;
+    const edge = Math.min(width * 0.2, Math.max(0.3, scale(25)));
+    sheet.line(x1 - edge, frame.y0, x1 - edge, baseY, 'thin');
+    sheet.rect([x1 - edge * 0.6, frame.y0 + (baseY - frame.y0) * 0.45, edge * 1.2, (baseY - frame.y0) * 0.1], 'thin');
   }
 
   /** Дверь на петлях с ручкой; на двери — панель оператора, лампы, вводной выключатель, решётка. */
-  static cabinetDoor(c, yb) {
-    const { sh, S, x0, w } = c;
-    const i = Math.max(0.35, Math.min(S(30), w * 0.06));
-    const d = { dx0: x0 + i, dy0: c.y0 + i, dw: w - 2 * i, dh: yb - c.y0 - 2 * i };
-    const { dx0, dy0, dw, dh } = d;
-    sh.rect([dx0, dy0, dw, dh], 'thin');
-    for (const f of [0.15, 0.85])
-      sh.rect(
-        [x0 - Math.max(0.15, S(12)), dy0 + dh * f - Math.max(0.3, S(40)), Math.max(0.3, S(24)), Math.max(0.6, S(80))],
+  static cabinetDoor(frame, baseY) {
+    const { sheet, scale, x0, width } = frame;
+    const i = Math.max(0.35, Math.min(scale(30), width * 0.06));
+    const door = { dx0: x0 + i, dy0: frame.y0 + i, dw: width - 2 * i, dh: baseY - frame.y0 - 2 * i };
+    const { dx0, dy0, dw: doorW, dh: doorH } = door;
+    sheet.rect([dx0, dy0, doorW, doorH], 'thin');
+    for (const frac of [0.15, 0.85])
+      sheet.rect(
+        [
+          x0 - Math.max(0.15, scale(12)),
+          dy0 + doorH * frac - Math.max(0.3, scale(40)),
+          Math.max(0.3, scale(24)),
+          Math.max(0.6, scale(80)),
+        ],
         'thin',
         '#fff',
       ); // петли
-    const hx = dx0 + dw - Math.max(0.6, S(55));
-    sh.rect(
-      [hx - Math.max(0.2, S(15)), dy0 + dh * 0.42, Math.max(0.4, S(30)), Math.max(0.9, dh * 0.16)],
+    const handleX = dx0 + doorW - Math.max(0.6, scale(55));
+    sheet.rect(
+      [handleX - Math.max(0.2, scale(15)), dy0 + doorH * 0.42, Math.max(0.4, scale(30)), Math.max(0.9, doorH * 0.16)],
       'thin',
       '#fff',
       0.2,
     );
-    if (dw > 3 && dh > 4) IconUnits.cabinetPanel(c, d);
+    if (doorW > 3 && doorH > 4) IconUnits._cabinetPanel(frame, door);
   }
 
-  static cabinetPanel(c, { dx0, dy0, dw, dh }) {
-    const { sh, S } = c;
-    const pw = Math.min(dw * 0.5, S(200));
-    const ph = Math.min(dh * 0.16, S(140));
-    sh.rect([dx0 + dw * 0.12, dy0 + dh * 0.08, pw, ph], 'thin', IconParts.DARK); // панель оператора
-    for (let q = 0; q < 3; q++)
-      sh.circle(
-        dx0 + dw * 0.12 + pw * (0.15 + q * 0.35),
-        dy0 + dh * 0.08 + ph + Math.max(0.6, S(50)),
-        Math.min(dw * 0.05, S(18, 0.2)),
+  static _cabinetPanel(frame, { dx0, dy0, dw: doorW, dh: doorH }) {
+    const { sheet, scale } = frame;
+    const panelW = Math.min(doorW * 0.5, scale(200));
+    const panelH = Math.min(doorH * 0.16, scale(140));
+    sheet.rect([dx0 + doorW * 0.12, dy0 + doorH * 0.08, panelW, panelH], 'thin', IconParts.DARK); // панель оператора
+    for (let row = 0; row < 3; row++)
+      sheet.circle(
+        dx0 + doorW * 0.12 + panelW * (0.15 + row * 0.35),
+        dy0 + doorH * 0.08 + panelH + Math.max(0.6, scale(50)),
+        Math.min(doorW * 0.05, scale(18, 0.2)),
         'thin',
       );
-    const sr = Math.min(dw * 0.1, S(45, 0.35));
-    if (dw > 4) {
-      const [sx, sy] = [dx0 + dw * 0.78, dy0 + dh * 0.14];
-      sh.circle(sx, sy, sr, 'thin', '#fff');
-      sh.line(sx - sr * 0.8, sy + sr * 0.8, sx + sr * 0.8, sy - sr * 0.8, 'thin');
+    const switchR = Math.min(doorW * 0.1, scale(45, 0.35));
+    if (doorW > 4) {
+      const [switchX, switchY] = [dx0 + doorW * 0.78, dy0 + doorH * 0.14];
+      sheet.circle(switchX, switchY, switchR, 'thin', '#fff');
+      sheet.line(
+        switchX - switchR * 0.8,
+        switchY + switchR * 0.8,
+        switchX + switchR * 0.8,
+        switchY - switchR * 0.8,
+        'thin',
+      );
     } // вводной выключатель
-    IconParts.louver(sh, [dx0 + dw * 0.2, dy0 + dh * 0.78, dx0 + dw * 0.7, dy0 + dh * 0.94], S(30), false);
+    IconParts.louver(
+      sheet,
+      [dx0 + doorW * 0.2, dy0 + doorH * 0.78, dx0 + doorW * 0.7, dy0 + doorH * 0.94],
+      scale(30),
+      false,
+    );
   }
 
   /** ДГУ: рама, генератор с пультом, двигатель, турбокомпрессор, вентилятор и радиатор (справа — к жалюзи). */
-  static dgu(c) {
-    const { sh, S, x0, w, h } = c;
-    const hb = Math.min(h * 0.12, S(240, 0.8));
-    const yb = c.y1 - hb;
-    sh.rect([x0, yb, w, hb], 'main', '#fff');
-    if (c.m < 4) {
-      sh.rect([x0, c.y0, w, yb - c.y0], 'main', '#fff');
+  static dgu(frame) {
+    const { sheet, scale, x0, width, height } = frame;
+    const baseH = Math.min(height * 0.12, scale(240, 0.8));
+    const baseY = frame.y1 - baseH;
+    sheet.rect([x0, baseY, width, baseH], 'main', '#fff');
+    if (frame.minSide < 4) {
+      sheet.rect([x0, frame.y0, width, baseY - frame.y0], 'main', '#fff');
       return;
     }
-    for (const f of [0.04, 0.96]) sh.circle(x0 + w * f, yb + hb / 2, Math.min(hb * 0.25, S(35, 0.25)), 'thin'); // проушины
-    const top = c.y0;
-    const H = yb - top;
-    const g = { top, H, yb };
-    IconUnits.generator(c, g);
-    IconUnits.engine(c, g);
-    IconUnits.turbo(c, g);
-    IconUnits.radiator(c, g);
+    for (const frac of [0.04, 0.96])
+      sheet.circle(x0 + width * frac, baseY + baseH / 2, Math.min(baseH * 0.25, scale(35, 0.25)), 'thin'); // проушины
+    const top = frame.y0;
+    const bodyH = baseY - top;
+    const geom = { top, H: bodyH, yb: baseY };
+    IconUnits.generator(frame, geom);
+    IconUnits.engine(frame, geom);
+    IconUnits.turbo(frame, geom);
+    IconUnits.radiator(frame, geom);
   }
 
   /** Генератор: цилиндр с вентиляционными окнами, клеммная коробка, пульт сверху, виброопоры. */
-  static generator(c, g) {
-    const { sh, S, x0, w } = c;
-    const { top, H, yb } = g;
-    const gx0 = x0 + w * 0.03;
-    const gx1 = x0 + w * 0.33;
-    const gt = top + H * 0.36;
-    const gbm = Math.max(0.4, S(60));
-    sh.rect([gx0, gt, gx1 - gx0, yb - gbm - gt], 'main', '#fff', (yb - gt) * 0.12);
-    for (const xx of [gx0 + (gx1 - gx0) * 0.1, gx1 - (gx1 - gx0) * 0.1])
+  static generator(frame, geom) {
+    const { sheet, scale, x0, width } = frame;
+    const { top, H: bodyH, yb: baseY } = geom;
+    const gx0 = x0 + width * 0.03;
+    const gx1 = x0 + width * 0.33;
+    const genTop = top + bodyH * 0.36;
+    const gbm = Math.max(0.4, scale(60));
+    sheet.rect([gx0, genTop, gx1 - gx0, baseY - gbm - genTop], 'main', '#fff', (baseY - genTop) * 0.12);
+    for (const lugX of [gx0 + (gx1 - gx0) * 0.1, gx1 - (gx1 - gx0) * 0.1])
       IconParts.fins(
-        sh,
-        [xx - Math.max(0.5, S(40)), gt + (yb - gt) * 0.2, xx + Math.max(0.5, S(40)), yb - gbm - (yb - gt) * 0.2],
-        S(35),
+        sheet,
+        [
+          lugX - Math.max(0.5, scale(40)),
+          genTop + (baseY - genTop) * 0.2,
+          lugX + Math.max(0.5, scale(40)),
+          baseY - gbm - (baseY - genTop) * 0.2,
+        ],
+        scale(35),
         true,
       );
-    sh.rect(
-      [gx0 + (gx1 - gx0) * 0.45, gt - Math.max(0.6, H * 0.08), (gx1 - gx0) * 0.3, Math.max(0.6, H * 0.08)],
+    sheet.rect(
+      [gx0 + (gx1 - gx0) * 0.45, genTop - Math.max(0.6, bodyH * 0.08), (gx1 - gx0) * 0.3, Math.max(0.6, bodyH * 0.08)],
       'thin',
       '#fff',
     ); // клеммная коробка
-    const pw = (gx1 - gx0) * 0.62;
-    const ph = Math.min(H * 0.24, S(450, 1.5));
+    const panelW = (gx1 - gx0) * 0.62;
+    const panelH = Math.min(bodyH * 0.24, scale(450, 1.5));
     const px0 = gx0 + (gx1 - gx0) * 0.08;
-    const py0 = top + H * 0.02;
-    sh.line(px0 + pw * 0.5, py0 + ph, px0 + pw * 0.5, gt - Math.max(0.6, H * 0.08), 'thin');
-    sh.rect([px0, py0, pw, ph], 'main', '#fff');
-    sh.rect([px0 + pw * 0.12, py0 + ph * 0.15, pw * 0.45, ph * 0.35], 'thin', IconParts.DARK); // пульт
-    for (const f of [0.75, 0.88]) sh.circle(px0 + pw * f, py0 + ph * 0.32, Math.min(pw * 0.05, S(20, 0.2)), 'thin');
-    for (const f of [0.08, 0.92])
-      sh.rect([gx0 + (gx1 - gx0) * f - Math.max(0.4, S(40)), yb - gbm, Math.max(0.8, S(80)), gbm], 'thin', '#fff'); // виброопоры
-    Object.assign(g, { gx1, gt, gbm });
+    const py0 = top + bodyH * 0.02;
+    sheet.line(px0 + panelW * 0.5, py0 + panelH, px0 + panelW * 0.5, genTop - Math.max(0.6, bodyH * 0.08), 'thin');
+    sheet.rect([px0, py0, panelW, panelH], 'main', '#fff');
+    sheet.rect([px0 + panelW * 0.12, py0 + panelH * 0.15, panelW * 0.45, panelH * 0.35], 'thin', IconParts.DARK); // пульт
+    for (const frac of [0.75, 0.88])
+      sheet.circle(px0 + panelW * frac, py0 + panelH * 0.32, Math.min(panelW * 0.05, scale(20, 0.2)), 'thin');
+    for (const frac of [0.08, 0.92])
+      sheet.rect(
+        [gx0 + (gx1 - gx0) * frac - Math.max(0.4, scale(40)), baseY - gbm, Math.max(0.8, scale(80)), gbm],
+        'thin',
+        '#fff',
+      ); // виброопоры
+    Object.assign(geom, { gx1, gt: genTop, gbm });
   }
 
   /** Картер маховика и двигатель: блок, клапанная крышка с рёбрами, поддон, виброопоры. */
-  static engine(c, g) {
-    const { sh, S, x0, w } = c;
-    const { top, H, yb, gx1, gt, gbm } = g;
-    const ex0 = x0 + w * 0.36;
-    const ex1 = x0 + w * 0.76;
-    const et = top + H * 0.28;
-    const eb = yb - H * 0.16;
-    sh.poly(
+  static engine(frame, geom) {
+    const { sheet, scale, x0, width } = frame;
+    const { top, H: bodyH, yb: baseY, gx1, gt: genTop, gbm } = geom;
+    const ex0 = x0 + width * 0.36;
+    const ex1 = x0 + width * 0.76;
+    const engineTop = top + bodyH * 0.28;
+    const engineBottom = baseY - bodyH * 0.16;
+    sheet.poly(
       [
-        [gx1, gt + (yb - gt) * 0.12],
-        [ex0, et + (eb - et) * 0.05],
-        [ex0, eb],
-        [gx1, yb - gbm - (yb - gt) * 0.12],
+        [gx1, genTop + (baseY - genTop) * 0.12],
+        [ex0, engineTop + (engineBottom - engineTop) * 0.05],
+        [ex0, engineBottom],
+        [gx1, baseY - gbm - (baseY - genTop) * 0.12],
       ],
       'thin',
       '#fff',
     );
-    sh.rect([ex0, et, ex1 - ex0, eb - et], 'main', '#fff');
-    sh.rect([ex0 + (ex1 - ex0) * 0.06, et - H * 0.09, (ex1 - ex0) * 0.84, H * 0.09], 'main', '#fff', H * 0.02);
-    IconParts.fins(sh, [ex0 + (ex1 - ex0) * 0.08, et - H * 0.08, ex0 + (ex1 - ex0) * 0.88, et - H * 0.01], S(60), true);
-    sh.rect([ex0 + (ex1 - ex0) * 0.15, eb, (ex1 - ex0) * 0.7, yb - gbm - eb], 'thin', '#fff'); // поддон
-    Object.assign(g, { ex0, ex1, et, eb });
+    sheet.rect([ex0, engineTop, ex1 - ex0, engineBottom - engineTop], 'main', '#fff');
+    sheet.rect(
+      [ex0 + (ex1 - ex0) * 0.06, engineTop - bodyH * 0.09, (ex1 - ex0) * 0.84, bodyH * 0.09],
+      'main',
+      '#fff',
+      bodyH * 0.02,
+    );
+    IconParts.fins(
+      sheet,
+      [ex0 + (ex1 - ex0) * 0.08, engineTop - bodyH * 0.08, ex0 + (ex1 - ex0) * 0.88, engineTop - bodyH * 0.01],
+      scale(60),
+      true,
+    );
+    sheet.rect([ex0 + (ex1 - ex0) * 0.15, engineBottom, (ex1 - ex0) * 0.7, baseY - gbm - engineBottom], 'thin', '#fff'); // поддон
+    Object.assign(geom, { ex0, ex1, et: engineTop, eb: engineBottom });
   }
 
   /** Турбокомпрессор с выхлопом вверх (сильфон, к глушителю), воздушный фильтр с патрубком. */
-  static turbo(c, { top, H, yb, gbm, ex0, ex1, et, eb }) {
-    const { sh, S, x0, w } = c;
-    const tx = x0 + w * 0.62;
-    const ty = et + (eb - et) * 0.28;
-    const tr = Math.min(H * 0.08, S(130, 0.6));
-    const ew = Math.max(0.6, Math.min(S(110), tr * 1.1));
-    sh.rect([tx - ew / 2, top, ew, ty - top], 'thin', '#fff'); // выхлоп — вверх, к глушителю
-    for (let y = top + H * 0.05; y < top + H * 0.14; y += Math.max(0.35, S(25)))
-      sh.line(tx - ew * 0.65, y, tx + ew * 0.65, y, 'fine'); // сильфон
-    sh.circle(tx, ty, tr, 'thin', '#fff');
-    sh.circle(tx, ty, tr * 0.45, 'thin'); // турбокомпрессор
-    const af = Math.min(H * 0.1, S(170, 0.8));
+  static turbo(frame, { top, H: bodyH, yb: baseY, gbm, ex0, ex1, et: engineTop, eb: engineBottom }) {
+    const { sheet, scale, x0, width } = frame;
+    const turboX = x0 + width * 0.62;
+    const turboY = engineTop + (engineBottom - engineTop) * 0.28;
+    const turboR = Math.min(bodyH * 0.08, scale(130, 0.6));
+    const exhaustW = Math.max(0.6, Math.min(scale(110), turboR * 1.1));
+    sheet.rect([turboX - exhaustW / 2, top, exhaustW, turboY - top], 'thin', '#fff'); // выхлоп — вверх, к глушителю
+    for (let y = top + bodyH * 0.05; y < top + bodyH * 0.14; y += Math.max(0.35, scale(25)))
+      sheet.line(turboX - exhaustW * 0.65, y, turboX + exhaustW * 0.65, y, 'fine'); // сильфон
+    sheet.circle(turboX, turboY, turboR, 'thin', '#fff');
+    sheet.circle(turboX, turboY, turboR * 0.45, 'thin'); // турбокомпрессор
+    const filterH = Math.min(bodyH * 0.1, scale(170, 0.8));
     const ax0 = ex0 + (ex1 - ex0) * 0.04;
     const ax1 = ex0 + (ex1 - ex0) * 0.5;
-    const ay = top + H * 0.04;
-    sh.rect([(ax0 + ax1) / 2 - af * 0.25, ay + af, af * 0.5, et - H * 0.09 - ay - af], 'thin', '#fff'); // патрубок воздушного фильтра
-    sh.rect([ax0, ay, ax1 - ax0, af], 'main', '#fff', af * 0.45); // воздушный фильтр
-    for (const f of [0.15, 0.85])
-      sh.rect([ex0 + (ex1 - ex0) * f - Math.max(0.4, S(40)), yb - gbm, Math.max(0.8, S(80)), gbm], 'thin', '#fff');
+    const filterY = top + bodyH * 0.04;
+    sheet.rect(
+      [
+        (ax0 + ax1) / 2 - filterH * 0.25,
+        filterY + filterH,
+        filterH * 0.5,
+        engineTop - bodyH * 0.09 - filterY - filterH,
+      ],
+      'thin',
+      '#fff',
+    ); // патрубок воздушного фильтра
+    sheet.rect([ax0, filterY, ax1 - ax0, filterH], 'main', '#fff', filterH * 0.45); // воздушный фильтр
+    for (const frac of [0.15, 0.85])
+      sheet.rect(
+        [ex0 + (ex1 - ex0) * frac - Math.max(0.4, scale(40)), baseY - gbm, Math.max(0.8, scale(80)), gbm],
+        'thin',
+        '#fff',
+      );
   }
 
   /** Вентилятор (кожух) и радиатор с бачком. */
-  static radiator(c, { top, H, yb, ex1, et, eb }) {
-    const { sh, S, x1, w } = c;
-    const rx0 = x1 - w * 0.16;
-    const rt = top + H * 0.06;
-    sh.rect([ex1, et + (eb - et) * 0.1, rx0 - ex1, (eb - et) * 0.7], 'thin', '#fff');
-    sh.rect([rx0, rt, x1 - rx0 - w * 0.01, yb - rt], 'main', '#fff');
-    IconParts.fins(sh, [rx0 + (x1 - rx0) * 0.08, rt + H * 0.06, x1 - w * 0.02, yb - H * 0.04], S(35), true);
-    sh.rect(
-      [rx0 + (x1 - rx0) * 0.15, rt - Math.max(0.5, H * 0.04), (x1 - rx0) * 0.5, Math.max(0.5, H * 0.04)],
+  static radiator(frame, { top, H: bodyH, yb: baseY, ex1, et: engineTop, eb: engineBottom }) {
+    const { sheet, scale, x1, width } = frame;
+    const rx0 = x1 - width * 0.16;
+    const radTop = top + bodyH * 0.06;
+    sheet.rect(
+      [ex1, engineTop + (engineBottom - engineTop) * 0.1, rx0 - ex1, (engineBottom - engineTop) * 0.7],
+      'thin',
+      '#fff',
+    );
+    sheet.rect([rx0, radTop, x1 - rx0 - width * 0.01, baseY - radTop], 'main', '#fff');
+    IconParts.fins(
+      sheet,
+      [rx0 + (x1 - rx0) * 0.08, radTop + bodyH * 0.06, x1 - width * 0.02, baseY - bodyH * 0.04],
+      scale(35),
+      true,
+    );
+    sheet.rect(
+      [rx0 + (x1 - rx0) * 0.15, radTop - Math.max(0.5, bodyH * 0.04), (x1 - rx0) * 0.5, Math.max(0.5, bodyH * 0.04)],
       'thin',
       '#fff',
     ); // бачок с пробкой
   }
 
   /** Горизонтальный насосный агрегат: двигатель с рёбрами и кожухом вентилятора, муфта под кожухом, насос, патрубки. */
-  static pump(c) {
-    const { sh, S, x0, x1, w, h } = c;
-    if (c.m < 3) {
-      sh.rect([x0, c.y0, w, h], 'main', '#fff');
+  static pump(frame) {
+    const { sheet, scale, x0, x1, width, height } = frame;
+    if (frame.minSide < 3) {
+      sheet.rect([x0, frame.y0, width, height], 'main', '#fff');
       return;
     }
-    const hb = Math.min(h * 0.14, S(120, 0.6));
-    const yb = c.y1 - hb;
-    sh.rect([x0, yb, w, hb], 'main', '#fff');
-    const top = c.y0;
-    const H = yb - top;
-    const ax = yb - H * 0.42;
-    const mr = Math.min(H * 0.36, S(240, 1.2));
+    const baseH = Math.min(height * 0.14, scale(120, 0.6));
+    const baseY = frame.y1 - baseH;
+    sheet.rect([x0, baseY, width, baseH], 'main', '#fff');
+    const top = frame.y0;
+    const bodyH = baseY - top;
+    const axisY = baseY - bodyH * 0.42;
+    const motorR = Math.min(bodyH * 0.36, scale(240, 1.2));
     // ось вала, радиус двигателя
-    sh.line(x0 - 1, ax, x1 + 1, ax, 'axis');
-    const g = { yb, H, ax, mr };
-    IconUnits.pumpMotor(c, g);
-    IconUnits.pumpHead(c, g);
+    sheet.line(x0 - 1, axisY, x1 + 1, axisY, 'axis');
+    const geom = { yb: baseY, H: bodyH, ax: axisY, mr: motorR };
+    IconUnits.pumpMotor(frame, geom);
+    IconUnits.pumpHead(frame, geom);
   }
 
   /** Двигатель: кожух вентилятора, корпус с рёбрами, клеммная коробка, лапы. */
-  static pumpMotor(c, { yb, ax, mr }) {
-    const { sh, S, x0, w } = c;
-    const fc = Math.max(0.8, w * 0.07);
-    const mx0 = x0 + w * 0.03;
-    const mx1 = x0 + w * 0.5;
-    sh.rect([mx0, ax - mr * 0.82, fc, mr * 1.64], 'thin', '#fff', mr * 0.3);
-    IconParts.fins(sh, [mx0 + fc * 0.2, ax - mr * 0.6, mx0 + fc * 0.8, ax + mr * 0.6], S(20), false); // кожух вентилятора
-    sh.rect([mx0 + fc, ax - mr, mx1 - mx0 - fc, mr * 2], 'main', '#fff', mr * 0.15);
-    IconParts.fins(sh, [mx0 + fc + mr * 0.1, ax - mr * 0.85, mx1 - mr * 0.1, ax + mr * 0.85], S(28), false);
-    sh.rect(
+  static pumpMotor(frame, { yb: baseY, ax: axisY, mr: motorR }) {
+    const { sheet, scale, x0, width } = frame;
+    const flangeW = Math.max(0.8, width * 0.07);
+    const mx0 = x0 + width * 0.03;
+    const mx1 = x0 + width * 0.5;
+    sheet.rect([mx0, axisY - motorR * 0.82, flangeW, motorR * 1.64], 'thin', '#fff', motorR * 0.3);
+    IconParts.fins(
+      sheet,
+      [mx0 + flangeW * 0.2, axisY - motorR * 0.6, mx0 + flangeW * 0.8, axisY + motorR * 0.6],
+      scale(20),
+      false,
+    ); // кожух вентилятора
+    sheet.rect([mx0 + flangeW, axisY - motorR, mx1 - mx0 - flangeW, motorR * 2], 'main', '#fff', motorR * 0.15);
+    IconParts.fins(
+      sheet,
+      [mx0 + flangeW + motorR * 0.1, axisY - motorR * 0.85, mx1 - motorR * 0.1, axisY + motorR * 0.85],
+      scale(28),
+      false,
+    );
+    sheet.rect(
       [
-        mx0 + fc + (mx1 - mx0 - fc) * 0.4,
-        ax - mr - Math.max(0.6, S(110)),
-        (mx1 - mx0 - fc) * 0.3,
-        Math.max(0.6, S(110)),
+        mx0 + flangeW + (mx1 - mx0 - flangeW) * 0.4,
+        axisY - motorR - Math.max(0.6, scale(110)),
+        (mx1 - mx0 - flangeW) * 0.3,
+        Math.max(0.6, scale(110)),
       ],
       'thin',
       '#fff',
     ); // клеммная коробка
-    for (const f of [0.25, 0.8])
-      sh.rect(
-        [mx0 + fc + (mx1 - mx0 - fc) * f - Math.max(0.3, S(40)), ax + mr, Math.max(0.6, S(80)), yb - ax - mr],
+    for (const frac of [0.25, 0.8])
+      sheet.rect(
+        [
+          mx0 + flangeW + (mx1 - mx0 - flangeW) * frac - Math.max(0.3, scale(40)),
+          axisY + motorR,
+          Math.max(0.6, scale(80)),
+          baseY - axisY - motorR,
+        ],
         'thin',
         '#fff',
       ); // лапы
   }
 
   /** Кожух муфты; насос: опорный кронштейн, спиральный корпус, напорный патрубок вверх, всасывающий — по оси вправо. */
-  static pumpHead(c, { yb, H, ax, mr }) {
-    const { sh, S, x0, x1, w } = c;
-    const mx1 = x0 + w * 0.5;
-    const gx1 = x0 + w * 0.6;
-    sh.poly(
+  static pumpHead(frame, { yb: baseY, H: bodyH, ax: axisY, mr: motorR }) {
+    const { sheet, scale, x0, x1, width } = frame;
+    const mx1 = x0 + width * 0.5;
+    const gx1 = x0 + width * 0.6;
+    sheet.poly(
       [
-        [mx1, ax - mr * 0.55],
-        [gx1, ax - mr * 0.4],
-        [gx1, ax + mr * 0.4],
-        [mx1, ax + mr * 0.55],
+        [mx1, axisY - motorR * 0.55],
+        [gx1, axisY - motorR * 0.4],
+        [gx1, axisY + motorR * 0.4],
+        [mx1, axisY + motorR * 0.55],
       ],
       'thin',
       '#fff',
     );
-    const vr = Math.min(H * 0.42, (x1 - gx1) * 0.36, S(300, 1.2));
-    const vx = x1 - w * 0.04 - Math.max(0.8, S(120)) - vr;
-    sh.rect([gx1, ax - mr * 0.35, vx - vr * 0.6 - gx1, mr * 0.7], 'thin', '#fff');
-    sh.rect([vx - vr * 0.5, ax + vr * 0.6, vr, yb - ax - vr * 0.6], 'thin', '#fff'); // опора
-    const dn = Math.max(0.6, vr * 0.55);
-    const nl = Math.max(0.8, S(120));
-    const fl = Math.max(0.25, S(20));
-    sh.rect([vx - dn / 2, ax - vr - nl, dn, nl + vr * 0.3], 'main', '#fff'); // напорный патрубок
-    sh.rect([vx - dn * 0.8, ax - vr - nl - fl, dn * 1.6, fl], 'thin', '#fff');
-    sh.circle(vx, ax, vr, 'main', '#fff');
-    sh.circle(vx, ax, vr * 0.38, 'thin'); // спиральный корпус, глазок колеса
-    sh.rect([vx + vr * 0.9, ax - dn * 0.6, nl + vr * 0.1, dn * 1.2], 'main', '#fff'); // всасывающий патрубок
-    sh.rect([vx + vr + nl, ax - dn * 0.85, fl, dn * 1.7], 'thin', '#fff');
+    const voluteR = Math.min(bodyH * 0.42, (x1 - gx1) * 0.36, scale(300, 1.2));
+    const voluteX = x1 - width * 0.04 - Math.max(0.8, scale(120)) - voluteR;
+    sheet.rect([gx1, axisY - motorR * 0.35, voluteX - voluteR * 0.6 - gx1, motorR * 0.7], 'thin', '#fff');
+    sheet.rect(
+      [voluteX - voluteR * 0.5, axisY + voluteR * 0.6, voluteR, baseY - axisY - voluteR * 0.6],
+      'thin',
+      '#fff',
+    ); // опора
+    const nozzle = Math.max(0.6, voluteR * 0.55);
+    const nozzleL = Math.max(0.8, scale(120));
+    const flangeT = Math.max(0.25, scale(20));
+    sheet.rect([voluteX - nozzle / 2, axisY - voluteR - nozzleL, nozzle, nozzleL + voluteR * 0.3], 'main', '#fff'); // напорный патрубок
+    sheet.rect([voluteX - nozzle * 0.8, axisY - voluteR - nozzleL - flangeT, nozzle * 1.6, flangeT], 'thin', '#fff');
+    sheet.circle(voluteX, axisY, voluteR, 'main', '#fff');
+    sheet.circle(voluteX, axisY, voluteR * 0.38, 'thin'); // спиральный корпус, глазок колеса
+    sheet.rect([voluteX + voluteR * 0.9, axisY - nozzle * 0.6, nozzleL + voluteR * 0.1, nozzle * 1.2], 'main', '#fff'); // всасывающий патрубок
+    sheet.rect([voluteX + voluteR + nozzleL, axisY - nozzle * 0.85, flangeT, nozzle * 1.7], 'thin', '#fff');
   }
 
   /** Вертикальный насос: двигатель с кожухом вентилятора сверху, фонарь, ступени с тягами, основание с патрубками. */
-  static vpump(c) {
-    const { sh, S, x0, x1, w, h, cx } = c;
-    const hb = Math.min(h * 0.06, S(60, 0.4));
-    const yb = c.y1 - hb;
-    const ch = Math.min(h * 0.12, S(150, 0.9));
-    const yc = yb - ch;
-    sh.rect([x0 + w * 0.08, yb, w * 0.84, hb], 'main', '#fff'); // плита
-    sh.rect([x0 + w * 0.16, yc, w * 0.68, ch], 'main', '#fff'); // камера с патрубками в линию
-    for (const s of [-1, 1]) {
-      const nx = s < 0 ? x0 : x1 - w * 0.16;
-      const fl = Math.max(0.25, S(20));
-      sh.rect([nx, yc + ch * 0.2, w * 0.16, ch * 0.6], 'thin', '#fff');
-      sh.rect([s < 0 ? x0 : x1 - fl, yc + ch * 0.05, fl, ch * 0.9], 'thin', '#fff');
+  static vpump(frame) {
+    const { sheet, scale, x0, x1, width, height, centerX } = frame;
+    const baseH = Math.min(height * 0.06, scale(60, 0.4));
+    const baseY = frame.y1 - baseH;
+    const chamberH = Math.min(height * 0.12, scale(150, 0.9));
+    const chamberY = baseY - chamberH;
+    sheet.rect([x0 + width * 0.08, baseY, width * 0.84, baseH], 'main', '#fff'); // плита
+    sheet.rect([x0 + width * 0.16, chamberY, width * 0.68, chamberH], 'main', '#fff'); // камера с патрубками в линию
+    for (const side of [-1, 1]) {
+      const nozzleX = side < 0 ? x0 : x1 - width * 0.16;
+      const flangeT = Math.max(0.25, scale(20));
+      sheet.rect([nozzleX, chamberY + chamberH * 0.2, width * 0.16, chamberH * 0.6], 'thin', '#fff');
+      sheet.rect([side < 0 ? x0 : x1 - flangeT, chamberY + chamberH * 0.05, flangeT, chamberH * 0.9], 'thin', '#fff');
     }
-    const st = yc - h * 0.36;
-    const sw = w * 0.5;
-    sh.rect([cx - sw / 2, st, sw, yc - st], 'main', '#fff');
-    sh.line(cx - sw * 0.42, st, cx - sw * 0.42, yc, 'thin');
-    sh.line(cx + sw * 0.42, st, cx + sw * 0.42, yc, 'thin'); // тяги
-    const ln = st - h * 0.12;
-    sh.rect([cx - sw * 0.4, ln, sw * 0.8, st - ln], 'thin', '#fff');
-    sh.rect([cx - sw * 0.18, ln + (st - ln) * 0.25, sw * 0.36, (st - ln) * 0.5], 'thin'); // фонарь
-    const mw = w * 0.7;
-    const mt = c.y0 + h * 0.06;
-    sh.rect([cx - mw / 2, mt, mw, ln - mt], 'main', '#fff', mw * 0.08);
-    IconParts.fins(sh, [cx - mw * 0.42, mt + h * 0.04, cx + mw * 0.42, ln - h * 0.02], S(28), true);
-    sh.rect([cx - mw * 0.4, c.y0, mw * 0.8, mt - c.y0], 'thin', '#fff', mw * 0.1); // кожух вентилятора
-    sh.rect([cx + mw / 2, mt + (ln - mt) * 0.3, Math.max(0.6, S(110)), (ln - mt) * 0.25], 'thin', '#fff'); // клеммная коробка
-    sh.line(cx, c.y0 - 1.6, cx, c.y1 + 1.2, 'axis');
-  }
-
-  static tank(c) {
-    const { sh, S, x0, x1, w, h } = c;
-    const hl = Math.min(h * 0.1, S(100, 0.6));
-    const yb = c.y1 - hl;
-    for (const f of [0.1, 0.9])
-      sh.rect([x0 + w * f - Math.max(0.4, S(40)), yb - 0.3, Math.max(0.8, S(80)), hl + 0.3], 'thin', '#fff');
-    sh.rect(
-      [x0, c.y0 + Math.min(h * 0.1, S(120, 0.6)), w, yb - c.y0 - Math.min(h * 0.1, S(120, 0.6))],
-      'main',
-      '#fff',
-      Math.min(w, h) * 0.06,
+    const stackTop = chamberY - height * 0.36;
+    const stackW = width * 0.5;
+    sheet.rect([centerX - stackW / 2, stackTop, stackW, chamberY - stackTop], 'main', '#fff');
+    sheet.line(centerX - stackW * 0.42, stackTop, centerX - stackW * 0.42, chamberY, 'thin');
+    sheet.line(centerX + stackW * 0.42, stackTop, centerX + stackW * 0.42, chamberY, 'thin'); // тяги
+    const lanternY = stackTop - height * 0.12;
+    sheet.rect([centerX - stackW * 0.4, lanternY, stackW * 0.8, stackTop - lanternY], 'thin', '#fff');
+    sheet.rect(
+      [centerX - stackW * 0.18, lanternY + (stackTop - lanternY) * 0.25, stackW * 0.36, (stackTop - lanternY) * 0.5],
+      'thin',
+    ); // фонарь
+    const motorW = width * 0.7;
+    const motorTop = frame.y0 + height * 0.06;
+    sheet.rect([centerX - motorW / 2, motorTop, motorW, lanternY - motorTop], 'main', '#fff', motorW * 0.08);
+    IconParts.fins(
+      sheet,
+      [centerX - motorW * 0.42, motorTop + height * 0.04, centerX + motorW * 0.42, lanternY - height * 0.02],
+      scale(28),
+      true,
     );
-    const top = c.y0 + Math.min(h * 0.1, S(120, 0.6));
-    const H = yb - top;
-    if (c.m < 3) return;
-    const nw = Math.max(0.8, S(120));
-    sh.rect(
-      [x0 + w * 0.2 - nw / 2, top - Math.min(h * 0.08, S(100, 0.5)), nw, Math.min(h * 0.08, S(100, 0.5))],
+    sheet.rect([centerX - motorW * 0.4, frame.y0, motorW * 0.8, motorTop - frame.y0], 'thin', '#fff', motorW * 0.1); // кожух вентилятора
+    sheet.rect(
+      [
+        centerX + motorW / 2,
+        motorTop + (lanternY - motorTop) * 0.3,
+        Math.max(0.6, scale(110)),
+        (lanternY - motorTop) * 0.25,
+      ],
       'thin',
       '#fff',
-    ); // горловина
-    sh.rect(
-      [x0 + w * 0.2 - nw * 0.7, c.y0, nw * 1.4, Math.max(0.3, top - c.y0 - Math.min(h * 0.08, S(100, 0.5)))],
+    ); // клеммная коробка
+    sheet.line(centerX, frame.y0 - 1.6, centerX, frame.y1 + 1.2, 'axis');
+  }
+
+  /** Топливный бак — вид спереди. */
+  static tank(frame) {
+    const { top, bodyH, baseY, legH } = IconUnits._tankBody(frame);
+    if (frame.minSide < 3) return;
+    IconUnits._tankTop(frame, top);
+    IconUnits._tankGauge(frame, top, bodyH, baseY);
+    IconParts.ball(frame.sheet, frame.x0 + frame.width * 0.3, baseY + legH * 0.3, Math.max(0.4, frame.scale(40)), true); // кран слива
+  }
+
+  /** Опоры и корпус бака. */
+  static _tankBody(frame) {
+    const { sheet, scale, x0, width, height } = frame;
+    const legH = Math.min(height * 0.1, scale(100, 0.6));
+    const baseY = frame.y1 - legH;
+    for (const frac of [0.1, 0.9])
+      sheet.rect(
+        [x0 + width * frac - Math.max(0.4, scale(40)), baseY - 0.3, Math.max(0.8, scale(80)), legH + 0.3],
+        'thin',
+        '#fff',
+      );
+    const top = frame.y0 + Math.min(height * 0.1, scale(120, 0.6));
+    sheet.rect([x0, top, width, baseY - top], 'main', '#fff', Math.min(width, height) * 0.06);
+    return { top, bodyH: baseY - top, baseY, legH };
+  }
+
+  /** Горловина с крышкой, дыхательный клапан, люк. */
+  static _tankTop(frame, top) {
+    const { sheet, scale, x0, x1, width, height } = frame;
+    const neckW = Math.max(0.8, scale(120));
+    const neckH = Math.min(height * 0.08, scale(100, 0.5));
+    sheet.rect([x0 + width * 0.2 - neckW / 2, top - neckH, neckW, neckH], 'thin', '#fff'); // горловина
+    sheet.rect(
+      [x0 + width * 0.2 - neckW * 0.7, frame.y0, neckW * 1.4, Math.max(0.3, top - frame.y0 - neckH)],
       'thin',
       '#fff',
     ); // крышка
-    const bx = x1 - w * 0.15;
-    const f = EskdSheet.f;
-    const bh = Math.min(h * 0.1, S(150, 0.8));
-    // дыхательный клапан
-    sh.path(
-      `M${f(bx)},${f(top)} L${f(bx)},${f(top - bh)} A${f(bh * 0.3)},${f(bh * 0.3)} 0 0 1 ${f(bx + bh * 0.6)},${f(top - bh)} L${f(bx + bh * 0.6)},${f(top - bh * 0.6)}`,
+    const ventX = x1 - width * 0.15;
+    const fmt = EskdSheet.fmt;
+    const ventH = Math.min(height * 0.1, scale(150, 0.8));
+    sheet.path(
+      `M${fmt(ventX)},${fmt(top)} L${fmt(ventX)},${fmt(top - ventH)} A${fmt(ventH * 0.3)},${fmt(ventH * 0.3)} 0 0 1 ${fmt(ventX + ventH * 0.6)},${fmt(top - ventH)} L${fmt(ventX + ventH * 0.6)},${fmt(top - ventH * 0.6)}`,
       'thin',
     );
-    sh.rect([x0 + w * 0.45, top - Math.max(0.3, S(30)), w * 0.2, Math.max(0.3, S(30))], 'thin', '#fff'); // люк
-    const gx = x0 + w * 0.08;
-    const gt = top + H * 0.15;
-    const gb = yb - H * 0.15;
-    sh.rect([gx, gt, Math.max(0.5, S(40)), gb - gt], 'thin');
-    sh.rect(
-      [gx + Math.max(0.1, S(10)), gt + (gb - gt) * 0.45, Math.max(0.3, S(20)), (gb - gt) * 0.5],
-      'fine',
-      IconParts.DARK,
-    ); // указатель уровня
-    IconParts.ball(sh, x0 + w * 0.3, yb + hl * 0.3, Math.max(0.4, S(40)), true); // кран слива
+    sheet.rect(
+      [x0 + width * 0.45, top - Math.max(0.3, scale(30)), width * 0.2, Math.max(0.3, scale(30))],
+      'thin',
+      '#fff',
+    ); // люк
   }
 
-  static cabinetTop(c) {
-    const { sh, x0, y0, x1, y1, w, h } = c;
-    const f = c.front;
-    sh.rect([x0, y0, w, h], 'main', '#fff');
-    if (f === 'r') sh.line(x1 - 0.5, y0 + 0.4, x1 - 0.5, y1 - 0.4, 'thin');
-    else if (f === 'l') sh.line(x0 + 0.5, y0 + 0.4, x0 + 0.5, y1 - 0.4, 'thin');
-    else if (f === 't') sh.line(x0 + 0.4, y0 + 0.5, x1 - 0.4, y0 + 0.5, 'thin');
-    else sh.line(x0 + 0.4, y1 - 0.5, x1 - 0.4, y1 - 0.5, 'thin');
+  /** Указатель уровня. */
+  static _tankGauge(frame, top, bodyH, baseY) {
+    const { sheet, scale, x0, width } = frame;
+    const gaugeX = x0 + width * 0.08;
+    const gaugeTop = top + bodyH * 0.15;
+    const gaugeBottom = baseY - bodyH * 0.15;
+    sheet.rect([gaugeX, gaugeTop, Math.max(0.5, scale(40)), gaugeBottom - gaugeTop], 'thin');
+    sheet.rect(
+      [
+        gaugeX + Math.max(0.1, scale(10)),
+        gaugeTop + (gaugeBottom - gaugeTop) * 0.45,
+        Math.max(0.3, scale(20)),
+        (gaugeBottom - gaugeTop) * 0.5,
+      ],
+      'fine',
+      IconParts.DARK,
+    );
+  }
+
+  /** Шкаф — вид сверху. */
+  static cabinetTop(frame) {
+    const { sheet, x0, y0, x1, y1, width, height } = frame;
+    const face = frame.front;
+    sheet.rect([x0, y0, width, height], 'main', '#fff');
+    if (face === 'r') sheet.line(x1 - 0.5, y0 + 0.4, x1 - 0.5, y1 - 0.4, 'thin');
+    else if (face === 'l') sheet.line(x0 + 0.5, y0 + 0.4, x0 + 0.5, y1 - 0.4, 'thin');
+    else if (face === 't') sheet.line(x0 + 0.4, y0 + 0.5, x1 - 0.4, y0 + 0.5, 'thin');
+    else sheet.line(x0 + 0.4, y1 - 0.5, x1 - 0.4, y1 - 0.5, 'thin');
   }
   /** ДГУ с торца генератора (поперёк станции, вид от прохода): рама, генератор (окружность с окнами), пульт сверху. */
-  static dguEnd(c) {
-    const { sh, S, x0, w, h, cx } = c;
-    const hb = Math.min(h * 0.12, S(240, 0.8));
-    const yb = c.y1 - hb;
-    sh.rect([x0, yb, w, hb], 'main', '#fff');
-    sh.rect([x0 + w * 0.04, c.y0 + h * 0.18, w * 0.92, yb - c.y0 - h * 0.18], 'main', '#fff');
-    if (c.m < 4) return;
-    const r = Math.min(w * 0.36, (yb - c.y0) * 0.3);
-    const gy = yb - r - Math.max(0.4, S(60));
-    sh.circle(cx, gy, r, 'main', '#fff');
-    sh.circle(cx, gy, r * 0.35, 'thin', '#fff'); // генератор
-    sh.rect([x0 + w * 0.2, c.y0, w * 0.6, h * 0.16], 'main', '#fff');
-    sh.rect([x0 + w * 0.28, c.y0 + h * 0.03, w * 0.3, h * 0.06], 'thin', IconParts.DARK); // пульт
+  static dguEnd(frame) {
+    const { sheet, scale, x0, width, height, centerX } = frame;
+    const baseH = Math.min(height * 0.12, scale(240, 0.8));
+    const baseY = frame.y1 - baseH;
+    sheet.rect([x0, baseY, width, baseH], 'main', '#fff');
+    sheet.rect(
+      [x0 + width * 0.04, frame.y0 + height * 0.18, width * 0.92, baseY - frame.y0 - height * 0.18],
+      'main',
+      '#fff',
+    );
+    if (frame.minSide < 4) return;
+    const radius = Math.min(width * 0.36, (baseY - frame.y0) * 0.3);
+    const gridY = baseY - radius - Math.max(0.4, scale(60));
+    sheet.circle(centerX, gridY, radius, 'main', '#fff');
+    sheet.circle(centerX, gridY, radius * 0.35, 'thin', '#fff'); // генератор
+    sheet.rect([x0 + width * 0.2, frame.y0, width * 0.6, height * 0.16], 'main', '#fff');
+    sheet.rect([x0 + width * 0.28, frame.y0 + height * 0.03, width * 0.3, height * 0.06], 'thin', IconParts.DARK); // пульт
   }
-  static dguTop(c) {
-    const { sh, S, x0, y0, x1, w, h, cy } = c;
-    sh.rect([x0, y0, w, h], 'main', '#fff');
-    if (c.m < 4) return;
-    sh.rect([x0 + w * 0.03, y0 + h * 0.18, w * 0.3, h * 0.64], 'main', '#fff', h * 0.12); // генератор
-    sh.rect([x0 + w * 0.13, y0 + h * 0.06, w * 0.1, h * 0.12], 'thin', '#fff'); // клеммная коробка
-    const ex0 = x0 + w * 0.36;
-    const ex1 = x0 + w * 0.76;
-    sh.rect([ex0, y0 + h * 0.22, ex1 - ex0, h * 0.56], 'main', '#fff');
-    const n = 6;
-    const r = Math.min((ex1 - ex0) / (n * 2.6), h * 0.06);
-    for (let i = 0; i < n; i++) sh.circle(ex0 + ((ex1 - ex0) * (i + 0.5)) / n, cy - h * 0.08, r, 'thin'); // цилиндры
-    sh.circle(ex0 + (ex1 - ex0) * 0.3, cy + h * 0.16, Math.min(h * 0.08, S(130)), 'thin', '#fff'); // выхлоп (турбокомпрессор)
-    sh.rect([ex0 + (ex1 - ex0) * 0.5, cy + h * 0.1, (ex1 - ex0) * 0.42, h * 0.12], 'thin', '#fff', h * 0.05); // воздушный фильтр
-    const rx0 = x1 - w * 0.16;
-    sh.rect([rx0, y0 + h * 0.04, x1 - rx0 - w * 0.01, h * 0.92], 'main', '#fff');
-    IconParts.fins(sh, [rx0, y0 + h * 0.06, x1 - w * 0.02, c.y1 - h * 0.06], S(35), true);
+  /** ДГУ — вид сверху. */
+  static dguTop(frame) {
+    const { sheet, scale, x0, y0, x1, width, height, centerY } = frame;
+    sheet.rect([x0, y0, width, height], 'main', '#fff');
+    if (frame.minSide < 4) return;
+    sheet.rect([x0 + width * 0.03, y0 + height * 0.18, width * 0.3, height * 0.64], 'main', '#fff', height * 0.12); // генератор
+    sheet.rect([x0 + width * 0.13, y0 + height * 0.06, width * 0.1, height * 0.12], 'thin', '#fff'); // клеммная коробка
+    const ex0 = x0 + width * 0.36;
+    const ex1 = x0 + width * 0.76;
+    sheet.rect([ex0, y0 + height * 0.22, ex1 - ex0, height * 0.56], 'main', '#fff');
+    const count = 6;
+    const radius = Math.min((ex1 - ex0) / (count * 2.6), height * 0.06);
+    for (let i = 0; i < count; i++)
+      sheet.circle(ex0 + ((ex1 - ex0) * (i + 0.5)) / count, centerY - height * 0.08, radius, 'thin'); // цилиндры
+    sheet.circle(ex0 + (ex1 - ex0) * 0.3, centerY + height * 0.16, Math.min(height * 0.08, scale(130)), 'thin', '#fff'); // выхлоп (турбокомпрессор)
+    sheet.rect(
+      [ex0 + (ex1 - ex0) * 0.5, centerY + height * 0.1, (ex1 - ex0) * 0.42, height * 0.12],
+      'thin',
+      '#fff',
+      height * 0.05,
+    ); // воздушный фильтр
+    const rx0 = x1 - width * 0.16;
+    sheet.rect([rx0, y0 + height * 0.04, x1 - rx0 - width * 0.01, height * 0.92], 'main', '#fff');
+    IconParts.fins(sheet, [rx0, y0 + height * 0.06, x1 - width * 0.02, frame.y1 - height * 0.06], scale(35), true);
   }
-  static pumpTop(c) {
-    const { sh, S, x0, y0, x1, w, h, cy } = c;
-    sh.rect([x0, y0, w, h], 'thin');
-    if (c.m < 3) return;
-    const mr = Math.min(h * 0.34, S(240));
-    sh.rect([x0 + w * 0.03, cy - mr * 0.8, w * 0.07, mr * 1.6], 'thin', '#fff', mr * 0.3);
-    sh.rect([x0 + w * 0.1, cy - mr, w * 0.4, mr * 2], 'main', '#fff', mr * 0.15);
-    IconParts.fins(sh, [x0 + w * 0.12, cy - mr * 0.85, x0 + w * 0.48, cy + mr * 0.85], S(28), false);
-    sh.rect([x0 + w * 0.3, cy - mr - Math.max(0.5, S(80)), w * 0.12, Math.max(0.5, S(80))], 'thin', '#fff'); // клеммная коробка
-    sh.rect([x0 + w * 0.5, cy - mr * 0.45, w * 0.1, mr * 0.9], 'thin', '#fff');
-    const vr = Math.min(h * 0.36, w * 0.14);
-    sh.rect([x1 - w * 0.04 - vr * 2.4, cy - vr, vr * 2, vr * 2], 'main', '#fff', vr * 0.3);
-    sh.circle(x1 - w * 0.04 - vr * 1.4, cy, vr * 0.45, 'thin', '#fff'); // корпус, напорный
-    sh.rect([x1 - w * 0.04 - vr * 0.4, cy - vr * 0.5, vr * 0.4 + w * 0.03, vr], 'thin', '#fff'); // всасывающий
+  /** Насос — вид сверху. */
+  static pumpTop(frame) {
+    const { sheet, scale, x0, y0, x1, width, height, centerY } = frame;
+    sheet.rect([x0, y0, width, height], 'thin');
+    if (frame.minSide < 3) return;
+    const motorR = Math.min(height * 0.34, scale(240));
+    sheet.rect([x0 + width * 0.03, centerY - motorR * 0.8, width * 0.07, motorR * 1.6], 'thin', '#fff', motorR * 0.3);
+    sheet.rect([x0 + width * 0.1, centerY - motorR, width * 0.4, motorR * 2], 'main', '#fff', motorR * 0.15);
+    IconParts.fins(
+      sheet,
+      [x0 + width * 0.12, centerY - motorR * 0.85, x0 + width * 0.48, centerY + motorR * 0.85],
+      scale(28),
+      false,
+    );
+    sheet.rect(
+      [x0 + width * 0.3, centerY - motorR - Math.max(0.5, scale(80)), width * 0.12, Math.max(0.5, scale(80))],
+      'thin',
+      '#fff',
+    ); // клеммная коробка
+    sheet.rect([x0 + width * 0.5, centerY - motorR * 0.45, width * 0.1, motorR * 0.9], 'thin', '#fff');
+    const voluteR = Math.min(height * 0.36, width * 0.14);
+    sheet.rect(
+      [x1 - width * 0.04 - voluteR * 2.4, centerY - voluteR, voluteR * 2, voluteR * 2],
+      'main',
+      '#fff',
+      voluteR * 0.3,
+    );
+    sheet.circle(x1 - width * 0.04 - voluteR * 1.4, centerY, voluteR * 0.45, 'thin', '#fff'); // корпус, напорный
+    sheet.rect(
+      [x1 - width * 0.04 - voluteR * 0.4, centerY - voluteR * 0.5, voluteR * 0.4 + width * 0.03, voluteR],
+      'thin',
+      '#fff',
+    ); // всасывающий
   }
   /** Вертикальный насос сверху: кожух вентилятора двигателя, клеммная коробка, патрубки в линию. */
-  static vpumpTop(c) {
-    const { sh, S, x0, x1, w, cx, cy, m } = c;
-    const r = m * 0.36;
-    sh.rect([x0, cy - m * 0.14, w, m * 0.28], 'thin', '#fff');
-    for (const xx of [x0, x1 - Math.max(0.25, S(20))])
-      sh.rect([xx, cy - m * 0.22, Math.max(0.25, S(20)), m * 0.44], 'thin', '#fff');
-    sh.circle(cx, cy, r, 'main', '#fff');
-    IconParts.fan(sh, cx, cy, r * 0.8);
-    sh.rect([cx + r * 0.6, cy - r - Math.max(0.5, S(90)), r * 0.7, Math.max(0.5, S(90))], 'thin', '#fff');
+  static vpumpTop(frame) {
+    const { sheet, scale, x0, x1, width, centerX, centerY, minSide } = frame;
+    const radius = minSide * 0.36;
+    sheet.rect([x0, centerY - minSide * 0.14, width, minSide * 0.28], 'thin', '#fff');
+    for (const slotX of [x0, x1 - Math.max(0.25, scale(20))])
+      sheet.rect([slotX, centerY - minSide * 0.22, Math.max(0.25, scale(20)), minSide * 0.44], 'thin', '#fff');
+    sheet.circle(centerX, centerY, radius, 'main', '#fff');
+    IconParts.fan(sheet, centerX, centerY, radius * 0.8);
+    sheet.rect(
+      [centerX + radius * 0.6, centerY - radius - Math.max(0.5, scale(90)), radius * 0.7, Math.max(0.5, scale(90))],
+      'thin',
+      '#fff',
+    );
   }
-  static tankTop(c) {
-    const { sh, S, x0, y0, w, h, m } = c;
-    sh.rect([x0, y0, w, h], 'main', '#fff', m * 0.06);
-    if (m < 3) return;
-    sh.circle(x0 + w * 0.2, y0 + h * 0.5, Math.min(m * 0.12, S(80, 0.4)), 'thin', '#fff');
-    sh.rect([x0 + w * 0.45, y0 + h * 0.3, w * 0.2, h * 0.4], 'thin');
-    sh.circle(c.x1 - w * 0.15, y0 + h * 0.5, Math.min(m * 0.06, S(40, 0.3)), 'thin');
+  /** Бак — вид сверху. */
+  static tankTop(frame) {
+    const { sheet, scale, x0, y0, width, height, minSide } = frame;
+    sheet.rect([x0, y0, width, height], 'main', '#fff', minSide * 0.06);
+    if (minSide < 3) return;
+    sheet.circle(x0 + width * 0.2, y0 + height * 0.5, Math.min(minSide * 0.12, scale(80, 0.4)), 'thin', '#fff');
+    sheet.rect([x0 + width * 0.45, y0 + height * 0.3, width * 0.2, height * 0.4], 'thin');
+    sheet.circle(frame.x1 - width * 0.15, y0 + height * 0.5, Math.min(minSide * 0.06, scale(40, 0.3)), 'thin');
   }
   /** Глушитель ДГУ на крыше: корпус с коническими переходами и хомутами (опоры и вывод выхлопа рисует чертёж). */
-  static muffler(sh, x0, y0, x1, y1) {
-    const w = x1 - x0;
-    const h = y1 - y0;
-    if (!(w > 0.3 && h > 0.3)) return;
-    const cone = Math.min(w * 0.12, h * 0.6);
-    const ym = (y0 + y1) / 2;
-    const p = h * 0.22;
-    sh.poly(
+  static muffler(sheet, x0, y0, x1, y1) {
+    const width = x1 - x0;
+    const height = y1 - y0;
+    if (!(width > 0.3 && height > 0.3)) return;
+    const cone = Math.min(width * 0.12, height * 0.6);
+    const midY = (y0 + y1) / 2;
+    const pinch = height * 0.22;
+    sheet.poly(
       [
-        [x0, ym - p],
+        [x0, midY - pinch],
         [x0 + cone, y0],
         [x1 - cone, y0],
-        [x1, ym - p],
-        [x1, ym + p],
+        [x1, midY - pinch],
+        [x1, midY + pinch],
         [x1 - cone, y1],
         [x0 + cone, y1],
-        [x0, ym + p],
+        [x0, midY + pinch],
       ],
       'main',
       '#fff',
     );
-    sh.line(x0 + cone, y0, x0 + cone, y1, 'thin');
-    sh.line(x1 - cone, y0, x1 - cone, y1, 'thin');
-    for (const t of [0.32, 0.68]) sh.line(x0 + w * t, y0, x0 + w * t, y1, 'thin'); // хомуты
-    IconParts.shade(sh, [x0 + cone, y0, x1 - cone, y1], false);
-    sh.line(x0 - 1.6, ym, x1 + 1.6, ym, 'axis');
+    sheet.line(x0 + cone, y0, x0 + cone, y1, 'thin');
+    sheet.line(x1 - cone, y0, x1 - cone, y1, 'thin');
+    for (const frac of [0.32, 0.68]) sheet.line(x0 + width * frac, y0, x0 + width * frac, y1, 'thin'); // хомуты
+    IconParts.shade(sheet, [x0 + cone, y0, x1 - cone, y1], false);
+    sheet.line(x0 - 1.6, midY, x1 + 1.6, midY, 'axis');
   }
 }
