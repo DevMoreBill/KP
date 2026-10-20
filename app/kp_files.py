@@ -1,5 +1,6 @@
 """Справочные документы к КП: хранение в data/kp_files, проверка содержимого, пределы, удаление автором."""
 
+import builtins
 import io
 import os
 import re
@@ -175,9 +176,9 @@ class KpFiles:
         return os.path.splitext(name.rstrip('/').rstrip(' .'))[1].lower()
 
     @classmethod
-    def _zip_bad(cls, data, depth=0) -> bool:
+    def _zip_bad(cls, data, depth=0) -> list[str]:
         """Запрещённые имена в архиве; вложенный ZIP — на уровень глубже, прочие архивы внутри запрещены."""
-        bad = []
+        bad: list[str] = []
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for info in z.infolist():
                 ext = cls._ext(info.filename)
@@ -262,7 +263,7 @@ class KpFiles:
             out.append(rec)
         return out
 
-    def undo_until(self, rec, uid: str) -> datetime | None:
+    def undo_until(self, rec, uid: str | None) -> datetime | None:
         """До какого времени автор uid может удалить свой документ d (строка таблицы) — или None, если не может."""
         minutes = SrvVal.get(self.store, 'kp.fileUndoMin')
         if not uid or not minutes or rec.get('added_by_id') != uid:
@@ -273,7 +274,7 @@ class KpFiles:
             return None
         return until if datetime.now() < until else None
 
-    def delete_own(self, kid: str, fid: str, uid: str) -> dict | None:
+    def delete_own(self, kid: str, fid: str, uid: str) -> dict:
         """Автор удаляет свой документ в первые kp.fileUndoMin минут → прежнее описание."""
         rec = self._get(kid, fid)
         if not rec:
@@ -283,7 +284,10 @@ class KpFiles:
                 f'Удалить документ может его автор в первые {SrvVal.get(self.store, "kp.fileUndoMin")} мин после загрузки, '
                 'позже — администратор'
             )
-        return self.delete(kid, fid)
+        rec = self.delete(kid, fid)
+        if rec is None:
+            raise LookupError('Документ не найден')
+        return rec
 
     def counts(self, ids) -> dict:
         """Сколько документов у каждого КП из списка: {номер КП: число} (без документов — нет в ответе)."""
@@ -311,7 +315,13 @@ class KpFiles:
         rec = self._get(kid, fid)
         return self._row(rec) if rec else None
 
-    def read(self, kid: str, fid: str) -> tuple | None:
+    def _require(self, kid: str, fid) -> dict:
+        found = self.get(kid, fid)
+        if found is None:
+            raise LookupError('Документ не найден')
+        return found
+
+    def read(self, kid: str, fid: str | int) -> tuple | None:
         """(описание, содержимое) или None — нет такой записи или файл пропал с диска."""
         rec = self._get(kid, fid)
         if not rec:
@@ -327,7 +337,7 @@ class KpFiles:
     def clean_note(cls, note) -> str:
         return re.sub(r'\s+', ' ', cls.BAD_CHARS.sub(' ', str(note or ''))).strip()[: cls.NOTE_MAX]
 
-    def add(self, kid: str, name, data, note='', author: str = '', by_id='') -> dict | None:
+    def add(self, kid: str, name, data, note='', author: str = '', by_id='') -> dict:
         """Прикрепить файл к КП → описание. ValueError — понятным текстом (тип, размер, пределы КП)."""
         kid = self._kp_id(kid)
         name, ext = self.clean_name(name)
@@ -386,15 +396,15 @@ class KpFiles:
                     except OSError:
                         pass
                 raise
-        return self.get(kid, cur.lastrowid)
+        return self._require(kid, cur.lastrowid)
 
-    def set_note(self, kid: str, fid: str, note) -> dict | None:
+    def set_note(self, kid: str, fid: str, note) -> dict:
         if not self._get(kid, fid):
             raise LookupError('Документ не найден')
         self.store.write(
             'UPDATE kp_files SET note=? WHERE kp_id=? AND id=?', (self.clean_note(note), self._kp_id(kid), int(fid))
         )
-        return self.get(kid, fid)
+        return self._require(kid, fid)
 
     def delete(self, kid: str, fid: str) -> dict | None:
         """Удалить документ (администратор или автор через delete_own — проверяет маршрут) → прежнее описание или None."""
@@ -416,7 +426,7 @@ class KpFiles:
         except (OSError, ValueError):
             pass
 
-    def for_mail(self, kid: str, ids, already=0) -> list:
+    def for_mail(self, kid: str, ids, already=0) -> builtins.list:
         """Выбранные документы для письма: [(имя, содержимое, тип)]; вместе с already байт (файл КП) — не больше kp.mailMB."""
         want = []
         for x in ids or []:

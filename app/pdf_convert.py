@@ -103,7 +103,7 @@ def _word(src: str, dst: str) -> None:
 
 
 def _libreoffice(src: str, dst: str) -> None:
-    exe = soffice_path()
+    exe = soffice_path() or 'soffice'
     out_dir = tempfile.mkdtemp(prefix='kp_pdf_')
     profile = tempfile.mkdtemp(prefix='kp_lo_')
     try:
@@ -203,7 +203,11 @@ def convert_file(src: str, dst: str, cloud_key: str | None = None) -> str:
         for name, ok, convert in (
             ('Word', word_available, _word),
             ('LibreOffice', lambda: bool(soffice_path()), _libreoffice),
-            ('ConvertAPI', lambda: bool(cloud_key), lambda src_path, dst_path: _cloud(src_path, dst_path, cloud_key)),
+            (
+                'ConvertAPI',
+                lambda: bool(cloud_key),
+                lambda src_path, dst_path: _cloud(src_path, dst_path, cloud_key or ''),
+            ),
         ):
             if not ok():
                 continue

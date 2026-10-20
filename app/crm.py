@@ -3,6 +3,7 @@
 import json
 import re
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from kp_track import Val
 
@@ -77,6 +78,12 @@ class DealBook:
         row = self.store.one(f'SELECT {self.COLS} FROM deals WHERE id=?', (str(did or '')[:40],))
         return self._out(row) if row else None
 
+    def _require(self, did) -> dict:
+        found = self.get(did)
+        if found is None:
+            raise LookupError('Сделка не найдена')
+        return found
+
     def deals(self, managers=None) -> list:
         """Сделки менеджеров (None — все): незакрытые и закрытые за последние 120 дней."""
         since = (date.today() - timedelta(days=120)).isoformat()
@@ -87,9 +94,9 @@ class DealBook:
             args += list(managers)
         return [self._out(row) for row in self.store.all(sql + ' ORDER BY updated DESC', tuple(args))]
 
-    def kps(self, ids) -> list[dict]:
+    def kps(self, ids) -> dict[str, list[dict]]:
         """{id сделки: [КП кратко]} — КП из журнала (КП в корзине не показываются)."""
-        out = {i: [] for i in ids}
+        out: dict[str, list[dict]] = {i: [] for i in ids}
         if not ids:
             return out
         from admin import econ_rub
@@ -109,8 +116,8 @@ class DealBook:
     @staticmethod
     def _kp_card(kid: str, meta, track, econ_rub) -> dict:
         rub = econ_rub(meta)[0]
-        econ = meta.get('econ') if isinstance(meta.get('econ'), dict) else {}
-        plan = meta.get('plan') if isinstance(meta.get('plan'), dict) else None
+        econ = picked if isinstance(picked := meta.get('econ'), dict) else {}
+        plan = picked if isinstance(picked := meta.get('plan'), dict) else None
         return {
             'id': kid,
             'number': meta.get('number') or kid,
@@ -126,7 +133,7 @@ class DealBook:
             'positions': meta.get('positions') or 0,
             'client': meta.get('client') or '',
             'plan': plan,
-            'followUp': track.get('followUp') if isinstance(track.get('followUp'), dict) else None,
+            'followUp': picked if isinstance(picked := track.get('followUp'), dict) else None,
         }
 
     @staticmethod
@@ -137,7 +144,7 @@ class DealBook:
         return int(conn.execute("SELECT value FROM kv WHERE key='crm.seq'").fetchone()[0])
 
     def _log(self, deal, author: str, **what) -> None:
-        hist = deal.get('history') if isinstance(deal.get('history'), list) else []
+        hist = picked if isinstance(picked := deal.get('history'), list) else []
         hist.append(dict(what, at=Val.now(), by=author))
         deal['history'] = hist[-self.HISTORY_MAX :]
 
@@ -173,7 +180,7 @@ class DealBook:
         self._save(conn, did, data, author, when=when)
         return did
 
-    def create(self, data, manager_id, manager, author: str) -> dict | None:
+    def create(self, data, manager_id, manager, author: str) -> dict:
         """Новая сделка вручную (без КП). ValueError — с понятным текстом."""
         x = self._clean(data, {}, Stages.keys(self.store))
         if not (x.get('title') or x.get('client')):
@@ -187,13 +194,13 @@ class DealBook:
             conn = self.store.conn()
             did = self._new(conn, x, author)
             conn.commit()
-        return self.get(did)
+        return self._require(did)
 
     def _clean(self, data, cur, keys) -> dict:
         """Поля сделки из запроса → изменения. ValueError — с понятным текстом."""
         if not isinstance(data, dict):
             raise ValueError('Нет данных сделки')
-        out = {}
+        out: dict[str, Any] = {}
         for k, field in (('title', 200), ('client', 300), ('note', 3000)):
             if k in data:
                 out[k] = Val.text(data.get(k), field)
@@ -231,7 +238,7 @@ class DealBook:
                 out['lostReason'] = reason
         return out
 
-    def update(self, did, data, author: str, base_rev=None, manager=None) -> dict | None:
+    def update(self, did, data, author: str, base_rev=None, manager=None) -> dict:
         """Правка сделки (поля, этап, сумма, ответственный) → сделка; Conflict — сделку успели изменить."""
         with self.store.lock:
             cur = self.get(did)
@@ -254,7 +261,7 @@ class DealBook:
             self._sum(conn, new)
             self._save(conn, did, new, author, base_rev)
             conn.commit()
-        return self.get(did)
+        return self._require(did)
 
     def deal_of(self, kid: str) -> str | None:
         row = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
@@ -322,8 +329,8 @@ class DealBook:
         return did
 
     def _from_kp(self, conn, kid: str, meta, track, author: str, when=None, manager=None) -> str:
-        items = meta.get('items') if isinstance(meta.get('items'), list) else []
-        tnd = meta.get('tender') if isinstance(meta.get('tender'), dict) else {}
+        items = picked if isinstance(picked := meta.get('items'), list) else []
+        tnd = picked if isinstance(picked := meta.get('tender'), dict) else {}
         title = (
             ('Закупка № {}'.format(tnd['number']))
             if tnd.get('number')
@@ -504,6 +511,8 @@ class DealBook:
             stamp = end[2].isoformat() + 'T09:00:00'
             self._sync(conn, deal, 'переход на сделки', when=stamp)
             deal = self.get_c(conn, did)
+            if deal is None:
+                continue
             age = (today - end[2]).days
             stage = deal['stage']
             if stage == 'contract' and age > self.WON_DAYS:
@@ -558,6 +567,12 @@ class TaskBook:
         row = self.store.one(f'SELECT {self.COLS} FROM crm_tasks WHERE id=?', (int(tid),))
         return self._out(row) if row else None
 
+    def _require(self, tid) -> dict:
+        found = self.get(tid)
+        if found is None:
+            raise LookupError('Дело не найдено')
+        return found
+
     def list(self, managers=None, deal=None, days=14) -> list:
         """Незакрытые дела и закрытые за последние days дней: менеджеров (None — всех) или одной сделки (все её дела)."""
         if deal:
@@ -598,7 +613,7 @@ class TaskBook:
             x['state'] = data['state']
         return x
 
-    def add(self, data, manager_id, author: str, deal=None) -> dict | None:
+    def add(self, data, manager_id, author: str, deal=None) -> dict:
         x = self._clean(data, None)
         title = x.get('title') or dict(self.KINDS)[x['kind']]
         with self.store.lock:
@@ -620,9 +635,9 @@ class TaskBook:
             )
             conn.commit()
             tid = cur.lastrowid
-        return self.get(tid)
+        return self._require(tid)
 
-    def update(self, tid: str, data) -> dict | None:
+    def update(self, tid: str, data) -> dict:
         cur = self.get(tid)
         if not cur:
             raise LookupError('Дело не найдено')
@@ -645,7 +660,7 @@ class TaskBook:
                 int(tid),
             ),
         )
-        return self.get(tid)
+        return self._require(tid)
 
     def move_deal(self, did, manager_id) -> None:
         """Ответственный по сделке сменился — незакрытые дела сделки переходят к нему."""

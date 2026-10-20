@@ -91,8 +91,10 @@ class BitrixRules:
     def field(self, key: str) -> dict:
         """{bx, dir, win, label, own}: поле Битрикса, направление, кто главный при правке с обеих сторон."""
         spec = self.spec(key)
+        if spec is None:
+            raise ValueError(f'Неизвестное поле обмена: {key}')
         mine = (self.conf.get('fields') or {}).get(key) or {}
-        bx_code = mine.get('bx') if spec[3] and mine.get('bx') else spec[2]
+        bx_code = str(mine.get('bx') if spec[3] and mine.get('bx') else spec[2])
         direction = mine.get('dir') if mine.get('dir') in spec[4] else spec[5]
         win = mine.get('win') if mine.get('win') in self.WINS else 'last'
         return {
@@ -140,7 +142,7 @@ class BitrixRules:
 
     def send(self) -> dict:
         send = self.conf.get('send') or {}
-        files = send.get('files') if isinstance(send.get('files'), dict) else {}
+        files = picked if isinstance(picked := send.get('files'), dict) else {}
         return {
             'rows': send.get('rows', True) is not False,
             'rowsHow': send.get('rowsHow') if send.get('rowsHow') in ('kp', 'sum') else 'kp',
@@ -159,7 +161,7 @@ class BitrixRules:
 
     def tasks(self) -> dict:
         tasks = self.conf.get('tasks') or {}
-        k = tasks.get('kinds') if isinstance(tasks.get('kinds'), dict) else {}
+        k = picked if isinstance(picked := tasks.get('kinds'), dict) else {}
         return {
             'kinds': {x: (k.get(x) if k.get(x) in self.TASK_AS else 'todo') for x in self.TASK_KINDS},
             'cancel': tasks.get('cancel', True) is not False,
@@ -304,7 +306,7 @@ class BitrixRules:
             new['fields'] = out
         if 'send' in data:
             send = data['send'] if isinstance(data['send'], dict) else {}
-            files = send.get('files') if isinstance(send.get('files'), dict) else {}
+            files = picked if isinstance(picked := send.get('files'), dict) else {}
             new['send'] = {
                 'rows': send.get('rows', True) is not False,
                 'rowsHow': pick(send.get('rowsHow'), ('kp', 'sum'), 'товары') or 'kp',
@@ -321,9 +323,9 @@ class BitrixRules:
             }
         if 'tasks' in data:
             tasks = data['tasks'] if isinstance(data['tasks'], dict) else {}
-            k = tasks.get('kinds') if isinstance(tasks.get('kinds'), dict) else {}
+            kinds = picked if isinstance(picked := tasks.get('kinds'), dict) else {}
             new['tasks'] = {
-                'kinds': {x: pick(k.get(x), cls.TASK_AS, 'вид дела') or 'todo' for x in cls.TASK_KINDS},
+                'kinds': {x: pick(kinds.get(x), cls.TASK_AS, 'вид дела') or 'todo' for x in cls.TASK_KINDS},
                 'cancel': tasks.get('cancel', True) is not False,
                 'other': tasks.get('other', True) is not False,
             }

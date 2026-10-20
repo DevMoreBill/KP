@@ -247,7 +247,7 @@ class TempPassword:
     @classmethod
     def expired(cls, rec: dict) -> bool:
         temp = cls.of(rec)
-        return bool(temp) and temp['exp'] <= time.time()
+        return temp is not None and temp['exp'] <= time.time()
 
     @classmethod
     def issue(cls, store, mid: str, hash_password, author: str) -> tuple:

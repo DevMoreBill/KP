@@ -1,5 +1,6 @@
 """«Проверить все подключения»: лёгкий запрос к каждому внешнему сервису без трат платных лимитов."""
 
+import functools
 import smtplib
 import ssl
 import threading
@@ -7,6 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
+from typing import Any
 
 import imgfetch
 
@@ -40,7 +42,7 @@ class ConnectionCheck:
             ('bitrix', 'CRM', 'Битрикс24 — сделки и дела', 'services', self._bitrix),
         ]
         jobs += [
-            ('feed:' + entry['id'], 'Фиды поставщиков', entry['name'], 'feeds', (lambda feed=entry: self._feed(feed)))
+            ('feed:' + entry['id'], 'Фиды поставщиков', entry['name'], 'feeds', functools.partial(self._feed, entry))
             for entry in (self.store.kv_get('feeds') or {}).get('items', [])
             if entry.get('id') and entry.get('url')
         ]
@@ -171,7 +173,7 @@ class ConnectionCheck:
             OfDataApi(self.store), self.OFDATA, 'ключ не задан — резерв не используется (необязательно)'
         )
 
-    def _check_api(self, api: str, url: str, nokey: str) -> tuple:
+    def _check_api(self, api: Any, url: str, nokey: str) -> tuple:
         if not api.key():
             return 'off', nokey
         # без ключа: любой ответ сервера значит «доступен», лимит не тратится

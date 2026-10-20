@@ -39,7 +39,7 @@ class Net:
         limit: int | None = None,
         retries: int | None = None,
         opener=None,
-    ) -> bytes | None:
+    ) -> bytes:
         """Байты ответа; HTTPError — вызывающему; обрыв — повтор (GET — 1 раз, POST — нет)."""
         merged = {'User-Agent': cls.USER_AGENT}
         merged.update(headers or {})
@@ -58,7 +58,7 @@ class Net:
                 if k + 1 >= tries or cls._timeout(exc):
                     raise
                 time.sleep(cls.RETRY_PAUSE)
-        return None
+        return b''
 
     @staticmethod
     def _timeout(exc: BaseException) -> bool:

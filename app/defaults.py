@@ -5,6 +5,7 @@ import re
 import threading
 import time
 from datetime import datetime
+from typing import Any
 
 KEY_RX = re.compile(r'^[\w.\- ёЁ]{1,80}$')
 MAX_KEYS = 3000
@@ -154,7 +155,7 @@ class SrvVal:
         'kp.imgMB': (25, 5, 100),
     }
     TTL = 5
-    _cache = (None, 0.0, {})
+    _cache: tuple[Any, float, dict] = (None, 0.0, {})
     _lock = threading.Lock()
 
     @classmethod
@@ -208,7 +209,8 @@ class SrvVal:
 
 def img_opts(store) -> dict:
     """Фильтр фото со страницы: {minKB, minPx, skipBlank, maxCount}; выключенное — 0 / False."""
-    out, own = {}, get(store)
+    out: dict[str, Any] = {}
+    own = get(store)
     for k, builtin in IMG_BUILTIN.items():
         x = own.get(k)
         name = k.split('.', 1)[1]

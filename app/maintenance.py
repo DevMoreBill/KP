@@ -6,7 +6,9 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from defaults import SrvVal
 from server_log import ServerLog
@@ -100,7 +102,7 @@ class DbCopy:
             if have and not force:
                 return state(store).get('backup')
             dst = os.path.join(folder, f'kp-{today}.zip')
-            rec = {'at': _now(), 'file': dst}
+            rec: dict[str, Any] = {'at': _now(), 'file': dst}
             try:
                 store.backup(dst, check=True)
                 for x in have:  # прежняя копия за сегодня (например, без сжатия) — заменена архивом
@@ -241,7 +243,7 @@ def archive_audit(store, data_dir: str, years=None) -> int:
 
 def purge_checks(store) -> int:
     edge = (datetime.now() - timedelta(days=SrvVal.get(store, 'srv.checksDays'))).isoformat(timespec='seconds')
-    count = store.one('SELECT COUNT(*) FROM checks WHERE checked < ?', (edge,))[0]
+    count = store.scalar('SELECT COUNT(*) FROM checks WHERE checked < ?', (edge,))
     if count:
         store.write('DELETE FROM checks WHERE checked < ?', (edge,))
     return count
@@ -393,7 +395,7 @@ class Background:
         return thread
 
     @staticmethod
-    def every(seconds: float, func, name) -> threading.Thread:
+    def every(seconds: float | Callable[[], float], func, name) -> threading.Thread:
         """Задача раз в seconds секунд (первый запуск — через минуту после старта); name — для журнала сервера."""
 
         def loop() -> None:
@@ -432,6 +434,6 @@ def summary(store, data_dir: str) -> dict:
         'images': state_data.get('images'),
         'lastRun': state_data.get('lastRun'),
         'auditYears': int((store.kv_get('settings') or {}).get('auditYears') or AUDIT_YEARS),
-        'auditRows': store.one('SELECT COUNT(*) FROM audit')[0],
-        'auditOldest': (store.one('SELECT MIN(ts) FROM audit')[0] or '')[:10],
+        'auditRows': store.scalar('SELECT COUNT(*) FROM audit'),
+        'auditOldest': (store.scalar('SELECT MIN(ts) FROM audit') or '')[:10],
     }

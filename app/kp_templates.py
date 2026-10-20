@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import zipfile
 from datetime import datetime
+from typing import Any
 
 from config import BUNDLE, FROZEN, ROOT, SAFE_ID, UPDATE_DIR, read_text, write_bytes
 from defaults import SrvVal
@@ -48,15 +49,15 @@ def ensure_templates() -> None:
                 shutil.copytree(src, dst)
     for tid, folder in template_dirs().items():
         for name in SHARED_FILES:
-            path, src = os.path.join(folder, name), _bundled(tid, name)
-            if not src or os.path.normcase(src) == os.path.normcase(path):
+            path, bundled = os.path.join(folder, name), _bundled(tid, name)
+            if not bundled or os.path.normcase(bundled) == os.path.normcase(path):
                 continue
             if not os.path.isfile(path):
-                shutil.copyfile(src, path)
-            elif _norm_md5(path) in OLD_FACTORY.get(name, ()) and _norm_md5(path) != _norm_md5(src):
+                shutil.copyfile(bundled, path)
+            elif _norm_md5(path) in OLD_FACTORY.get(name, ()) and _norm_md5(path) != _norm_md5(bundled):
                 # заводской файл прошлой версии, который никто не правил, — обновляем (прежний — в историю)
                 _backup(folder, name)
-                shutil.copyfile(src, path)
+                shutil.copyfile(bundled, path)
 
 
 # отпечатки заводских скелета и формы редактора прошлых версий: такие файлы обновляются сами,
@@ -94,7 +95,7 @@ def _norm_md5(path: str) -> str:
         return hashlib.md5(handle.read().replace(b'\r\n', b'\n')).hexdigest()
 
 
-def template_dirs() -> list[str]:
+def template_dirs() -> dict[str, str]:
     out = {}
     if os.path.isdir(TEMPLATES_DIR):
         for name in sorted(os.listdir(TEMPLATES_DIR)):
@@ -127,7 +128,7 @@ def template_file(tid: str, name: str) -> str | None:
 
 
 def list_templates() -> list[dict]:
-    res = []
+    res: list[dict[str, Any]] = []
     for tid, folder in template_dirs().items():
         try:
             j = json.loads(read_text(os.path.join(folder, 'template.json')))
@@ -266,8 +267,9 @@ def copy_template(tid: str, new_id: str, name: str) -> str:
         raise TemplateError(f'Шаблон с кодом «{new_id}» уже есть')
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns(HISTORY, '*.tmp'))
     for shared in SHARED_FILES:
-        if not os.path.isfile(os.path.join(dst, shared)) and _bundled(tid, shared):
-            shutil.copyfile(_bundled(tid, shared), os.path.join(dst, shared))
+        bundled = _bundled(tid, shared)
+        if bundled and not os.path.isfile(os.path.join(dst, shared)):
+            shutil.copyfile(bundled, os.path.join(dst, shared))
     path = os.path.join(dst, 'template.json')
     j = json.loads(read_text(path))
     j['name'] = name or (j.get('name', new_id) + ' (копия)')

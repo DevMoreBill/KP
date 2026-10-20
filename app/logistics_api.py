@@ -1261,7 +1261,7 @@ class Nrg(Carrier):
         ) or min(transfers, key=lambda x: number(x['price']))
         price, door = number(transfer['price']), 0
         parts = ['перевозка ' + Nrg.rub(price)]  # раскладка цены — в строку предложения (сверить с сайтом Энергии)
-        over = transfer.get('oversize') if isinstance(transfer.get('oversize'), dict) else {}
+        over = picked if isinstance(picked := transfer.get('oversize'), dict) else {}
         if number(over.get('price')):  # надбавка за негабарит (v4)
             price += number(over.get('price'))
             parts.append('негабарит ' + Nrg.rub(number(over.get('price'))))
@@ -1616,12 +1616,12 @@ class TariffInput:
 
 def auto_settings(store) -> dict:
     logistics = store.kv_get('logistics') or {}
-    auto = logistics.get('auto') if isinstance(logistics.get('auto'), dict) else {}
+    auto = picked if isinstance(picked := logistics.get('auto'), dict) else {}
 
     def whole(v, default, high) -> int:
         return min(high, max(1, int(number(v) or default)))  # «x», 0, NaN — значение по умолчанию
 
-    routes = auto.get('routes') if isinstance(auto.get('routes'), list) and auto.get('routes') else REF_ROUTES
+    routes = picked if isinstance(picked := auto.get('routes'), list) and auto.get('routes') else REF_ROUTES
     return {
         'on': auto.get('on', True),
         'days': whole(auto.get('days'), 1, 365),

@@ -133,7 +133,7 @@ class DocText:
                 )
         text = cls._pages(best)
         if len(re.sub(r'\W', '', text)) < 20:
-            err = next((method.get('error') for method in methods if method.get('error')), '')
+            err = str(next((method.get('error') for method in methods if method.get('error')), ''))
             raise ValueError(
                 'в PDF нет текста — похоже на скан'
                 + ('; распознавание: ' + err if err else '')

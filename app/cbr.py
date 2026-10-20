@@ -21,13 +21,13 @@ def cbr_rates() -> dict:
     # 1) официальный сайт ЦБ РФ
     try:
         root = ElementTree.fromstring(http_get('https://www.cbr.ru/scripts/XML_daily.asp'))
-        day = root.get('Date')
+        day = root.get('Date') or ''
         res: dict[str, Any] = {'date': f'{day[6:10]}-{day[3:5]}-{day[0:2]}', 'src': 'ЦБ РФ (cbr.ru)'}
         for v in root.findall('Valute'):
             code = v.findtext('CharCode')
             if code in CURRENCIES:
-                res[code] = float(v.findtext('Value').replace(',', '.')) / float(
-                    v.findtext('Nominal').replace(',', '.')
+                res[code] = float(v.findtext('Value', '').replace(',', '.')) / float(
+                    v.findtext('Nominal', '1').replace(',', '.')
                 )
         return res
     except Exception as exc:

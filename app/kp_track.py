@@ -58,7 +58,7 @@ class DealTrack:
         self.store = store
 
     def _log(self, track, entry) -> None:
-        hist = track.get('history') if isinstance(track.get('history'), list) else []
+        hist = picked if isinstance(picked := track.get('history'), list) else []
         hist.append(entry)
         track['history'] = hist[-self.HISTORY_MAX :]
 
@@ -116,7 +116,7 @@ class DealTrack:
     def mark_sent(self, kid: str, recipients, files, author: str) -> dict:
         """Письмо клиенту ушло: запись в «sent»; неотправленное КП становится «Отправлено»."""
         track = self.store.kp_track_get(kid)
-        text = track.get('sent') if isinstance(track.get('sent'), list) else []
+        text = picked if isinstance(picked := track.get('sent'), list) else []
         text.append({'at': Val.now(), 'by': author, 'to': recipients, 'files': files})
         track['sent'] = text[-self.SENT_MAX :]
         if (track.get('status') or 'new') == 'new':
@@ -164,7 +164,7 @@ class OfferTerm:
         count, words = int(num_match.group(1)), num_match.group(2) + ' ' + num_match.group(3)
         for key, mult in cls.UNITS:
             if key in words:
-                return cls.work_days(base, count) if mult == 'work' else base + timedelta(days=count * mult)
+                return cls.work_days(base, count) if mult == 'work' else base + timedelta(days=count * int(mult))
         return None
 
     @staticmethod
@@ -199,7 +199,7 @@ class ReminderList:
     def _of(self, kid: str, meta, track, state) -> Iterator[dict]:
         today, status = self.today, track.get('status') or 'new'
         base = {'id': kid, 'number': meta.get('number') or kid, 'client': meta.get('client') or '', 'status': status}
-        follow = track.get('followUp') if isinstance(track.get('followUp'), dict) else None
+        follow = picked if isinstance(picked := track.get('followUp'), dict) else None
         if follow and not follow.get('done'):
             due = Val.day(follow.get('date'))
             if due and due <= today + timedelta(days=1):
@@ -250,9 +250,9 @@ class MailTemplate:
         """Значения подстановок письма из КП."""
         state1 = state if isinstance(state, dict) else {}
         meta1 = meta if isinstance(meta, dict) else {}
-        mgr = state1.get('manager') if isinstance(state1.get('manager'), dict) else {}
-        contact = state1.get('contact') if isinstance(state1.get('contact'), dict) else {}
-        cover = state1.get('cover') if isinstance(state1.get('cover'), dict) else {}
+        mgr = picked if isinstance(picked := state1.get('manager'), dict) else {}
+        contact = picked if isinstance(picked := state1.get('contact'), dict) else {}
+        cover = picked if isinstance(picked := state1.get('cover'), dict) else {}
         day = Val.day(state1.get('date') or meta1.get('date'))
         phone = str(mgr.get('phone') or '')
         if mgr.get('ext'):

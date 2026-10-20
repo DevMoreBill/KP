@@ -28,6 +28,7 @@ known-local-folder = ["kit"]
 # mypy — проверка подписей типов сервера (только для разработки): cd app && python3 -m mypy *.py
 [tool.mypy]
 python_version = "3.11"
+platform = "win32"  # сервер отдела — Windows
 ignore_missing_imports = true
 explicit_package_bases = true
 no_error_summary = true

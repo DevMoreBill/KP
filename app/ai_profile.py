@@ -101,7 +101,10 @@ class CategoryProfile:
             return round(statistics.median(values)) if values else 0
 
         count = len(cards)
-        keys, shown, labels, gnames = Counter(), defaultdict(Counter), Counter(), Counter()
+        keys: Counter = Counter()
+        shown: defaultdict = defaultdict(Counter)
+        labels: Counter = Counter()
+        gnames: Counter = Counter()
         for card in cards:
             for k in {KeyNorm.of(x) for x in card['keys'] if x}:
                 keys[k] += 1
@@ -151,7 +154,8 @@ class ModelFacts:
             return []
         # предотбор по самому длинному латинскому слову: LIKE в SQLite не различает регистр только у латиницы
         lat = [x for x in key if re.match(r'^[a-z0-9]{2,}$', x)]
-        where, args = [], ()
+        where: list[str] = []
+        args: tuple = ()
         if lat:
             where.append('name LIKE ?')
             args += ('%' + max(lat, key=len) + '%',)

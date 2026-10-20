@@ -6,6 +6,7 @@ import re
 import subprocess
 import threading
 from datetime import datetime
+from typing import Any
 
 
 class ServerTask:
@@ -80,7 +81,7 @@ class ServerTask:
     def _text(raw: bytes | None) -> str:
         return (raw or b'').decode('utf-8', 'replace').replace('\ufeff', '').strip()
 
-    def read(self) -> dict:
+    def read(self) -> dict[str, Any]:
         """{exists, limit, noBattery, stopBattery, priority, restart}."""
         code, out, err = self._powershell(self.READ.format(name=self.NAME))
         line = next(
@@ -101,7 +102,11 @@ class ServerTask:
 
     def check(self, started: float) -> dict:
         """Проверить задачу и исправить при необходимости → запись kv serverTask."""
-        rec = {'at': datetime.now().isoformat(timespec='seconds'), 'started': self.iso(started), 'exists': False}
+        rec: dict[str, Any] = {
+            'at': datetime.now().isoformat(timespec='seconds'),
+            'started': self.iso(started),
+            'exists': False,
+        }
         try:
             state = self.read()
             rec['exists'] = bool(state.get('exists'))

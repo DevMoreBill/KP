@@ -442,7 +442,7 @@ class KpManagerLock:
         if field == 'meta':
             data['manager'], data['managerPost'] = card.get('name') or '', card.get('position') or ''
         else:
-            mgr = data.get('manager') if isinstance(data.get('manager'), dict) else {}
+            mgr = got_value if isinstance(got_value := data.get('manager'), dict) else {}
             data['manager'] = dict(mgr, **{k: str(card.get(k) or '') for k in cls.CONTACTS})
         return json.dumps(data, ensure_ascii=False)
 
@@ -507,13 +507,13 @@ def econ_rub(rec) -> tuple:
 
 
 def _econ_rub(rec) -> tuple:
-    econ = rec.get('econ') if isinstance(rec.get('econ'), dict) else None
+    econ = got_value if isinstance(got_value := rec.get('econ'), dict) else None
     cur = (econ or {}).get('cur') or 'RUB'
     base = ((econ or {}).get('sum') if econ else rec.get('sum')) or 0
     if rec.get('locked'):
         return ((rec.get('sum') or 0) if cur == 'RUB' else None), None
     sum_rub = base if cur == 'RUB' else ((econ or {}).get('sumRub') or None)
-    deal = rec.get('deal') if isinstance(rec.get('deal'), dict) else None
+    deal = got_value if isinstance(got_value := rec.get('deal'), dict) else None
     try:
         if deal:
             return sum_rub, (_jround(float(deal.get('profit') or 0) * 100) if deal.get('confirmed') else None)
@@ -1737,7 +1737,7 @@ class AdminApi:
                     int(acc.group(1)),
                     acc.group(2),
                     payload.get('reason') or '',
-                    payload.get('fields') if isinstance(payload.get('fields'), list) else None,
+                    got_value if isinstance(got_value := payload.get('fields'), list) else None,
                 )
             )
         if sub == 'pending/approve-all' and method == 'POST':
@@ -2425,7 +2425,7 @@ class AdminApi:
             # каталог — готовыми строками из базы, без разбора и повторной сборки: 25 000 позиций занимали 1,3 ГБ памяти сервера
             where, args = ('WHERE cat IN ({})'.format(','.join('?' * len(cats))), tuple(cats)) if cats else ('', ())
             out['catalog'] = None
-            items = store.one('SELECT COUNT(*) FROM catalog ' + where, args)[0]
+            items = store.scalar('SELECT COUNT(*) FROM catalog ' + where, args)
             catalog = '[' + store.joined(f'SELECT doc AS x FROM catalog {where} ORDER BY name', args) + ']'
             src = (where, args)
         if fmt == 'yml' and 'catalog' in out:
@@ -2638,9 +2638,9 @@ class AdminApi:
                 except OSError:
                     pass
         rep = {
-            'catalog': self.store.one('SELECT COUNT(*) FROM catalog')[0],
-            'kp': self.store.one('SELECT COUNT(*) FROM kp')[0],
-            'clients': self.store.one('SELECT COUNT(*) FROM clients')[0],
+            'catalog': self.store.scalar('SELECT COUNT(*) FROM catalog'),
+            'kp': self.store.scalar('SELECT COUNT(*) FROM kp'),
+            'clients': self.store.scalar('SELECT COUNT(*) FROM clients'),
             'backup': bak,
             'file': str(name or '')[:120],
         }
@@ -2704,7 +2704,7 @@ class AdminApi:
         from supplier_scope import SupplierScope
 
         keep = SupplierScope.keep_of(data)  # выгрузка без цен и остатков: у имеющихся позиций они остаются как в базе
-        digs = data.get('digests') if isinstance(data.get('digests'), dict) else {}
+        digs = got_value if isinstance(got_value := data.get('digests'), dict) else {}
         edits = mode == 'edits' and bool(digs)
         if edits:
             keep = list(SupplierScope.PRICE_KEYS)
@@ -2879,7 +2879,7 @@ class AdminApi:
                 elif section == 'suppliers':
                     for x in ok:
                         put(lambda x: store.supplier_put(x['id'], x, author), x)
-                    customs = sec[section].get('customs') if isinstance(sec[section].get('customs'), dict) else {}
+                    customs = got_value if isinstance(got_value := sec[section].get('customs'), dict) else {}
                     now = store.customs_all() if edits else {}
                     for key, code in customs.items():
                         if isinstance(code, dict) and re.match(r'^(cat|item):[\w.-]{1,80}$', str(key)):
@@ -3044,7 +3044,7 @@ def stats(store) -> dict:
         return sum(1 for stamp_day, _ in days if stamp_day and (today - stamp_day).days < days_back)
 
     def rub(x) -> float:
-        econ = x.get('econ') if isinstance(x.get('econ'), dict) else {}
+        econ = got_value if isinstance(got_value := x.get('econ'), dict) else {}
         return econ_rub(
             {
                 'econ': {
@@ -3096,7 +3096,7 @@ def stats(store) -> dict:
     active_ago = (now - timedelta(days=active)).isoformat(timespec='seconds')
 
     def _one(sql, *args) -> Any:
-        return store.one(sql, args)[0]
+        return store.scalar(sql, args)
 
     approved = _one("SELECT COUNT(*) FROM pending_edits WHERE status='approved'")
     rejected = _one("SELECT COUNT(*) FROM pending_edits WHERE status='rejected'")

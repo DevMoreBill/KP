@@ -93,7 +93,7 @@ class SettingsHistory:
                 return out
         return [list(path)] if before != after else []
 
-    def record(self, key: str, before, after) -> None:
+    def record(self, key: str, before, after) -> list | None:
         name = self.who()
         if key not in self.KEYS or name is None:
             return None
@@ -136,8 +136,9 @@ class SettingsHistory:
             return part[1] if part else 'defaults'
         return self.TAB.get(key, 'defaults')
 
-    def items(self, key: str | None = None, limit: int = 100, offset: int = 0) -> dict:
-        sql, args = 'SELECT id, ts, key, by, paths, rolled FROM settings_history', ()
+    def items(self, key: str | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
+        sql = 'SELECT id, ts, key, by, paths, rolled FROM settings_history'
+        args: tuple = ()
         if key:
             sql, args = sql + ' WHERE key = ?', (key,)
         rows = self.store.all(sql + ' ORDER BY id DESC LIMIT ? OFFSET ?', (*args, int(limit), int(offset)))

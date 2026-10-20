@@ -8,7 +8,7 @@ class Ed25519:
     ORDER = 2**252 + 27742317777372353535851937790883648493
     CURVE_D = -121665 * pow(121666, 2**255 - 21, 2**255 - 19) % (2**255 - 19)
     SQRT_M1 = pow(2, (2**255 - 20) // 4, 2**255 - 19)
-    BASE = None
+    BASE: tuple | None = None
 
     # точки — в расширенных координатах (X, Y, Z, T)
     @classmethod
@@ -60,6 +60,8 @@ class Ed25519:
         if cls.BASE is None:
             y = 4 * pow(5, cls.PRIME - 2, cls.PRIME) % cls.PRIME
             x = cls._recover_x(y, 0)
+            if x is None:
+                raise ValueError('Ed25519: базовая точка не восстановлена')
             cls.BASE = (x, y, 1, x * y % cls.PRIME)
         return cls.BASE
 

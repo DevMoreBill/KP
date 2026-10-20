@@ -318,7 +318,7 @@ class XlsxData:
         return buf.getvalue()
 
     def _dump(self, doc) -> None:
-        sec = doc.get('sections') if isinstance(doc.get('sections'), dict) else {}
+        sec = picked if isinstance(picked := doc.get('sections'), dict) else {}
         loose = {}
         for sec_key, v in sec.items():
             title = self.SECTION.get(sec_key, sec_key)
@@ -701,13 +701,13 @@ class YmlData:
         for x in items:
             if not isinstance(x, dict) or not x.get('id'):
                 continue
-            attrs = x.get('attrs') if isinstance(x.get('attrs'), dict) else {}
+            attrs = picked if isinstance(picked := x.get('attrs'), dict) else {}
             fields = {
                 field.get('key'): field
                 for field in (self.types.get(attrs.get('cat')) or {}).get('fields') or []
                 if isinstance(field, dict)
             }
-            stock = x.get('stock') if isinstance(x.get('stock'), dict) else None
+            stock = picked if isinstance(picked := x.get('stock'), dict) else None
             qty = (
                 stock.get('qty')
                 if stock and isinstance(stock.get('qty'), (int, float)) and not isinstance(stock.get('qty'), bool)
@@ -738,7 +738,7 @@ class YmlData:
                 and isinstance(v, (str, int, float))
                 and not isinstance(v, bool)
             )
-            rrc = x.get('rrc') if isinstance(x.get('rrc'), dict) else {}
+            rrc = picked if isinstance(picked := x.get('rrc'), dict) else {}
             out.append(
                 '<offer id={}{}>'.format(quoteattr(str(x['id'])), avail)
                 + tag('name', x.get('name'))

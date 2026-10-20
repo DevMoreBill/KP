@@ -29,7 +29,7 @@ from maker_logos import MakerLogos
 from storage import Conflict, WriteBatch
 
 KV_KEY = 'feeds'
-IMAGE_STORE = None  # хранилище изображений data/img (images.ImageStore) — задаёт kp_server при запуске
+IMAGE_STORE: Any = None  # хранилище изображений data/img (images.ImageStore) — задаёт kp_server при запуске
 JOBS: dict = {}  # id фида → {kind, state, done, total, msg, startedAt, result}
 _CACHE: dict = {}  # id фида → (время, url, разобранный фид) — предпросмотр и загрузка без повторного скачивания
 _LOCK = threading.Lock()
@@ -146,7 +146,7 @@ def feed_save(store, feed) -> dict:
         if isinstance(feed.get('fields'), dict)
         else old.get('fields') or FeedRules.clean_fields({})
     )
-    hints = feed.get('driveHints') if isinstance(feed.get('driveHints'), dict) else old.get('driveHints') or {}
+    hints = got_value if isinstance(got_value := feed.get('driveHints'), dict) else old.get('driveHints') or {}
     rec['driveHints'] = {k: re.sub(r'\s+', ' ', str(hints.get(k) or '')).strip()[:400] for k in ('belt', 'direct')}
     if kind == 'files':
         cur = str(feed.get('cur') or old.get('cur') or '').upper()[:3]
@@ -1529,7 +1529,7 @@ class FeedRules:
             return 'категория фида пропускается'
         if offer['oid'] in set(feed.get('excluded') or []):
             return 'удалено из каталога («не загружать снова»)'
-        rules = feed.get('filter') if isinstance(feed.get('filter'), dict) else {}
+        rules = got_value if isinstance(got_value := feed.get('filter'), dict) else {}
         if not rules:
             return ''
         name = (offer.get('name') or '').lower()
@@ -1556,7 +1556,7 @@ class FeedRules:
 
     @classmethod
     def adds(cls, feed) -> bool:
-        rules = feed.get('filter') if isinstance(feed.get('filter'), dict) else {}
+        rules = got_value if isinstance(got_value := feed.get('filter'), dict) else {}
         return rules.get('add', True) is not False
 
     @classmethod

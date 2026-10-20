@@ -306,7 +306,7 @@ class BitrixLinks:
         )
 
     def count(self, kind) -> int:
-        return self.store.one('SELECT COUNT(*) FROM bx_link WHERE kind=?', (kind,))[0]
+        return self.store.scalar('SELECT COUNT(*) FROM bx_link WHERE kind=?', (kind,))
 
 
 class BitrixQueue:
@@ -427,7 +427,7 @@ class BitrixLog:
         ]
 
     def last_id(self) -> int:
-        return self.store.one('SELECT COALESCE(MAX(id), 0) FROM bx_log')[0]
+        return self.store.scalar('SELECT COALESCE(MAX(id), 0) FROM bx_log')
 
     def since(self, i) -> list:
         return [
@@ -927,7 +927,7 @@ class BitrixSync:
     @staticmethod
     def _rows(k) -> list | None:
         """Товары сделки: позиции последнего КП (цены — за единицу со скидкой, с НДС, в рублях по курсу КП)."""
-        lines = k.get('lines') if isinstance(k.get('lines'), dict) else None
+        lines = picked if isinstance(picked := k.get('lines'), dict) else None
         if not lines or not isinstance(lines.get('rows'), list):
             return None
         rate = float(lines.get('rate') or 1) or 1
@@ -1066,7 +1066,7 @@ class BitrixSync:
     @staticmethod
     def _rows_sum(deal, k) -> list:
         """Товары сделки одной строкой: итог последнего КП (правило «товары — только итог»)."""
-        lines = k.get('lines') if isinstance(k.get('lines'), dict) else {}
+        lines = picked if isinstance(picked := k.get('lines'), dict) else {}
         return [
             {
                 'PRODUCT_NAME': 'Оборудование по КП № {}'.format(k['number']),

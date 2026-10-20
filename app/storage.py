@@ -10,7 +10,7 @@ import tempfile
 import threading
 import zipfile
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from defaults import SrvVal
 
@@ -456,8 +456,8 @@ def client_cols(doc) -> tuple:
 def kp_cols(meta) -> tuple:
     """Столбцы журнала КП из описания (meta) для поиска и фильтров."""
     data = meta if isinstance(meta, dict) else {}
-    items = data.get('items') if isinstance(data.get('items'), list) else []
-    tender = data.get('tender') if isinstance(data.get('tender'), dict) else {}
+    items = picked if isinstance(picked := data.get('items'), list) else []
+    tender = picked if isinstance(picked := data.get('tender'), dict) else {}
     tnd = (
         ['тендер ' + str(tender['number'])] if tender.get('number') else []
     )  # поиск по номеру закупки и слову «тендер»
@@ -502,8 +502,8 @@ def _fill_columns(store, conn) -> None:
 
 def cat_search(doc) -> str:
     """Строка поиска позиции на сервере: название, описание строкой, параметры, характеристики, артикул (без повторов слов)."""
-    attrs = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
-    feed = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
+    attrs = picked if isinstance(picked := doc.get('attrs'), dict) else {}
+    feed = picked if isinstance(picked := doc.get('feed'), dict) else {}
     parts = [doc.get('name'), doc.get('spec'), doc.get('short'), feed.get('sku')] + [
         v for v in attrs.values() if isinstance(v, (str, int, float))
     ]
@@ -559,7 +559,7 @@ def _fill_crm(store, conn) -> None:
 
 def feed_of(doc) -> str | None:
     """Фид-источник позиции каталога (столбец feed_id) или None."""
-    feed = doc.get('feed') if isinstance(doc, dict) and isinstance(doc.get('feed'), dict) else {}
+    feed = picked if isinstance(doc, dict) and isinstance(picked := doc.get('feed'), dict) else {}
     return str(feed['id'])[:80] if feed.get('id') else None
 
 
@@ -592,10 +592,10 @@ def light_of(doc) -> dict:
         data['prices'] = data['prices'][:5]
         data['pricesCount'] = len(doc.get('prices') or [])
     # поиск по значениям характеристик — на сервере (столбец search, /api/catalog/search), в карточке браузера его нет
-    feed = doc.get('feed') if isinstance(doc.get('feed'), dict) else {}
+    feed = picked if isinstance(picked := doc.get('feed'), dict) else {}
     if feed.get('id'):  # фид-источник — фильтр «Поставщик» в каталоге
         data['src'] = str(feed['id'])[:40]
-    art = feed.get('sku') or (doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}).get('article')
+    art = feed.get('sku') or (picked if isinstance(picked := doc.get('attrs'), dict) else {}).get('article')
     if art:  # артикул поставщика — поиск по артикулу
         data['art'] = str(art)[:60]
     data['_light'] = True
@@ -660,7 +660,7 @@ class TxLock:
         self.acquire()
         return self
 
-    def __exit__(self, exc_type, exc_val, trace) -> bool:
+    def __exit__(self, exc_type, exc_val, trace) -> Literal[False]:
         try:
             if exc_type is not None and self.depth.n == 1:
                 conn = getattr(self.store.local, 'c', None)
@@ -690,7 +690,7 @@ class WriteBatch:
             self.store.lock.release()
             self.store.lock.acquire()
 
-    def __exit__(self, exc_type, exc_val, trace) -> bool:
+    def __exit__(self, exc_type, exc_val, trace) -> Literal[False]:
         try:
             conn = self.store.conn()
             if exc_type is None:
@@ -754,6 +754,11 @@ class Store:
     def one(self, sql, args=()) -> tuple | None:
         return self.conn().execute(sql, args).fetchone()
 
+    def scalar(self, sql, args=()) -> Any:
+        """Первое значение первой строки (COUNT, MAX…); строки нет — None."""
+        row = self.one(sql, args)
+        return row[0] if row else None
+
     def all(self, sql, args=()) -> list:
         return self.conn().execute(sql, args).fetchall()
 
@@ -783,7 +788,7 @@ class Store:
         doc = json.loads(text)
         doc['id'] = cid
         doc.pop('_rev', None)
-        attrs = doc.get('attrs') if isinstance(doc.get('attrs'), dict) else {}
+        attrs = picked if isinstance(picked := doc.get('attrs'), dict) else {}
         with self.lock:
             conn = self.conn()
             rev = self._next_rev(conn, 'catalog', cid, base_rev)
@@ -843,7 +848,7 @@ class Store:
         return str(row[0]) if row else '0'
 
     def catalog_count(self) -> int:
-        return self.one('SELECT COUNT(*) FROM catalog')[0]
+        return self.scalar('SELECT COUNT(*) FROM catalog')
 
     def migrations_applied(self) -> list:
         return self.kv_get('schema') or []
@@ -979,7 +984,7 @@ class Store:
             )
             args += [like_arg(filt['q'])] * 4
         where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
-        total = self.one('SELECT COUNT(*) FROM audit' + where_sql, args)[0]
+        total = self.scalar('SELECT COUNT(*) FROM audit' + where_sql, args)
         rows = self.all(
             'SELECT id, ts, user_id, user_name, role, action, entity_type, entity_id, before, after, ip, ua, result '
             'FROM audit' + where_sql + ' ORDER BY id DESC LIMIT ? OFFSET ?',
@@ -1124,7 +1129,7 @@ class Store:
     def trash_clear(self, etype=None) -> int:
         """«Очистить корзину»: всё или записи одного вида → сколько удалено навсегда."""
         where, args = ('WHERE entity_type=?', (etype,)) if etype else ('', ())
-        count = self.one('SELECT COUNT(*) FROM trash ' + where, args)[0]
+        count = self.scalar('SELECT COUNT(*) FROM trash ' + where, args)
         if count:
             self.write('DELETE FROM trash ' + where, args)
             self._kp_orphans()
@@ -1135,7 +1140,7 @@ class Store:
         from datetime import timedelta
 
         edge = (datetime.now() - timedelta(days=days)).isoformat(timespec='seconds')
-        count = self.one('SELECT COUNT(*) FROM trash WHERE deleted_at < ?', (edge,))[0]
+        count = self.scalar('SELECT COUNT(*) FROM trash WHERE deleted_at < ?', (edge,))
         if count:
             self.write('DELETE FROM trash WHERE deleted_at < ?', (edge,))
             self._kp_orphans()
@@ -1171,7 +1176,7 @@ class Store:
                 (pid, kind, before, after, uid, uname, _now()),
             )
             conn.commit()
-            return cur.lastrowid
+            return cur.lastrowid or 0
 
     def pending_list(self, status='pending', with_docs=False) -> list:
         cols = f'id, product_id, kind, {"before, after" if with_docs else "NULL, NULL"}, user_id, user_name, created, status, reviewed_by, reviewed_at, reason'
@@ -1210,7 +1215,7 @@ class Store:
         for (table,) in self.all(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         ):
-            out[table] = self.one(f'SELECT COUNT(*) FROM "{table}"')[0]
+            out[table] = self.scalar(f'SELECT COUNT(*) FROM "{table}"')
         return out
 
     def kp_all_meta(self) -> list:
@@ -1507,14 +1512,12 @@ class Store:
         with self.lock:
             conn = self.conn()
             rev = self._next_rev(conn, 'kp', x['id'], None)
-            track = x.get('track') if isinstance(x.get('track'), str) else None
+            track = picked if isinstance(picked := x.get('track'), str) else None
             try:
                 tender = json.loads(track) if track else {}
             except ValueError:
                 track, tender = None, {}
-            follow = (
-                tender.get('followUp') if isinstance(tender, dict) and isinstance(tender.get('followUp'), dict) else {}
-            )
+            follow = picked if isinstance(tender, dict) and isinstance(picked := tender.get('followUp'), dict) else {}
             conn.execute(
                 'INSERT OR REPLACE INTO kp (id, number, state, meta, docx, updated, client, inn, manager, kdate, saved, search, rev, '
                 'track, status, follow) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -1562,7 +1565,7 @@ class Store:
             where.append('substr(kdate, 1, 10) BETWEEN ? AND ?')
             args += [str(date_from or '')[:10], str(date_to or '9999-12-31')[:10]]
         where_sql = ' WHERE ' + ' AND '.join(where)
-        total = self.one('SELECT COUNT(*) FROM kp' + where_sql, args)[0]
+        total = self.scalar('SELECT COUNT(*) FROM kp' + where_sql, args)
         rows = self.all(
             'SELECT meta, track FROM kp' + where_sql + ' ORDER BY ' + KP_ORDER + ' LIMIT ? OFFSET ?',
             [*args, int(limit), int(offset)],
@@ -1707,7 +1710,7 @@ class Store:
         return [json.loads(row[0]) for row in self.all('SELECT doc FROM clients ORDER BY updated DESC')]
 
     def clients_count(self) -> int:
-        return self.one('SELECT COUNT(*) FROM clients')[0]
+        return self.scalar('SELECT COUNT(*) FROM clients')
 
     def clients_search(self, query='', limit: int = 50, offset: int = 0) -> dict:
         """Контрагенты: последние использованные или найденные по названию, ИНН, адресу (поиск — на сервере)."""
@@ -1721,7 +1724,7 @@ class Store:
                 )
             else:
                 where_sql, args = " WHERE search LIKE ? ESCAPE '\\'", [like_arg(query_norm)]
-        total = self.one('SELECT COUNT(*) FROM clients' + where_sql, args)[0]
+        total = self.scalar('SELECT COUNT(*) FROM clients' + where_sql, args)
         rows = self.all(
             'SELECT doc, rev FROM clients' + where_sql + ' ORDER BY used_at DESC, updated DESC LIMIT ? OFFSET ?',
             [*args, int(limit), int(offset)],
@@ -1834,7 +1837,7 @@ class Store:
                 raise ValueError(
                     f'Файл базы от несовместимой версии программы — база не заменена ({str(exc)[:200]})'
                 ) from exc
-            page = self.one('PRAGMA page_size')[0]
+            page = self.scalar('PRAGMA page_size')
             tmp_conn = sqlite3.connect(tmp)
             try:
                 tmp_conn.execute('PRAGMA journal_mode=DELETE')

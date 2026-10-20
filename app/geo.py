@@ -141,15 +141,13 @@ class RoadRoute:
     MAX = 2000
 
     @classmethod
-    def distance_km(cls, store, src: tuple, dst: tuple) -> dict:
+    def distance_km(cls, store, src: tuple | list, dst: tuple | list) -> dict:
         """src, dst — (lat, lon) → {km, hours, src}."""
-        src, dst = (_num(src[0]), _num(src[1])), (_num(dst[0]), _num(dst[1]))
-        if (
-            None in src
-            or None in dst
-            or not all(-90 <= point[0] <= 90 and -180 <= point[1] <= 180 for point in (src, dst))
-        ):
+        coords = [_num(src[0]), _num(src[1]), _num(dst[0]), _num(dst[1])]
+        nums = [coord for coord in coords if coord is not None]
+        if len(nums) != len(coords) or not all(-90 <= nums[k] <= 90 and -180 <= nums[k + 1] <= 180 for k in (0, 2)):
             raise ValueError('Неверные координаты')
+        src, dst = (nums[0], nums[1]), (nums[2], nums[3])
         key = '%.3f,%.3f|%.3f,%.3f' % (src + dst)
         cache = store.kv_get('georoute') or {}
         if key in cache:

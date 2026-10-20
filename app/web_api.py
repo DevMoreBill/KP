@@ -274,7 +274,7 @@ class WebIndex:
         return f'{stat.st_mtime_ns:x}-{stat.st_size:x}'
 
     @classmethod
-    def build(cls, path: str) -> str:
+    def build(cls, path: str) -> bytes:
         with open(path, 'rb') as handle:
             html = handle.read().decode('utf-8')
         refs = [(match.group(2), web_file(match.group(2)[len('/web/') :])) for match in cls.REF.finditer(html)]
@@ -303,7 +303,7 @@ class StaticController(Controller):
     YEAR = 'public, max-age=31536000, immutable'
 
     @route(r'/|/index\.html|/web/.*')
-    def web(self) -> None:
+    def web(self) -> Any:
         idx = self.url_path in ('/', '/index.html')
         path = web_file('index.html' if idx else self.url_path[len('/web/') :])
         if not path:
@@ -316,7 +316,7 @@ class StaticController(Controller):
         )
 
     @route(r'/favicon\.ico')
-    def favicon(self) -> None:
+    def favicon(self) -> Any:
         icon = os.path.join(APP_DIR, 'icon.ico')
         if not os.path.isfile(icon):
             return self.not_found()
@@ -326,7 +326,7 @@ class StaticController(Controller):
 
 class TypesController(Controller):
     @route(r'/api/types')
-    def types(self) -> None:
+    def types(self) -> Any:
         if self.query.get('builtin') == '1':
             return self.send_json(read_text(types_builtin_path()))
         if self.method == 'PUT':
@@ -340,7 +340,7 @@ class TypesController(Controller):
 
 class GeoController(Controller):
     @route(r'/api/geo/(.*)', 'GET')
-    def geo(self, act) -> None:
+    def geo(self, act) -> Any:
         import geo
 
         query = self.query
@@ -365,7 +365,7 @@ class GeoController(Controller):
 
 class PartiesController(Controller):
     @route(r'/api/party')
-    def party(self) -> None:
+    def party(self) -> Any:
         return self.send_json(counterparties().lookup(self.query.get('inn', '')))
 
     @route(
@@ -375,7 +375,7 @@ class PartiesController(Controller):
         return self.send_json(counterparties().quota())
 
     @route(r'/api/check')
-    def check(self) -> None:
+    def check(self) -> Any:
         return self.send_json(
             counterparties().check(
                 self.query.get('inn', ''), force=self.query.get('force') == '1', author=admin.actor(self.handler)[1]
@@ -383,7 +383,7 @@ class PartiesController(Controller):
         )
 
     @route(r'/api/integrations/export', 'GET')  # резервная копия ключей (только администратор — см. admin.guard)
-    def keys_export(self) -> None:
+    def keys_export(self) -> Any:
         return self.send_json(
             {
                 'kind': 'kp-keys',
@@ -394,7 +394,7 @@ class PartiesController(Controller):
         )
 
     @route(r'/api/integrations')
-    def keys(self) -> None:
+    def keys(self) -> Any:
         if self.method == 'PUT':
             self.json_body()
             with self.user_input():
@@ -406,7 +406,7 @@ class PartiesController(Controller):
         return self.send_json(pub)
 
     @route(r'/api/clients', 'GET')
-    def clients(self) -> None:
+    def clients(self) -> Any:
         # справочник не грузится целиком: последние использованные или найденные по названию / ИНН / адресу
         query = self.query
         try:
@@ -421,7 +421,7 @@ class PartiesController(Controller):
         return self.send_json(res)
 
     @route(r'/api/clients/([^/]+)', ('GET', 'PUT'))
-    def client(self, cid) -> None:
+    def client(self, cid) -> Any:
         cid = safe_id(cid)
         if self.method == 'GET':
             client = store().client_get(cid, rev=True)
@@ -434,11 +434,11 @@ class PartiesController(Controller):
 
 class TemplatesController(Controller):
     @route(r'/api/templates')
-    def templates(self) -> None:
+    def templates(self) -> Any:
         return self.send_json(list_templates())
 
     @route(r'/api/templates/folder', 'POST')
-    def folder(self) -> None:
+    def folder(self) -> Any:
         if not self.is_local():
             return self.send_json({'remote': True, 'share': ''})
         os.makedirs(TEMPLATES_DIR, exist_ok=True)
@@ -446,7 +446,7 @@ class TemplatesController(Controller):
         return self.send_json({'ok': True})
 
     @route(r'/api/templates/([A-Za-z0-9_-]+)/([a-z]+)')
-    def action(self, tid: str, action) -> None:
+    def action(self, tid: str, action) -> Any:
         """Редактор шаблона: сохранение файлов, история версий, копия, заводской вариант, открыть в Word."""
         method, query = self.method, self.query
         try:
@@ -477,7 +477,7 @@ class TemplatesController(Controller):
         return self.not_found()
 
     @route(r'/tpl/([A-Za-z0-9_-]+)/([^/]+)')
-    def file(self, tid: str, name) -> None:
+    def file(self, tid: str, name) -> Any:
         path = template_file(tid, urllib.parse.unquote(name))
         if not path:
             return self.not_found('Файл шаблона не найден')
@@ -498,7 +498,7 @@ class TemplatesController(Controller):
 
 class SystemController(Controller):
     @route(r'/api/ping')
-    def ping(self) -> None:
+    def ping(self) -> Any:
         base = {
             'ok': True,
             'local': self.is_local(),
@@ -530,7 +530,7 @@ class SystemController(Controller):
 
 class CatalogController(Controller):
     @route(r'/api/catalog', 'GET')
-    def catalog(self) -> None:
+    def catalog(self) -> Any:
         # список — облегчённые карточки (без таблиц характеристик и галерей); полная позиция — по id
         full = self.query.get('full') == '1'
         return self.send_cached(
@@ -540,7 +540,7 @@ class CatalogController(Controller):
 
     # каталог 20 000+: браузер хранит каталог у себя (IndexedDB) и докачивает изменения после своего номера
     @route(r'/api/catalog/sync', 'GET')
-    def sync(self) -> None:
+    def sync(self) -> Any:
         from catalog_sync import CatalogSync
 
         sync = CatalogSync(store())
@@ -557,7 +557,7 @@ class CatalogController(Controller):
 
     # поиск по характеристикам (строка поиска позиции хранится на сервере, не в браузере)
     @route(r'/api/catalog/search', 'GET')
-    def search(self) -> None:
+    def search(self) -> Any:
         from catalog_sync import CatalogSync
 
         return self.send_json(
@@ -581,19 +581,19 @@ class CatalogController(Controller):
         )
 
     @route(r'/api/catalog/pending')  # режим модерации и товары с правками на модерации (бейдж «На модерации»)
-    def pending(self) -> None:
+    def pending(self) -> Any:
         return self.send_json(
             {'moderation': bool(admin.moderation(store()).get('enabled')), 'ids': store().pending_ids()}
         )
 
     @route(r'/api/catalog/([^/]+)', 'GET')  # запись позиции — PUT в admin.guard (модерация, права)
-    def item(self, cid) -> None:
+    def item(self, cid) -> Any:
         doc = store().catalog_get(safe_id(cid), rev=True)
         return self.send_json(doc) if doc else self.not_found()
 
     # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
     @route(r'/api/img', 'POST')
-    def img_put(self) -> None:
+    def img_put(self) -> Any:
         data, query = self.body(), self.query
         max_mb = defaults.SrvVal.get(store(), 'kp.imgMB')
         if len(data) > max_mb * 1024 * 1024:
@@ -623,7 +623,7 @@ class CatalogController(Controller):
         return self.send_json({'name': rel})
 
     @route(r'/img/(.+)')
-    def img(self, rel) -> None:
+    def img(self, rel) -> Any:
         path = IMAGES.path(rel)
         if not path:
             return self.not_found()
@@ -632,11 +632,11 @@ class CatalogController(Controller):
 
 class ManagersController(Controller):
     @route(r'/api/managers', 'GET')
-    def managers(self) -> None:
+    def managers(self) -> Any:
         return self.send_cached('mgr-' + store().data_rev('managers'), lambda: store().managers_list(rev=True))
 
     @route(r'/api/managers/([^/]+)', 'PUT')
-    def manager(self, mid: str) -> None:
+    def manager(self, mid: str) -> Any:
         mid, data = safe_id(mid), self.json_body()
         # при входе по паролю менеджер меняет только свою карточку (контакты в его КП); остальные — администратор
         if admin.login_on(self.handler) and (getattr(self.handler, '_kp_user', None) or {}).get('id') != mid:
@@ -657,11 +657,11 @@ class ManagersController(Controller):
 class KpController(Controller):
     # PDF: чем можно преобразовать; преобразование присланного DOCX (предпросмотр) без записи в журнал
     @route(r'/api/pdf', 'GET')
-    def pdf_tools(self) -> None:
+    def pdf_tools(self) -> Any:
         return self.send_json(pdf_convert.available(counterparties().keys().get('convertapiKey')))
 
     @route(r'/api/pdf', 'POST')
-    def pdf_convert(self) -> None:
+    def pdf_convert(self) -> Any:
         try:
             data = pdf_convert.convert_bytes(self.body(), counterparties().keys().get('convertapiKey'))
         except Exception as exc:
@@ -669,7 +669,7 @@ class KpController(Controller):
         return self.send(200, 'application/pdf', data, self.attachment(safe_file(self.query.get('name')) or 'КП.pdf'))
 
     @route(r'/api/history')
-    def history(self) -> None:
+    def history(self) -> Any:
         if (
             'limit' in self.query
         ):  # постранично, с поиском и итогами по всему отбору; files — число справочных документов КП
@@ -682,12 +682,12 @@ class KpController(Controller):
         return self.send_json(admin.KpJournal.out(self.handler, store().kp_list()))
 
     @route(r'/api/kp/new', 'POST')
-    def new(self) -> None:
+    def new(self) -> Any:
         num = store().next_number()
         return self.send_json({'id': num, 'number': num})
 
     @route(r'/api/kp/([^/]+)/(state|meta)', ('GET', 'PUT'))
-    def doc(self, kid: str, field) -> None:
+    def doc(self, kid: str, field) -> Any:
         kid = safe_id(kid)
         if self.method == 'PUT':
             text = self.body().decode('utf-8')
@@ -725,18 +725,18 @@ class KpController(Controller):
 
     # история версий КП: список и состояние выбранной версии (экономика чужого КП убирается, как и у текущей)
     @route(r'/api/kp/([^/]+)/versions', 'GET')
-    def versions(self, kid: str) -> None:
+    def versions(self, kid: str) -> Any:
         return self.send_json(store().kp_versions(safe_id(kid)))
 
     @route(r'/api/kp/([^/]+)/versions/(\d+)', 'GET')
-    def version(self, kid: str, num) -> None:
+    def version(self, kid: str, num) -> Any:
         if len(num) > 9:
             return self.not_found()
         v = store().kp_version_state(safe_id(kid), num)
         return self.send_json(admin.kp_out(self.handler, 'state', v)) if v else self.not_found()
 
     @route(r'/api/kp/([^/]+)/docx', 'PUT')
-    def docx_put(self, kid: str) -> None:
+    def docx_put(self, kid: str) -> Any:
         kid, query = safe_id(kid), self.query
         name = safe_file(query.get('name'))
         # только документ Word: имя — с расширением .docx (не .exe, .bat, .lnk…), содержимое — архив docx (PK…)
@@ -778,7 +778,7 @@ class KpController(Controller):
         return self.send_json({'ok': True, 'path': path if self.is_local() else '', 'rel': rel})
 
     @route(r'/api/kp/([^/]+)/docx', 'GET')
-    def docx_get(self, kid: str) -> None:
+    def docx_get(self, kid: str) -> Any:
         # скачивание готового КП — для сотрудников, открывших программу по сети
         path = self.kp_docx(safe_id(kid))
         if not path:
@@ -813,7 +813,7 @@ class KpController(Controller):
         return PASS
 
     @route(r'/api/kp/([^/]+)/openpdf', 'POST')
-    def open_pdf(self, kid: str) -> None:
+    def open_pdf(self, kid: str) -> Any:
         rel = store().kp_get(safe_id(kid), 'docx')
         pdf = pdf_of(docs_path(rel.strip())) if rel else None
         if not pdf or not os.path.isfile(pdf):
@@ -824,7 +824,7 @@ class KpController(Controller):
         return self.send_json({'ok': True})
 
     @route(r'/api/kp/([^/]+)/(open|folder)', 'POST')
-    def open_doc(self, kid: str, how) -> None:
+    def open_doc(self, kid: str, how) -> Any:
         rel = store().kp_get(safe_id(kid), 'docx')
         if not rel:
             return self.not_found('Файл КП не найден')
@@ -848,7 +848,7 @@ class KpController(Controller):
         return self.send_json({'ok': True})
 
     @route(r'/api/folder', 'POST')
-    def docs_folder(self) -> None:
+    def docs_folder(self) -> Any:
         sub = safe_dir(self.query.get('dir'))
         target = os.path.join(DOCS_DIR, sub) if sub else DOCS_DIR
         os.makedirs(target, exist_ok=True)
@@ -871,7 +871,7 @@ class KpFilesController(Controller):
         return store().kp_get(kid, 'meta') is not None or admin.session(self.handler, touch=False) is not None
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files', ('GET', 'POST'))
-    def files(self, kid: str) -> None:
+    def files(self, kid: str) -> Any:
         files = KpFiles.of(store())
         if self.method == 'GET':
             if not self._kp_ok(kid):
@@ -887,7 +887,7 @@ class KpFilesController(Controller):
         return self.send_json(rec)
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files/(\d{1,9})', ('GET', 'PUT'))
-    def file(self, kid: str, fid: str) -> None:
+    def file(self, kid: str, fid: str) -> Any:
         files = KpFiles.of(store())
         if not self._kp_ok(kid):
             return self.not_found('КП не найдено')
@@ -896,6 +896,8 @@ class KpFilesController(Controller):
             if note is not None and not isinstance(note, str):
                 raise BadRequest('Примечание — строка')
             old = files.get(kid, fid)
+            if old is None:
+                return self.not_found('Документ не найден')
             try:
                 rec = files.set_note(kid, fid, note or '')
             except LookupError as exc:
@@ -922,7 +924,7 @@ class KpFilesController(Controller):
         )
 
     @route(r'/api/kp/([A-Za-z0-9_-]{1,64})/files/(\d{1,9})/remove', 'POST')
-    def remove_own(self, kid: str, fid: str) -> None:
+    def remove_own(self, kid: str, fid: str) -> Any:
         """Автор удаляет свой файл, прикреплённый по ошибке, — только в первые kp.fileUndoMin минут после загрузки."""
         try:
             rec = KpFiles.of(store()).delete_own(kid, fid, admin.actor(self.handler)[0])
@@ -944,16 +946,16 @@ class KpFilesController(Controller):
 
 class ToolsController(Controller):
     @route(r'/api/cbr')
-    def cbr(self) -> None:
+    def cbr(self) -> Any:
         return self.send_json(CbrCache.get('cbr_last', cbr_rates))
 
     @route(r'/api/cbr/keyrate')
-    def keyrate(self) -> None:
+    def keyrate(self) -> Any:
         return self.send_json(CbrCache.get('keyrate_last', cbr_key_rate))
 
     # картинки карточек: логотипы производителей из каталога; картинка, перетащенная со страницы сайта
     @route(r'/api/logos', 'GET')
-    def logos(self) -> None:
+    def logos(self) -> Any:
         # логотипы зависят только от каталога: расчёт (~0,5 с на большом каталоге) — один раз на его версию
         import imgfetch
 
@@ -963,7 +965,7 @@ class ToolsController(Controller):
         return self.send_cached('logos-' + rev, lambda: _LOGOS['text'])
 
     @route(r'/api/imgfetch', 'GET')
-    def imgfetch(self) -> None:
+    def imgfetch(self) -> Any:
         import imgfetch
 
         try:
@@ -973,7 +975,7 @@ class ToolsController(Controller):
         return self.send(200, ctype, data)
 
     @route(r'/api/ai/status', 'GET')  # нейросеть в программе: включена ли (без ключа и адреса)
-    def ai_status(self) -> None:
+    def ai_status(self) -> Any:
         return self.send_json(ai_llm.status(store()))
 
     @route(r'/api/ai/profile', 'GET')  # образец объёма категории и данные этой же модели из каталога — для запроса к ИИ
@@ -992,10 +994,10 @@ class ToolsController(Controller):
         )
 
     @route(r'/api/ai/fill', 'POST')  # автозаполнение: запрос из программы → ответ нейросети (JSON строкой)
-    def ai_fill(self) -> None:
+    def ai_fill(self) -> Any:
         data = self.json_body()
         try:
-            return self.send_json(ai_llm.ask(store(), data.get('prompt')))
+            return self.send_json(ai_llm.ask(store(), str(data.get('prompt') or '')))
         except RuntimeError as exc:
             return self.text(422, str(exc))
 
@@ -1091,7 +1093,7 @@ class ToolsController(Controller):
                     data.get('maker') or '',
                     data.get('model') or '',
                     data.get('name') or '',
-                    data.get('urls') if isinstance(data.get('urls'), list) else None,
+                    picked if isinstance(picked := data.get('urls'), list) else None,
                 )
             )
         except Exception as exc:
@@ -1102,13 +1104,13 @@ class SettingsController(Controller):
     MAX_UITEXTS = 3000  # изменённых текстов интерфейса
 
     @route(r'/api/lists', 'GET')  # списки и выборы от администратора (для всех; правка — /api/admin/lists)
-    def lists(self) -> None:
+    def lists(self) -> Any:
         from lists import ListStore
 
         return self.send_json(ListStore(store()).all())
 
     @route(r'/api/defaults', 'GET')  # значения по умолчанию от администратора (для всех)
-    def defaults(self) -> None:
+    def defaults(self) -> Any:
         return self.send_json(defaults.get(store()))
 
     @route(r'/api/logistics/quote', 'POST')  # цены перевозчиков (ATI.SU, ПЭК, Деловые Линии, КИТ) — итог по максимуму
@@ -1120,7 +1122,7 @@ class SettingsController(Controller):
             return self.text(400, f'Неверный запрос: {exc}')
 
     @route(r'/api/logistics/status', 'GET')
-    def logistics_status(self) -> None:
+    def logistics_status(self) -> Any:
         return self.send_json(
             {
                 'providers': logistics_api.providers(store()),
@@ -1130,7 +1132,7 @@ class SettingsController(Controller):
         )
 
     @route(r'/api/logistics/refresh', 'POST')  # обновить ставки по ATI.SU сейчас (администратор)
-    def logistics_refresh(self) -> None:
+    def logistics_refresh(self) -> Any:
         try:
             rec = logistics_api.auto_refresh(store(), force=True)
         except Exception as exc:
@@ -1138,7 +1140,7 @@ class SettingsController(Controller):
         return self.send_json(rec or {'error': 'Не задан ключ ATI.SU («Интеграции») или обновление уже идёт'})
 
     @route(r'/api/logistics/carriers', ('GET', 'PUT'))  # перевозчики: включение и адреса API (изменяет администратор)
-    def logistics_carriers(self) -> None:
+    def logistics_carriers(self) -> Any:
         if self.method == 'PUT':
             data = self.json_body()
             with self.user_input():
@@ -1147,7 +1149,7 @@ class SettingsController(Controller):
         return self.send_json(logistics_api.CarrierApi.public(store()))
 
     @route(r'/api/logistics/carriers/test', 'POST')  # пробный расчёт одного перевозчика (администратор)
-    def logistics_carrier_test(self) -> None:
+    def logistics_carrier_test(self) -> Any:
         carrier = str(self.json_body().get('id') or '')
         with self.user_input():
             res = logistics_api.CarrierApi.test(store(), carrier)
@@ -1161,14 +1163,14 @@ class SettingsController(Controller):
 
         china = ChinaFreight(store())
         if self.method == 'PUT':
-            rows = self.json_body().get('rows')
+            rows = self.json_body().get('rows') or []
             with self.user_input():
                 saved = china.save_rates(rows, admin.actor(self.handler)[1])
             return self.send_json(saved)
         return self.send_json(china.status())
 
     @route(r'/api/logistics/china/quote', 'POST')  # расчёт Китай → граница РФ (в экономику сделки не идёт)
-    def china_quote(self) -> None:
+    def china_quote(self) -> Any:
         from china_freight import ChinaFreight
 
         req = self.json_body()
@@ -1177,7 +1179,7 @@ class SettingsController(Controller):
         return self.send_json(res)
 
     @route(r'/api/logistics')  # тарифы доставки по России (общие для отдела; изменяет администратор)
-    def logistics(self) -> None:
+    def logistics(self) -> Any:
         if self.method == 'PUT':
             try:
                 body = self.json_body()
@@ -1196,7 +1198,7 @@ class SettingsController(Controller):
         return self.send_json(store().kv_get('uitexts') or {})
 
     @route(r'/api/uitexts', 'PUT')  # только администратор (admin.guard)
-    def uitexts_put(self) -> None:
+    def uitexts_put(self) -> Any:
         try:
             data = self.json_body()
         except BadRequest:
@@ -1214,7 +1216,7 @@ class SettingsController(Controller):
         return self.send_json({'version': version.VERSION, 'patched': bool(UPDATE_DIR), 'updateDir': UPDATE_DIR})
 
     @route(r'/api/calendar', 'GET')  # производственный календарь РФ (рабочие / банковские дни)
-    def calendar(self) -> None:
+    def calendar(self) -> Any:
         import workcal
 
         with self.user_input():
@@ -1224,11 +1226,11 @@ class SettingsController(Controller):
 
 class DealController(Controller):
     @route(r'/api/suppliers', 'GET')
-    def suppliers(self) -> None:
+    def suppliers(self) -> Any:
         return self.send_cached('sup-' + store().data_rev('suppliers'), lambda: store().suppliers_list())
 
     @route(r'/api/suppliers/([A-Za-z0-9_-]{1,64})', 'PUT')
-    def supplier(self, sid) -> None:
+    def supplier(self, sid) -> Any:
         if not catalog_admin.power(
             self.handler, 'catSelfMod', 'PUT'
         ):  # справочник поставщиков — администратор и право «Без модерации»
@@ -1239,7 +1241,7 @@ class DealController(Controller):
         return self.send_json(saved)
 
     @route(r'/api/customs', ('GET', 'PUT'))
-    def customs(self) -> None:
+    def customs(self) -> Any:
         if self.method == 'GET':
             return self.send_json(store().customs_all())
         data = self.json_body()
@@ -1332,7 +1334,7 @@ class TrackController(Controller):
         return self.send_json({'items': items, 'count': len(items)})
 
     @route(r'/api/features', 'GET')  # какие функции программы включены (для всех; правка — /api/admin/features)
-    def features(self) -> None:
+    def features(self) -> Any:
         return self.send_json(self._features())
 
     def _features(self) -> dict:
@@ -1348,7 +1350,7 @@ class TrackController(Controller):
         tpl = MailTemplate(state, meta, mail_public.get('fromName') or '')
         word = self.kp_docx(kid)
         pdf = pdf_of(word) if word and os.path.isfile(pdf_of(word)) else None
-        contact = state.get('contact') if isinstance(state.get('contact'), dict) else {}
+        contact = picked if isinstance(picked := state.get('contact'), dict) else {}
         files = []
         if self._features().get('kpFiles'):
             files = [{k: x[k] for k in ('id', 'name', 'size', 'note')} for x in KpFiles.of(store()).list(kid)]
@@ -1544,14 +1546,14 @@ class DraftsController(Controller):
         )
 
     @route(r'/api/(drafts|presets)', 'GET')
-    def list(self, kind) -> None:
+    def list(self, kind) -> Any:
         k = self.KINDS[kind]
         return self.send_json(
             {'items': store().drafts_list(k, self._who()[0] if k == 'draft' else None), 'me': self._who()[0]}
         )
 
     @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})', 'GET')
-    def get(self, kind, did) -> None:
+    def get(self, kind, did) -> Any:
         row, state = store().draft_get(did)
         if not row or row['kind'] != self.KINDS[kind]:
             return self.not_found('Черновик не найден' if kind == 'drafts' else 'Заготовка не найдена')
@@ -1564,7 +1566,7 @@ class DraftsController(Controller):
         )
 
     @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})', 'PUT')
-    def put(self, kind, did) -> None:
+    def put(self, kind, did) -> Any:
         k = self.KINDS[kind]
         raw = self.body()
         if len(raw) > self.MAX_STATE:
@@ -1579,7 +1581,7 @@ class DraftsController(Controller):
         if old and (old['kind'] != k or not self._mine(old)):
             return self.text(403, 'Это запись другого менеджера')
         uid, name = self._who()
-        items = state.get('items') if isinstance(state.get('items'), list) else []
+        items = picked if isinstance(picked := state.get('items'), list) else []
         try:
             total = float(payload.get('sum') or 0)
         except (TypeError, ValueError):
@@ -1615,7 +1617,7 @@ class DraftsController(Controller):
         return self.send_json({'ok': True, 'row': row})
 
     @route(r'/api/(drafts|presets)/([A-Za-z0-9_-]{1,40})/delete', 'POST')
-    def delete(self, kind, did) -> None:
+    def delete(self, kind, did) -> Any:
         row, _ = store().draft_get(did)
         if not row or row['kind'] != self.KINDS[kind]:
             return self.send_json({'ok': True})
@@ -1639,7 +1641,7 @@ class ClientCardController(Controller):
         return client
 
     @route(r'/api/clientcard', 'GET')
-    def card(self) -> None:
+    def card(self) -> Any:
         inn = re.sub(r'\D', '', self.query.get('inn') or '')[:12]
         name = (self.query.get('name') or '').strip()[:300]
         client = self._client(self.query.get('id') or '', inn)
@@ -1810,7 +1812,7 @@ class CrmController(Controller):
         return mgr['id'], mgr['name']
 
     @route(r'/api/crm/board', 'GET')
-    def board(self) -> None:
+    def board(self) -> Any:
         try:
             scope = self._scope(self.query.get('manager'))
         except PermissionError as exc:
@@ -1827,7 +1829,7 @@ class CrmController(Controller):
         return self.send_json(res)
 
     @route(r'/api/crm/pick', 'GET')
-    def pick(self) -> None:
+    def pick(self) -> Any:
         uid, _name, everyone = self.who(self.handler)
         inn = re.sub(r'\D', '', self.query.get('inn') or '')[:12]
         name = (self.query.get('name') or '').strip()[:300]
@@ -1848,14 +1850,14 @@ class CrmController(Controller):
         return self.send_json({'items': items, 'current': cur or '', 'stages': Stages.all(store())})
 
     @route(r'/api/crm/find', 'GET')  # единый поиск программы: сделки по словам (свои; руководитель — все)
-    def find(self) -> None:
+    def find(self) -> Any:
         uid, _name, everyone = self.who(self.handler)
         return self.send_json(
             {'items': CrmBoard(store()).find(None if everyone else [uid], str(self.query.get('q') or '')[:200])}
         )
 
     @route(r'/api/crm/deal', 'POST')
-    def create(self) -> None:
+    def create(self) -> Any:
         data = self.json_body()
         uid, name, everyone = self.who(self.handler)
         mid, mname = (
@@ -1878,7 +1880,7 @@ class CrmController(Controller):
         return self.send_json(deal)
 
     @route(r'/api/crm/deal/(d\d{1,9})', ('GET', 'PUT'))
-    def deal(self, did) -> None:
+    def deal(self, did) -> Any:
         deal = self._deal(did)
         if deal is None:
             return None
@@ -1916,7 +1918,7 @@ class CrmController(Controller):
         return self.send_json(dict(deal, stages=Stages.all(store())))
 
     @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
-    def link(self, did) -> None:
+    def link(self, did) -> Any:
         if self._deal(did) is None:
             return None
         kid = safe_id(str(self.json_body().get('kp') or ''))
@@ -1931,7 +1933,7 @@ class CrmController(Controller):
         return self.send_json({'ok': True, 'from': old})
 
     @route(r'/api/crm/task', 'POST')
-    def task_add(self) -> None:
+    def task_add(self) -> Any:
         data = self.json_body()
         uid, _name, everyone = self.who(self.handler)
         did = str(data.get('deal') or '')
@@ -1949,7 +1951,7 @@ class CrmController(Controller):
         return self.send_json(task)
 
     @route(r'/api/crm/task/(\d{1,9})', 'PUT')
-    def task(self, tid: str) -> None:
+    def task(self, tid: str) -> Any:
         tasks = TaskBook(store())
         task = tasks.get(tid)
         if not task:
@@ -1965,14 +1967,14 @@ class CrmController(Controller):
 
 class MeController(Controller):
     @route(r'/api/me/prefs', 'GET')
-    def prefs(self) -> None:
+    def prefs(self) -> Any:
         from user_prefs import UserPrefs
 
         uid = admin.actor(self.handler, admin=False)[0]
         return self.send_json({'id': uid or '', 'prefs': UserPrefs(store()).get(uid) if uid else {}})
 
     @route(r'/api/me/prefs', 'PUT')
-    def prefs_put(self) -> None:
+    def prefs_put(self) -> Any:
         from user_prefs import UserPrefs
 
         uid, name, _ = admin.actor(self.handler, admin=False)
@@ -1983,7 +1985,7 @@ class MeController(Controller):
 
 class ServiceController(Controller):
     @route(r'/api/backup', 'POST')
-    def backup(self) -> None:
+    def backup(self) -> Any:
         if not self.is_local():
             return self.send_json({'ok': False, 'message': 'Резервная копия создаётся на компьютере-сервере'})
         stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
@@ -1992,7 +1994,7 @@ class ServiceController(Controller):
 
     # выключение — только с самого компьютера (файл «Остановить сервер», установщик, кнопка «Выход»); по сети — нельзя
     @route(r'/api/shutdown', 'POST')
-    def shutdown(self) -> None:
+    def shutdown(self) -> Any:
         if not self.is_local():
             return self.send_json({'ok': False, 'message': 'Сервер отдела выключается только на компьютере-сервере'})
         self.send_json({'ok': True})

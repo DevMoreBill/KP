@@ -13,6 +13,7 @@ import urllib.request
 import webbrowser
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 import admin
 import catalog_migrate
@@ -429,6 +430,7 @@ class Server(ThreadingHTTPServer):
 
 class Server6(Server):
     address_family = socket.AF_INET6
+    main_server: Any = None
 
 
 def start_ipv6(port, main_server) -> None:

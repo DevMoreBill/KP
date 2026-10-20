@@ -355,7 +355,7 @@ class DbOverview:
 
     def _count(self, table: str) -> int | None:
         try:
-            return self.store.one(f'SELECT COUNT(*) FROM "{table}"')[0]  # имя — из COUNTS, не из запроса
+            return self.store.scalar(f'SELECT COUNT(*) FROM "{table}"')  # имя — из COUNTS, не из запроса
         except Exception:  # таблицы ещё нет (миграция откачена)
             return None
 

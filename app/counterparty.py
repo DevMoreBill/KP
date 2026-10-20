@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -361,11 +362,11 @@ class GirBo:
         """Действующая редакция отчёта за год: из «typeCorrections» (новый формат) или «corrections» — последняя по номеру."""
         cand = [x.get('correction') for x in report.get('typeCorrections') or [] if isinstance(x, dict)]
         cand += list(report.get('corrections') or [])
-        cand = [corr for corr in cand if isinstance(corr, dict)]
-        if not cand:
+        valid = [corr for corr in cand if isinstance(corr, dict)]
+        if not valid:
             return {}
         return max(
-            cand,
+            valid,
             key=lambda corr: (
                 _num(corr.get('correctionVersion')) or 0,
                 1 if corr.get('lastCorrection') else 0,
@@ -555,7 +556,7 @@ class Counterparties:
             return {'error': 'ИНН указан с ошибкой: проверьте количество цифр (10 или 12) и контрольную сумму'}
         keys = self.keys()
         errors = []
-        sources = []
+        sources: list[tuple[str, Callable[..., Any]]] = []
         if keys.get('dadataKey'):
             sources.append(('DaData', self._lookup_dadata))
         sources.append(('ФНС ЕГРЮЛ', self._lookup_egrul))
@@ -753,7 +754,7 @@ class Counterparties:
     @staticmethod
     def _age(doc) -> float:
         try:
-            return (datetime.now() - datetime.fromisoformat((doc or {}).get('checkedAt'))).days
+            return (datetime.now() - datetime.fromisoformat(str((doc or {}).get('checkedAt')))).days
         except Exception:
             return 999
 
@@ -1075,7 +1076,7 @@ class Counterparties:
             add('red', 'Недостоверный юридический адрес (отметка ФНС)')
         if dig(company, 'ЮрАдрес', 'МассАдрес'):
             add('yellow', 'Массовый юридический адрес')
-        bosses = company.get('Руковод') if isinstance(company.get('Руковод'), list) else []
+        bosses = picked if isinstance(picked := company.get('Руковод'), list) else []
         if any(boss.get('ДисквЛицо') for boss in bosses):
             add('red', 'Руководитель — дисквалифицированное лицо')
         if any(boss.get('МассРуковод') for boss in bosses):
@@ -1087,7 +1088,7 @@ class Counterparties:
             add('yellow', f'Налоговая недоимка: {self._money(debt)} руб.')
         # бухотчётность: последние 3 года — из ответа сервиса (суммы в рублях) или из ГИР БО / прежней проверки
         fin, fin_src, fin_url = [], '', ''
-        fdata = raw.get('finances') if isinstance(raw.get('finances'), dict) else {}
+        fdata = picked if isinstance(picked := raw.get('finances'), dict) else {}
         for y in sorted([k for k in fdata if re.match(r'^\d{4}$', str(k))], reverse=True)[:3]:
             row = fdata.get(y) or {}
             fin.append(
@@ -1116,7 +1117,7 @@ class Counterparties:
         f_cnt = _num((fssp or {}).get('ЗапВсего')) or 0
         f_sum = _num((fssp or {}).get('ОбщСумДолг') or (fssp or {}).get('ОбщСум'))
         if f_sum is None:  # общей суммы нет — сумма по записям (остаток долга, иначе сумма долга)
-            recs = (fssp or {}).get('Записи') if isinstance((fssp or {}).get('Записи'), list) else []
+            recs = picked if isinstance(picked := (fssp or {}).get('Записи'), list) else []
             vals = [
                 _num(rec.get('ОстЗадолж') if rec.get('ОстЗадолж') is not None else rec.get('СумДолг'))
                 for rec in recs

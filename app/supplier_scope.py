@@ -52,7 +52,7 @@ class SupplierScope:
         """Сравнение названий — как norm() клиента: регистр, ё, кавычки, пробелы не важны."""
         return re.sub(r'\s+', ' ', re.sub(r'[«»"]', '', str(text or '').lower().replace('ё', 'е'))).strip()
 
-    def name_of(self, feed: str, maker: str) -> str:
+    def name_of(self, feed: str | None, maker: str | None) -> str:
         if feed:
             return self.feeds.get(feed) or feed
         return self.makers.get(self.key(maker), '') if self.key(maker) else ''

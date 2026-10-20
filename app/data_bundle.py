@@ -38,7 +38,7 @@ class DataBundle:
         """Адреса изображений (путь внутри data/img), на которые ссылается текст резервной копии."""
         return sorted({match.group(1) for match in cls.REF.finditer(text)})
 
-    def pack(self, body: bytes) -> tuple:
+    def pack(self, body: str) -> tuple:
         """zip: kp-backup.json + изображения из ссылок. → (байты архива, сколько изображений вошло, сколько не найдено)."""
         buf, found, missing = io.BytesIO(), 0, 0
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -357,9 +357,10 @@ class SettingsFile:
         if k == 'mail' and isinstance(v, dict) and isinstance(cur, dict) and 'password' in cur:
             v = dict(v, password=cur['password'])
         if k == 'settings' and isinstance(v, dict) and isinstance(cur, dict):
-            ai_cur = cur.get('ai') if isinstance(cur.get('ai'), dict) else {}
-            if isinstance(v.get('ai'), dict) and 'key' not in v['ai'] and ai_cur.get('key'):
-                v = dict(v, ai=dict(v['ai'], key=ai_cur['key']))
+            ai_cur = got_value if isinstance(got_value := cur.get('ai'), dict) else {}
+            ai_new = v.get('ai')
+            if isinstance(ai_new, dict) and 'key' not in ai_new and ai_cur.get('key'):
+                v = dict(v, ai=dict(ai_new, key=ai_cur['key']))
         if k == 'update':
             v = dict(
                 cur if isinstance(cur, dict) else {},

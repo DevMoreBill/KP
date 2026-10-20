@@ -451,12 +451,12 @@ class CatalogExport:
             if price:
                 rec['price'], rec['priceCur'] = x.get('price') or None, x.get('priceCur') or 'RUB'
             if rrc:
-                rrc_obj = x.get('rrc') if isinstance(x.get('rrc'), dict) else {}
+                rrc_obj = got_value if isinstance(got_value := x.get('rrc'), dict) else {}
                 rec['rrc'], rec['rrcCur'] = rrc_obj.get('price') or None, rrc_obj.get('cur') or 'RUB'
             if cost:
                 rec['cost'], rec['costCur'] = x.get('cost') or None, x.get('costCur') or 'RUB'
             if stock:
-                stock_obj = x.get('stock') if isinstance(x.get('stock'), dict) else None
+                stock_obj = got_value if isinstance(got_value := x.get('stock'), dict) else None
                 rec['stock'], rec['stockQty'] = self.stock_text(stock_obj), (stock_obj or {}).get('qty')
             if img != 'none':
                 rec['images'] = [u for u in (self.pic_ref(pic, img) for pic in self.pics(x)) if u]
@@ -903,13 +903,15 @@ class CatalogDesk:
             handler.send_json({'pending': desk.items('pending')})
             return True
         match = re.match(r'^moderation/(\d+)(?:/(approve|reject))?$', sub)
+        if match is None:
+            return False
         if not match.group(2):
             handler.send_json(desk.view(int(match.group(1))))
             return True
         if method != 'POST':
             return handler.send(405, 'text/plain; charset=utf-8', 'Нужен POST') or True
         payload = self._body()
-        keys = payload.get('fields') if isinstance(payload.get('fields'), list) else None
+        keys = got_value if isinstance(got_value := payload.get('fields'), list) else None
         if match.group(2) == 'reject' and not str(payload.get('reason') or '').strip():
             raise ValueError('Укажите причину отклонения')
         handler.send_json(desk.review(int(match.group(1)), match.group(2), payload.get('reason') or '', keys))

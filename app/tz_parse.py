@@ -145,7 +145,7 @@ class TzParse:
                 )
             ),
         }
-        best = max(score, key=score.get)
+        best = max(score, key=lambda kind: score[kind])
         if score[best]:
             names = {'comp': 'компрессорная', 'pump': 'насосная', 'dgu': 'дизель-генераторная'}
             match = re.search(
@@ -768,7 +768,7 @@ class TzReview:
             'Высота площадки над уровнем моря, м.',
         ),
     ]
-    FIELDS = {
+    FIELDS: dict[str, list] = {
         'comp': [
             ('flow', 'Производительность, м³/мин', None, '', 'Требуемая производительность станции, м³/мин.'),
             (

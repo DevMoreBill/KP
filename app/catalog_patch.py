@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from typing import Any
 
 
 class CatalogPatch:
@@ -224,7 +225,7 @@ class CatalogSheet:
         except zipfile.BadZipFile:
             return False
 
-    def _nums(self) -> set:
+    def _nums(self) -> dict:
         """{категория: {поле с числом}} — из справочника категорий."""
         types = self.store.kv_get('types') or {}
         types = types.get('types') if isinstance(types, dict) else types
@@ -287,7 +288,7 @@ class CatalogSheet:
                 doc = json.loads(text)
                 attrs = doc.get('attrs') or {}
                 num = nums.get(attrs.get('cat'), set())
-                x = {'id': cid, 'name': doc.get('name') or ''}
+                x: dict[str, Any] = {'id': cid, 'name': doc.get('name') or ''}
                 for cell, k in keys.items():
                     if k in CatalogPatch.SET:
                         cur, field = doc.get(k), None

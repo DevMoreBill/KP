@@ -26,7 +26,7 @@ class CatalogSync:
             return None
         if since <= 0 or epoch != state['epoch'] or since > state['seq']:
             return None
-        total = self.store.one('SELECT COUNT(*) FROM catalog WHERE seq > ?', (since,))[0]
+        total = self.store.scalar('SELECT COUNT(*) FROM catalog WHERE seq > ?', (since,))
         if total > self.MAX_DELTA:
             return None
         items = self.store.joined('SELECT light AS x FROM catalog WHERE seq > ? ORDER BY seq', (since,))

@@ -66,7 +66,7 @@ def _public_host(host: str) -> bool:
     except OSError:
         raise ValueError('Адрес не найден') from None
     for info in infos:
-        if _local(info[4][0]):
+        if _local(str(info[4][0])):
             raise ValueError('Ссылки на адреса локальной сети не загружаются')
     return True
 

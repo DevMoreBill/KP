@@ -100,7 +100,7 @@ def place(tdef, maker: str, model: str, name: str = '', kind: str = 'photo', cap
     return folder, title
 
 
-def digest_of_name(name: str) -> str:
+def digest_of_name(name: str) -> str | None:
     """Отпечаток из имени файла: «…__0123456789.jpg» или прежнее «<md5>.jpg»."""
     stem = os.path.splitext(os.path.basename(name))[0]
     match = re.search(r'__([0-9a-f]{10})$', stem)
@@ -117,7 +117,7 @@ class ImageStore:
     def __init__(self, root: str) -> None:
         self.root = os.path.abspath(root)
         self.lock = threading.Lock()
-        self.index = None
+        self.index: dict | None = None
 
     def _scan(self):
         idx = {}
@@ -153,7 +153,8 @@ class ImageStore:
         with self.lock:
             if self.index is None:
                 self._scan()
-            rel = self.index.get(digest[:10])
+            index = self.index if self.index is not None else {}
+            rel = index.get(digest[:10])
             if rel and os.path.isfile(os.path.join(self.root, *rel.split('/'))):
                 return rel
             rel = '{}/{}__{}{}'.format(safe_rel(folder), slug(title, 110) or 'image', digest[:10], ext)
@@ -161,7 +162,7 @@ class ImageStore:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'wb') as handle:
                 handle.write(data)
-            self.index[digest[:10]] = rel
+            index[digest[:10]] = rel
             return rel
 
 

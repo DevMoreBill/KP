@@ -338,7 +338,7 @@ class Updater:
             recs = []
         try:
             conf = self.settings()
-            hist = conf.get('history') if isinstance(conf.get('history'), list) else []
+            hist: list = picked if isinstance(picked := conf.get('history'), list) else []
             for raw in recs if isinstance(recs, list) else []:
                 if not isinstance(raw, dict) or not raw.get('version'):
                     continue
@@ -369,7 +369,7 @@ class Updater:
                     )
                 )
                 # не запустились подряд два обновления (новое и предыдущее) — предупреждение о самом новом из них
-                old = conf.get('failed') if isinstance(conf.get('failed'), dict) else {}
+                old: dict = picked if isinstance(picked := conf.get('failed'), dict) else {}
                 if version.as_tuple(rec['version']) >= version.as_tuple(old.get('version') or '0'):
                     conf['failed'] = rec
             conf['history'] = hist[-self.HISTORY :]
@@ -539,7 +539,7 @@ class Updater:
             )
         )
         conf = self.settings()
-        hist = conf.get('history') if isinstance(conf.get('history'), list) else []
+        hist: list = picked if isinstance(picked := conf.get('history'), list) else []
         hist.append(dict(rec, at=datetime.now().isoformat(timespec='seconds')))
         conf['history'] = hist[-self.HISTORY :]
         for k, v in extra.items():  # failed=None — новая установка: прежнее предупреждение о сбое снимается
