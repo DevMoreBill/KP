@@ -1,23 +1,5 @@
-# -*- coding: utf-8 -*-
-"""Цены перевозчиков для расчёта доставки по России и автообновление ставок.
+"""Цены перевозчиков для доставки по России (ATI.SU, ПЭК, Деловые Линии, КИТ, СДЭК, Энергия, ЖДЭ) и автообновление ставок."""
 
-Источники (ключи — «Интеграции» в программе, хранятся в базе, kv «integrations»):
-  ATI.SU «Средние ставки» (atiToken, платная лицензия «API Средних ставок»)
-      https://api.ati.su/priceline/license/v2/all_directions   — направления (FromCityId, FromCity, ToCityId, ToCity)
-      https://api.ati.su/priceline/license/v2/average_prices   — средняя ставка и разброс: ₽/км и за рейс (PricesInRub:
-      UpperPrice / BottomPrice / AveragePrice). Берём верхнюю границу — отдельная машина (FTL).
-  ПЭК — открытый калькулятор без ключа (сборный груз, терминал — терминал)
-      https://calc.pecom.ru/bitrix/components/pecom/calc/ajax.php, города — https://pecom.ru/ru/calc/towns.php
-  Деловые Линии (dellinKey — appkey, бесплатно после регистрации на dev.dellin.ru)
-      https://api.dellin.ru/v2/calculator.json — сборный груз от адреса до адреса
-  КИТ (kitToken — Bearer, личный кабинет tk-kit.ru)
-      https://capi.tk-kit.com/2.0/order/calculate (тариф 01 «Стандарт», забор и доставка), города — /1.1/tdd/city/get-list
-      и /1.1/tdd/search/by-name; ошибки: 401 — токен, 429 — лимит по токену, 422 — поля
-  Энергия, СДЭК, Возовоз, ЖелДорЭкспедиция — адреса и документация в CarrierApi.LIST.
-
-Итог расчёта — максимальное из полных предложений (включая расчёт по тарифам «Настроек») со сноской, откуда цена.
-Ответы сервисов разбираются терпимо к мелким отличиям формата; ошибка сервиса показывается как есть и не мешает остальным.
-"""
 import json
 import math
 import re
@@ -33,67 +15,127 @@ import workcal
 from counterparty import http_json
 
 # защита сайтов СДЭК и Энергии отклоняет (403) запросы с «неизвестным» браузером — представляемся обычным
-BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+BROWSER_UA = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+)
 # коды ответов сервисов → понятное объяснение (сам код — в скобках)
-HTTP_WHY = {400: 'сервис не принял запрос', 401: 'ключ не принят — проверьте «Настройки → Ключи API»', 403: 'сервис отклонил запрос (защита сайта или доступ по ключу)',
-            404: 'адрес сервиса изменился или токен не подходит к этому адресу — проверьте «Настройки → Внешние сервисы → Перевозчики: адреса API» и ключ', 429: 'исчерпан лимит запросов — повторите позже', 500: 'ошибка на стороне сервиса',
-            502: 'сервис временно недоступен', 503: 'сервис временно недоступен', 504: 'сервис не ответил вовремя'}
+HTTP_WHY = {
+    400: 'сервис не принял запрос',
+    401: 'ключ не принят — проверьте «Настройки → Ключи API»',
+    403: 'сервис отклонил запрос (защита сайта или доступ по ключу)',
+    404: 'адрес сервиса изменился или токен не подходит к этому адресу — проверьте «Настройки → Внешние сервисы → Перевозчики: адреса API» и ключ',
+    429: 'исчерпан лимит запросов — повторите позже',
+    500: 'ошибка на стороне сервиса',
+    502: 'сервис временно недоступен',
+    503: 'сервис временно недоступен',
+    504: 'сервис не ответил вовремя',
+}
 
 # опорные направления автообновления ставок ₽/км (администратор может задать свои)
-REF_ROUTES = ['Москва — Санкт-Петербург', 'Москва — Казань', 'Москва — Екатеринбург', 'Москва — Краснодар', 'Москва — Новосибирск']
+REF_ROUTES = [
+    'Москва — Санкт-Петербург',
+    'Москва — Казань',
+    'Москва — Екатеринбург',
+    'Москва — Краснодар',
+    'Москва — Новосибирск',
+]
 
 
 class LtlLimits:
-    """Сборный груз: место не тяжелее и не больше — иначе только отдельной машиной. Пределы правит администратор
-    («Настройки → Значения программы → Логистика»; описание — LgValues в app/web/js/features/logistics-calc.js):
-    в килограммах и миллиметрах, для расчёта — в тоннах и метрах. Встроенные значения — как в logistics-calc.js."""
+    """Сборный груз: место не тяжелее и не больше — иначе только отдельной машиной."""
+
     # поле → (ключ «Значений программы», встроенное в кг / мм, наименьшее, наибольшее)
-    KEYS = {'m': ('log.ltlKg', 3000, 100, 20000), 'l': ('log.ltlL', 6000, 1000, 13600), 'w': ('log.ltlW', 2400, 500, 2550),
-            'h': ('log.ltlH', 2500, 500, 3000), 'total': ('log.ltlTotal', 20000, 1000, 40000)}
+    KEYS = {
+        'm': ('log.ltlKg', 3000, 100, 20000),
+        'l': ('log.ltlL', 6000, 1000, 13600),
+        'w': ('log.ltlW', 2400, 500, 2550),
+        'h': ('log.ltlH', 2500, 500, 3000),
+        'total': ('log.ltlTotal', 20000, 1000, 40000),
+    }
     ATI_DAYS = ('log.atiDays', 30, 7, 90)
 
     @classmethod
-    def get(cls, store=None):
+    def get(cls, store=None) -> dict:
         """{'m': т, 'l': м, 'w': м, 'h': м, 'total': т}"""
-        return {k: (defaults.num(store, key, b, lo, hi) if store is not None else b) / 1000.0 for k, (key, b, lo, hi) in cls.KEYS.items()}
+        return {
+            k: (defaults.num(store, key, b, lo, hi) if store is not None else b) / 1000.0
+            for k, (key, b, lo, hi) in cls.KEYS.items()
+        }
 
     @classmethod
-    def ati_days(cls, store=None):
+    def ati_days(cls, store=None) -> int:
         key, b, lo, hi = cls.ATI_DAYS
         return int(defaults.num(store, key, b, lo, hi)) if store is not None else b
 
     @classmethod
-    def fits(cls, places, store=None):
+    def fits(cls, places, store=None) -> tuple:
         """(можно ли сборным грузом, почему нет): каждое место и весь груз — в пределах."""
         units = Carrier.units(places)
         if not units:
             return False, 'нет груза'
         lim = cls.get(store)
         eps = 1e-9
-        big = [u for u in units if u['m'] > lim['m'] + eps or max(u['l'], u['w']) > lim['l'] + eps or min(u['l'], u['w']) > lim['w'] + eps
-               or u['h'] > lim['h'] + eps]
-        kg = lambda t: '{:,.0f}'.format(t * 1000).replace(',', ' ')      # т → кг, м → мм
+        big = [
+            u
+            for u in units
+            if u['m'] > lim['m'] + eps
+            or max(u['l'], u['w']) > lim['l'] + eps
+            or min(u['l'], u['w']) > lim['w'] + eps
+            or u['h'] > lim['h'] + eps
+        ]
+
+        def kg(t) -> str:
+            return f'{t * 1000:,.0f}'.replace(',', ' ')  # т → кг, м → мм
+
         if big:
-            return False, 'есть место тяжелее %s кг или больше %s × %s × %s мм — сборным грузом не принимают' % (kg(lim['m']), kg(lim['l']), kg(lim['w']), kg(lim['h']))
+            return False, 'есть место тяжелее {} кг или больше {} × {} × {} мм — сборным грузом не принимают'.format(
+                kg(lim['m']),
+                kg(lim['l']),
+                kg(lim['w']),
+                kg(lim['h']),
+            )
         if sum(u['m'] for u in units) > lim['total'] + eps:
-            return False, 'груз тяжелее %s кг — нужна отдельная машина' % kg(lim['total'])
+            return False, 'груз тяжелее {} кг — нужна отдельная машина'.format(kg(lim['total']))
         return True, ''
 
 
 class CarrierApi:
-    """Перевозчики: включение и адреса API — правит администратор («Настройки → Внешние сервисы → Перевозчики: адреса API»).
-    Перевозчик сменил адрес — новый вписывается в «Настройках», без выпуска программы. Сам разбор запроса и ответа —
-    в функциях перевозчиков ниже (исполняемый код из «Настроек» не принимается — это дыра в безопасности)."""
+    """Включение перевозчиков и адреса их API — правит администратор, без выпуска программы."""
+
     KV = 'carrierApi'
     # (код, название, сайт с документацией API, ((поле, подпись, адрес по умолчанию), …))
     LIST = (
-        ('ati', 'ATI.SU «Средние ставки»', 'https://ati.su/developers', (('base', 'Адрес API', 'https://api.ati.su/priceline/license/v2'),)),
-        ('pec', 'ПЭК', 'https://pecom.ru/business/developers/', (('calc', 'Расчёт стоимости', 'https://calc.pecom.ru/bitrix/components/pecom/calc/ajax.php'),
-                                                                  ('towns', 'Справочник городов', 'https://pecom.ru/ru/calc/towns.php'))),
-        ('dellin', 'Деловые Линии', 'https://dev.dellin.ru/api/', (('calc', 'Расчёт стоимости', 'https://api.dellin.ru/v2/calculator.json'),)),
-        ('nrg', 'Энергия', 'https://api2.nrg-tk.ru/', (('base', 'Адрес API', 'https://api2.nrg-tk.pro/v2'),
-                                                        ('reserve', 'Резервный адрес', 'https://api2.nrg-tk.ru/v2'),
-                                                        ('v4', 'API v4 (с токеном разработчика)', 'https://mainapi.nrg-tk.pro/api/v4'))),
+        (
+            'ati',
+            'ATI.SU «Средние ставки»',
+            'https://ati.su/developers',
+            (('base', 'Адрес API', 'https://api.ati.su/priceline/license/v2'),),
+        ),
+        (
+            'pec',
+            'ПЭК',
+            'https://pecom.ru/business/developers/',
+            (
+                ('calc', 'Расчёт стоимости', 'https://calc.pecom.ru/bitrix/components/pecom/calc/ajax.php'),
+                ('towns', 'Справочник городов', 'https://pecom.ru/ru/calc/towns.php'),
+            ),
+        ),
+        (
+            'dellin',
+            'Деловые Линии',
+            'https://dev.dellin.ru/api/',
+            (('calc', 'Расчёт стоимости', 'https://api.dellin.ru/v2/calculator.json'),),
+        ),
+        (
+            'nrg',
+            'Энергия',
+            'https://api2.nrg-tk.ru/',
+            (
+                ('base', 'Адрес API', 'https://api2.nrg-tk.pro/v2'),
+                ('reserve', 'Резервный адрес', 'https://api2.nrg-tk.ru/v2'),
+                ('v4', 'API v4 (с токеном разработчика)', 'https://mainapi.nrg-tk.pro/api/v4'),
+            ),
+        ),
         ('cdek', 'СДЭК', 'https://api-docs.cdek.ru/', (('base', 'Адрес API', 'https://api.cdek.ru/v2'),)),
         ('vozovoz', 'Возовоз', 'https://github.com/vozovoz/apiv2', (('url', 'Адрес API', 'https://vozovoz.ru/api/'),)),
         ('kit', 'КИТ', 'https://tk-kit.ru/developers', (('base', 'Адрес API', 'https://capi.tk-kit.com'),)),
@@ -103,12 +145,12 @@ class CarrierApi:
     URL = re.compile(r'^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(:\d{2,5})?(/[^\s<>"\'\\]*)?$')
 
     @classmethod
-    def _raw(cls, store):
+    def _raw(cls, store) -> dict:
         s = store.kv_get(cls.KV) if store is not None else None
         return s if isinstance(s, dict) else {}
 
     @classmethod
-    def _default(cls, cid, field):
+    def _default(cls, cid, field) -> str:
         for c, _n, _d, fields in cls.LIST:
             if c == cid:
                 for f, _l, url in fields:
@@ -117,23 +159,42 @@ class CarrierApi:
         raise KeyError(cid + '.' + field)
 
     @classmethod
-    def url(cls, store, cid, field):
+    def url(cls, store, cid, field) -> str:
         own = ((cls._raw(store).get(cid) or {}).get('urls') or {}).get(field)
         return own if own and cls.URL.match(own) else cls._default(cid, field)
 
     @classmethod
-    def on(cls, store, cid):
+    def on(cls, store, cid) -> bool:
         return (cls._raw(store).get(cid) or {}).get('on', True) is not False
 
     @classmethod
-    def public(cls, store):
+    def public(cls, store) -> dict:
         raw = cls._raw(store)
-        return {'carriers': [{'id': c, 'name': n, 'docs': d, 'on': cls.on(store, c), 'at': (raw.get(c) or {}).get('at'), 'by': (raw.get(c) or {}).get('by'),
-                              'fields': [{'id': f, 'label': lb, 'default': url, 'value': ((raw.get(c) or {}).get('urls') or {}).get(f) or ''}
-                                         for f, lb, url in fs]} for c, n, d, fs in cls.LIST]}
+        return {
+            'carriers': [
+                {
+                    'id': c,
+                    'name': n,
+                    'docs': d,
+                    'on': cls.on(store, c),
+                    'at': (raw.get(c) or {}).get('at'),
+                    'by': (raw.get(c) or {}).get('by'),
+                    'fields': [
+                        {
+                            'id': f,
+                            'label': lb,
+                            'default': url,
+                            'value': ((raw.get(c) or {}).get('urls') or {}).get(f) or '',
+                        }
+                        for f, lb, url in fs
+                    ],
+                }
+                for c, n, d, fs in cls.LIST
+            ]
+        }
 
     @classmethod
-    def save(cls, store, d, by=''):
+    def save(cls, store, d, by: str = '') -> dict:
         """d: {код: {on: bool, urls: {поле: адрес или '' — по умолчанию}}}; неизвестное — ошибка."""
         if not isinstance(d, dict):
             raise ValueError('Неверный формат настроек перевозчиков')
@@ -141,32 +202,34 @@ class CarrierApi:
         raw = cls._raw(store)
         for cid, v in d.items():
             if cid not in known or not isinstance(v, dict):
-                raise ValueError('Неизвестный перевозчик: %s' % str(cid)[:40])
+                raise ValueError(f'Неизвестный перевозчик: {str(cid)[:40]}')
             cur = dict(raw.get(cid) or {})
             if 'on' in v:
                 cur['on'] = bool(v['on'])
             urls = dict(cur.get('urls') or {})
-            for f, u in (v.get('urls') or {}).items():
+            for f, raw_url in (v.get('urls') or {}).items():
                 if f not in known[cid]:
-                    raise ValueError('Неизвестное поле адреса: %s' % str(f)[:40])
-                u = str(u or '').strip()
+                    raise ValueError(f'Неизвестное поле адреса: {str(f)[:40]}')
+                u = str(raw_url or '').strip()
                 if not u or u == cls._default(cid, f):
                     urls.pop(f, None)
                     continue
                 if len(u) > 300 or not cls.URL.match(u):
-                    raise ValueError('%s: адрес должен начинаться с https:// и вести на сайт перевозчика (не IP-адрес), до 300 знаков' % dict((c, n) for c, n, _d, _f in cls.LIST)[cid])
+                    raise ValueError(
+                        f'{ {c: n for c, n, _d, _f in cls.LIST}[cid] }: адрес должен начинаться с https:// и вести на сайт перевозчика (не IP-адрес), до 300 знаков'
+                    )
                 urls[f] = u
             cur['urls'], cur['at'], cur['by'] = urls, _now(), str(by or '')[:80]
             raw[cid] = cur
         store.kv_set(cls.KV, raw)
-        for cid in d:                      # справочники городов прежнего адреса — заново с нового
+        for cid in d:  # справочники городов прежнего адреса — заново с нового
             store.kv_set('lgdict:' + cid, {})
         return cls.public(store)
 
-    SAMPLE = [{'l': 1.2, 'w': 1.0, 'h': 1.0, 'm': 0.3, 'qty': 1}]      # пробное место: 1,2 × 1 × 1 м, 300 кг
+    SAMPLE = [{'l': 1.2, 'w': 1.0, 'h': 1.0, 'm': 0.3, 'qty': 1}]  # пробное место: 1,2 × 1 × 1 м, 300 кг
 
     @classmethod
-    def test(cls, store, cid):
+    def test(cls, store, cid) -> dict:
         """Пробный расчёт одного перевозчика Москва → Санкт-Петербург: {ok, msg} — без ключа в тексте."""
         carrier = CARRIERS.get(cid)
         if not carrier:
@@ -177,9 +240,19 @@ class CarrierApi:
         try:
             if carrier is Ati:
                 d = AtiDirections(store).find(frm['name'], to['name'])
-                return {'ok': bool(d), 'msg': 'отвечает: направление Москва → Санкт-Петербург есть' if d else 'отвечает, но направления Москва → Санкт-Петербург нет'}
+                return {
+                    'ok': bool(d),
+                    'msg': 'отвечает: направление Москва → Санкт-Петербург есть'
+                    if d
+                    else 'отвечает, но направления Москва → Санкт-Петербург нет',
+                }
             r = carrier.quote(store, frm, to, cls.SAMPLE, 0)
-            return {'ok': True, 'msg': 'отвечает: Москва → Санкт-Петербург, 300 кг — %s ₽' % '{:,.0f}'.format(r['price']).replace(',', ' ')}
+            return {
+                'ok': True,
+                'msg': 'отвечает: Москва → Санкт-Петербург, 300 кг — {} ₽'.format(
+                    '{:,.0f}'.format(r['price']).replace(',', ' ')
+                ),
+            }
         except Exception as e:
             return {'ok': False, 'msg': Http.error(e)}
 
@@ -187,11 +260,11 @@ class CarrierApi:
 _lock = threading.Lock()
 
 
-def _now():
+def _now() -> str:
     return datetime.now().isoformat(timespec='seconds')
 
 
-def cnorm(s):
+def cnorm(s) -> str:
     """Название города для сравнения: «г. Санкт-Петербург, …» → «санкт петербург»."""
     s = str(s or '').lower().replace('ё', 'е')
     s = re.split(r'[,(]', s)[0]
@@ -199,11 +272,11 @@ def cnorm(s):
     return re.sub(r'[\s\-‐–—]+', ' ', s).strip()
 
 
-def keys(store):
+def keys(store) -> dict:
     return store.kv_get('integrations') or {}
 
 
-def number(v):
+def number(v) -> float | None:
     """Число из ответа сервиса («1 234,5», 1234.5) или None."""
     try:
         x = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
@@ -212,7 +285,7 @@ def number(v):
         return None
 
 
-def _find(obj, pred, depth=0):
+def _find(obj, pred, depth=0) -> object:
     """Первый вложенный объект, для которого pred(obj) истинно (обход словарей и списков вглубь до 6 уровней)."""
     if depth > 6:
         return None
@@ -229,11 +302,12 @@ def _find(obj, pred, depth=0):
 
 class Http:
     """Запрос к сервису перевозчика и понятный текст его ошибки (ключи и токены из текста убраны)."""
+
     # ключи и токены в адресе (?token=…) и в тексте ответа не показываются и не пишутся в журнал
     SECRET = re.compile(r'(?i)((?:token|access_token|appkey|api_?key|key|secret|password|client_secret)=)[^&\s"\'<>]+')
 
     @staticmethod
-    def call(url, data=None, headers=None, method=None):
+    def call(url, data=None, headers=None, method=None) -> object:
         """Запрос с переходом по 307/308: перевозчик переехал на новый адрес — POST повторяется туда же (urllib сам этого не делает)."""
         for _ in range(3):
             try:
@@ -247,31 +321,31 @@ class Http:
         raise ValueError('сервис перенаправляет запрос по кругу — проверьте адрес API в «Настройках»')
 
     @classmethod
-    def hide(cls, text):
+    def hide(cls, text) -> str:
         return cls.SECRET.sub(r'\1***', str(text or ''))
 
     @classmethod
-    def error(cls, e):
+    def error(cls, e) -> str:
         """Текст ошибки для менеджера и журнала."""
         return cls.hide(cls._explain(e))
 
     @classmethod
-    def _explain(cls, e):
+    def _explain(cls, e) -> str:
         if isinstance(e, urllib.error.HTTPError):
             try:
                 text = cls._body_text(e.read().decode('utf-8', 'replace')[:2000])
             except Exception:
                 text = ''
             why = HTTP_WHY.get(e.code) or 'сервис ответил ошибкой'
-            return '%s, HTTP %s%s' % (why, e.code, (' — ' + text) if text else '')
+            return f'{why}, HTTP {e.code}{(" — " + text) if text else ""}'
         if isinstance(e, (socket.timeout, TimeoutError)) or 'timed out' in str(e):
             return 'сервис не ответил вовремя — повторите позже'
         if isinstance(e, urllib.error.URLError):
-            return 'нет связи с сервисом: %s' % (str(e.reason)[:120] if e.reason else 'проверьте интернет')
+            return f'нет связи с сервисом: {str(e.reason)[:120] if e.reason else "проверьте интернет"}'
         return str(e)[:300] or e.__class__.__name__
 
     @staticmethod
-    def _body_text(body):
+    def _body_text(body) -> str:
         """Из тела ошибки — коротко и по-человечески: message из JSON, иначе текст без HTML-разметки."""
         body = (body or '').strip()
         if not body:
@@ -289,45 +363,43 @@ class Http:
                 if isinstance(errs, list) and errs:
                     return '; '.join(str((x or {}).get('message') if isinstance(x, dict) else x) for x in errs)[:200]
             return ''
-        if '<' in body and '>' in body:                 # страница-заглушка (nginx, защита сайта) — её текст не нужен
+        if '<' in body and '>' in body:  # страница-заглушка (nginx, защита сайта) — её текст не нужен
             return ''
         return re.sub(r'\s+', ' ', body)[:200]
 
 
 class Carrier:
-    """Перевозчик: код (как в CarrierApi.LIST), нужные ключи API, справочник городов. У перевозчиков сборного груза —
-    quote(store, frm, to, places, declared): frm и to — точки {name, addr, alt (ближайшие крупные города)}, places —
-    [{l, w, h (м), m (т), qty}], declared — объявленная стоимость для страхования. Ответ — {price, ins, days, door, note},
-    ошибка — ValueError с понятным текстом."""
+    """Перевозчик: код (как в CarrierApi.LIST), нужные ключи API, справочник городов."""
+
     ID = ''
-    NAME = ''           # подпись предложения
-    SITE = ''           # страница заявки или калькулятора на сайте
-    WHOSE = ''          # «город не найден в справочнике …»
-    KEYS = ()           # ключи «Интеграций», без которых перевозчик не считает
-    HINT_403 = ''       # пояснение к отказу 403
-    DICT_DAYS = 7       # справочник городов обновляется раз в неделю
+    NAME = ''  # подпись предложения
+    SITE = ''  # страница заявки или калькулятора на сайте
+    WHOSE = ''  # «город не найден в справочнике …»
+    KEYS = ()  # ключи «Интеграций», без которых перевозчик не считает
+    HINT_403 = ''  # пояснение к отказу 403
+    DICT_DAYS = 7  # справочник городов обновляется раз в неделю
 
     @classmethod
-    def has_keys(cls, store):
+    def has_keys(cls, store) -> bool:
         k = keys(store)
         return all(k.get(name) for name in cls.KEYS)
 
     @classmethod
-    def _url(cls, store, field):
+    def _url(cls, store, field) -> str:
         return CarrierApi.url(store, cls.ID, field)
 
     @staticmethod
-    def units(places):
+    def units(places) -> list:
         """[{l, w, h, m, qty}] → по месту на каждую штуку."""
         return [p for p in places for _ in range(int(p['qty']))]
 
     @staticmethod
-    def candidates(point):
+    def candidates(point) -> list:
         """Город точки и ближайшие крупные — по порядку, для поиска в справочнике перевозчика."""
-        return [point.get('name')] + list(point.get('alt') or [])
+        return [point.get('name'), *list(point.get('alt') or [])]
 
     @staticmethod
-    def pick(cities, names):
+    def pick(cities, names) -> tuple:
         """(код, город): первый из городов, который есть в справочнике {город: код}; нет ни одного — (None, первый)."""
         for n in names:
             if cities.get(cnorm(n)):
@@ -335,21 +407,21 @@ class Carrier:
         return None, names[0] if names else ''
 
     @classmethod
-    def _both(cls, frm_hit, to_hit):
+    def _both(cls, frm_hit, to_hit) -> tuple:
         """Коды городов отправления и назначения; какого нет в справочнике — ValueError."""
         (a, fa), (b, tb) = frm_hit, to_hit
         if not a or not b:
-            raise ValueError('город не найден в справочнике %s: %s' % (cls.WHOSE, fa if not a else tb))
+            raise ValueError(f'город не найден в справочнике {cls.WHOSE}: {fa if not a else tb}')
         return a, b
 
     @staticmethod
-    def via(frm_hit, to_hit, frm, to):
+    def via(frm_hit, to_hit, frm, to) -> str:
         """« (Тверь → Казань)» — если в справочнике перевозчика нашёлся не сам город, а ближайший крупный."""
         fa, tb = frm_hit[1], to_hit[1]
-        return '' if (fa, tb) == (frm.get('name'), to.get('name')) else ' (%s → %s)' % (fa, tb)
+        return '' if (fa, tb) == (frm.get('name'), to.get('name')) else f' ({fa} → {tb})'
 
     @classmethod
-    def _cached(cls, store, name, loader):
+    def _cached(cls, store, name, loader) -> object:
         """Справочник из kv «lgdict:<name>»; старше DICT_DAYS — загружается заново."""
         c = store.kv_get('lgdict:' + name) or {}
         try:
@@ -359,79 +431,131 @@ class Carrier:
         if fresh and c.get('items'):
             return c['items']
         items = loader()
-        if not items:                   # пустой справочник не запоминаем — иначе каждый город будет «не найден»
+        if not items:  # пустой справочник не запоминаем — иначе каждый город будет «не найден»
             raise ValueError('справочник городов не загрузился (сервис ответил без данных) — повторите позже')
         store.kv_set('lgdict:' + name, {'at': _now(), 'items': items})
         return items
 
     @staticmethod
-    def _insurance(items):
+    def _insurance(items) -> float:
         """Сумма строк страхования (по названию «страхов…») в детализации перевозчика."""
-        return sum(number(x.get('price')) or 0 for x in (items or []) if isinstance(x, dict) and re.search(r'страхов', str(x.get('name') or ''), re.I))
+        return sum(
+            number(x.get('price')) or 0
+            for x in (items or [])
+            if isinstance(x, dict) and re.search(r'страхов', str(x.get('name') or ''), re.I)
+        )
 
     @staticmethod
-    def _last_number(values):
+    def _last_number(values) -> float | None:
         """Последнее число из значения или списка значений ответа (ПЭК отдаёт [подпись, …, сумма])."""
         found = [n for n in (number(v) for v in (values if isinstance(values, list) else [values])) if n is not None]
         return found[-1] if found else None
 
 
-# ---------------------------------------------------------------- ATI.SU «Средние ставки»
 class Ati(Carrier):
     """Отдельная машина (FTL): верхняя граница средних ставок ATI.SU по направлению — за рейс (₽) и за км (₽/км), с НДС."""
+
     ID, KEYS = 'ati', ('atiToken',)
     # класс машины в тарифах → тип кузова и тоннаж «Средних ставок»
-    CAR_CLASSES = {'gazel': ('tent', 1.5), 't5': ('tent', 5), 't10': ('tent', 10), 'tent20': ('tent', 20),
-                   'flat': ('open', 20), 'lowbed': ('tral', 20)}
+    CAR_CLASSES = {
+        'gazel': ('tent', 1.5),
+        't5': ('tent', 5),
+        't10': ('tent', 10),
+        'tent20': ('tent', 20),
+        'flat': ('open', 20),
+        'lowbed': ('tral', 20),
+    }
     BODY = {'tent': 'тент', 'open': 'открытая', 'tral': 'трал'}
 
     @classmethod
-    def _headers(cls, store):
+    def _headers(cls, store) -> dict:
         return {'Authorization': 'Bearer ' + keys(store).get('atiToken', ''), 'Content-Type': 'application/json'}
 
     @classmethod
-    def directions(cls, store):
+    def directions(cls, store) -> list:
         """[{fromId, from, toId, to, info}] — все направления «Средних ставок»."""
-        def load():
+
+        def load() -> list:
             j = Http.call(cls._url(store, 'base') + '/all_directions', headers=cls._headers(store))
-            rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'FromCityId' in o[0]) or [])
-            return [{'fromId': r.get('FromCityId'), 'from': r.get('FromCity') or '', 'toId': r.get('ToCityId'), 'to': r.get('ToCity') or '',
-                     'info': r.get('DirectionInfo')} for r in rows if isinstance(r, dict) and r.get('FromCityId') and r.get('ToCityId')]
+            rows = (
+                j
+                if isinstance(j, list)
+                else (
+                    _find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'FromCityId' in o[0])
+                    or []
+                )
+            )
+            return [
+                {
+                    'fromId': r.get('FromCityId'),
+                    'from': r.get('FromCity') or '',
+                    'toId': r.get('ToCityId'),
+                    'to': r.get('ToCity') or '',
+                    'info': r.get('DirectionInfo'),
+                }
+                for r in rows
+                if isinstance(r, dict) and r.get('FromCityId') and r.get('ToCityId')
+            ]
+
         return cls._cached(store, 'ati', load)
 
     @classmethod
-    def price(cls, store, d, car, tonnage, days=None):
+    def price(cls, store, d, car, tonnage, days=None) -> dict:
         """Ставки по направлению d за последние days дней: {upperRub, avgRub, lowRub, upperKm, avgKm, count}."""
         end = date.today()
         days = days or LtlLimits.ati_days(store)
-        body = {'From': {'CityId': d['fromId']}, 'To': {'CityId': d['toId']}, 'FromCityId': d['fromId'], 'ToCityId': d['toId'],
-                'CarType': car, 'Tonnage': tonnage, 'DateFrom': (end - timedelta(days=days)).isoformat() + 'T00:00:00',
-                'DateTo': end.isoformat() + 'T23:59:59', 'WithNds': True}
-        j = Http.call(cls._url(store, 'base') + '/average_prices', data=body, headers=cls._headers(store), method='POST')
+        body = {
+            'From': {'CityId': d['fromId']},
+            'To': {'CityId': d['toId']},
+            'FromCityId': d['fromId'],
+            'ToCityId': d['toId'],
+            'CarType': car,
+            'Tonnage': tonnage,
+            'DateFrom': (end - timedelta(days=days)).isoformat() + 'T00:00:00',
+            'DateTo': end.isoformat() + 'T23:59:59',
+            'WithNds': True,
+        }
+        j = Http.call(
+            cls._url(store, 'base') + '/average_prices', data=body, headers=cls._headers(store), method='POST'
+        )
         rec = j[0] if isinstance(j, list) and j else j
         # ставка за рейс — в PricesInRub (или во вложенном объекте с UpperPrice), за км — в самой записи
-        rub = _find(rec, lambda o: isinstance(o, dict) and 'UpperPrice' in o and o is not rec) if isinstance(rec, dict) else None
+        rub = (
+            _find(rec, lambda o: isinstance(o, dict) and 'UpperPrice' in o and o is not rec)
+            if isinstance(rec, dict)
+            else None
+        )
         rub = (rec or {}).get('PricesInRub') or rub or {}
-        per_km = rec if isinstance(rec, dict) and 'UpperPrice' in rec else (_find(rec, lambda o: isinstance(o, dict) and 'UpperPrice' in o and o is not rub) or {})
-        out = {'upperRub': number(rub.get('UpperPrice')), 'avgRub': number(rub.get('AveragePrice')), 'lowRub': number(rub.get('BottomPrice')),
-               'upperKm': number(per_km.get('UpperPrice')), 'avgKm': number(per_km.get('AveragePrice')),
-               'count': None}
+        per_km = (
+            rec
+            if isinstance(rec, dict) and 'UpperPrice' in rec
+            else (_find(rec, lambda o: isinstance(o, dict) and 'UpperPrice' in o and o is not rub) or {})
+        )
+        out = {
+            'upperRub': number(rub.get('UpperPrice')),
+            'avgRub': number(rub.get('AveragePrice')),
+            'lowRub': number(rub.get('BottomPrice')),
+            'upperKm': number(per_km.get('UpperPrice')),
+            'avgKm': number(per_km.get('AveragePrice')),
+            'count': None,
+        }
         cnt = _find(rec, lambda o: isinstance(o, dict) and any(k in o for k in ('LoadsCount', 'CargoCount', 'Count')))
         if cnt:
             out['count'] = number(next(cnt[k] for k in ('LoadsCount', 'CargoCount', 'Count') if k in cnt))
         if out['upperRub'] is None and out['upperKm'] is None:
-            raise ValueError('в ответе ATI.SU нет ставок по направлению (%s → %s, %s %s т)' % (d['from'], d['to'], car, tonnage))
+            raise ValueError(
+                'в ответе ATI.SU нет ставок по направлению ({} → {}, {} {} т)'.format(d['from'], d['to'], car, tonnage)
+            )
         return out
 
 
 class AtiDirections:
-    """Поиск направления «Средних ставок» ATI.SU по городам: справочник читается один раз на расчёт (а не на каждую пару
-    городов), поиск — по словарю; при одинаковых названиях — первое направление справочника."""
+    """Направления «Средних ставок» ATI.SU по городам: справочник читается один раз на расчёт."""
 
-    def __init__(self, store):
+    def __init__(self, store) -> None:
         self.store, self._idx = store, None
 
-    def find(self, frm, to):
+    def find(self, frm, to) -> dict | None:
         if self._idx is None:
             idx = {}
             for d in Ati.directions(self.store):
@@ -440,45 +564,54 @@ class AtiDirections:
         return self._idx.get((cnorm(frm), cnorm(to)))
 
 
-# ---------------------------------------------------------------- ПЭК (открытый калькулятор)
 class Pec(Carrier):
     """Сборный груз терминал — терминал; забор и доставка — если калькулятор их посчитал."""
+
     ID, NAME, SITE, WHOSE = 'pec', 'ПЭК', 'https://pecom.ru/services-are/shipping-request/', 'ПЭК'
 
     @classmethod
-    def cities(cls, store):
-        def load():
+    def cities(cls, store) -> dict:
+        def load() -> dict:
             j = Http.call(cls._url(store, 'towns'))
             out = {}
-            for _region, towns in (j.items() if isinstance(j, dict) else []):
+            for _region, towns in j.items() if isinstance(j, dict) else []:
                 if isinstance(towns, dict):
                     for tid, name in towns.items():
                         n = cnorm(name)
                         if n and n not in out:
                             out[n] = tid
             return out
+
         return cls._cached(store, 'pec', load)
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         cities = cls.cities(store)
         frm_hit, to_hit = cls.pick(cities, cls.candidates(frm)), cls.pick(cities, cls.candidates(to))
         a, b = cls._both(frm_hit, to_hit)
         q = [('take[town]', a), ('deliver[town]', b)]
         if declared:
-            q.append(('strah', int(round(declared))))   # объявленная стоимость — ПЭК считает своё страхование
-        for k, p in enumerate(cls.units(places)):   # место: ширина, длина, высота (м), объём (м³), вес (кг), негабарит, жёсткая упаковка
+            q.append(('strah', round(declared)))  # объявленная стоимость — ПЭК считает своё страхование
+        for k, p in enumerate(
+            cls.units(places)
+        ):  # место: ширина, длина, высота (м), объём (м³), вес (кг), негабарит, жёсткая упаковка
             oversize = 1 if max(p['l'], p['w'], p['h']) > 3 or p['m'] > 0.5 else 0
-            q += [('places[%d][]' % k, v) for v in (p['w'], p['l'], p['h'], round(p['l'] * p['w'] * p['h'], 3), round(p['m'] * 1000), oversize, 0)]
+            q += [
+                (f'places[{k}][]', v)
+                for v in (p['w'], p['l'], p['h'], round(p['l'] * p['w'] * p['h'], 3), round(p['m'] * 1000), oversize, 0)
+            ]
         j = Http.call(cls._url(store, 'calc') + '?' + urllib.parse.urlencode(q))
         auto = j.get('auto') if isinstance(j, dict) else None
         if not auto:
-            raise ValueError('ПЭК: автоперевозка недоступна для этого груза' + ((' — ' + str(j.get('error'))) if isinstance(j, dict) and j.get('error') else ''))
+            raise ValueError(
+                'ПЭК: автоперевозка недоступна для этого груза'
+                + ((' — ' + str(j.get('error'))) if isinstance(j, dict) and j.get('error') else '')
+            )
         total = cls._last_number(auto)
         if total is None:
             raise ValueError('ПЭК: в ответе нет стоимости')
         ins = 0
-        for k, v in j.items():                      # обязательные надбавки (ADD…: негабарит, страхование)
+        for k, v in j.items():  # обязательные надбавки (ADD…: негабарит, страхование)
             if re.match(r'^(ADD|add)', str(k)) and isinstance(v, list):
                 n = cls._last_number(v)
                 if n is not None:
@@ -486,7 +619,7 @@ class Pec(Carrier):
                     if re.search(r'страх', ' '.join(str(y) for y in v[:2]), re.I):
                         ins += n
         door = 0
-        for k in ('take', 'deliver'):                # забор груза у отправителя и доставка получателю
+        for k in ('take', 'deliver'):  # забор груза у отправителя и доставка получателю
             n = cls._last_number(j[k]) if j.get(k) is not None else None
             if n is not None:
                 total += n
@@ -496,33 +629,61 @@ class Pec(Carrier):
         if per:
             m = re.findall(r'\d+', str(per.get('periods_days') or per.get('periods')))
             days = int(m[-1]) if m else None
-        return {'price': round(total), 'ins': round(ins), 'days': days, 'door': door == 2,
-                'note': ('сборный груз, дверь в дверь (забор и доставка ПЭК)' if door == 2 else 'сборный груз, межтерминальная перевозка ПЭК')
-                + cls.via(frm_hit, to_hit, frm, to)}
+        return {
+            'price': round(total),
+            'ins': round(ins),
+            'days': days,
+            'door': door == 2,
+            'note': (
+                'сборный груз, дверь в дверь (забор и доставка ПЭК)'
+                if door == 2
+                else 'сборный груз, межтерминальная перевозка ПЭК'
+            )
+            + cls.via(frm_hit, to_hit, frm, to),
+        }
 
 
-# ---------------------------------------------------------------- Деловые Линии
 class Dellin(Carrier):
     """Сборный груз от адреса до адреса (адрес ищет сам сервис)."""
+
     ID, NAME, SITE, KEYS = 'dellin', 'Деловые Линии', 'https://www.dellin.ru/requests/', ('dellinKey',)
     WORK_TIME = {'worktimeStart': '09:00', 'worktimeEnd': '18:00'}
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         units = cls.units(places)
         over = [u for u in units if max(u['l'], u['w'], u['h']) > 3 or u['m'] > 0.1]
-        body = {'appkey': keys(store).get('dellinKey', ''),
-                'delivery': {'deliveryType': {'type': 'auto'},
-                             'derival': {'produceDate': '', 'variant': 'address',
-                                         'address': {'search': frm.get('addr') or frm.get('name')}, 'time': cls.WORK_TIME},
-                             'arrival': {'variant': 'address', 'address': {'search': to.get('addr') or to.get('name')}, 'time': cls.WORK_TIME}},
-                'cargo': {'quantity': len(units), 'length': max(u['l'] for u in units), 'width': max(u['w'] for u in units),
-                          'height': max(u['h'] for u in units), 'weight': round(max(u['m'] for u in units) * 1000, 1),
-                          'totalVolume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3), 'totalWeight': round(sum(u['m'] for u in units) * 1000, 1),
-                          'oversizedWeight': round(sum(u['m'] for u in over) * 1000, 1), 'oversizedVolume': round(sum(u['l'] * u['w'] * u['h'] for u in over), 3),
-                          'hazardClass': 0}}
-        if declared:                                 # страхование груза Деловыми Линиями по объявленной стоимости
-            body['cargo']['insurance'] = {'statedValue': int(round(declared)), 'term': True}
+        body = {
+            'appkey': keys(store).get('dellinKey', ''),
+            'delivery': {
+                'deliveryType': {'type': 'auto'},
+                'derival': {
+                    'produceDate': '',
+                    'variant': 'address',
+                    'address': {'search': frm.get('addr') or frm.get('name')},
+                    'time': cls.WORK_TIME,
+                },
+                'arrival': {
+                    'variant': 'address',
+                    'address': {'search': to.get('addr') or to.get('name')},
+                    'time': cls.WORK_TIME,
+                },
+            },
+            'cargo': {
+                'quantity': len(units),
+                'length': max(u['l'] for u in units),
+                'width': max(u['w'] for u in units),
+                'height': max(u['h'] for u in units),
+                'weight': round(max(u['m'] for u in units) * 1000, 1),
+                'totalVolume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3),
+                'totalWeight': round(sum(u['m'] for u in units) * 1000, 1),
+                'oversizedWeight': round(sum(u['m'] for u in over) * 1000, 1),
+                'oversizedVolume': round(sum(u['l'] * u['w'] * u['h'] for u in over), 3),
+                'hazardClass': 0,
+            },
+        }
+        if declared:  # страхование груза Деловыми Линиями по объявленной стоимости
+            body['cargo']['insurance'] = {'statedValue': round(declared), 'term': True}
         # дата забора: ближайший рабочий день; если с этого адреса в эту дату не забирают («Выбранная дата недоступна
         # для выбранного адреса») — следующий рабочий, до DATE_TRIES дней
         for day in cls.pickup_days(store):
@@ -531,8 +692,10 @@ class Dellin(Carrier):
             if not msg or not cls.DATE_ERR.search(msg):
                 break
         if msg and cls.DATE_ERR.search(msg):
-            raise ValueError('Деловые Линии: с адреса отправки не забирают груз в ближайшие %d рабочих дней — проверьте адрес '
-                             '(%s)' % (cls.DATE_TRIES, msg))
+            raise ValueError(
+                f'Деловые Линии: с адреса отправки не забирают груз в ближайшие {cls.DATE_TRIES} рабочих дней — '
+                f'проверьте адрес ({msg})'
+            )
         if msg:
             raise ValueError('Деловые Линии: ' + msg)
         d = (j or {}).get('data') or {}
@@ -544,14 +707,19 @@ class Dellin(Carrier):
             raise ValueError('Деловые Линии: в ответе нет стоимости')
         iv = d.get('insurance')
         ins = number(iv.get('price') if isinstance(iv, dict) else iv) or 0
-        return {'price': round(price), 'ins': round(ins), 'days': cls._days(d.get('orderDates') or {}), 'door': True,
-                'note': 'сборный груз, от адреса до адреса, забор ' + day.strftime('%d.%m')}
+        return {
+            'price': round(price),
+            'ins': round(ins),
+            'days': cls._days(d.get('orderDates') or {}),
+            'door': True,
+            'note': 'сборный груз, от адреса до адреса, забор ' + day.strftime('%d.%m'),
+        }
 
     DATE_TRIES = 7
     DATE_ERR = re.compile(r'дат[аы]\b.*недоступн|недоступн.*дат|produceDate', re.I)
 
     @classmethod
-    def pickup_days(cls, store=None):
+    def pickup_days(cls, store=None) -> list:
         """Ближайшие рабочие дни начиная с завтрашнего: по производственному календарю (праздники, переносы), без него — пн–пт."""
         d, out, cal = date.today(), [], {}
         while len(out) < cls.DATE_TRIES:
@@ -567,22 +735,27 @@ class Dellin(Carrier):
         return out
 
     @classmethod
-    def _calc(cls, store, body):
+    def _calc(cls, store, body) -> tuple:
         """Запрос калькулятора: (ответ, текст ошибки или '')."""
         try:
-            j = Http.call(cls._url(store, 'calc'), data=body, headers={'Content-Type': 'application/json'}, method='POST')
-        except urllib.error.HTTPError as e:        # ошибка проверки полей приходит телом ответа с кодом 4xx
+            j = Http.call(
+                cls._url(store, 'calc'), data=body, headers={'Content-Type': 'application/json'}, method='POST'
+            )
+        except urllib.error.HTTPError as e:  # ошибка проверки полей приходит телом ответа с кодом 4xx
             try:
                 j = json.loads(e.read().decode('utf-8', 'replace'))
             except Exception:
-                raise ValueError(Http.error(e))
+                raise ValueError(Http.error(e)) from None
         errs = j.get('errors') if isinstance(j, dict) else None
         if not errs:
             return j, ''
-        return j, '; '.join(str((x or {}).get('detail') or (x or {}).get('title') or x) for x in (errs if isinstance(errs, list) else [errs]))[:300]
+        return j, '; '.join(
+            str((x or {}).get('detail') or (x or {}).get('title') or x)
+            for x in (errs if isinstance(errs, list) else [errs])
+        )[:300]
 
     @staticmethod
-    def _days(dates):
+    def _days(dates) -> int | None:
         """Срок в днях от забора до выдачи по датам заказа (включительно)."""
         start = dates.get('pickup') or dates.get('derivalFromOspSender')
         end = dates.get('arrivalToOspReceiver') or dates.get('giveoutFromOspReceiver')
@@ -594,17 +767,15 @@ class Dellin(Carrier):
             return None
 
 
-# ---------------------------------------------------------------- КИТ
 class Kit(Carrier):
-    """KIT.API: /2.0/order/calculate — забор и доставка по адресу (дверь — дверь), тариф «Стандарт» (01); города —
-    /1.1/tdd/city/get-list и /1.1/tdd/search/by-name. Страхование КИТ по объявленной стоимости (строки «страхован…»
-    в детализации) входит в цену и показывается отдельно."""
+    """КИТ: расчёт дверь — дверь (тариф «Стандарт»), справочник городов, страхование по объявленной стоимости."""
+
     ID, NAME, SITE, WHOSE, KEYS = 'kit', 'КИТ', 'https://tk-kit.ru/calculate', 'КИТ', ('kitToken',)
     TYPES = {'01': 'Стандарт', '03': 'Экспресс'}
-    DOCS_FROM = 50000       # ₽: от этой объявленной стоимости КИТ требует признак документов, подтверждающих стоимость
+    DOCS_FROM = 50000  # ₽: от этой объявленной стоимости КИТ требует признак документов, подтверждающих стоимость
 
     @classmethod
-    def _call(cls, store, path, body):
+    def _call(cls, store, path, body) -> object:
         """POST JSON с токеном Bearer. Ошибки — понятным текстом: 401 — токен, 429 — лимит, 422 — поля."""
         headers = {'Authorization': 'Bearer ' + keys(store).get('kitToken', ''), 'Content-Type': 'application/json'}
         try:
@@ -615,31 +786,41 @@ class Kit(Carrier):
             except Exception:
                 j = None
             if e.code == 401:
-                raise ValueError('КИТ: токен не принят — создайте новый в личном кабинете tk-kit.ru («Разработчикам» → «Получение ключа API»)')
+                raise ValueError(
+                    'КИТ: токен не принят — создайте новый в личном кабинете tk-kit.ru («Разработчикам» → «Получение ключа API»)'
+                ) from e
             if e.code == 429:
-                raise ValueError('КИТ: превышен лимит запросов по токену — повторите позже')
-            if isinstance(j, list):         # ошибки проверки полей: [{"field": …, "message": …}]
+                raise ValueError('КИТ: превышен лимит запросов по токену — повторите позже') from e
+            if isinstance(j, list):  # ошибки проверки полей: [{"field": …, "message": …}]
                 msg = '; '.join(str(x.get('message') or x) for x in j if isinstance(x, dict))
             elif isinstance(j, dict):
                 msg = str(j.get('message') or j.get('name') or '')
             else:
                 msg = ''
-            raise ValueError('КИТ: %s, HTTP %s%s' % (HTTP_WHY.get(e.code) or 'сервис ответил ошибкой', e.code, (' — ' + msg[:300]) if msg else ''))
+            raise ValueError(
+                f'КИТ: {HTTP_WHY.get(e.code) or "сервис ответил ошибкой"}, HTTP {e.code}'
+                + ((' — ' + msg[:300]) if msg else '')
+            ) from e
 
     @staticmethod
-    def _name(row):
+    def _name(row) -> str:
         return cnorm(row.get('name')) if isinstance(row, dict) else ''
 
     @staticmethod
-    def _is_city(row):
+    def _is_city(row) -> bool:
         return str(row.get('type') or '').startswith('гор')
 
     @classmethod
-    def cities(cls, store):
+    def cities(cls, store) -> dict:
         """Справочник населённых пунктов: имя → код. При совпадении имён — город («гор.»)."""
-        def load():
+
+        def load() -> dict:
             j = cls._call(store, '/1.1/tdd/city/get-list', {'country_code': 'RU'})
-            rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'code' in o[0]) or [])
+            rows = (
+                j
+                if isinstance(j, list)
+                else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'code' in o[0]) or [])
+            )
             out, city = {}, set()
             for r in rows:
                 n, is_city = cls._name(r), cls._is_city(r)
@@ -648,10 +829,11 @@ class Kit(Carrier):
                     if is_city:
                         city.add(n)
             return out
+
         return cls._cached(store, 'kit', load)
 
     @classmethod
-    def city(cls, store, names):
+    def city(cls, store, names) -> tuple:
         """(код, город): по справочнику, а если там нет — поиском по имени, с запоминанием в справочнике."""
         cities = cls.cities(store)
         for n in names:
@@ -662,12 +844,17 @@ class Kit(Carrier):
                 try:
                     rows = cls._call(store, '/1.1/tdd/search/by-name', {'title': n})
                 except ValueError as e:
-                    if 'токен' in str(e):      # неверный токен — дальше искать бессмысленно
+                    if 'токен' in str(e):  # неверный токен — дальше искать бессмысленно
                         raise
-                    continue                    # поиск не ответил — берём следующий (ближайший крупный) город
+                    continue  # поиск не ответил — берём следующий (ближайший крупный) город
                 # в ответах КИТ встречается и country_сode с русской «с»
-                rows = [r for r in (rows if isinstance(rows, list) else []) if cls._name(r) == key and r.get('code')
-                        and str(r.get('country_code') or r.get('country_сode') or 'RU') == 'RU']
+                rows = [
+                    r
+                    for r in (rows if isinstance(rows, list) else [])
+                    if cls._name(r) == key
+                    and r.get('code')
+                    and str(r.get('country_code') or r.get('country_сode') or 'RU') == 'RU'
+                ]
                 hit = next((r for r in rows if cls._is_city(r)), rows[0] if rows else None)
                 cities[key] = hit['code'] if hit else None
                 store.kv_set('lgdict:kit', dict(store.kv_get('lgdict:kit') or {'at': _now()}, items=cities))
@@ -676,19 +863,34 @@ class Kit(Carrier):
         return None, names[0] if names else ''
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         frm_hit, to_hit = cls.city(store, cls.candidates(frm)), cls.city(store, cls.candidates(to))
         a, b = cls._both(frm_hit, to_hit)
-        price = max(1, int(round(declared or 0)))
-        body = {'city_pickup_code': a, 'city_delivery_code': b, 'declared_price': price, 'type': '01',
-                'pick_up': 1, 'delivery': 1, 'currency_code': ['RUB'],
-                'places': [{'count_place': 1, 'length': round(u['l'] * 100, 2), 'width': round(u['w'] * 100, 2),
-                            'height': round(u['h'] * 100, 2), 'weight': round(u['m'] * 1000, 2)} for u in cls.units(places)]}
+        price = max(1, round(declared or 0))
+        body = {
+            'city_pickup_code': a,
+            'city_delivery_code': b,
+            'declared_price': price,
+            'type': '01',
+            'pick_up': 1,
+            'delivery': 1,
+            'currency_code': ['RUB'],
+            'places': [
+                {
+                    'count_place': 1,
+                    'length': round(u['l'] * 100, 2),
+                    'width': round(u['w'] * 100, 2),
+                    'height': round(u['h'] * 100, 2),
+                    'weight': round(u['m'] * 1000, 2),
+                }
+                for u in cls.units(places)
+            ],
+        }
         if price >= cls.DOCS_FROM:
             body.update(confirmation_price=1, have_doc=1)
         j = cls._call(store, '/2.0/order/calculate', body)
-        found = {}                      # код тарифа → расчёт
-        for el in (j if isinstance(j, list) else [j]):
+        found = {}  # код тарифа → расчёт
+        for el in j if isinstance(j, list) else [j]:
             if isinstance(el, dict):
                 for k, v in el.items():
                     if isinstance(v, dict) and number(v.get('cost')) is not None:
@@ -701,24 +903,39 @@ class Kit(Carrier):
         code = '01' if '01' in found else sorted(found)[0]
         t = found[code]
         days = re.findall(r'\d+', str(t.get('time') or ''))
-        return {'price': round(number(t['cost'])), 'ins': round(cls._insurance(t.get('detail'))), 'days': int(days[-1]) if days else None, 'door': True,
-                'note': 'дверь в дверь (забор и доставка КИТ), тариф «%s»%s' % (t.get('name') or cls.TYPES.get(code, code), cls.via(frm_hit, to_hit, frm, to))}
+        return {
+            'price': round(number(t['cost'])),
+            'ins': round(cls._insurance(t.get('detail'))),
+            'days': int(days[-1]) if days else None,
+            'door': True,
+            'note': 'дверь в дверь (забор и доставка КИТ), тариф «{}»{}'.format(
+                t.get('name') or cls.TYPES.get(code, code), cls.via(frm_hit, to_hit, frm, to)
+            ),
+        }
 
 
-# ---------------------------------------------------------------- СДЭК (API v2, OAuth client_credentials)
 class Cdek(Carrier):
     """Тарифы «дверь — дверь» (delivery_mode 1), самый дешёвый; страхование — услугой INSURANCE выбранного тарифа."""
+
     ID, NAME, SITE, WHOSE, KEYS = 'cdek', 'СДЭК', 'https://www.cdek.ru/ru/calculate', 'СДЭК', ('cdekId', 'cdekSecret')
     HINT_403 = '. Если ключи верны — защита сайта СДЭК не пропускает запросы с этого компьютера'
-    _tokens = {}            # идентификатор клиента → (токен, годен до)
+    _tokens = {}  # идентификатор клиента → (токен, годен до)
 
     @classmethod
-    def _headers(cls, store):
+    def _headers(cls, store) -> dict:
         k = keys(store)
         t = cls._tokens.get(k.get('cdekId'))
         if not t or t[1] < datetime.now():
-            j = Http.call(cls._url(store, 'base') + '/oauth/token', data={'grant_type': 'client_credentials', 'client_id': k.get('cdekId', ''),
-                                                                          'client_secret': k.get('cdekSecret', '')}, headers={'User-Agent': BROWSER_UA}, method='POST')
+            j = Http.call(
+                cls._url(store, 'base') + '/oauth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': k.get('cdekId', ''),
+                    'client_secret': k.get('cdekSecret', ''),
+                },
+                headers={'User-Agent': BROWSER_UA},
+                method='POST',
+            )
             if not j.get('access_token'):
                 raise ValueError('СДЭК: не выдан токен — проверьте идентификатор и секретный ключ')
             t = (j['access_token'], datetime.now() + timedelta(seconds=int(j.get('expires_in') or 3600) - 60))
@@ -726,7 +943,7 @@ class Cdek(Carrier):
         return {'Authorization': 'Bearer ' + t[0], 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA}
 
     @classmethod
-    def city(cls, store, names, headers):
+    def city(cls, store, names, headers) -> tuple:
         """(код, город) по поиску СДЭК с запоминанием в kv «lgdict:cdek»: точный город, затем ближайшие крупные."""
         c = store.kv_get('lgdict:cdek') or {}
         items = c.get('items') or {}
@@ -746,39 +963,75 @@ class Cdek(Carrier):
         return None, names[0] if names else ''
 
     @staticmethod
-    def _location(code, addr):
+    def _location(code, addr) -> dict:
         return dict({'code': code}, **({'address': addr} if addr else {}))
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         h = cls._headers(store)
         frm_hit, to_hit = cls.city(store, cls.candidates(frm), h), cls.city(store, cls.candidates(to), h)
         a, b = cls._both(frm_hit, to_hit)
         # места: масса — в граммах, габариты — в сантиметрах (API СДЭК v2, calculator/tarifflist); у нас — тонны и метры
-        route = {'from_location': cls._location(a, frm.get('addr')), 'to_location': cls._location(b, to.get('addr')),
-                 'packages': [{'weight': int(round(p['m'] * 1000000)), 'length': int(round(p['l'] * 100)), 'width': int(round(p['w'] * 100)),
-                               'height': int(round(p['h'] * 100))} for p in cls.units(places)]}
-        j = Http.call(cls._url(store, 'base') + '/calculator/tarifflist', data=dict({'type': 2, 'currency': 1, 'lang': 'rus'}, **route),
-                      headers=h, method='POST')
+        route = {
+            'from_location': cls._location(a, frm.get('addr')),
+            'to_location': cls._location(b, to.get('addr')),
+            'packages': [
+                {
+                    'weight': round(p['m'] * 1000000),
+                    'length': round(p['l'] * 100),
+                    'width': round(p['w'] * 100),
+                    'height': round(p['h'] * 100),
+                }
+                for p in cls.units(places)
+            ],
+        }
+        j = Http.call(
+            cls._url(store, 'base') + '/calculator/tarifflist',
+            data=dict({'type': 2, 'currency': 1, 'lang': 'rus'}, **route),
+            headers=h,
+            method='POST',
+        )
         if isinstance(j, dict) and j.get('errors'):
             raise ValueError('СДЭК: ' + '; '.join(str((e or {}).get('message') or e) for e in j['errors'])[:300])
-        rows = [r for r in (j.get('tariff_codes') if isinstance(j, dict) else []) or [] if number(r.get('delivery_sum'))]
-        door = [r for r in rows if r.get('delivery_mode') == 1]       # 1 — дверь-дверь
+        rows = [
+            r for r in (j.get('tariff_codes') if isinstance(j, dict) else []) or [] if number(r.get('delivery_sum'))
+        ]
+        door = [r for r in rows if r.get('delivery_mode') == 1]  # 1 — дверь-дверь
         if not door:
-            raise ValueError('СДЭК: нет тарифов «дверь — дверь» для такого груза' + (' (есть только до пункта выдачи)' if rows else ''))
+            raise ValueError(
+                'СДЭК: нет тарифов «дверь — дверь» для такого груза'
+                + (' (есть только до пункта выдачи)' if rows else '')
+            )
         r = min(door, key=lambda x: number(x['delivery_sum']))
         ins = cls._insurance_of(store, h, r.get('tariff_code'), route, declared) if declared else 0
-        return {'price': round(number(r['delivery_sum']) + ins), 'ins': round(ins), 'days': r.get('period_max') or r.get('period_min'), 'door': True,
-                'note': 'дверь в дверь, тариф «%s»%s' % (r.get('tariff_name') or r.get('tariff_code'), cls.via(frm_hit, to_hit, frm, to))}
+        return {
+            'price': round(number(r['delivery_sum']) + ins),
+            'ins': round(ins),
+            'days': r.get('period_max') or r.get('period_min'),
+            'door': True,
+            'note': 'дверь в дверь, тариф «{}»{}'.format(
+                r.get('tariff_name') or r.get('tariff_code'), cls.via(frm_hit, to_hit, frm, to)
+            ),
+        }
 
     @classmethod
-    def _insurance_of(cls, store, h, tariff, route, declared):
-        """Страхование СДЭК по объявленной стоимости — расчёт тарифа с услугой INSURANCE; не посчиталось — 0
-        (тогда в сделке будет своё, единое страхование)."""
+    def _insurance_of(cls, store, h, tariff, route, declared) -> float:
+        """Страхование СДЭК по объявленной стоимости; не посчиталось — 0."""
         try:
-            t = Http.call(cls._url(store, 'base') + '/calculator/tariff', headers=h, method='POST',
-                          data=dict({'type': 2, 'currency': 1, 'tariff_code': tariff,
-                                     'services': [{'code': 'INSURANCE', 'parameter': str(int(round(declared)))}]}, **route))
+            t = Http.call(
+                cls._url(store, 'base') + '/calculator/tariff',
+                headers=h,
+                method='POST',
+                data=dict(
+                    {
+                        'type': 2,
+                        'currency': 1,
+                        'tariff_code': tariff,
+                        'services': [{'code': 'INSURANCE', 'parameter': str(round(declared))}],
+                    },
+                    **route,
+                ),
+            )
             if not isinstance(t, dict):
                 return 0
             svc = [x for x in (t.get('services') or []) if isinstance(x, dict) and x.get('code') == 'INSURANCE']
@@ -790,31 +1043,48 @@ class Cdek(Carrier):
             return 0
 
 
-# ---------------------------------------------------------------- Возовоз (API 2.5: object/action, токен в GET-параметре)
 class Vozovoz(Carrier):
     """Дверь в дверь, если у обеих точек есть адрес с улицей и домом, иначе — от терминала до терминала."""
+
     ID, NAME, SITE, KEYS = 'vozovoz', 'Возовоз', 'https://vozovoz.ru/calculate/', ('vozovozToken',)
 
     @staticmethod
-    def _has_street(addr):
+    def _has_street(addr) -> bool:
         return bool(re.search(r'\d', str(addr or ''))) and ',' in str(addr or '')
 
     @classmethod
-    def _point(cls, point):
+    def _point(cls, point) -> dict:
         addr = point.get('addr')
-        return dict({'location': point.get('name')}, **({'address': addr} if cls._has_street(addr) else {'terminal': 'default'}))
+        return dict(
+            {'location': point.get('name')}, **({'address': addr} if cls._has_street(addr) else {'terminal': 'default'})
+        )
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         units = cls.units(places)
-        cargo = {'dimension': {'quantity': len(units), 'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3),
-                               'weight': round(sum(u['m'] for u in units) * 1000, 1),
-                               'max': {'length': max(u['l'] for u in units), 'width': max(u['w'] for u in units),
-                                       'height': max(u['h'] for u in units), 'weight': round(max(u['m'] for u in units) * 1000, 1)}}}
+        cargo = {
+            'dimension': {
+                'quantity': len(units),
+                'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3),
+                'weight': round(sum(u['m'] for u in units) * 1000, 1),
+                'max': {
+                    'length': max(u['l'] for u in units),
+                    'width': max(u['w'] for u in units),
+                    'height': max(u['h'] for u in units),
+                    'weight': round(max(u['m'] for u in units) * 1000, 1),
+                },
+            }
+        }
         if declared:
-            cargo['insurance'] = int(round(declared))
-        body = {'object': 'price', 'action': 'get', 'params': {
-            'cargo': cargo, 'gateway': {'dispatch': {'point': cls._point(frm)}, 'destination': {'point': cls._point(to)}}}}
+            cargo['insurance'] = round(declared)
+        body = {
+            'object': 'price',
+            'action': 'get',
+            'params': {
+                'cargo': cargo,
+                'gateway': {'dispatch': {'point': cls._point(frm)}, 'destination': {'point': cls._point(to)}},
+            },
+        }
         url = cls._url(store, 'url') + '?' + urllib.parse.urlencode({'token': keys(store).get('vozovozToken', '')})
         j = Http.call(url, data=body, headers={'Content-Type': 'application/json'}, method='POST')
         if isinstance(j, dict) and j.get('error'):
@@ -826,30 +1096,32 @@ class Vozovoz(Carrier):
             raise ValueError('Возовоз: в ответе нет стоимости')
         door = cls._has_street(frm.get('addr')) and cls._has_street(to.get('addr'))
         dt = r.get('deliveryTime') or {}
-        return {'price': round(price), 'ins': round(cls._insurance(r.get('service'))), 'days': dt.get('to') or dt.get('from'), 'door': door,
-                'note': 'дверь в дверь' if door else 'от терминала до терминала'}
+        return {
+            'price': round(price),
+            'ins': round(cls._insurance(r.get('service'))),
+            'days': dt.get('to') or dt.get('from'),
+            'door': door,
+            'note': 'дверь в дверь' if door else 'от терминала до терминала',
+        }
 
 
-# ---------------------------------------------------------------- Энергия (открытый расчёт без ключа)
 class Nrg(Carrier):
-    """Автоперевозка (иначе самая дешёвая); забор и доставка, страхование — отдельными строками ответа.
-    С токеном разработчика (nrgToken, заголовок NrgApi-DevToken) — API v4 по документации Энергии: GET /cities,
-    POST /prices (PostPriceRequestDto: idCurrency 1 — рубли, места в кг и м, isStandardSize); без токена — прежний
-    открытый API v2 (api2.nrg-tk.pro), который Энергия сворачивает."""
+    """Автоперевозка (иначе самая дешёвая); забор и доставка, страхование — отдельными строками ответа."""
+
     ID, NAME, SITE, WHOSE = 'nrg', 'Энергия', 'https://nrg-tk.ru/client/calculator/', 'Энергии'
-    RETRY_PAUSE = 1.5       # с — их API временами отвечает 502
-    RUB = 1                 # idCurrency v4: 1 — рубли (/currencies)
+    RETRY_PAUSE = 1.5  # с — их API временами отвечает 502
+    RUB = 1  # idCurrency v4: 1 — рубли (/currencies)
 
     @staticmethod
-    def token(store):
+    def token(store) -> str:
         return (keys(store).get('nrgToken') or '').strip()
 
     @staticmethod
-    def rub(v):
-        return '{:,.0f} ₽'.format(v or 0).replace(',', ' ')
+    def rub(v) -> str:
+        return f'{v or 0:,.0f} ₽'.replace(',', ' ')
 
     @classmethod
-    def _call(cls, store, path, data=None):
+    def _call(cls, store, path, data=None) -> object:
         """v4 с токеном — один адрес; v2 — основной и резервный. При 5xx / обрыве связи — повтор через паузу."""
         err = None
         h = {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': BROWSER_UA}
@@ -866,9 +1138,10 @@ class Nrg(Carrier):
                 except urllib.error.HTTPError as e:
                     err = e
                     if tok and e.code in (401, 403):
-                        raise ValueError('Энергия: токен не принят (HTTP %s) — проверьте «Энергия — токен разработчика» в «Ключах API»'
-                                         % e.code)
-                    if e.code < 500 and e.code not in (403, 404):     # 403/404 у одного адреса — пробуется другой
+                        raise ValueError(
+                            f'Энергия: токен не принят (HTTP {e.code}) — проверьте «Энергия — токен разработчика» в «Ключах API»'
+                        ) from e
+                    if e.code < 500 and e.code not in (403, 404):  # 403/404 у одного адреса — пробуется другой
                         raise
                 except Exception as e:
                     err = e
@@ -876,49 +1149,79 @@ class Nrg(Carrier):
         raise err
 
     @classmethod
-    def cities(cls, store):
+    def cities(cls, store) -> dict:
         v4 = bool(cls.token(store))
 
-        def load():
+        def load() -> dict:
             j = cls._call(store, '/cities?lang=ru')
-            rows = j if isinstance(j, list) else (_find(j, lambda o: isinstance(o, list) and o and isinstance(o[0], dict) and 'id' in o[0] and 'name' in o[0]) or [])
+            rows = (
+                j
+                if isinstance(j, list)
+                else (
+                    _find(
+                        j,
+                        lambda o: (
+                            isinstance(o, list) and o and isinstance(o[0], dict) and 'id' in o[0] and 'name' in o[0]
+                        ),
+                    )
+                    or []
+                )
+            )
             out = {}
             for r in rows:
                 n = cnorm(r.get('name'))
                 if n and n not in out:
                     out[n] = r.get('id')
             return out
+
         return cls._cached(store, 'nrg4' if v4 else 'nrg', load)
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         v4 = bool(cls.token(store))
         cities = cls.cities(store)
         a, b = cls._both(cls.pick(cities, cls.candidates(frm)), cls.pick(cities, cls.candidates(to)))
-        items = [{'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']} for p in cls.units(places)]
+        items = [
+            {'weight': round(p['m'] * 1000, 1), 'width': p['w'], 'height': p['h'], 'length': p['l']}
+            for p in cls.units(places)
+        ]
         if v4:
             for it in items:
                 it['isStandardSize'] = False
-            body = {'idCityFrom': a, 'idCityTo': b, 'cover': False, 'idCurrency': cls.RUB, 'items': items,
-                    'declaredCargoPrice': round(float(declared or 0), 2)}
+            body = {
+                'idCityFrom': a,
+                'idCityTo': b,
+                'cover': False,
+                'idCurrency': cls.RUB,
+                'items': items,
+                'declaredCargoPrice': round(float(declared or 0), 2),
+            }
         else:
-            body = {'idCityFrom': a, 'idCityTo': b, 'cover': 0, 'idCurrency': 0, 'items': items,
-                    'declaredCargoPrice': int(round(declared or 0)), 'idClient': 0}
+            body = {
+                'idCityFrom': a,
+                'idCityTo': b,
+                'cover': 0,
+                'idCurrency': 0,
+                'items': items,
+                'declaredCargoPrice': round(declared or 0),
+                'idClient': 0,
+            }
         j = cls._call(store, '/prices' if v4 else '/price', body)
         if isinstance(j, dict) and (j.get('message') or j.get('error')) and not j.get('transfer'):
             raise ValueError('Энергия: ' + str(j.get('message') or j.get('error'))[:300])
         tr = [t for t in ((j or {}).get('transfer') or []) if isinstance(t, dict) and number(t.get('price'))]
         if not tr:
             raise ValueError('Энергия: в ответе нет стоимости перевозки')
-        t = next((x for x in tr if str(x.get('typeId')) == '1' or re.search(r'авто', str(x.get('type') or ''), re.I)), None) \
-            or min(tr, key=lambda x: number(x['price']))
+        t = next(
+            (x for x in tr if str(x.get('typeId')) == '1' or re.search(r'авто', str(x.get('type') or ''), re.I)), None
+        ) or min(tr, key=lambda x: number(x['price']))
         price, door = number(t['price']), 0
-        parts = ['перевозка ' + Nrg.rub(price)]          # раскладка цены — в строку предложения (сверить с сайтом Энергии)
+        parts = ['перевозка ' + Nrg.rub(price)]  # раскладка цены — в строку предложения (сверить с сайтом Энергии)
         over = t.get('oversize') if isinstance(t.get('oversize'), dict) else {}
-        if number(over.get('price')):                    # надбавка за негабарит (v4)
+        if number(over.get('price')):  # надбавка за негабарит (v4)
             price += number(over.get('price'))
             parts.append('негабарит ' + Nrg.rub(number(over.get('price'))))
-        for k, name in (('request', 'забор'), ('delivery', 'доставка')):     # забор у отправителя и доставка получателю
+        for k, name in (('request', 'забор'), ('delivery', 'доставка')):  # забор у отправителя и доставка получателю
             v = (j or {}).get(k)
             n = number(v.get('price')) if isinstance(v, dict) else None
             if n:
@@ -926,7 +1229,7 @@ class Nrg(Carrier):
                 door += 1
                 parts.append(name + ' ' + Nrg.rub(n))
         ins = 0
-        for k, v in (j or {}).items() if isinstance(j, dict) else []:   # страхование Энергии по объявленной стоимости
+        for k, v in (j or {}).items() if isinstance(j, dict) else []:  # страхование Энергии по объявленной стоимости
             if re.search(r'insur', str(k), re.I):
                 ins += (number(v.get('price')) if isinstance(v, dict) else number(v)) or 0
         price += ins
@@ -934,69 +1237,97 @@ class Nrg(Carrier):
         if not days:
             dd = re.findall(r'\d+', str(t.get('interval') or ''))
             days = int(dd[-1]) if dd else None
-        return {'price': round(price), 'ins': round(ins), 'days': int(days) if days else None, 'door': door == 2,
-                'note': ('дверь в дверь' if door == 2 else 'от терминала до терминала') + ', ' + str(t.get('type') or 'авто').lower()
-                        + ': ' + ' + '.join(parts)}
+        return {
+            'price': round(price),
+            'ins': round(ins),
+            'days': int(days) if days else None,
+            'door': door == 2,
+            'note': ('дверь в дверь' if door == 2 else 'от терминала до терминала')
+            + ', '
+            + str(t.get('type') or 'авто').lower()
+            + ': '
+            + ' + '.join(parts),
+        }
 
 
-# ---------------------------------------------------------------- ЖелДорЭкспедиция (открытый расчёт без ключа, в т. ч. негабарит)
 class Jde(Carrier):
-    """ЖелДорЭкспедиция: публичный расчёт GET /calculator/price (ключ не нужен) и справочник филиалов /geo/search (mode=1 —
-    приём груза, 2 — выдача). Крупногабаритный груз и длинномеры (место до 12 м по справочнику филиалов) ЖДЭ принимает
-    сборным грузом и сама добавляет надбавку за негабарит по размерам места — флаг «негабарит» не передаётся (иначе надбавка
-    и на обычный груз). Забор и доставка — по городу (pickup / delivery); страхование — по объявленной стоимости."""
+    """ЖелДорЭкспедиция: публичный расчёт без ключа, в т. ч. крупногабаритный груз."""
+
     ID, NAME, SITE, WHOSE = 'jde', 'ЖелДорЭкспедиция', 'https://www.jde.ru/', 'ЖелДорЭкспедиции'
-    MAX_T = 20.0          # весь груз, т: больше — только отдельной машиной (ATI.SU и тарифы)
+    MAX_T = 20.0  # весь груз, т: больше — только отдельной машиной (ATI.SU и тарифы)
 
     @classmethod
-    def branches(cls, store, mode):
+    def branches(cls, store, mode) -> dict:
         """{город: код филиала}: в городе — филиал с забором / доставкой и самым длинным допустимым местом."""
-        def load():
-            j = Http.call(cls._url(store, 'base') + '/geo/search?mode=%d' % mode)
+
+        def load() -> dict:
+            j = Http.call(cls._url(store, 'base') + f'/geo/search?mode={mode}')
             best = {}
             for r in j if isinstance(j, list) else []:
                 n = cnorm((r or {}).get('city'))
                 if not n or not r.get('code'):
                     continue
-                length = number(str(r.get('max_l_gm') or '0').replace(',', '.')) or 99     # 0 — ограничений нет
+                length = number(str(r.get('max_l_gm') or '0').replace(',', '.')) or 99  # 0 — ограничений нет
                 score = (1 if str(r.get('mst_pr_aex')) == '1' else 0, length)
                 if n not in best or score > best[n][0]:
                     best[n] = (score, str(r['code']))
             return {n: v[1] for n, v in best.items()}
-        return cls._cached(store, 'jde%d' % mode, load)
+
+        return cls._cached(store, f'jde{mode}', load)
 
     @classmethod
-    def quote(cls, store, frm, to, places, declared=0):
+    def quote(cls, store, frm, to, places, declared=0) -> dict:
         units = cls.units(places)
         if sum(u['m'] for u in units) > cls.MAX_T + 1e-9:
             raise ValueError('ЖелДорЭкспедиция: груз тяжелее 20 000 кг — только отдельной машиной')
-        frm_hit, to_hit = cls.pick(cls.branches(store, 1), cls.candidates(frm)), cls.pick(cls.branches(store, 2), cls.candidates(to))
+        frm_hit, to_hit = (
+            cls.pick(cls.branches(store, 1), cls.candidates(frm)),
+            cls.pick(cls.branches(store, 2), cls.candidates(to)),
+        )
         a, b = cls._both(frm_hit, to_hit)
         big = max(units, key=lambda u: u['l'] * u['w'] * u['h'])
-        q = {'from': a, 'to': b, 'type': 1, 'weight': round(sum(u['m'] for u in units) * 1000, 1),
-             'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3), 'length': big['l'], 'width': big['w'], 'height': big['h'],
-             'quantity': len(units), 'pickup': 1, 'delivery': 1,
-             # max_length_gab сервер ЖДЭ читает только с запятой («9,2»), остальные числа — с точкой
-             'max_length_gab': ('%g' % max(max(u['l'], u['w'], u['h']) for u in units)).replace('.', ','),
-             'pr_ins': 1 if declared else 0}
+        q = {
+            'from': a,
+            'to': b,
+            'type': 1,
+            'weight': round(sum(u['m'] for u in units) * 1000, 1),
+            'volume': round(sum(u['l'] * u['w'] * u['h'] for u in units), 3),
+            'length': big['l'],
+            'width': big['w'],
+            'height': big['h'],
+            'quantity': len(units),
+            'pickup': 1,
+            'delivery': 1,
+            # max_length_gab сервер ЖДЭ читает только с запятой («9,2»), остальные числа — с точкой
+            'max_length_gab': ('{:g}'.format(max(max(u['l'], u['w'], u['h']) for u in units))).replace('.', ','),
+            'pr_ins': 1 if declared else 0,
+        }
         if declared:
-            q['insValue'] = int(round(declared))
+            q['insValue'] = round(declared)
         j = Http.call(cls._url(store, 'base') + '/calculator/price?' + urllib.parse.urlencode(q))
         if not isinstance(j, dict) or str(j.get('result')) != '1':
-            err = '; '.join(str(x.get('error')) for x in ((j or {}).get('services') or []) if isinstance(x, dict) and x.get('error')) or str((j or {}).get('error') or '')
+            err = '; '.join(
+                str(x.get('error')) for x in ((j or {}).get('services') or []) if isinstance(x, dict) and x.get('error')
+            ) or str((j or {}).get('error') or '')
             raise ValueError('ЖелДорЭкспедиция: ' + (err or 'расчёт не выполнен')[:300])
         price = number(j.get('price'))
         if not price:
             raise ValueError('ЖелДорЭкспедиция: в ответе нет стоимости')
-        ins = number(j.get('price_cargins')) or 0                       # страхование, оформление и маркировка — сверх price
+        ins = number(j.get('price_cargins')) or 0  # страхование, оформление и маркировка — сверх price
         extra = sum(number(j.get(k)) or 0 for k in ('price_doc', 'price_mark'))
         items = {x.get('item') for x in (j.get('services') or []) if isinstance(x, dict)}
         door = {'pickup', 'delivery'} <= items
         ok, _why = LtlLimits.fits(places, store)
         days = number(j.get('maxdays')) or number(j.get('mindays'))
-        return {'price': round(price + ins + extra), 'ins': round(ins), 'days': int(days) if days else None, 'door': door,
-                'note': ('сборный груз' if ok else 'крупногабаритный груз сборной отправкой (негабарит по размерам места)')
-                + (', дверь в дверь (забор и доставка ЖДЭ)' if door else ', от терминала до терминала') + cls.via(frm_hit, to_hit, frm, to)}
+        return {
+            'price': round(price + ins + extra),
+            'ins': round(ins),
+            'days': int(days) if days else None,
+            'door': door,
+            'note': ('сборный груз' if ok else 'крупногабаритный груз сборной отправкой (негабарит по размерам места)')
+            + (', дверь в дверь (забор и доставка ЖДЭ)' if door else ', от терминала до терминала')
+            + cls.via(frm_hit, to_hit, frm, to),
+        }
 
 
 # сборный груз: порядок — порядок предложений в расчёте; ЖДЭ берёт и крупногабаритный груз
@@ -1004,20 +1335,17 @@ LTL_CARRIERS = (Jde, Pec, Dellin, Nrg, Cdek, Vozovoz, Kit)
 CARRIERS = {c.ID: c for c in (Ati, Pec, Dellin, Kit, Cdek, Vozovoz, Nrg, Jde)}
 
 
-def providers(store):
+def providers(store) -> dict:
     """{код: считает ли}: перевозчик включён в «Настройках» и задан его ключ (ПЭК, Энергия и ЖДЭ — без ключа)."""
     return {cid: c.has_keys(store) and CarrierApi.on(store, cid) for cid, c in CARRIERS.items()}
 
 
-# ---------------------------------------------------------------- сводка предложений
 class DeliveryQuote:
-    """Доставка по России: тарифы «Настроек» (цена посчитана в браузере), отдельная машина по ATI.SU и сборный груз
-    у перевозчиков (параллельно). Ответ — все предложения, ошибки по источникам и выбранное — максимальное полное.
-    req: from{name, addr, alt}, to{…}, km, places[{l,w,h,m,qty}], vehicles[{id, name, extras}], unload, model, modelNote, declared,
-    ltl (false — сборный груз не запрашивать)."""
-    WAIT = 40           # с — ожидание ответа перевозчика сборного груза
+    """Доставка по России: тарифы «Настроек», машина по ATI.SU и сборный груз перевозчиков — параллельно."""
 
-    def __init__(self, store, req):
+    WAIT = 40  # с — ожидание ответа перевозчика сборного груза
+
+    def __init__(self, store, req) -> None:
         self.store, self.req = store, req
         self.frm, self.to = req.get('from') or {}, req.get('to') or {}
         self.places = self.cargo(req.get('places'))
@@ -1029,12 +1357,12 @@ class DeliveryQuote:
     MAX_ROWS, MAX_UNITS, MAX_M, MAX_T = 100, 1000, 30, 100
 
     @classmethod
-    def cargo(cls, places):
+    def cargo(cls, places) -> list:
         """Места груза [{l, w, h, m, qty}] из запроса: неполные пропускаются, неверные — ValueError с понятным текстом."""
         if places is None:
             return []
         if not isinstance(places, list) or len(places) > cls.MAX_ROWS:
-            raise ValueError('Груз: нужен список до %d строк' % cls.MAX_ROWS)
+            raise ValueError(f'Груз: нужен список до {cls.MAX_ROWS} строк')
         out = []
         for p in places:
             if not isinstance(p, dict):
@@ -1044,44 +1372,55 @@ class DeliveryQuote:
                 continue
             qty = number(p.get('qty') or 1)
             if not all(0 < x <= (cls.MAX_T if k == 'm' else cls.MAX_M) for k, x in v.items()):
-                raise ValueError('Груз: размеры места — до %d м, масса — до %d т' % (cls.MAX_M, cls.MAX_T))
+                raise ValueError(f'Груз: размеры места — до {cls.MAX_M} м, масса — до {cls.MAX_T} т')
             if qty is None or qty != int(qty) or not 1 <= qty <= cls.MAX_UNITS:
-                raise ValueError('Груз: количество мест — целое число от 1 до %d' % cls.MAX_UNITS)
+                raise ValueError(f'Груз: количество мест — целое число от 1 до {cls.MAX_UNITS}')
             out.append(dict(v, qty=int(qty)))
         if sum(p['qty'] for p in out) > cls.MAX_UNITS:
-            raise ValueError('Груз: всего не больше %d мест' % cls.MAX_UNITS)
+            raise ValueError(f'Груз: всего не больше {cls.MAX_UNITS} мест')
         return out
 
-    def run(self):
+    def run(self) -> dict:
         model = number(self.req.get('model'))
         if model:
-            self.offers.append({'src': 'Тарифы «Настроек»', 'kind': 'model', 'price': round(model), 'complete': True,
-                                'note': self.req.get('modelNote') or 'расчёт по тарифам программы', 'at': self.at})
+            self.offers.append(
+                {
+                    'src': 'Тарифы «Настроек»',
+                    'kind': 'model',
+                    'price': round(model),
+                    'complete': True,
+                    'note': self.req.get('modelNote') or 'расчёт по тарифам программы',
+                    'at': self.at,
+                }
+            )
         if self.providers['ati'] and self.req.get('vehicles'):
             try:
                 self.offers.append(self._ftl(self.req['vehicles']))
             except Exception as e:
                 self.errors.append({'src': 'ATI.SU', 'msg': Http.error(e)})
-        if self.places and self.req.get('ltl') is False:      # станция в сборе — только отдельной открытой машиной
-            self.errors.append({'src': 'Сборный груз', 'skip': True, 'msg': 'станция в сборе — только отдельной открытой машиной'})
+        if self.places and self.req.get('ltl') is False:  # станция в сборе — только отдельной открытой машиной
+            self.errors.append(
+                {'src': 'Сборный груз', 'skip': True, 'msg': 'станция в сборе — только отдельной открытой машиной'}
+            )
         elif self.places:
             self._ltl()
         full = [o for o in self.offers if o.get('complete')]
         best = max(full, key=lambda o: o['price']) if full else None
         return {'offers': self.offers, 'errors': self.errors, 'best': best, 'at': self.at, 'providers': self.providers}
 
-    def _ati_direction(self):
-        """Направление «Средних ставок» и признак «взяты ближайшие крупные города»: направления там — между крупными
-        городами, нет точного — пробуются города из alt."""
+    def _ati_direction(self) -> tuple:
+        """Направление «Средних ставок» и признак «взяты ближайшие крупные города» (из alt)."""
         ati = AtiDirections(self.store)
         for fa in Carrier.candidates(self.frm):
             for tb in Carrier.candidates(self.to):
                 d = ati.find(fa, tb)
                 if d:
                     return d, (fa, tb) != (self.frm.get('name'), self.to.get('name'))
-        raise ValueError('направления %s → %s нет в «Средних ставках» ATI.SU' % (self.frm.get('name'), self.to.get('name')))
+        raise ValueError(
+            'направления {} → {} нет в «Средних ставках» ATI.SU'.format(self.frm.get('name'), self.to.get('name'))
+        )
 
-    def _ftl(self, vehicles):
+    def _ftl(self, vehicles) -> dict:
         """Отдельные машины: по каждой — верхняя граница средних ставок за рейс или за км × расстояние, плюс надбавки."""
         d, nearby = self._ati_direction()
         km = number(self.req.get('km')) or 0
@@ -1091,35 +1430,58 @@ class DeliveryQuote:
             p = Ati.price(self.store, d, car, ton)
             trip = max(p['upperRub'] or 0, (p['upperKm'] or 0) * km)
             total += trip + (number(v.get('extras')) or 0)
-            per_km = ', %s ₽/км' % '{:,.0f}'.format(p['upperKm']).replace(',', ' ') if p['upperKm'] else ''
-            parts.append('%s: %s ₽ (верх средних ставок ATI.SU, %s %s т%s)' % (v.get('name') or v.get('id'), '{:,.0f}'.format(trip).replace(',', ' '),
-                                                                             Ati.BODY.get(car, car), str(ton).replace('.', ','), per_km))
+            per_km = ', {} ₽/км'.format('{:,.0f}'.format(p['upperKm']).replace(',', ' ')) if p['upperKm'] else ''
+            parts.append(
+                '{}: {} ₽ (верх средних ставок ATI.SU, {} {} т{})'.format(
+                    v.get('name') or v.get('id'),
+                    f'{trip:,.0f}'.replace(',', ' '),
+                    Ati.BODY.get(car, car),
+                    str(ton).replace('.', ','),
+                    per_km,
+                )
+            )
         note = '; '.join(parts)
         if nearby:
-            note = 'ставка по направлению %s → %s (ближайшие крупные города): %s' % (d['from'], d['to'], note)
+            note = 'ставка по направлению {} → {} (ближайшие крупные города): {}'.format(d['from'], d['to'], note)
         if self.unload or any(number(v.get('extras')) for v in vehicles):
             note += '; разгрузка и разрешения — по тарифам программы'
-        return {'src': 'ATI.SU «Средние ставки»', 'kind': 'ftl', 'price': round(total + self.unload), 'base': round(total), 'unload': round(self.unload),
-                'door': True, 'complete': True, 'at': self.at, 'note': note, 'url': 'https://ati.su/rates'}
+        return {
+            'src': 'ATI.SU «Средние ставки»',
+            'kind': 'ftl',
+            'price': round(total + self.unload),
+            'base': round(total),
+            'unload': round(self.unload),
+            'door': True,
+            'complete': True,
+            'at': self.at,
+            'note': note,
+            'url': 'https://ati.su/rates',
+        }
 
-    def _ltl(self):
+    def _ltl(self) -> None:
         """Сборный груз — если место и общий вес в пределах; иначе только ЖДЭ (берёт и крупногабарит, до 20 т)."""
         ok, why = LtlLimits.fits(self.places, self.store)
         if not ok:
             big_ok = self.providers['jde'] and sum(u['m'] for u in Carrier.units(self.places)) <= Jde.MAX_T + 1e-9
-            self.errors.append({'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)', 'skip': True,
-                                'msg': why + ('; крупногабаритный груз считает ЖелДорЭкспедиция' if big_ok else '')})
+            self.errors.append(
+                {
+                    'src': 'Сборный груз (ПЭК, Деловые Линии, КИТ, СДЭК, Возовоз, Энергия)',
+                    'skip': True,
+                    'msg': why + ('; крупногабаритный груз считает ЖелДорЭкспедиция' if big_ok else ''),
+                }
+            )
             if not big_ok:
                 return
-        declared = number(self.req.get('declared')) or 0     # объявленная стоимость груза — для страхования перевозчика
+        declared = number(self.req.get('declared')) or 0  # объявленная стоимость груза — для страхования перевозчика
         carriers = [c for c in LTL_CARRIERS if self.providers[c.ID] and (ok or c is Jde)]
         results = {}
 
-        def run(carrier):
+        def run(carrier) -> None:
             try:
                 results[carrier] = carrier.quote(self.store, self.frm, self.to, self.places, declared)
             except Exception as e:
                 results[carrier] = e
+
         threads = [threading.Thread(target=run, args=(c,), daemon=True) for c in carriers]
         for t in threads:
             t.start()
@@ -1128,37 +1490,47 @@ class DeliveryQuote:
         for c in carriers:
             self._add_ltl(c, results.get(c))
 
-    def _add_ltl(self, carrier, r):
+    def _add_ltl(self, carrier, r) -> None:
         if isinstance(r, dict):
-            ins = round(r.get('ins') or 0)    # страхование перевозчика (входит в его цену) — берётся вместо своего
-            self.offers.append({'src': carrier.NAME, 'kind': 'ltl', 'price': round(r['price'] + self.unload), 'base': round(r['price'] - ins), 'ins': ins,
-                                'unload': round(self.unload), 'door': bool(r.get('door')),
-                                'days': r.get('days'), 'complete': True, 'at': self.at, 'url': carrier.SITE,
-                                'note': r.get('note', '') + ('; + разгрузка по тарифам программы' if self.unload else '')})
+            ins = round(r.get('ins') or 0)  # страхование перевозчика (входит в его цену) — берётся вместо своего
+            self.offers.append(
+                {
+                    'src': carrier.NAME,
+                    'kind': 'ltl',
+                    'price': round(r['price'] + self.unload),
+                    'base': round(r['price'] - ins),
+                    'ins': ins,
+                    'unload': round(self.unload),
+                    'door': bool(r.get('door')),
+                    'days': r.get('days'),
+                    'complete': True,
+                    'at': self.at,
+                    'url': carrier.SITE,
+                    'note': r.get('note', '') + ('; + разгрузка по тарифам программы' if self.unload else ''),
+                }
+            )
             return
-        msg = Http.error(r) if r else 'нет ответа за %d с' % self.WAIT
+        msg = Http.error(r) if r else f'нет ответа за {self.WAIT} с'
         if isinstance(r, urllib.error.HTTPError) and r.code == 403:
             msg += carrier.HINT_403
         self.errors.append({'src': carrier.NAME, 'msg': msg, 'url': carrier.SITE})
 
 
-# ---------------------------------------------------------------- тарифы из «Настроек»: проверка на границе
 class TariffInput:
-    """Тарифы доставки из «Настроек» (PUT /api/logistics): объект JSON до 100 КБ; счета для сверки тарифов (facts) —
-    не больше 300, только известные поля: дата ГГГГ-ММ-ДД, маршрут до 120 знаков, расстояние 1–20 000 км, машина, сумма.
-    Ошибка — ValueError с понятным текстом."""
+    """Тарифы доставки из «Настроек»: JSON до 100 КБ, счета для сверки — только известные поля."""
+
     MAX_BYTES = 100000
     MAX_FACTS = 300
 
     @classmethod
-    def check(cls, d):
+    def check(cls, d) -> dict:
         if not isinstance(d, dict) or len(json.dumps(d)) > cls.MAX_BYTES:
             raise ValueError('Неверный формат тарифов')
         facts = d.get('facts')
         if facts is None:
             return d
         if not isinstance(facts, list) or len(facts) > cls.MAX_FACTS:
-            raise ValueError('Счетов для сверки тарифов — не больше %d' % cls.MAX_FACTS)
+            raise ValueError(f'Счетов для сверки тарифов — не больше {cls.MAX_FACTS}')
         out = []
         for f in facts:
             if not isinstance(f, dict):
@@ -1169,25 +1541,37 @@ class TariffInput:
             at = str(f.get('at') or '')[:10]
             if at and not re.match(r'^\d{4}-\d{2}-\d{2}$', at):
                 raise ValueError('Дата счёта для сверки тарифов — в формате ГГГГ-ММ-ДД')
-            out.append({'at': at, 'route': str(f.get('route') or '')[:120], 'km': km, 'cls': str(f.get('cls') or '')[:40], 'sum': total})
+            out.append(
+                {
+                    'at': at,
+                    'route': str(f.get('route') or '')[:120],
+                    'km': km,
+                    'cls': str(f.get('cls') or '')[:40],
+                    'sum': total,
+                }
+            )
         d['facts'] = out
         return d
 
 
-# ---------------------------------------------------------------- автообновление ставок по ATI.SU
-def auto_settings(store):
+def auto_settings(store) -> dict:
     t = store.kv_get('logistics') or {}
     a = t.get('auto') if isinstance(t.get('auto'), dict) else {}
-    whole = lambda v, d, hi: min(hi, max(1, int(number(v) or d)))         # «x», 0, NaN — значение по умолчанию
+
+    def whole(v, d, hi) -> int:
+        return min(hi, max(1, int(number(v) or d)))  # «x», 0, NaN — значение по умолчанию
+
     routes = a.get('routes') if isinstance(a.get('routes'), list) and a.get('routes') else REF_ROUTES
-    return {'on': a.get('on', True), 'days': whole(a.get('days'), 1, 365), 'routes': routes, 'period': whole(a.get('period'), 30, 365)}
+    return {
+        'on': a.get('on', True),
+        'days': whole(a.get('days'), 1, 365),
+        'routes': routes,
+        'period': whole(a.get('period'), 30, 365),
+    }
 
 
-def auto_refresh(store, force=False, log=print):
-    """Ставки ₽/км классов машин — верхняя граница средних ставок ATI.SU по опорным направлениям (максимум по направлениям).
-    Результат — kv «logisticsAuto»: {at, classes:{id:{km, src, routes:[{route, km, avg, trip, dist}]}}, errors}. По длине направлений
-    и цене рейса программа делит ставку на два участка — до 1 000 км и дальше (Freight.fromAuto). Ставки, закреплённые вручную,
-    не меняются (это делает интерфейс)."""
+def auto_refresh(store, force: bool = False, log=print) -> dict | None:
+    """Ставки ₽/км классов машин — верхняя граница средних ставок ATI.SU → kv «logisticsAuto»."""
     if not providers(store)['ati']:
         return None
     cfg = auto_settings(store)
@@ -1218,14 +1602,25 @@ def auto_refresh(store, force=False, log=print):
                     if p['upperKm']:
                         # длина направления и цена рейса — для тарифа в два участка (ставка до 1 000 км и дальше считается в программе)
                         dist = round(p['upperRub'] / p['upperKm']) if p['upperRub'] and p['upperKm'] else None
-                        rows.append({'route': r.strip(), 'km': round(p['upperKm'], 1), 'avg': p['avgKm'] and round(p['avgKm'], 1),
-                                     'trip': round(p['upperRub']) if p['upperRub'] else None, 'dist': dist})
+                        rows.append(
+                            {
+                                'route': r.strip(),
+                                'km': round(p['upperKm'], 1),
+                                'avg': p['avgKm'] and round(p['avgKm'], 1),
+                                'trip': round(p['upperRub']) if p['upperRub'] else None,
+                                'dist': dist,
+                            }
+                        )
                         best = max(best or 0, p['upperKm'])
                 except Exception as e:
-                    errors.append('%s, %s: %s' % (r.strip(), cid, Http.error(e)))
+                    errors.append(f'{r.strip()}, {cid}: {Http.error(e)}')
             if best:
-                out[cid] = {'km': round(best), 'routes': rows,
-                            'src': 'ATI.SU «Средние ставки»: верхняя граница за %d дн., максимум по %d направл., с НДС' % (cfg['period'], len(rows))}
+                out[cid] = {
+                    'km': round(best),
+                    'routes': rows,
+                    'src': f'ATI.SU «Средние ставки»: верхняя граница за {cfg["period"]} дн., '
+                    f'максимум по {len(rows)} направл., с НДС',
+                }
         rec = {'at': _now(), 'classes': out, 'errors': errors[:30]}
         store.kv_set('logisticsAuto', rec)
         return rec
