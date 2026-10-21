@@ -101,6 +101,24 @@ class SyncTest(SyncBase):
         self.assertNotIn('FILES', f.comments[-1], 'файлы те же — не прикладываются повторно')
         self.assertNotIn(FakeBitrix.KEY, json.dumps(BitrixLog(self.st).tail(), ensure_ascii=False))
 
+    def test_comment_to_timeline(self):
+        """Комментарий ленты сделки уходит в ленту сделки Битрикса один раз; пустой и слишком длинный — ошибка."""
+        from bitrix import BitrixQueue
+        from crm import DealBook
+        did = self.kp('26-0021')
+        book = DealBook(self.st)
+        row = book.comment(did, '  Клиент ждёт ответа до пятницы  ', 'Иванова Анна')
+        self.assertEqual((row['id'], row['text']), (1, 'Клиент ждёт ответа до пятницы'))
+        for bad in ('', ' ', 'x' * (book.COMMENT_MAX + 1)):
+            with self.assertRaises(ValueError):
+                book.comment(did, bad, 'Иванова Анна')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        notes = [c['COMMENT'] for c in self.fake.comments if 'пятницы' in c['COMMENT']]
+        self.assertEqual(notes, ['Иванова Анна: Клиент ждёт ответа до пятницы'])
+
     def test_my_company(self):
         """Наша компания в сделке: по умолчанию ПНЕВМОТЕХ (а не компания портала по умолчанию), выбор в карточке — уходит в Битрикс."""
         from bitrix import BitrixQueue

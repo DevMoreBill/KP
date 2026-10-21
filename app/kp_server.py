@@ -525,6 +525,9 @@ def main() -> int:
         from crm_exec import ExecTasks  # исполнение сделок: дела на подошедшие точки (оплаты, готовность, поставка)
 
         maintenance.Background.every(3600, lambda: ExecTasks(store()).sweep(), 'исполнение сделок')
+        from crm_auto import AutoTasks  # кабинет: дела сами (после отправки КП, без движения, кончается срок КП)
+
+        maintenance.Background.every(3600, lambda: AutoTasks(store()).sweep(), 'дела сами')
         import config
         from admin_alerts import AdminAlerts
 

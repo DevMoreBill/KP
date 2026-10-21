@@ -3,6 +3,7 @@ import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { CrmTask } from './crm-task.js';
 import { DealFieldsView } from './deal-fields.js';
+import { DealFeed } from './deal-feed.js';
 import { LostPick } from './lost-pick.js';
 import { DealKp } from './deal-kp.js';
 import { Cabinet } from './cabinet.js';
@@ -141,8 +142,8 @@ export class DealCard {
   static html() {
     const deal = this.deal;
     return `${DealWin.grip()}${this._top(deal)}<div class="dk-in">${this._steps(deal)}${DealSummary.html(deal)}${DealExec.html(deal)}
-      <div class="dk-cols"><div class="dk-main">${this._about(deal)}${DealFieldsView.html(deal)}</div>
-      <div class="dk-side">${this._next(deal)}${this._kps(deal)}${this._history(deal)}</div></div></div>`;
+      <div class="dk-cols"><div class="dk-main">${this._about(deal)}${this._kps(deal)}${DealFieldsView.html(deal)}</div>
+      <div class="dk-side">${DealFeed.html(deal, item => this.hist(item))}</div></div></div>`;
   }
 
   static _top(deal) {
@@ -300,23 +301,6 @@ export class DealCard {
     return `<label class="f"><span>Ответственный</span><select data-dkf="managerId">${options}${other}</select></label>`;
   }
 
-  static _next(deal) {
-    const tasks = deal.tasks || [];
-    const open = tasks
-      .filter(task => task.state === 'open')
-      .sort((one, two) => `${one.due}${one.time || ''}`.localeCompare(`${two.due}${two.time || ''}`));
-    const done = tasks.filter(task => task.state !== 'open');
-    const row = task => CrmTask.row(task, { noDeal: true, date: true });
-    const none = CrmFunnel.closed(deal)
-      ? ''
-      : '<p class="msg warn dk-none">Следующий шаг не запланирован — добавьте звонок, встречу или письмо, чтобы сделка не потерялась.</p>';
-    const list = open.length ? `<div class="tk-l dk-open">${open.map(row).join('')}</div>` : none;
-    const history = done.length
-      ? `<details class="tk-done"><summary>Сделано и отменено (${done.length})</summary>${done.map(row).join('')}</details>`
-      : '';
-    return `<section class="md-s dk-next"><div class="md-h"><p class="sub">Следующий шаг${open.length ? ` <b class="md-c">${open.length}</b>` : ''}</p></div>${list}${CrmTask.form(deal.id)}${history}</section>`;
-  }
-
   static _kps(deal) {
     const offers = deal.kps || [];
     const rows = offers.map(offer => this._kpRow(offer)).join('') || '<p class="empty">КП ещё нет.</p>';
@@ -331,18 +315,6 @@ export class DealCard {
       ? `<span class="md-st"><span class="jst st-${esc(offer.status)}">${esc(KpTrack.STATUS[offer.status] || offer.status)}</span></span>`
       : '';
     return `<div class="md-r"><span class="md-n">№ ${esc(offer.number)}</span><div><b>${esc(KpDate.ddmm(offer.date))} · ${CrmFmt.rub(offer.sum)}</b><span class="muted">${items}${valid}</span>${status}</div><button class="btn sm" type="button" data-dko="${esc(offer.id)}">Открыть</button></div>`;
-  }
-
-  static _history(deal) {
-    const list = (deal.history || []).slice().reverse();
-    if (!list.length) return '';
-    const rows = list
-      .map(
-        item =>
-          `<div class="dk-hr"><span class="muted">${esc(Fmt.dateTime(item.at))} · ${esc(item.by || '')}</span> ${esc(this.hist(item))}</div>`,
-      )
-      .join('');
-    return `<details class="dk-h md-s"><summary>История (${list.length})</summary>${rows}</details>`;
   }
 
   /**
@@ -509,6 +481,10 @@ export class DealCard {
       this.close();
       return;
     }
+    if (DealFeed.click(event)) {
+      this.render();
+      return;
+    }
     const exec = DealExec.click(event);
     if (exec) {
       this.mark(exec);
@@ -517,6 +493,7 @@ export class DealCard {
     const actions = [
       ['[data-x]', () => this.close()],
       ['[data-dkpick]', el => this._pick(el.dataset.dkpick)],
+      ['[data-dkcomm]', () => this._comment()],
       ['[data-ufpick]', el => this._ufSave(DealFieldsView.toggle(el, this.deal))],
       ['[data-ufempty]', () => this._onlyEmpty()],
       ['[data-dknav]', el => this._go(+el.dataset.dknav)],
@@ -533,6 +510,33 @@ export class DealCard {
         return;
       }
     }
+  }
+
+  static async _comment() {
+    const area = this.modal && this.modal.d.querySelector('#dkComment');
+    const text = area ? area.value.trim() : '';
+    if (!text) {
+      Toast.show('Напишите комментарий');
+      return;
+    }
+    const sent = this.queue.then(async () => {
+      try {
+        this.deal = this._keep(
+          await Api.request(`/api/crm/deal/${this.deal.id}/comment`, {
+            method: 'POST',
+            headers: this.HEAD,
+            body: JSON.stringify({ text }),
+          }),
+        );
+        this.changed = true;
+        if (area) area.value = '';
+        this.render();
+        this._flash();
+      } catch (error) {
+        Toast.show(`Комментарий не сохранён: ${error.message}`);
+      }
+    });
+    this.queue = sent.catch(() => false);
   }
 
   static async _ufSave(change) {

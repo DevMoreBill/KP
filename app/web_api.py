@@ -47,6 +47,7 @@ from config import (
     write_bytes,
 )
 from crm import CrmBoard, DealBook, Stages, TaskBook
+from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
 from desktop import DesktopError, open_file, open_folder, show_in_folder
@@ -1932,7 +1933,7 @@ class CrmController(Controller):
             deal = dict(book.get(did) or deal)
             self.bitrix_on(did)
         deal['kps'] = book.kps([did])[did]
-        if ExecTasks(store()).sync(deal):
+        if ExecTasks(store()).sync(deal) + (self.safe(lambda: AutoTasks(store()).sync(deal)) or 0):
             deal = dict(book.get(did) or deal, kps=deal['kps'])
         deal['exec'] = ExecPlan(deal).view(Sums.ALL if self._money(deal) else Sums.SALES)
         ExecPlan.strip(deal['kps'])
@@ -1980,6 +1981,19 @@ class CrmController(Controller):
             'address': client.get('address') or '',
             'contacts': [{key: str(row.get(key) or '') for key in keep} for row in contacts],
         }
+
+    @route(r'/api/crm/deal/(d\d{1,9})/comment', 'POST')
+    def comment(self, did) -> Any:
+        """Комментарий в ленту сделки (уходит и в ленту сделки Битрикс24)."""
+        if self._deal(did) is None:
+            return None
+        with self.user_input():
+            try:
+                DealBook(store()).comment(did, self.json_body().get('text'), admin.actor(self.handler)[1])
+            except LookupError as exc:
+                return self.not_found(str(exc))
+        self.bitrix_on(did)
+        return self._card(did, DealBook(store()).get(did) or {})
 
     @route(r'/api/crm/deal/(d\d{1,9})/exec', 'PUT')
     def exec_mark(self, did) -> Any:

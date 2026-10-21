@@ -748,7 +748,7 @@ class Scenario(UiRun):
                 self.errs.append((nm, 'SCRIPT', str(e)[:200]))
         self.closeall()
         if self.phone:
-            self.pg.click('#btnMenu')
+            self.pg.click('#appTabs [data-tab=more]')  # «Ещё» на нижней панели
             self.snap('b6_mobile_menu', self.topdlg(), wait=800)
             self.closeall()
         else:

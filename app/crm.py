@@ -368,6 +368,29 @@ class DealBook:
             self._save(conn, did, cur, author)
             conn.commit()
 
+    COMMENT_MAX = 2000
+    COMMENTS_KEPT = 300
+
+    def comment(self, did, text: Any, author: str) -> dict:
+        """Комментарий в ленту сделки → запись {id, at, by, text}. ValueError — пустой или слишком длинный."""
+        body = str(text or '').strip()
+        if not body:
+            raise ValueError('Напишите комментарий')
+        if len(body) > self.COMMENT_MAX:
+            raise ValueError(f'Комментарий — до {self.COMMENT_MAX} знаков')
+        with self.store.lock:
+            cur = self.get(did)
+            if not cur:
+                raise LookupError('Сделка не найдена')
+            comments = [row for row in cur.get('comments') or [] if isinstance(row, dict)]
+            number = max([int(row.get('id') or 0) for row in comments] + [0]) + 1
+            row = {'id': number, 'at': Val.now(), 'by': str(author or '')[:120], 'text': body}
+            cur['comments'] = [*comments, row][-self.COMMENTS_KEPT :]
+            conn = self.store.conn()
+            self._save(conn, did, cur, author)
+            conn.commit()
+        return row
+
     def put_exec(self, did, state: dict, author: str, what: dict) -> None:
         """Отметки исполнения сделки (crm_exec) — с записью в историю."""
         with self.store.lock:

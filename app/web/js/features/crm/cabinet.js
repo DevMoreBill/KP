@@ -324,5 +324,11 @@ export class Cabinet {
     dialog.addEventListener('input', event => this._input(event));
     CrmTask.bind(dialog, () => this.reload());
     CabDeals.bindDrag(dialog);
+    dialog.addEventListener('submit', event => {
+      const form = event.target.closest('[data-kbform]');
+      if (!form) return;
+      event.preventDefault();
+      CabDeals.quick(form);
+    });
   }
 }

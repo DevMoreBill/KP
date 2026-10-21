@@ -1223,6 +1223,7 @@ class BitrixSync:
                 self.links.put('rows', did, bid, {'h': digest})
         for k in kps:
             self._files(bid, k)
+        self._comments(bid, deal)
         for task in TaskBook(self.store).list(deal=did):
             if not self.links.get('task', task['id']):
                 self.push_task(task['id'], bid)
@@ -1442,6 +1443,20 @@ class BitrixSync:
         for _name, _data, key, file_digest in attach:
             self.links.put('file', key, bid, {'h': file_digest, 'c': cid})
         self.links.put('file', note_key, bid, {'h': digest, 'core': core, 'c': cid})
+
+    def _comments(self, bid, deal: dict) -> None:
+        """Комментарии ленты сделки программы → лента сделки Битрикса (каждый — один раз)."""
+        for row in deal.get('comments') or []:
+            if not isinstance(row, dict):
+                continue
+            key = 'comment|{}|{}'.format(deal['id'], row.get('id'))
+            if self.links.get('file', key):
+                continue
+            text = '{}: {}'.format(row.get('by') or 'Менеджер', row.get('text') or '')
+            cid = self.api.call(
+                'crm.timeline.comment.add', {'fields': {'ENTITY_ID': int(bid), 'ENTITY_TYPE': 'deal', 'COMMENT': text}}
+            )
+            self.links.put('file', key, bid, {'c': cid})
 
     def _kp_payload(self, k) -> list[tuple[str, bytes, str]]:
         """Файлы КП, включённые в «Что передаётся» и не больше предела, — (имя, данные, подпись)."""

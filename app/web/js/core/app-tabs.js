@@ -37,7 +37,7 @@ export class AppTabs {
       dialog.addEventListener('close', () => this._closed(key, dialog));
     }
     dialog.classList.add('tabwin');
-    dialog.dataset.tab = key;
+    dialog.dataset.apptab = key;
     if (!dialog.open) dialog.show();
     this._activate(key);
   }
@@ -137,6 +137,7 @@ export class AppTabs {
       bar.className = 'apptabs';
       bar.setAttribute('aria-label', 'Разделы');
       bar.addEventListener('click', event => this._click(event));
+      document.addEventListener('keydown', event => this._escape(event));
       new ResizeObserver(() => this._measure()).observe(header);
     }
     this._place(bar, header);
@@ -148,6 +149,16 @@ export class AppTabs {
     const phone = document.documentElement.classList.contains('mob');
     if (phone && bar.parentElement !== document.body) document.body.appendChild(bar);
     if (!phone && bar.parentElement !== header) header.querySelector('.brand')?.after(bar);
+  }
+
+  // Esc во вкладке — как в окне поверх всего: окно может отменить (событие cancel), иначе закрывается
+  static _escape(event) {
+    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]:modal')) return;
+    const dialog = this.dialogs.get(this.active);
+    if (!this.visible(dialog)) return;
+    const cancel = new Event('cancel', { cancelable: true });
+    dialog.dispatchEvent(cancel);
+    if (!cancel.defaultPrevented) dialog.close();
   }
 
   static _click(event) {

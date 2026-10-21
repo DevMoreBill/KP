@@ -3,6 +3,7 @@ import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { LostPick } from './lost-pick.js';
 import { Cabinet } from './cabinet.js';
+import { CabList } from './cab-list.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { Mobile } from '../../ui/mobile.js';
@@ -16,9 +17,16 @@ export class CabDeals {
   static VIEW_KEY = 'kp.cab.view';
   static SORT_KEY = 'kp.cab.sort';
   static SORTS = { exp: 'по ожидаемой дате', free: 'сначала без дела', sum: 'по сумме', fresh: 'сначала новые' };
+  // счётчики дел, как в Битрикс24: просрочено, на сегодня, запланировано, без дела
+  static COUNTERS = {
+    overdue: ['Просрочены', deal => !!deal.next && deal.next.due < today(), 'bad'],
+    today: ['На сегодня', deal => !!deal.next && deal.next.due === today(), 'ok'],
+    planned: ['Запланированы', deal => !!deal.next && deal.next.due > today(), ''],
+    free: ['Без дела', deal => !deal.next, 'warn'],
+  };
   static FILTERS = {
-    free: ['Без дела', deal => !deal.next],
-    late: ['Срок прошёл', deal => deal.expected && deal.expected < today()],
+    ...Object.fromEntries(Object.entries(CabDeals.COUNTERS).map(([key, [label, test]]) => [key, [label, test]])),
+    late: ['Срок сделки прошёл', deal => deal.expected && deal.expected < today()],
     month: ['Ожидаются в этом месяце', deal => String(deal.expected || '').slice(0, 7) <= today().slice(0, 7)],
     new: ['Новые из Битрикс24', deal => deal.bxNew],
     exec: ['Исполнение просрочено', deal => deal.execSum && deal.execSum.overdue],
@@ -26,12 +34,14 @@ export class CabDeals {
   static LIMIT = 60;
   static PERCENT = 100;
   static LIST_LIMIT = 100;
+  static LIGHT = 150;
   static closed = false;
   static filter = '';
   static stage = '';
   static sort = null;
   static view = null;
   static more = new Set();
+  static adding = '';
   static drag = matchMedia('(pointer:fine)').matches;
 
   /**
@@ -113,7 +123,15 @@ export class CabDeals {
 
   static _chips() {
     const open = CrmData.openDeals().filter(deal => CrmData.inFunnel(deal));
+    const counters = Object.entries(this.COUNTERS)
+      .map(([key, [label, test, tone]]) => {
+        const count = open.filter(test).length;
+        const picked = this.filter === key;
+        return `<button type="button" class="cnt${picked ? ' on' : ''}${count && tone ? ` cnt-${tone}` : ''}" data-cflt="${key}" aria-pressed="${picked}"><b>${count}</b> ${label}</button>`;
+      })
+      .join('');
     const chips = Object.entries(this.FILTERS)
+      .filter(([key]) => !this.COUNTERS[key])
       .map(([key, [label, test]]) => [key, label, open.filter(test).length])
       .filter(([key, , count]) => count || this.filter === key)
       .map(([key, label, count]) =>
@@ -121,7 +139,8 @@ export class CabDeals {
       )
       .join('');
     const closed = this._chip({ attr: 'data-cclosed', label: 'Показать закрытые', on: this.closed });
-    return `${this._chip({ attr: 'data-cflt=""', label: 'Все в работе', on: !this.filter })}${chips}${closed}`;
+    const all = this._chip({ attr: 'data-cflt=""', label: 'Все в работе', on: !this.filter });
+    return `<span class="cab-cnts" role="group" aria-label="Дела по сделкам"><span class="muted">Дела:</span>${counters}</span>${all}${chips}${closed}`;
   }
 
   static _chip({ attr, label, on }) {
@@ -156,13 +175,54 @@ export class CabDeals {
     const sum = list.reduce((total, deal) => total + (deal.sum || 0), 0);
     const shown = this.more.has(stage.key) ? list : list.slice(0, this.LIMIT);
     const rest = list.length - shown.length;
-    const dot = stage.color ? ` style="background:${esc(stage.color)}"` : '';
     const more = rest
       ? `<button type="button" class="btn sm ghost kb-more" data-kbmore="${esc(stage.key)}">Показать ещё ${rest}</button>`
       : '';
     const empty = `<p class="kb-e">${this.drag ? 'Перетащите сюда сделку' : 'Пусто'}</p>`;
-    return `<section class="kb-c" data-kbs="${esc(stage.key)}" aria-label="${esc(stage.label)}"><header class="kb-h"><span class="cab-dot t-${CrmFunnel.tone(funnel, stage.key)}"${dot} aria-hidden="true"></span><b title="${esc(stage.label)}">${esc(stage.label)}</b><span class="muted">${list.length}${sum ? ` · ${CrmFmt.short(sum)}` : ''}</span></header>
-      <div class="kb-l">${shown.map(deal => this.card(deal)).join('') || empty}${more}</div></section>`;
+    const paint = stage.color ? ` style="--sc:${esc(stage.color)};--st:${this._ink(stage.color)}"` : '';
+    const add = stage.closed
+      ? ''
+      : `<button type="button" class="kb-add" data-kbadd="${esc(stage.key)}" title="Быстрая сделка на этой стадии" aria-label="Быстрая сделка: ${esc(stage.label)}">＋</button>`;
+    return `<section class="kb-c" data-kbs="${esc(stage.key)}" aria-label="${esc(stage.label)}"><header class="kb-h t-${CrmFunnel.tone(funnel, stage.key)}"${paint}>
+      <div class="kb-rb"><b title="${esc(stage.label)}">${esc(stage.label)}</b><span class="kb-n">${list.length}</span></div>
+      <div class="kb-sum">${CrmFmt.short(sum)}</div>${add}</header>
+      <div class="kb-l">${this.adding === stage.key ? this._quick(stage) : ''}${shown.map(deal => this.card(deal)).join('') || (this.adding === stage.key ? '' : empty)}${more}</div></section>`;
+  }
+
+  // цвет надписи на шапке стадии: тёмный на светлой заливке, белый — на тёмной
+  static _ink(hex) {
+    const value = parseInt(String(hex).slice(1), 16);
+    const [red, green, blue] = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+    return red * 0.299 + green * 0.587 + blue * 0.114 > this.LIGHT ? '#1F2B4D' : '#fff';
+  }
+
+  static _quick(stage) {
+    return `<form class="kb-q" data-kbform="${esc(stage.key)}"><input type="text" name="title" maxlength="200" placeholder="Клиент или задача" aria-label="Клиент или задача" required autocomplete="off">
+      <input type="text" name="sum" inputmode="decimal" placeholder="Сумма, ₽ (необязательно)" aria-label="Сумма"><div class="row"><button class="btn primary sm" type="submit">Создать</button><button class="btn sm ghost" type="button" data-kbcancel>Отмена</button></div></form>`;
+  }
+
+  /**
+   * Быстрая сделка из колонки доски: название или клиент, сумма — на этой стадии открытой воронки.
+   * @param {HTMLFormElement} form
+   */
+  static async quick(form) {
+    const title = form.elements.title.value.trim();
+    if (!title) return;
+    const body = { title, stage: form.dataset.kbform, funnel: CrmData.funnel() };
+    const sum = form.elements.sum.value.replace(/\s/g, '').replace(',', '.');
+    if (sum) body.sum = sum;
+    try {
+      await Api.request('/api/crm/deal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(body),
+      });
+      this.adding = '';
+      Toast.show(`Сделка «${title}» создана`);
+      Cabinet.reload();
+    } catch (error) {
+      Toast.show(`Сделка не создана: ${error.message}`);
+    }
   }
 
   /**
@@ -233,10 +293,10 @@ export class CabDeals {
     const more = rest
       ? `<button type="button" class="btn ghost kb-more" data-kbmore="list">Показать ещё ${rest}</button>`
       : '';
-    const body =
-      shown.map(deal => this._row(deal)).join('') ||
-      `<p class="empty">${Cabinet.query || this.filter ? 'Не найдено.' : 'Сделок нет.'}</p>`;
-    return `${this._stageChips(stages, deals, picked)}<div class="cab-ls" role="list">${this._listHead()}${body}${more}</div>`;
+    if (!shown.length)
+      return `${this._stageChips(stages, deals, picked)}<p class="empty">${Cabinet.query || this.filter ? 'Не найдено.' : 'Сделок нет.'}</p>`;
+    const row = { expected: deal => this._expected(deal), next: deal => `${this._next(deal)}${this.exec(deal)}` };
+    return `${this._stageChips(stages, deals, picked)}${CabList.html(shown, { more, row })}`;
   }
 
   static _stageChips(stages, deals, picked) {
@@ -254,22 +314,6 @@ export class CabDeals {
     return `<div class="cab-flt cab-stg" role="group" aria-label="Стадия">${this._chip({ attr: 'data-cstage=""', label: 'Все стадии', on: !picked })}${chips}</div>`;
   }
 
-  static _listHead() {
-    const who = CrmData.all() ? '<span>Ответственный</span>' : '';
-    return `<div class="cab-lh${CrmData.all() ? ' lr-all' : ''}" aria-hidden="true"><span>Сделка</span><span>Стадия</span><span>Сумма</span><span>Ожидается</span><span>Следующий шаг</span>${who}</div>`;
-  }
-
-  static _row(deal) {
-    const name = deal.title || deal.client || `Сделка № ${deal.number}`;
-    const client = deal.client && deal.client !== name ? deal.client : `№ ${deal.number}`;
-    const who = CrmData.all() ? `<span class="lr-m muted">${esc(CrmData.mgrShort(deal))}</span>` : '';
-    return `<div class="cab-lr t-${CrmData.toneOf(deal)}${CrmData.all() ? ' lr-all' : ''}" role="listitem" data-deal="${esc(deal.id)}" tabindex="0">
-      <span class="lr-n"><b>${esc(name)}</b><span class="muted">${esc(client)}</span></span>
-      <span class="lr-s"><span class="cab-dot t-${CrmData.toneOf(deal)}" aria-hidden="true"></span>${esc(CrmFunnel.label(deal))}</span>
-      <b class="lr-sum">${CrmFmt.short(deal.sum)}</b><span class="lr-e">${this._expected(deal) || '<span class="muted">—</span>'}</span>
-      <span class="lr-x">${this._next(deal)}${this.exec(deal)}</span>${who}</div>`;
-  }
-
   /**
    * Щелчки раздела: вид, отборы, «Показать ещё». true — обработано.
    * @param {Event} event
@@ -277,7 +321,13 @@ export class CabDeals {
    */
   static click(event) {
     const target = event.target;
+    if (CabList.click(event)) {
+      Cabinet.renderBody();
+      return true;
+    }
     const actions = [
+      ['[data-kbadd]', el => (this.adding = this.adding === el.dataset.kbadd ? '' : el.dataset.kbadd)],
+      ['[data-kbcancel]', () => (this.adding = '')],
       ['[data-cview]', el => this._setView(el.dataset.cview)],
       ['[data-cflt]', el => this._setFilter(el.dataset.cflt)],
       ['[data-cclosed]', () => (this.closed = !this.closed)],
@@ -290,6 +340,7 @@ export class CabDeals {
         run(el);
         if (Cabinet.tab === 'deals') Cabinet.renderBody();
         else Cabinet.show('deals');
+        if (this.adding) document.querySelector(`[data-kbform="${CSS.escape(this.adding)}"] input`)?.focus();
         return true;
       }
     }

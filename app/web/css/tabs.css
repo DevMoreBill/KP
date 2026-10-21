@@ -34,7 +34,7 @@ body.tab-other main.wrap{visibility:hidden}
 .mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0;border-radius:0!important}
 .top .apptabs{flex:0 0 auto}
 @media (max-width:1180px){.top .apptabs{flex:0 1 auto}.at-t{padding:0 9px}}
-html dialog.tabwin:is([data-tab=cab],[data-tab=cat],[data-tab=jrn]) .dlg-h [aria-label^="Закрыть"],html dialog.tabwin:is([data-tab=cab],[data-tab=cat],[data-tab=jrn]) header [aria-label^="Закрыть"],html dialog.tabwin [data-cw=max]{display:none}
+html dialog.tabwin:is([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]) .dlg-h [aria-label^="Закрыть"],html dialog.tabwin:is([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]) header [aria-label^="Закрыть"],html dialog.tabwin [data-cw=max]{display:none}
 .has-tabs .cab-more [data-cq=journal],.has-tabs .cab-more [data-cq=catalog]{display:none}
 .mob body.tab-other .top{display:none}
 html.mob dialog.tabwin{top:0}
