@@ -501,6 +501,102 @@ class Sides(Enum):
     RECEIVE = 'receive'
 
 
+class KpNote:
+    """Запись в ленте сделки Битрикса об одном КП: что предложено, итог, срок действия, краткая экономика — и файлы КП."""
+
+    SHOWN = 8
+    KOPECKS = 100
+
+    @staticmethod
+    def rub(value: Any) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return '—'
+        return f'{number:,.0f} ₽'.replace(',', '\u00a0')
+
+    @staticmethod
+    def _day(value: Any) -> str:
+        day = str(value or '')[:10]
+        return '.'.join(reversed(day.split('-'))) if re.match(r'^\d{4}-\d{2}-\d{2}$', day) else ''
+
+    @classmethod
+    def full(cls, offer: dict, files: list[str]) -> str:
+        """Текст записи с краткой экономикой; files — подписи приложенных файлов."""
+        return cls._join([*cls._offer(offer), cls._econ((offer.get('meta') or {}).get('deal')), cls._files(files)])
+
+    @classmethod
+    def brief(cls, offer: dict, files: list[str]) -> str:
+        """Текст записи без экономики (поля экономики в «Поля сделки» выключены)."""
+        return cls._join([*cls._offer(offer), cls._files(files)])
+
+    @classmethod
+    def head(cls, offer: dict) -> str:
+        return cls._head(offer, offer.get('meta') or {})
+
+    @classmethod
+    def _offer(cls, offer: dict) -> list[str]:
+        meta = offer.get('meta') or {}
+        return [cls._head(offer, meta), *cls._items(meta), cls._total(offer, meta)]
+
+    @staticmethod
+    def _files(files: list[str]) -> str:
+        return 'Файлы: ' + ', '.join(dict.fromkeys(files)) if files else ''
+
+    @staticmethod
+    def _join(lines: list[str]) -> str:
+        return '\n'.join(line for line in lines if line)
+
+    @classmethod
+    def _head(cls, offer: dict, meta: dict) -> str:
+        when = cls._day(meta.get('date'))
+        return 'КП № {}{}'.format(offer.get('number') or offer.get('id'), f' от {when}' if when else '')
+
+    @classmethod
+    def _items(cls, meta: dict) -> list[str]:
+        rows = (meta.get('lines') or {}).get('rows') if isinstance(meta.get('lines'), dict) else None
+        rate = float((meta.get('lines') or {}).get('rate') or 1) if rows else 1
+        if not isinstance(rows, list) or not rows:
+            names = [str(name) for name in meta.get('items') or [] if name]
+            return ['Предложено: ' + '; '.join(names)] if names else []
+        out = ['Предложено:']
+        for row in rows[: cls.SHOWN]:
+            qty = float(row.get('q') or 1)
+            price = float(row.get('p') or 0) / cls.KOPECKS * rate
+            amount = f'{qty:g}'
+            out.append('• {} — {} {} × {}'.format(row.get('n'), amount, row.get('u') or 'шт', cls.rub(price)))
+        if len(rows) > cls.SHOWN:
+            out.append(f'• и ещё позиций: {len(rows) - cls.SHOWN}')
+        return out
+
+    @classmethod
+    def _total(cls, offer: dict, meta: dict) -> str:
+        total = offer.get('sum')
+        if total is None:
+            return ''
+        until = cls._day(meta.get('validUntil'))
+        valid = f' · действует до {until}' if until else ''
+        vat = (meta.get('lines') or {}).get('vat') if isinstance(meta.get('lines'), dict) else None
+        tax = f' (с НДС {vat:g} %)' if isinstance(vat, (int, float)) and vat > 0 else ''
+        return f'Итого: {cls.rub(float(total) / cls.KOPECKS)}{tax}{valid}'
+
+    @classmethod
+    def _econ(cls, deal: Any) -> str:
+        if not isinstance(deal, dict) or not isinstance(deal.get('full'), dict):
+            return ''
+        full = deal['full']
+        parts = [f'выручка без НДС {cls.rub(full.get("revenue"))}', f'себестоимость {cls.rub(full.get("cost"))}']
+        if deal.get('confirmed'):
+            parts.append(f'прибыль до налога {cls.rub(deal.get("profit"))}')
+            parts.append('маржинальность {:.1f} %'.format(float(deal.get('margin') or 0)).replace('.', ','))
+            if deal.get('net') is not None:
+                parts.append(f'чистая прибыль {cls.rub(deal.get("net"))}')
+        else:
+            low, high = cls.rub(deal.get('lo')), cls.rub(deal.get('hi'))
+            parts.append(f'прибыль до налога {low} – {high} (не указан ввозной НДС к вычету)')
+        return 'Экономика: ' + ' · '.join(parts)
+
+
 class BitrixSync:
     """Обмен с Битрикс24: очередь отправки и опрос изменений."""
 
@@ -1268,9 +1364,54 @@ class BitrixSync:
         )
 
     def _files(self, bid, k) -> None:
-        """Файлы КП (Word, PDF, справочные документы, Excel экономики) → лента сделки; каждый файл — один раз на версию."""
+        """КП → одна запись в ленте сделки: что предложено, итог, экономика и файлы (Word, PDF, справочные, Excel).
+
+        Новая запись — только когда КП изменилось; файлы прикладываются те, что новые или изменились.
+        """
+        attach, sent_files, names, names_by = [], {}, [], {}
+        for name, data, what in self._kp_payload(k):
+            names_by[name] = what
+            digest = hashlib.sha1(data).hexdigest()
+            key = '{}|{}'.format(k['id'], name)
+            link = self.links.get('file', key)
+            sent_files[key] = digest
+            names.append(what)
+            if not (link and link['sent'].get('h') == digest and link['bx'] == bid):
+                attach.append((name, data, key, digest))
+        note_text = KpNote.brief if self.rules.field('KP_PROFIT')['dir'] == 'off' else KpNote.full
+        text = note_text(k, names)
+        core = hashlib.sha1(note_text(k, []).encode()).hexdigest()  # КП без файлов: изменилось ли само предложение
+        note_key = 'note|{}'.format(k['id'])
+        note = self.links.get('file', note_key)
+        digest = hashlib.sha1((text + json.dumps(sent_files, sort_keys=True)).encode()).hexdigest()
+        same_place = note is not None and note['bx'] == bid
+        was = note['sent'] if note is not None else {}
+        if same_place and was.get('h') == digest:
+            return
+        if not note and not attach and sent_files:  # файлы КП уже в ленте прежними записями по файлу — не дублировать
+            self.links.put('file', note_key, bid, {'h': digest, 'core': core})
+            return
+        if same_place and was.get('core') == core:
+            if not attach:
+                self.links.put('file', note_key, bid, dict(was, h=digest))
+                return
+            added = ', '.join(dict.fromkeys(names_by[row[0]] for row in attach))
+            comment = f'{KpNote.head(k)} — добавлено: {added}'
+        else:
+            comment = text + ('\n(новая версия КП)' if note else '')
+        fields: dict[str, Any] = {'ENTITY_ID': int(bid), 'ENTITY_TYPE': 'deal', 'COMMENT': comment}
+        if attach:
+            fields['FILES'] = [[name, base64.b64encode(data).decode('ascii')] for name, data, _key, _digest in attach]
+        cid = self.api.call('crm.timeline.comment.add', {'fields': fields})
+        for _name, _data, key, file_digest in attach:
+            self.links.put('file', key, bid, {'h': file_digest, 'c': cid})
+        self.links.put('file', note_key, bid, {'h': digest, 'core': core, 'c': cid})
+
+    def _kp_payload(self, k) -> list[tuple[str, bytes, str]]:
+        """Файлы КП, включённые в «Что передаётся» и не больше предела, — (имя, данные, подпись)."""
         send_rules = self.rules.send()
-        enabled = {v: send_rules['files'][k] for k, v in BitrixRules.FILES.items()}
+        enabled = {v: send_rules['files'][key] for key, v in BitrixRules.FILES.items()}
+        out = []
         for name, path_or_data, what in self.files(k['id']):
             if not enabled.get(what, True):
                 continue
@@ -1281,23 +1422,8 @@ class BitrixSync:
             if len(data) > send_rules['fileMB'] * 1024 * 1024:
                 self.log.add(f'Файл «{name}» больше {send_rules["fileMB"]} МБ — в Битрикс24 не отправлен', 'warn')
                 continue
-            digest = hashlib.sha1(data).hexdigest()
-            key = '{}|{}'.format(k['id'], name)
-            link = self.links.get('file', key)
-            if link and link['sent'].get('h') == digest and link['bx'] == bid:
-                continue
-            cid = self.api.call(
-                'crm.timeline.comment.add',
-                {
-                    'fields': {
-                        'ENTITY_ID': int(bid),
-                        'ENTITY_TYPE': 'deal',
-                        'COMMENT': '{} — КП № {}{}'.format(what, k['number'], ' (новая версия)' if link else ''),
-                        'FILES': [[name, base64.b64encode(data).decode('ascii')]],
-                    }
-                },
-            )
-            self.links.put('file', key, bid, {'h': digest, 'c': cid})
+            out.append((name, data, what))
+        return out
 
     def _kp_files(self, kid: str) -> list:
         """[(имя, путь или байты, подпись)] — файлы КП для ленты сделки."""
@@ -1702,8 +1828,11 @@ class BitrixDryApi:
         if method == 'crm.deal.productrows.set':
             return f'Сделка {params.get("id")}: товары — {len(params.get("rows") or [])} стр.'
         if method == 'crm.timeline.comment.add':
-            files = fields.get('FILES') or [['']]
-            return 'Сделка {}: файл «{}»'.format(fields.get('ENTITY_ID'), files[0][0])
+            head = str(fields.get('COMMENT') or '').split('\n')[0]
+            names = ', '.join(f'«{row[0]}»' for row in fields.get('FILES') or [])
+            return 'Сделка {}: в ленту — {}{}'.format(
+                fields.get('ENTITY_ID'), head, f', файлы {names}' if names else ''
+            )
         if method == 'crm.company.add':
             return f'Создать компанию «{fields.get("TITLE") or ""}»'
         if method == 'crm.requisite.add':

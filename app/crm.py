@@ -557,8 +557,15 @@ class DealBook:
                     deal.pop('lostReason', None)
                     deal['lostAuto'] = False
                 self._log(deal, author, what='stage', auto=True, **{'from': stage, 'to': found[1]})
-        self._autofill(deal, [row['id'] for row in rows], author)
+        self._autofill(deal, self._fill_order(rows), author)
         self._save(conn, deal['id'], deal, author, when=when)
+
+    @staticmethod
+    def _fill_order(rows: list) -> list[str]:
+        """КП сделки для полей Битрикс24: свежие первыми; проигранные — только если других нет."""
+        live = [row for row in rows if row['status'] != 'lost'] or rows
+        live = sorted(live, key=lambda rec: (rec['savedAt'] or rec['date'] or '', rec['id']), reverse=True)
+        return [row['id'] for row in live]
 
     def _autofill(self, deal: dict, kp_ids: list[str], author: str) -> bool:
         """Пустые поля Битрикс24 — из КП (сбой подсказки не мешает сохранению сделки)."""
@@ -582,7 +589,7 @@ class DealBook:
             if not deal:
                 return False
             conn = self.store.conn()
-            kp_ids = [row[0] for row in conn.execute('SELECT kp_id FROM deal_kp WHERE deal_id=?', (did,)).fetchall()]
+            kp_ids = self._fill_order(self._rows(conn, did))
             if not kp_ids or not self._autofill(deal, kp_ids, author):
                 return False
             self._save(conn, did, deal, author)

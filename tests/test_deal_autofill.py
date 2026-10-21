@@ -142,6 +142,28 @@ class AutoFillTest(unittest.TestCase):
         self.assertEqual(self.deal(did)['uf'].get('UF_BRAND'), ['71'])
         self.assertFalse(DealBook(self.st).autofill(did, 'Иванова'), 'второй раз — нечего дополнять')
 
+    def test_several_kp(self):
+        """Несколько КП в сделке: бренды — всех живых КП; проигранное КП не учитывается; стёртое менеджером — не возвращается."""
+        from crm import DealBook
+        self.st.catalog_put('comp1', json.dumps({'id': 'comp1', 'name': 'Компрессор винтовой Atlas Copco GA-11',
+                                                 'attrs': {'cat': 'screw', 'maker': 'Atlas Copco'}}, ensure_ascii=False), 'тест')
+        self.st.catalog_put('pump2', json.dumps({'id': 'pump2', 'name': 'Мотопомпа Abac M-50', 'attrs': {'cat': 'mpump', 'maker': 'Abac'}},
+                                                ensure_ascii=False), 'тест')
+        did = self.kp('2026-089')
+        book = DealBook(self.st)
+        book.update(did, {'uf': {'UF_GOODS': ''}}, 'Иванова')  # стёрто менеджером — не возвращается
+        self.kp('2026-090', cat_id='comp1', attrs={})
+        book.link(did, '2026-090', 'Иванова')
+        uf = self.deal(did)['uf']
+        self.assertEqual(uf.get('UF_BRAND'), ['71', '72'], 'не тронутое менеджером — по всем КП сделки')
+        self.kp('2026-091', cat_id='pump2', attrs={})
+        book.link(did, '2026-091', 'Иванова')
+        self.st.kp_track_set('2026-089', {'status': 'lost'})
+        book.refresh('2026-089', 'Иванова')
+        uf = self.deal(did)['uf']
+        self.assertEqual(uf.get('UF_BRAND'), ['70', '72'], 'проигранное КП (Koshin) не учитывается')
+        self.assertNotIn('UF_GOODS', uf)
+
 
 class WordsTest(unittest.TestCase):
     def test_match(self):

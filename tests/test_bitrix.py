@@ -70,7 +70,12 @@ class SyncTest(SyncBase):
         self.assertIn('Оборудование: 600 000 ₽', d['UF_CRM_KP_ECON'])
         self.assertIn('Аванс 30 %', d['UF_CRM_KP_ECON'])
         self.assertEqual(f.rows[d['ID']][0]['PRICE'], 500000.0)
-        self.assertEqual([c['FILES'][0][0] for c in f.comments], ['КП 26-0001.docx', 'КП 26-0001.pdf'])
+        self.assertEqual([[x[0] for x in c['FILES']] for c in f.comments], [['КП 26-0001.docx', 'КП 26-0001.pdf']], 'КП — одной записью')
+        note = f.comments[0]['COMMENT']
+        for part in ('КП № 26-0001 от ', 'Предложено:', '• Компрессор ВК-26-0001 — 2 шт × 500\u00a0000 ₽',
+                     'Итого: 1\u00a0000\u00a0000 ₽ (с НДС 22 %)', 'Экономика: выручка без НДС 819\u00a0672 ₽',
+                     'прибыль до налога 150\u00a0000 ₽', 'маржинальность 18,2 %', 'Файлы: КП (Word), КП (PDF)'):
+            self.assertIn(part, note)
         # второе КП того же клиента — компания та же (по ИНН), файлы — не повторяются
         did2 = self.kp('26-0002')
         BitrixQueue.touch(self.st, 'deal', did2)
@@ -78,12 +83,22 @@ class SyncTest(SyncBase):
         self.sync().run()
         self.assertEqual(len(f.companies), 1, 'дублей компании нет')
         self.assertEqual(len(f.deals), 2)
-        self.assertEqual(len(f.comments), 2, 'неизменённые файлы второй раз не отправляются')
-        self.files['26-0001'] = [('КП 26-0001.docx', b'PK-docx-v2', 'КП (Word)')]
+        self.assertEqual(len(f.comments), 2, 'второе КП — своей записью (и без файлов), первое не повторяется')
+        self.assertIn('КП № 26-0002', f.comments[1]['COMMENT'])
+        self.files['26-0001'] = [('КП 26-0001.docx', b'PK-docx-v2', 'КП (Word)'), ('КП 26-0001.pdf', b'%PDF', 'КП (PDF)'),
+                                 ('Экономика_КП_26-0001.xlsx', b'PK-xlsx', 'Экономика сделки (Excel)')]
         BitrixQueue.touch(self.st, 'deal', did)
         self.sync().run()
-        self.assertEqual(len(f.comments), 3, 'новая версия файла — новая запись в ленте')
-        self.assertIn('новая версия', f.comments[-1]['COMMENT'])
+        self.assertEqual(len(f.comments), 3)
+        self.assertIn('— добавлено: КП (Word), Экономика сделки (Excel)', f.comments[-1]['COMMENT'], 'то же КП — коротко, что добавилось')
+        self.assertEqual([x[0] for x in f.comments[-1]['FILES']], ['КП 26-0001.docx', 'Экономика_КП_26-0001.xlsx'])
+        self.kp('26-0001', total=120000000)
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        self.assertEqual(len(f.comments), 4)
+        self.assertIn('Итого: 1\u00a0200\u00a0000 ₽', f.comments[-1]['COMMENT'])
+        self.assertIn('(новая версия КП)', f.comments[-1]['COMMENT'])
+        self.assertNotIn('FILES', f.comments[-1], 'файлы те же — не прикладываются повторно')
         self.assertNotIn(FakeBitrix.KEY, json.dumps(BitrixLog(self.st).tail(), ensure_ascii=False))
 
     def test_pull_fields_priority_and_new_deal(self):
