@@ -1,4 +1,5 @@
 import { AdminApi, AdminState } from './admin-core.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { AdminNav } from './admin-nav.js';
 import { SettingsHistoryPanel } from './settings-panels.js';
 import { SettingsSearch, StDirty, StNav } from './settings-tools.js';
@@ -82,7 +83,7 @@ export class SettingsWindow {
     if (tab) AdminState.tab = tab;
     const dialog = this.dialog();
     if (!AdminSession.on) dialog.classList.add('login');
-    if (!dialog.open) dialog.showModal();
+    AppTabs.show(dialog, 'set');
     dialog.innerHTML = '<p class="empty">Загружаю…</p>';
     try {
       const status = await Api.request('/api/admin/status');

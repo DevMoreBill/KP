@@ -12,6 +12,7 @@ import { Managers } from './managers.js';
 import { KpEconomics } from './price-calc.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { DealState } from '../deal/deal-state.js';
 import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
@@ -28,10 +29,9 @@ export class Journal {
 
   /** Окно журнала. */
   static async open() {
-    const dialog = $('#dlg');
-    dialog.classList.add('wide');
+    const dialog = Modal.host('jrnWin', 'wide jrnwin', 'Журнал КП');
     dialog.innerHTML = this._html();
-    dialog.showModal();
+    AppTabs.show(dialog, 'jrn');
     dialog.querySelector('[data-close]').onclick = () => this._close(dialog);
     const ctx = {
       dialog,
@@ -57,7 +57,11 @@ export class Journal {
 
   static _close(dialog) {
     dialog.close();
-    dialog.classList.remove('wide');
+  }
+
+  // к открытому КП — журнал остаётся своей вкладкой
+  static _leave() {
+    AppTabs.open(AppTabs.HOME);
   }
 
   static _html() {
@@ -246,14 +250,11 @@ export class Journal {
     [
       '[data-jr]',
       (ctx, button) => {
-        Journal._close(ctx.dialog);
+        Journal._leave();
         KpRepeat.run(button.dataset.jr);
       },
     ],
-    [
-      '[data-jv]',
-      (ctx, button) => KpVersions.open(button.dataset.jv, button.dataset.jn, () => Journal._close(ctx.dialog)),
-    ],
+    ['[data-jv]', (ctx, button) => KpVersions.open(button.dataset.jv, button.dataset.jn, () => Journal._leave())],
     ['[data-jo]', (ctx, button) => Journal._openKp(ctx, { id: button.dataset.jo })],
     ['[data-jc]', (ctx, button) => Journal._openKp(ctx, { id: button.dataset.jc, copy: true })],
     ['[data-je]', (ctx, button) => Journal._openKp(ctx, { id: button.dataset.je, econ: true })],
@@ -292,7 +293,7 @@ export class Journal {
         const row = this._row(ctx, state.kpId);
         if (row && row.file) S._file = row.file;
       }
-      this._close(ctx.dialog);
+      this._leave();
       FormView.render();
       KpState.persist();
       window.scrollTo({ top: 0 });

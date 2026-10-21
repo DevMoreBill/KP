@@ -22,6 +22,7 @@ import { Auth } from './features/kp/auth.js';
 import { $, esc } from './core/util.js';
 import { MyPrefs } from './features/kp/my-prefs.js';
 import { Theme } from './core/theme.js';
+import { AppSections } from './ui/app-sections.js';
 // Запуск программы: проверка сервера, вход, загрузка справочников и каталога — последним модулем страницы.
 
 /** Порядок запуска: сервер, вход, умолчания, справочники, первая отрисовка, первый экран. */
@@ -35,6 +36,7 @@ export class App {
       return;
     }
     this._serverMenu();
+    AppSections.register();
     await Auth.load();
     // вошёл с временным паролем — сначала свой
     if (Auth.state.enabled && Auth.state.user && Auth.state.user.mustChange && !Auth.state.admin) {

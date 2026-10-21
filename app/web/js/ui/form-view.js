@@ -4,6 +4,7 @@ import { Steps } from './steps.js';
 import { ItemEditor } from '../features/catalog/item-editor.js';
 import { CoverThumb } from '../features/doc/cover-thumb.js';
 import { Morph } from '../core/morph.js';
+import { AppTabs } from '../core/app-tabs.js';
 import { $ } from '../core/util.js';
 import { MgrLock } from '../features/kp/managers.js';
 import { Templates } from '../features/doc/templates.js';
@@ -29,13 +30,14 @@ export class FormView {
     const number = `<h2><span class="n">${Steps.visible().indexOf(current) + 1}</span>`;
     Morph.apply(form, current.f().replace(this.NUMBER, number) + Steps.navHtml());
     // поле осталось тем же узлом — фокус не трогаем (иначе на телефоне прыгает клавиатура)
-    if (focusPath && !active.isConnected && !$('#edlg').open) this._refocus(form, focusPath);
+    if (focusPath && !active.isConnected && !AppTabs.visible($('#edlg'))) this._refocus(form, focusPath);
     this._centerStep();
     document.body.dataset.kpstep = Steps.current;
     form.querySelectorAll('textarea.iname').forEach(area => Mobile.fitText(area));
     SidePanel.render();
     this._editor();
     if (Steps.current === 'cover') CoverThumb.soon();
+    AppTabs.render();
   }
 
   static _editor() {

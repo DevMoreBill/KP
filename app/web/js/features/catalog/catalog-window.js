@@ -1,4 +1,5 @@
 import { CatalogActions } from './catalog-actions.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { CatalogCard } from './catalog-card.js';
 import { CatalogEvents } from './catalog-events.js';
 import { CatalogFilter } from './catalog-filter.js';
@@ -550,7 +551,7 @@ export class CatalogWindow {
     this.panes.loadSize();
     this.panes.load();
     dialog.innerHTML = CatalogEvents.html(this);
-    if (!dialog.open) dialog.showModal();
+    AppTabs.show(dialog, 'cat');
     CatalogEvents.bind(this, dialog);
     this.panes.layout();
     this.docs = Catalog.cache.length ? Catalog.cache : await CatalogStore.list().catch(() => []);

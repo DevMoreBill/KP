@@ -1,0 +1,44 @@
+/* ---------- вкладки разделов: ПК — в шапке, телефон — нижняя панель; окна разделов — страницами под шапкой ---------- */
+.apptabs{display:flex;align-items:stretch;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none;align-self:stretch;margin:-14px 0}
+.apptabs::-webkit-scrollbar{display:none}
+.apptabs:empty{display:none}
+.at-t{flex:none;display:flex;align-items:center;gap:7px;border:0;border-bottom:3px solid transparent;background:none;color:var(--muted);font:inherit;font-weight:600;font-size:14px;padding:0 14px;white-space:nowrap;cursor:pointer;min-height:44px}
+.at-t i{font-style:normal;font-size:15px;opacity:.85}
+.at-t:hover{color:var(--ink);background:var(--soft)}
+.at-t.on{color:var(--navy);border-bottom-color:var(--navy);background:color-mix(in srgb,var(--navy) 6%,transparent)}
+.at-x{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:11px;color:var(--muted);margin-right:-6px}
+.at-x:hover{background:var(--line);color:var(--ink)}
+.has-tabs #srvBtns{display:none!important}
+.has-tabs .topmenu [data-a=myDay]{display:none}
+
+html dialog.tabwin{overflow:auto;position:fixed;inset:var(--apptop,64px) 0 0 0;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border:0;border-radius:0!important;box-shadow:none;z-index:15;transform:none;animation:none}
+html dialog.tabwin.tab-off{display:none!important}
+html dialog.tabwin .dlg-h [data-close],html dialog.tabwin .dlg-h [data-dlx=close]{order:99}
+body.tab-other{overflow:hidden}
+body.tab-other main.wrap{visibility:hidden}
+
+/* телефон: нижняя панель над вырезом, панель шагов КП — над ней и только на вкладке КП */
+.mob{--tbh:58px}
+.mob .apptabs{position:fixed;left:0;right:0;bottom:0;z-index:31;margin:0;gap:0;justify-content:space-around;background:var(--card);border-top:1px solid var(--line);
+  padding:0 max(4px,env(safe-area-inset-right)) env(safe-area-inset-bottom,0px) max(4px,env(safe-area-inset-left));box-shadow:0 -6px 18px rgba(8,25,60,.06)}
+.mob .at-t{flex:1 1 0;min-width:58px;flex-direction:column;gap:2px;padding:6px 4px 5px;font-size:11px;font-weight:600;border-bottom:0;border-top:3px solid transparent;min-height:var(--tbh)}
+.mob .at-t i{font-size:19px}
+.mob .at-t span{max-width:76px;overflow:hidden;text-overflow:ellipsis}
+.mob .at-t.on{border-top-color:var(--navy);background:none}
+.mob .at-x{display:none}
+.mob body.has-tabs .mbar{bottom:calc(var(--tbh) + env(safe-area-inset-bottom,0px));padding-bottom:10px}
+.mob body.has-tabs{padding-bottom:calc(var(--mbh) + var(--tbh) + env(safe-area-inset-bottom,0px))}
+.mob body.has-tabs .toast{bottom:calc(var(--mbh) + var(--tbh) + 14px + env(safe-area-inset-bottom,0px))}
+.mob body.tab-other .mbar{display:none}
+.mob body.has-tabs #btnMenu{display:none}
+.mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0;border-radius:0!important}
+.top .apptabs{flex:0 0 auto}
+@media (max-width:1180px){.top .apptabs{flex:0 1 auto}.at-t{padding:0 9px}}
+html dialog.tabwin:is([data-tab=cab],[data-tab=cat],[data-tab=jrn]) .dlg-h [aria-label^="Закрыть"],html dialog.tabwin:is([data-tab=cab],[data-tab=cat],[data-tab=jrn]) header [aria-label^="Закрыть"],html dialog.tabwin [data-cw=max]{display:none}
+.has-tabs .cab-more [data-cq=journal],.has-tabs .cab-more [data-cq=catalog]{display:none}
+.mob body.tab-other .top{display:none}
+html.mob dialog.tabwin{top:0}
+html dialog.tabwin :is([data-dlx=max],[data-st=max]){display:none}
+html dialog.tabwin.jrnwin[open]{display:flex;flex-direction:column;padding:0}
+html dialog.tabwin.jrnwin>.dlg-h{padding:12px 20px 0}
+html dialog.tabwin.jrnwin>.dlg-b{flex:1;min-height:0;max-height:none;overflow:auto;padding:8px 20px 16px}

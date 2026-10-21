@@ -250,7 +250,7 @@ class UiRun:
         self.ev("document.querySelectorAll('dialog[open]').forEach(d=>d.close())")
 
     def topdlg(self):
-        return self.ev("(()=>{const d=[...document.querySelectorAll('dialog[open]')].pop(); if(!d) return null; "
+        return self.ev("(()=>{const d=[...document.querySelectorAll('dialog[open]:not(.tab-off)')].pop(); if(!d) return null; "
                        "if(!d.id) d.id='__d'+Math.random().toString(36).slice(2,7); return '#'+d.id})()")
 
     def meta(self):
@@ -705,10 +705,7 @@ class Scenario(UiRun):
 
     def s_journal(self):
         pg = self.pg
-        if self.phone:
-            self.ev("Journal.open()")
-        else:
-            pg.click('header [data-a=journal]')
+        pg.click('#appTabs [data-tab=jrn]')  # вкладка «Журнал КП» (ПК — сверху, телефон — нижняя панель)
         self.wait(2500)
         root = self.topdlg()
         self.snap('a0_journal', root)

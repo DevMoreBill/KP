@@ -1,4 +1,5 @@
 import { AiTab } from './ai-tab.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { CatalogEditor } from './catalog-edit.js';
 import { CatalogWindow } from './catalog-window.js';
 import { Logos } from './image-slots.js';
@@ -75,7 +76,7 @@ export class ItemEditor {
     ItemEditor.current = { i, tab: tab || (item && Kit.station(item) ? 'kit' : 'main') };
     const dialog = $('#edlg');
     this.render();
-    if (!dialog.open) dialog.showModal();
+    AppTabs.show(dialog, 'item', item && Kit.station(item) ? 'Станция' : 'Позиция');
   }
 
   /** Закрыть карточку («Готово»). */

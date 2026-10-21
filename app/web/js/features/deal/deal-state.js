@@ -1,4 +1,5 @@
 import { DealCal } from './deal-cal.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealDefaults } from './deal-defaults.js';
 import { DealHs } from './deal-hs.js';
@@ -289,8 +290,8 @@ export class DealState {
     if (!dlg.open) {
       dlg.innerHTML =
         '<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>';
-      dlg.showModal();
     }
+    AppTabs.show(dlg, 'deal');
     await Promise.all([DealSuppliers.loadDirs(), DealLogistics.loadAll()]);
     DealState.ensure();
     dlg.innerHTML = '';

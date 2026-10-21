@@ -3,6 +3,7 @@ import { ShortName } from '../kp/journal-row.js';
 import { KpDate } from '../kp/kp-date.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { Api } from '../../core/net.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Catalog } from '../catalog/catalog-store.js';
@@ -18,13 +19,14 @@ import { KpLoader } from '../kp/reminders.js';
 export class DealKp {
   static HISTORY_LIMIT = 40;
 
+  // к КП — карточка сделки закрывается, кабинет остаётся своей вкладкой
   static _closeAll() {
     DealCard.close();
-    document.getElementById('cabWin')?.close();
+    AppTabs.open(AppTabs.HOME);
   }
 
   /**
-   * Открыть КП (окна кабинета закрываются).
+   * Открыть КП (кабинет остаётся вкладкой).
    * @param {string} id
    */
   static openKp(id) {

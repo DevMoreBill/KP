@@ -1,4 +1,5 @@
 import { CrmData } from './crm-data.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { CrmTask } from './crm-task.js';
 import { CabToday } from './cab-today.js';
 import { CabDeals } from './cab-deals.js';
@@ -64,7 +65,7 @@ export class Cabinet {
     if (!MyDay.enabled()) return;
     if (tab) this.tab = tab;
     const dialog = this.dlg();
-    if (!dialog.open) dialog.showModal();
+    AppTabs.show(dialog, 'cab');
     if (!dialog.innerHTML) dialog.innerHTML = '<p class="empty cab-wait">Загружаю кабинет…</p>';
     await this.reload();
   }
