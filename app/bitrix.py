@@ -10,7 +10,7 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -277,11 +277,16 @@ class BitrixTime:
         """'2026-10-17T15:00:00+03:00' → местное 'ГГГГ-ММ-ДДTЧЧ:ММ:СС' (для сравнения с правками программы)."""
         try:
             moment = datetime.fromisoformat(str(text or '').strip())
-        except ValueError:
+            if moment.tzinfo:  # пояс сервера явно: astimezone() без него в Windows падает на датах до 1970 и после 3000
+                moment = moment.astimezone(BitrixTime.zone()).replace(tzinfo=None)
+        except (ValueError, OverflowError):
             return ''
-        if moment.tzinfo:
-            moment = moment.astimezone().replace(tzinfo=None)
         return moment.isoformat(timespec='seconds')
+
+    @staticmethod
+    def zone() -> tzinfo:
+        """Пояс сервера программы (смещение от UTC сейчас)."""
+        return datetime.now(UTC).astimezone().tzinfo or UTC
 
     @staticmethod
     def day(text) -> str:

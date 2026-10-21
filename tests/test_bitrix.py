@@ -479,5 +479,31 @@ class DeskTest(unittest.TestCase):
         self.assertEqual(self.stand.request_errors(), [])
 
 
+class TimeTest(unittest.TestCase):
+    """Время Битрикса в местное — без системного localtime: в Windows он падает (Errno 22) на датах до 1970 и после 3000."""
+
+    def test_far_dates(self):
+        import bitrix
+        from datetime import datetime as real
+
+        class WinDatetime(real):
+            def astimezone(self, tz=None):
+                if tz is None and not 1970 <= self.year <= 3000:
+                    raise OSError(22, 'Invalid argument')
+                return super().astimezone(tz)
+
+        orig = bitrix.datetime
+        bitrix.datetime = WinDatetime
+        self.addCleanup(setattr, bitrix, 'datetime', orig)
+        local = bitrix.BitrixTime.local
+        zone = bitrix.BitrixTime.zone()
+        for text in ('9999-12-31T23:59:59+03:00', '1900-01-01T00:00:00+03:00', '2026-10-21T11:35:00+03:00'):
+            want = real.fromisoformat(text).astimezone(zone).replace(tzinfo=None).isoformat(timespec='seconds')
+            self.assertEqual(local(text), want, text)
+        self.assertEqual(local(''), '')
+        self.assertEqual(local('2026-10-21T11:35:00'), '2026-10-21T11:35:00')
+        self.assertEqual(local('9999-12-31T23:59:59-12:00'), '', 'за пределом года 9999 — как пустая дата, без падения')
+
+
 if __name__ == '__main__':
     unittest.main()
