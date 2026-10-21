@@ -38,10 +38,32 @@ class Funnels:
         """Воронки Битрикса в порядке портала (со скрытыми)."""
         rows = self.conf().get('list')
         return (
-            [row for row in rows if isinstance(row, dict) and self.ID_RE.match(str(row.get('id')))]
+            [
+                dict(row, stages=self.closed_by_order(row.get('stages') or []))
+                for row in rows
+                if isinstance(row, dict) and self.ID_RE.match(str(row.get('id')))
+            ]
             if isinstance(rows, list)
             else []
         )
+
+    @classmethod
+    def closed_by_order(cls, stages: list) -> list[dict]:
+        """Закрытые стадии, если портал не прислал их вид: «…:WON» — успех, «…:LOSE» и всё после успеха — провал (как в Битриксе)."""
+        out = [dict(stage) for stage in stages if isinstance(stage, dict) and stage.get('key')]
+        for stage in out:
+            if not stage.get('sem'):
+                stage['sem'] = cls._sem_of_key(str(stage['key']))
+        won = next((i for i, stage in enumerate(out) if stage.get('sem') == cls.WON), None)
+        if won is not None:
+            for stage in out[won + 1 :]:
+                stage['sem'] = stage.get('sem') or cls.LOST
+        return out
+
+    @classmethod
+    def _sem_of_key(cls, key: str) -> str:
+        code = key.rsplit(':', 1)[-1].upper()
+        return {'WON': cls.WON, 'LOSE': cls.LOST}.get(code, '')
 
     def all(self) -> list[dict]:
         """Все воронки: своя программы и Битрикса — [{id, name, bx, stages, hidden}]."""

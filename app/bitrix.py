@@ -17,8 +17,10 @@ from typing import Any
 
 from bitrix_clients import BitrixClients
 from bitrix_mirror import BitrixMirror
+from bitrix_my import MyCompanies
 from bitrix_rules import BitrixRules
 from crm import DealBook, Stages, TaskBook
+from crm_funnels import Funnels
 from kp_track import Val
 
 
@@ -607,6 +609,7 @@ class BitrixSync:
     SHARED = BitrixRules.SHARED  # правка с обеих сторон: кто главный — по правилу поля (по умолчанию последняя правка)
     STD = {'title': 'TITLE', 'stage': 'STAGE_ID', 'expected': 'CLOSEDATE', 'manager': 'ASSIGNED_BY_ID'}
     WHO = 'Битрикс24'
+    SEM_OURS = {'S': Funnels.WON, 'F': Funnels.LOST}
 
     def __init__(self, store, opener=None, files=None) -> None:
         self.store, self.conf = store, BitrixConf(store)
@@ -650,6 +653,10 @@ class BitrixSync:
             for category in cats
             if category['id'] in {*rules.pull_cats(), cat}
         }
+        try:
+            MyCompanies(self.store).load(api)
+        except BitrixError as exc:
+            self.log.add(f'Наши компании Битрикс24 не загружены: {exc}', 'warn')
         return {
             'ok': True,
             'user': ' '.join(x for x in (prof.get('NAME'), prof.get('LAST_NAME')) if x) or str(prof.get('ID') or ''),
@@ -705,7 +712,7 @@ class BitrixSync:
         ent = 'DEAL_STAGE' if str(cat or '0') == '0' else f'DEAL_STAGE_{cat}'
         rows = self.api.list('crm.status.list', {'filter': {'ENTITY_ID': ent}, 'order': {'SORT': 'ASC'}})
         out = []
-        for row in rows:
+        for row in (row for row in rows if row.get('STATUS_ID')):
             sem = (
                 (row.get('EXTRA') or {}).get('SEMANTICS')
                 if isinstance(row.get('EXTRA'), dict)
@@ -715,9 +722,12 @@ class BitrixSync:
                 {
                     'id': row.get('STATUS_ID'),
                     'name': row.get('NAME') or '',
-                    'sem': {'success': 'S', 'failure': 'F'}.get(str(sem), sem or ''),
+                    'sem': {'success': 'S', 'failure': 'F'}.get(str(sem), sem if sem in ('S', 'F') else ''),
                 }
             )
+        marked = Funnels.closed_by_order([{'key': row['id'], 'sem': self.SEM_OURS.get(row['sem'], '')} for row in out])
+        for row, stage in zip(out, marked, strict=True):
+            row['sem'] = {Funnels.WON: 'S', Funnels.LOST: 'F'}.get(stage['sem'], '')
         return out
 
     def users(self) -> list:
@@ -1150,6 +1160,9 @@ class BitrixSync:
             x = rules.field(k)
             if x['dir'] == 'out' and x['bx']:
                 fields[x['bx']] = v
+        my_company = self._my_company(deal, link)
+        if my_company:
+            fields['MYCOMPANY_ID'] = int(my_company)
         cat = self.mirror.cat(deal) or str((link or {}).get('sent', {}).get('cat') or rules.cat_of(mid))
         ours = self._ours(deal, kps)
         ours['stage'] = self._bx_stage(deal, cat)
@@ -1161,7 +1174,7 @@ class BitrixSync:
                     'SOURCE_DESCRIPTION': 'Конструктор КП, сделка № {}'.format(deal.get('number')),
                 }
             )
-            sent = {'cat': cat}
+            sent = {'cat': cat, 'my': my_company}
             for k in self._shared():
                 if out(k) and ours.get(k) and self._bx_id(k):
                     fields[self._bx_id(k)] = self.mirror.to_bx(k, ours[k])
@@ -1183,7 +1196,7 @@ class BitrixSync:
             sent, upd, back = self._merge(
                 deal, ours, self._theirs(bx_deal), link['sent'], BitrixTime.local(bx_deal.get('DATE_MODIFY'))
             )
-            sent['cat'] = cat
+            sent.update(cat=cat, my=my_company or link['sent'].get('my') or '')
             for k, v in upd.items():
                 fields[self._bx_id(k)] = self.mirror.to_bx(k, v)
             if upd:
@@ -1213,6 +1226,29 @@ class BitrixSync:
         for task in TaskBook(self.store).list(deal=did):
             if not self.links.get('task', task['id']):
                 self.push_task(task['id'], bid)
+
+    def _my_company(self, deal: dict, link: dict | None) -> str:
+        """Наша компания сделки (MYCOMPANY_ID) — что отправить или пусто (не менять).
+
+        Новая сделка — выбранная в карточке или по умолчанию; сделка программы, ушедшая раньше без неё, — один раз по
+        умолчанию; сделку из Битрикса программа не трогает, пока менеджер не выберет компанию в карточке.
+        """
+        chosen = str(deal.get('myCompany') or '')
+        sent = str(((link or {}).get('sent') or {}).get('my') or '')
+        if chosen:
+            return chosen if chosen != sent else ''
+        if sent or (link and deal.get('createdBy') == self.WHO):
+            return ''
+        return self._my_default()
+
+    def _my_default(self) -> str:
+        companies = MyCompanies(self.store)
+        if not companies.all():
+            try:
+                companies.load(self.api)
+            except BitrixError as exc:
+                self.log.add(f'Наши компании Битрикс24 не загружены: {exc}', 'warn')
+        return companies.default(self.rules.company()['my'])
 
     def _move(self, deal, bid, bx_deal, cat) -> dict:
         """Сделку перенесли в другую воронку в программе — и в Битриксе (crm.item.update: смена воронки сделки)."""
@@ -2112,6 +2148,7 @@ class BitrixDesk:
             },
             stagesOur=Stages.all(store),
             managers=BitrixSync(store, self.opener)._managers(),
+            myCompanies=MyCompanies(store).all(),
         )
 
     def route(self, method, sub, author: str) -> None:
@@ -2155,6 +2192,12 @@ class BitrixDesk:
                 return self.send(BitrixSync(store, self.opener).check())
             except (BitrixError, ValueError) as exc:
                 return self.text(422, str(exc))
+        if sub == 'bitrix/my' and method == 'POST':  # «Обновить список» наших компаний
+            try:
+                MyCompanies(store).load(BitrixConf(store).api(self.opener))
+            except BitrixError as exc:
+                return self.text(422, str(exc))
+            return self.send(self.view())
         if sub == 'bitrix/run' and method == 'POST':
             res = BitrixSync(store, self.opener).run_now()
             return self.send(dict(self.view(), result=res))

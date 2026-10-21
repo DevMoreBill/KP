@@ -25,6 +25,7 @@ import pdf_convert
 import pdf_text
 from ai_profile import CategoryProfile, ModelFacts
 from bitrix import BitrixConf, BitrixQueue, BitrixSync, EconXlsx
+from bitrix_my import MyCompanies
 from cbr import cbr_key_rate, cbr_rates
 from config import (
     APP_DIR,
@@ -1939,6 +1940,9 @@ class CrmController(Controller):
         deal['tasks'] = TaskBook(store()).list(deal=did)
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
+            companies = MyCompanies(store())
+            deal['myCompanies'] = companies.all()
+            deal['myCompanyDefault'] = companies.default(BitrixConf(store()).rules().company()['my'])
         funnel = deal.get('funnel') or Funnels.MAIN
         fields = DealFields(store())
         return self.send_json(

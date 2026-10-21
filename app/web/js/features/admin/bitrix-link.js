@@ -246,7 +246,22 @@ export class BitrixSend {
       <div class="bx-map"><label>Искать компанию в Битриксе${UiKit.tip('<p>Как найти в Битриксе компанию клиента сделки программы, чтобы не создать дубль.</p><p>«По ИНН, затем по названию» — сначала реквизиты (ИНН 7701234567), не нашлась — точное название («ООО «Ромашка»»).</p>')}</label>${panel.sel('id="bxFind"', Object.entries(panel.FIND), company.find || 'inn_name', 'Поиск компании')}</div>
       ${panel.chk('id="bxCreate"', company.create !== false, 'Не нашлась — создать компанию в Битриксе')}
       ${panel.chk('id="bxReqs"', company.reqs !== false, 'С реквизитами (ИНН, КПП, ОГРН, адрес)')}
+      ${this._my(company)}
       <div class="bx-map"><label>Контакты (телефон, почта)${UiKit.tip('<p>Обмен контактами клиента. «В обе стороны» — контакты из КП уходят в компанию Битрикса, а телефоны, почта и сотрудники компании Битрикса дописываются в справочник клиентов программы (без повторов, реквизиты программы не меняются).</p>')}</label>${panel.sel('id="bxCons"', panel.dirOpts(['both', 'in', 'out', 'off']), company.contacts || 'both', 'Контакты')}</div></div>`;
+  }
+
+  // наша компания — реквизиты продавца в сделке Битрикса (MYCOMPANY_ID)
+  static _my(company) {
+    const panel = BitrixPanel;
+    const list = panel.state.myCompanies || [];
+    const prefer = list.find(row => /пневмотех/i.test(row.title));
+    const auto = prefer ? `Автоматически — ${prefer.title}` : 'Как в Битрикс24 (компания портала по умолчанию)';
+    const options = [['', auto], ...list.map(row => [row.id, row.title])];
+    const tip = UiKit.tip(
+      '<p>Чьи реквизиты стоят в сделке Битрикса («Реквизиты вашей компании»). Новая сделка из программы получает эту компанию; менеджер может выбрать другую в карточке сделки («Наша компания»).</p><p>Список — компании портала с отметкой «моя компания». Не видно нужной — «Обновить список».</p>',
+    );
+    return `<div class="bx-map"><label>Наша компания в сделке${tip}</label>${panel.sel('id="bxMy"', options, company.my || '', 'Наша компания')}</div>
+      <div class="row"><button class="btn ghost sm" type="button" id="bxMyLoad">Обновить список наших компаний</button>${list.length ? '' : '<span class="muted">список ещё не загружен — нажмите «Проверить связь» или эту кнопку</span>'}</div>`;
   }
 
   static _tasks(tasks) {
@@ -292,6 +307,11 @@ export class BitrixSend {
   /** События вкладки. */
   static bind() {
     const panel = BitrixPanel;
+    panel.one('#bxMyLoad').onclick = () =>
+      panel.run(
+        () => AdminApi.post('bitrix/my', {}),
+        reply => `Наших компаний на портале: ${(reply.myCompanies || []).length}`,
+      );
     panel.one('#bxSaveSend').onclick = () => {
       const one = selector => panel.one(selector);
       const files = {};
@@ -309,6 +329,7 @@ export class BitrixSend {
           create: one('#bxCreate').checked,
           reqs: one('#bxReqs').checked,
           contacts: one('#bxCons').value,
+          my: one('#bxMy').value,
         },
         tasks: { kinds, cancel: one('#bxCancel').checked, other: one('#bxOther').checked },
       });

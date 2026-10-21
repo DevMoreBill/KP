@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from bitrix_my import MyCompanies
 from crm_funnels import DealFields, Funnels
 from deal_autofill import DealAutoFill
 from kp_track import Val
@@ -272,6 +273,8 @@ class DealBook:
             out['clientInn'] = re.sub(r'\D', '', str(data.get('clientInn') or ''))[:12]
         if 'clientId' in data:
             out['clientId'] = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('clientId') or ''))[:64]
+        if 'myCompany' in data:
+            out['myCompany'] = MyCompanies.clean(data.get('myCompany'))
         if 'clientPick' in data:
             out['clientPick'] = ClientPick.clean(data.get('clientPick'))
         elif 'clientId' in data or 'client' in data:
@@ -332,7 +335,9 @@ class DealBook:
             if manager and manager[0] != cur.get('managerId'):
                 new.update(managerId=manager[0], manager=manager[1])
                 self._log(new, author, what='manager', to=manager[1])
-            changed = [k for k in ('title', 'client', 'expected', 'sum', 'note') if k in x and x[k] != cur.get(k)]
+            changed = [
+                k for k in ('title', 'client', 'expected', 'sum', 'note', 'myCompany') if k in x and x[k] != cur.get(k)
+            ]
             if changed:
                 self._log(new, author, what='edit', fields=changed)
             if 'uf' in x:

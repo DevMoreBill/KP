@@ -34,7 +34,14 @@ export class DealCard {
   static CLIENTS_SHOWN = 50;
   static KOPECKS = 100;
   static HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
-  static FIELDS = { title: 'название', client: 'клиент', expected: 'ожидаемая дата', sum: 'сумма', note: 'заметка' };
+  static FIELDS = {
+    title: 'название',
+    client: 'клиент',
+    expected: 'ожидаемая дата',
+    sum: 'сумма',
+    note: 'заметка',
+    myCompany: 'наша компания',
+  };
   static deal = null;
   static modal = null;
   static changed = false;
@@ -239,7 +246,7 @@ export class DealCard {
       ${DealClient.html(deal)}${this._sumField(deal)}
       <label class="f"><span>Ожидаемая дата</span><input type="date" data-dkf="expected" value="${esc(deal.expected || '')}"></label>
       <div class="dk-wide dk-dchips">${DateChips.html(DateChips.DEAL, 'expected', deal.expected)}</div>
-      ${this.funnelSelect(deal)}${this._managerSelect(deal)}
+      ${this.funnelSelect(deal)}${this._managerSelect(deal)}${this._myCompany(deal)}
       <label class="f dk-wide"><span>Заметка</span><textarea data-dkf="note" rows="3" maxlength="3000" placeholder="Кто принимает решение, бюджет, конкуренты, особенности объекта">${esc(deal.note || '')}</textarea></label>
       </div><datalist id="dkCl">${clients}</datalist></section>`;
   }
@@ -260,6 +267,21 @@ export class DealCard {
       )
       .join('');
     return `<label class="f"><span>Воронка${UiKit.tip('<p>Воронка — набор стадий сделки (своя программы или повторённая из Битрикс24). При переносе в другую воронку сделка встаёт на её первую стадию.</p>')}</span><select ${attr}>${options}</select></label>`;
+  }
+
+  // наша компания — реквизиты продавца в сделке Битрикс24
+  static _myCompany(deal) {
+    const list = deal.myCompanies || [];
+    if (!list.length) return '';
+    const current = deal.myCompany || deal.myCompanyDefault || '';
+    const blank = current ? '' : '<option value="" selected>как в Битрикс24</option>';
+    const options = list
+      .map(row => `<option value="${esc(row.id)}"${row.id === current ? ' selected' : ''}>${esc(row.title)}</option>`)
+      .join('');
+    const tip = UiKit.tip(
+      '<p>Чьи реквизиты стоят в сделке Битрикс24 («Реквизиты вашей компании»). По умолчанию — как в «Настройках → Битрикс24 → Что передаётся».</p>',
+    );
+    return `<label class="f"><span>Наша компания${tip}</span><select data-dkf="myCompany">${blank}${options}</select></label>`;
   }
 
   static _managerSelect(deal) {

@@ -45,7 +45,7 @@ class MirrorStructure:
         cid = str(cat['id'])
         entity = 'DEAL_STAGE' if cid == '0' else f'DEAL_STAGE_{cid}'
         rows = self.sync.api.list('crm.status.list', {'filter': {'ENTITY_ID': entity}, 'order': {'SORT': 'ASC'}})
-        stages = [self._stage(row) for row in rows if row.get('STATUS_ID')]
+        stages = Funnels.closed_by_order([self._stage(row) for row in rows if row.get('STATUS_ID')])
         keys = {stage['key'] for stage in stages if not stage['sem']}
         mapped = self.sync.rules.stages(cid) if cid in self.sync.rules.pull_cats() else {}
         return {

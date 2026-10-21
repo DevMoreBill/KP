@@ -101,6 +101,29 @@ class SyncTest(SyncBase):
         self.assertNotIn('FILES', f.comments[-1], 'файлы те же — не прикладываются повторно')
         self.assertNotIn(FakeBitrix.KEY, json.dumps(BitrixLog(self.st).tail(), ensure_ascii=False))
 
+    def test_my_company(self):
+        """Наша компания в сделке: по умолчанию ПНЕВМОТЕХ (а не компания портала по умолчанию), выбор в карточке — уходит в Битрикс."""
+        from bitrix import BitrixQueue
+        from bitrix_my import MyCompanies
+        from crm import DealBook
+        for cid, title in (('901', 'ООО «Пневмоком»'), ('902', 'ООО «ПНЕВМОТЕХ»')):
+            self.fake.companies[cid] = {'ID': cid, 'TITLE': title, 'IS_MY_COMPANY': 'Y'}
+        did = self.kp('26-0011')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        self.assertEqual([row['title'] for row in MyCompanies(self.st).all()], ['ООО «Пневмоком»', 'ООО «ПНЕВМОТЕХ»'])
+        bid = self.st.one("SELECT bx_id FROM bx_link WHERE kind='deal' AND local_id=?", (did,))[0]
+        self.assertEqual(self.fake.deals[str(bid)]['MYCOMPANY_ID'], 902, 'по умолчанию — ПНЕВМОТЕХ')
+        DealBook(self.st).update(did, {'myCompany': '901'}, 'Иванова Анна')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        self.assertEqual(self.fake.deals[str(bid)]['MYCOMPANY_ID'], 901, 'выбор менеджера')
+        with self.assertRaises(ValueError):
+            DealBook(self.st).update(did, {'myCompany': 'x'}, 'Иванова Анна')
+        from bitrix import BitrixConf
+        BitrixConf(self.st).save({'company': {'my': '901'}}, 'тест')
+        self.assertEqual(MyCompanies(self.st).default(BitrixConf(self.st).rules().company()['my']), '901', 'выбор администратора')
+
     def test_pull_fields_priority_and_new_deal(self):
         from crm import DealBook
         from bitrix import BitrixQueue

@@ -41,6 +41,21 @@ class FunnelTest(unittest.TestCase):
         from crm import DealBook
         return DealBook(self.st)
 
+    def test_closed_by_order(self):
+        """Портал не прислал вид стадий: «…:WON» — успех, «…:LOSE» и всё после успеха — провал (стадии-причины отказа)."""
+        from crm_funnels import Funnels
+        raw = [{'key': k, 'label': k, 'sem': ''} for k in ('C9:NEW', 'C9:1', 'C9:WON', 'C9:LOSE', 'C9:5', 'C9:6')]
+        self.assertEqual([row['sem'] for row in Funnels.closed_by_order(raw)], ['', '', 'won', 'lost', 'lost', 'lost'])
+        self.st.kv_set('crm.funnels', {'list': [dict(FUNNEL, id='b9', bx='9', stages=raw)]})
+        self.assertEqual(Funnels(self.st).open_keys('b9'), ['C9:NEW', 'C9:1'])
+        self.assertEqual(Funnels(self.st).resolve('b9', 'C9:6'), ('lost', 'C9:6'))
+        conn = self.st.conn()
+        conn.execute("INSERT INTO deals (id, doc, manager_id, stage, funnel, rev) VALUES ('d900', '{}', 'm1', 'C9:6', 'b9', 1)")
+        from storage import _fill_funnel_closed
+        _fill_funnel_closed(self.st, conn)
+        conn.commit()
+        self.assertEqual(self.st.one("SELECT stage FROM deals WHERE id='d900'")[0], 'lost', 'миграция: сделка на стадии провала')
+
     def test_funnels_and_stages(self):
         from crm_funnels import Funnels
         funnels = Funnels(self.st)

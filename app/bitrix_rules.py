@@ -4,6 +4,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from bitrix_my import MyCompanies
+
 DIRS = ('both', 'in', 'out', 'off')
 OUT = ('out', 'off')
 
@@ -45,6 +47,7 @@ class BitrixRules:
     TASK_KINDS = {'call': 'Звонок', 'meet': 'Встреча', 'mail': 'Письмо', 'task': 'Задача'}
     TASK_AS = ('todo', 'call', 'meet', 'off')  # дело Битрикса: универсальное, звонок, встреча; не передавать
     FIND = ('inn', 'inn_name', 'name')
+    MY_ID = re.compile(r'^\d{0,12}$')
     BX_FIELD = re.compile(r'^[A-Z][A-Z0-9_]{1,60}$')
     TIME = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
     BATCH = (10, 2000, 200)
@@ -157,6 +160,7 @@ class BitrixRules:
             'create': company.get('create', True) is not False,
             'contacts': company.get('contacts') if company.get('contacts') in DIRS else 'both',
             'reqs': company.get('reqs', True) is not False,
+            'my': str(company.get('my') or '') if self.MY_ID.match(str(company.get('my') or '')) else '',
         }
 
     def tasks(self) -> dict:
@@ -320,6 +324,7 @@ class BitrixRules:
                 'create': company.get('create', True) is not False,
                 'contacts': pick(company.get('contacts'), DIRS, 'контакты') or 'both',
                 'reqs': company.get('reqs', True) is not False,
+                'my': MyCompanies.clean(company.get('my')),
             }
         if 'tasks' in data:
             tasks = data['tasks'] if isinstance(data['tasks'], dict) else {}

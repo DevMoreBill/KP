@@ -330,6 +330,8 @@ MIGRATIONS = [
     ),
     # строка поиска клиента: телефон с добавочным и короткий городской номер (пересчёт при миграции)
     ('2027-18-client-phones', '', ''),
+    # стадии провала воронок Битрикса, пришедшие без вида (после стадии успеха): сделки на них — в столбец «проиграно»
+    ('2027-19-funnel-closed', '', ''),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -660,6 +662,18 @@ def _fill_feed(store, conn) -> None:
     conn.executemany('UPDATE catalog SET feed_id=? WHERE id=?', rows)
 
 
+def _fill_funnel_closed(store, conn) -> None:
+    """Миграция 2027-19: сделка на закрытой стадии воронки Битрикса — в столбце этапа «won» / «lost»."""
+    from crm_funnels import Funnels
+
+    for funnel in Funnels(store).mirror():
+        for stage in funnel['stages']:
+            if stage.get('sem'):
+                conn.execute(
+                    'UPDATE deals SET stage=? WHERE funnel=? AND stage=?', (stage['sem'], funnel['id'], stage['key'])
+                )
+
+
 MIGRATION_FILL = {
     '2027-01-db': _fill_columns,
     '2027-02-light': _fill_light,
@@ -669,6 +683,7 @@ MIGRATION_FILL = {
     '2027-12-indexes': _fill_feed,
     '2027-16-client-contacts': _fill_client_search,
     '2027-18-client-phones': _fill_client_search,
+    '2027-19-funnel-closed': _fill_funnel_closed,
 }
 
 
