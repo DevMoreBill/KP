@@ -5,6 +5,17 @@ import { Currency } from './currency.js';
 import { KpRepeat } from './kp-repeat.js';
 import { MyDay } from './my-day.js';
 import { KpLoader } from './reminders.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { Steps } from '../../ui/steps.js';
+import { DealCard } from '../crm/deal-card.js';
+import { Toast } from '../../core/toast.js';
+import { CrmFmt } from '../crm/crm-fmt.js';
+import { QuickFind } from '../../ui/step-equipment.js';
+import { CatFind } from '../catalog/catalog-store.js';
+import { Api } from '../../core/net.js';
+import { esc } from '../../core/util.js';
+import { Debounce } from '../../core/debounce.js';
+import { Modal } from '../../core/modal.js';
 
 /** Модели, недавно добавленные в КП (этот браузер) — для «Недавнего» в едином поиске. */
 export class RecentModels {
@@ -106,7 +117,7 @@ export class QuickSearch {
     return this._row(
       `data-qcat="${esc(item.id)}"`,
       esc(item.name),
-      item.price ? `${money(item.price)} ${esc(Currency.short(item.priceCur || 'RUB'))}` : 'без цены',
+      item.price ? `${KPGen.money(item.price)} ${esc(Currency.short(item.priceCur || 'RUB'))}` : 'без цены',
       `<button type="button" class="btn sm ghost" data-qadd="${esc(item.id)}">В КП</button>`,
     );
   }
@@ -133,7 +144,7 @@ export class QuickSearch {
   static async _recent() {
     let journal = [];
     try {
-      journal = (await api(`/api/history?limit=${this.RECENT_KP}&offset=0&q=`)).items || [];
+      journal = (await Api.request(`/api/history?limit=${this.RECENT_KP}&offset=0&q=`)).items || [];
     } catch {
       // нет связи — только модели
     }
@@ -167,17 +178,17 @@ export class QuickSearch {
 
   static async _found(query) {
     const [kps, clients, deals] = await Promise.all([
-      api(`/api/history?limit=${this.FOUND}&offset=0&q=${encodeURIComponent(query)}`)
+      Api.request(`/api/history?limit=${this.FOUND}&offset=0&q=${encodeURIComponent(query)}`)
         .then(answer => answer.items || [])
         .catch(() => []),
       ClientCard.enabled() ? ClientStore.find(query, this.FOUND) : Promise.resolve([]),
       MyDay.enabled()
-        ? api(`/api/crm/find?q=${encodeURIComponent(query)}`)
+        ? Api.request(`/api/crm/find?q=${encodeURIComponent(query)}`)
             .then(answer => answer.items || [])
             .catch(() => [])
         : Promise.resolve([]),
     ]);
-    const catalog = quickMatches(query).slice(0, this.FOUND);
+    const catalog = QuickFind.matches(query).slice(0, this.FOUND);
     const all = catalog.length
       ? `<div class="qs-i"><button type="button" class="qs-b qs-all" data-qall><b>Все модели по «${esc(query)}» — в каталоге</b></button></div>`
       : '';
@@ -235,7 +246,7 @@ export class QuickSearch {
 
   static _ACTIONS = {
     qrep: id => KpRepeat.run(id),
-    qkp: id => KpLoader.byId(id).catch(error => toast(`КП не открылось: ${error.message}`)),
+    qkp: id => KpLoader.byId(id).catch(error => Toast.show(`КП не открылось: ${error.message}`)),
     qcl: data => {
       try {
         ClientCard.open(JSON.parse(data));
@@ -247,12 +258,12 @@ export class QuickSearch {
     qadd: id => {
       const item = CatFind.id(id);
       if (!item) return;
-      goStep('equip');
-      addFromCatalog(item);
+      Steps.open('equip');
+      QuickFind.add(item);
     },
     qcat: (id, query) => {
       const item = CatFind.id(id);
-      openCatalog({ q: item ? item.name : query });
+      CatalogWindow.open({ q: item ? item.name : query });
     },
   };
 
@@ -268,7 +279,7 @@ export class QuickSearch {
     modal.close();
     const key = Object.keys(this._ACTIONS).find(name => button.dataset[name]);
     if (key) this._ACTIONS[key](button.dataset[key], query);
-    else if (button.hasAttribute('data-qall')) openCatalog({ q: query });
+    else if (button.hasAttribute('data-qall')) CatalogWindow.open({ q: query });
   }
 
   /** Ctrl+K (Cmd+K на Mac) — единый поиск откуда угодно. */

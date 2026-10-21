@@ -2,6 +2,8 @@ import { Design } from './design.js';
 import { DesignForm } from './design-form.js';
 import { DesignModel } from './design-model.js';
 import { DesignView } from './design-view.js';
+import { ObjPath } from '../../core/str.js';
+import { $, esc } from '../../core/util.js';
 
 /** Графический редактор шаблона: правая панель (свойства выбранного) и мини-панель над выбранным в документе. */
 export class DesignInspector {
@@ -210,7 +212,7 @@ export class DesignInspector {
         ? `<label class="td-chk"><input type="checkbox" data-tdpath="sections.${i}.newPage" ${section.newPage ? 'checked' : ''}> С новой страницы</label>`
         : '';
     const checks = blocks.length
-      ? `<h4 class="td-ih2">Блоки</h4>${blocks.map(field => `<label class="td-chk"><input type="checkbox" data-tdpath="${esc(field.key)}" ${getPath(work, field.key) ? 'checked' : ''}> ${esc(field.label)}</label>`).join('')}`
+      ? `<h4 class="td-ih2">Блоки</h4>${blocks.map(field => `<label class="td-chk"><input type="checkbox" data-tdpath="${esc(field.key)}" ${ObjPath.get(work, field.key) ? 'checked' : ''}> ${esc(field.label)}</label>`).join('')}`
       : '';
     return `<h4 class="td-ih">Раздел «${esc(DesignModel.sectionName(section.id))}»</h4>
       <button class="sw" type="button" role="switch" aria-checked="${!!section.on}" data-tdsecon="${i}"><i></i>${section.on ? 'включён' : 'выключен'}</button>

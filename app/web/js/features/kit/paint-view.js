@@ -1,5 +1,17 @@
 import { ContainerPart } from './container-part.js';
 import { Kit } from './kit.js';
+import { ImageFiles } from '../catalog/images.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { Api, ImgUpload } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { InputNum } from '../deal/input-num.js';
+import { FormView } from '../../ui/form-view.js';
+import { StationUi } from '../station/station-ui.js';
+import { KpState, S } from '../../core/state.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { $, esc } from '../../core/util.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationPaint } from '../layout/station-paint.js';
 
 /**
  * Окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и
@@ -75,7 +87,7 @@ export class PaintView {
           ? `<a href="${esc(file.src)}" target="_blank" rel="noopener">📎 ${esc(file.name || 'буклет')}</a> <button type="button" class="lnk" data-a="paintFileDel" ${at}>убрать</button>`
           : `<button type="button" class="btn sm" data-a="paintFile" ${at}>Файл буклета — PDF или картинка</button>`;
     }
-    return `<div class="kc-book"><label class="stl-chk"><input type="checkbox" data-kitbook="${index}.${j}"${book ? ' checked' : ''}> Окраска по буклету заказчика</label>${tip('В КП — строка «Окраска — по буклету цветовых решений заказчика». Файл буклета (PDF или картинка) уходит в ТЗ на сборку. Цвета выше — для 3D-вида и как ориентир сборщику.')}
+    return `<div class="kc-book"><label class="stl-chk"><input type="checkbox" data-kitbook="${index}.${j}"${book ? ' checked' : ''}> Окраска по буклету заказчика</label>${UiKit.tip('В КП — строка «Окраска — по буклету цветовых решений заказчика». Файл буклета (PDF или картинка) уходит в ТЗ на сборку. Цвета выше — для 3D-вида и как ориентир сборщику.')}
         ${control}</div>`;
   }
 
@@ -83,7 +95,7 @@ export class PaintView {
     const arts = StationPaint.arts(ctx.part);
     const add =
       arts.length < StationPaint.ART_MAX
-        ? `<span class="kc-book"><button type="button" class="btn sm ghost" data-a="paintArt" ${ctx.at}>+ Рисунок заказчика на стене</button>${tip('Картинка (PNG с прозрачностью, JPEG) — на выбранной стене снаружи: видна на 3D-виде и видах снаружи, в ТЗ на сборку — с местом и размером.')}</span>`
+        ? `<span class="kc-book"><button type="button" class="btn sm ghost" data-a="paintArt" ${ctx.at}>+ Рисунок заказчика на стене</button>${UiKit.tip('Картинка (PNG с прозрачностью, JPEG) — на выбранной стене снаружи: видна на 3D-виде и видах снаружи, в ТЗ на сборку — с местом и размером.')}</span>`
         : '';
     return `${arts.map((art, k) => this._art(ctx, art, k)).join('')}
         ${add}`;
@@ -130,8 +142,8 @@ export class PaintView {
     else if (!this._artChange(part, k, target)) return;
     ContainerPart.apply(part);
     StationUi.cache.delete(item.id);
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 
   static _artChange(part, k, target) {
@@ -149,7 +161,7 @@ export class PaintView {
     const width = Math.round(InputNum.parse(text));
     const { min, max } = this.ART_WIDTH;
     if (width >= min && width <= max) art.w = width;
-    else toast('Ширина рисунка — от 100 до 12 000 мм');
+    else Toast.show('Ширина рисунка — от 100 до 12 000 мм');
   }
 
   /**
@@ -187,14 +199,14 @@ export class PaintView {
       input.accept = '';
       if (!file) return;
       try {
-        toast(`Загружаю «${file.name}»…`);
+        Toast.show(`Загружаю «${file.name}»…`);
         await load.call(this, item, part, file);
         ContainerPart.apply(part);
         StationUi.cache.delete(item.id);
-        renderForm();
-        persist();
+        FormView.render();
+        KpState.persist();
       } catch (error) {
-        toast(`Не удалось загрузить файл: ${(error && error.message) || error}`);
+        Toast.show(`Не удалось загрузить файл: ${(error && error.message) || error}`);
       }
     };
     input.click();
@@ -204,7 +216,7 @@ export class PaintView {
   static async _booklet(item, part, file) {
     const pdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
     const src = pdf
-      ? `/img/${(await api(`/api/img?${this._query(item, 'booklet', file.name)}`, { method: 'POST', body: file })).name}`
+      ? `/img/${(await Api.request(`/api/img?${this._query(item, 'booklet', file.name)}`, { method: 'POST', body: file })).name}`
       : (await this._upload(file, item, 'буклет окраски')).src;
     part.paintFile = { src, name: String(file.name).slice(0, this.NAME_MAX), pdf };
   }
@@ -224,14 +236,14 @@ export class PaintView {
   }
 
   static _query(item, kind, caption) {
-    return Object.entries({ ...imgPlace(item, kind, { caption }), ext: 'pdf' })
+    return Object.entries({ ...ItemSpec.imgPlace(item, kind, { caption }), ext: 'pdf' })
       .map(([key, value]) => `${key}=${encodeURIComponent(value || '')}`)
       .join('&');
   }
 
   // картинка: не больше IMAGE_MAX точек, прозрачность сохраняется (PNG) → на сервер; ar — ширина / высота
   static async _upload(file, item, caption) {
-    const image = await readImg(await fileToURL(file));
+    const image = await ImageFiles.read(await ImageFiles.toUrl(file));
     const scale = Math.min(1, this.IMAGE_MAX / Math.max(image.width, image.height));
     const width = Math.max(1, Math.round(image.width * scale));
     const height = Math.max(1, Math.round(image.height * scale));
@@ -241,7 +253,7 @@ export class PaintView {
     canvas.getContext('2d').drawImage(image, 0, 0, width, height);
     const png = /png|webp/i.test(file.type);
     const data = canvas.toDataURL(png ? 'image/png' : 'image/jpeg', this.JPEG_QUALITY);
-    const saved = await ImgUpload.put({ src: data }, imgPlace(item, 'gallery', { caption }));
+    const saved = await ImgUpload.put({ src: data }, ItemSpec.imgPlace(item, 'gallery', { caption }));
     return { src: saved.src, ar: width / height };
   }
 }

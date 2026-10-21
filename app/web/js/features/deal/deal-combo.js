@@ -4,6 +4,10 @@ import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
+import { SidePanel } from '../../ui/side-panel.js';
+import { KpState, S } from '../../core/state.js';
+import { esc } from '../../core/util.js';
+import { ObjPath } from '../../core/str.js';
 
 /** Поле с выпадающим списком (поставщик, страна): подсказки по первым буквам или выбор из списка (кнопка «▾», стрелки, Enter). */
 export class DealCombo {
@@ -59,7 +63,7 @@ export class DealCombo {
    * @returns {string}
    */
   static html(label, path, opts = {}) {
-    const value = getPath(DealState.deal(), path) ?? '';
+    const value = ObjPath.get(DealState.deal(), path) ?? '';
     const open = DealUi.combo === path;
     const items = open ? DealCombo._open(path, value) : [];
     const id = `cb-${path.replace(/\./g, '-')}`;
@@ -106,14 +110,14 @@ export class DealCombo {
    */
   static pick(path, value) {
     const deal = DealState.deal();
-    setPath(deal, path, value);
+    ObjPath.set(deal, path, value);
     DealSuppliers.changed(path);
     DealUi.combo = null;
     DealUi.comboIx = -1;
     const match = /^sup\.(\d+)\./.exec(path);
     if (match) DealSuppliers.save(deal.sup[+match[1]]);
     S.deal.touched = true;
-    persist();
+    KpState.persist();
     SidePanel.render();
     DealWin.render();
   }

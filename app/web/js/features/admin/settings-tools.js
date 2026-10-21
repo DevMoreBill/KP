@@ -4,6 +4,14 @@ import { BackupTab } from './backup-tab.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { ListsPanel } from './lists-panel.js';
 import { SettingsWindow } from './settings-window.js';
+import { $, esc } from '../../core/util.js';
+import { Debounce } from '../../core/debounce.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { ApiKeys } from '../kp/api-keys.js';
+import { LISTS } from '../../core/lists.js';
+import { FEAT } from '../../core/features.js';
+import { DEF_BY, DEF_GROUPS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
+import { ServerDefaults } from '../../core/net.js';
 
 /** Поиск по всем настройкам (вкладки, умолчания, функции, списки, ключи, категории) с переходом к найденному. */
 export class SettingsSearch {
@@ -225,7 +233,7 @@ export class SettingsSearch {
           });
       }
     }
-    for (const type of TYPES) {
+    for (const type of EquipTypes.list) {
       add({
         label: type.name,
         where: AdminNav.path('types'),
@@ -473,7 +481,7 @@ export class StRefresh {
   /** Умолчания, функции и списки — заново. */
   static async all() {
     const jobs = [
-      defaultsLoad(),
+      ServerDefaults.load(),
       FEAT.refresh(),
       AdminApi.get('lists').then(reply => {
         LISTS.use(reply.values || {});
@@ -527,7 +535,7 @@ export class StVal {
   static text(value) {
     if (value == null || value === '') return '— (встроенное)';
     if (typeof value === 'boolean') return value ? 'да' : 'нет';
-    if (Array.isArray(value)) return `${value.length} ${plural(value.length, 'строка', 'строки', 'строк')}`;
+    if (Array.isArray(value)) return `${value.length} ${KPGen.plural(value.length, 'строка', 'строки', 'строк')}`;
     if (typeof value === 'object') return this._object(value);
     return String(value);
   }

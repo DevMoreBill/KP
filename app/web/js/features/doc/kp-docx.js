@@ -3,6 +3,14 @@ import { DocxPage, DocxSettings, DocxTypes } from './docx-parts.js';
 import { DocxRoots } from './docx-roots.js';
 import { KpCover } from './kp-cover.js';
 import { Templates } from './templates.js';
+import { ImageFiles } from '../catalog/images.js';
+import { FileSave } from '../../core/files.js';
+import { Kit } from '../kit/kit.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Currency } from '../kp/currency.js';
+import { ItemLinks } from '../catalog/item-links.js';
+import { S } from '../../core/state.js';
 
 /**
  * Сборка файла .docx КП: основа Word из шаблона + страницы по скелету шаблона с настройками; картинки — в пакет
@@ -18,16 +26,20 @@ export class KpDocx {
    * @returns {object}
    */
   static state() {
-    S.items.forEach(item => (item.features || []).forEach(featId));
+    S.items.forEach(item => (item.features || []).forEach(feat => ItemLinks.featId(feat)));
     const out = JSON.parse(JSON.stringify(S, (key, value) => (key.startsWith('_') ? undefined : value)));
     out.vat = +S.vat;
-    out.cur = { code: kpCur(), rate: kpCur() !== 'RUB' ? rateOf(kpCur()) : null, date: S.pricing.rateDate || '' };
+    out.cur = {
+      code: Currency.current(),
+      rate: Currency.current() !== 'RUB' ? Currency.rate(Currency.current()) : null,
+      date: S.pricing.rateDate || '',
+    };
     out.items = S.items.map(item => this._item(item));
     return out;
   }
 
   static _item(source) {
-    const attrs = attrsOf(source);
+    const attrs = Attrs.of(source);
     const item = Object.assign(KitDoc.item(source), Kit.has(source) ? { kitDoc: KitDoc.data(source) } : {}, {
       info: { maker: attrs.maker || '', model: attrs.model || '', type: attrs.type || '' },
     });
@@ -119,7 +131,7 @@ export class KpDocx {
     }
     out.gallery = [];
     out.featImgs = {};
-    (item.features || []).forEach(featId);
+    (item.features || []).forEach(feat => ItemLinks.featId(feat));
     await this._gallery(zip, item, out);
     return out;
   }
@@ -132,7 +144,7 @@ export class KpDocx {
       if (!url) continue;
       const file = `gal_${item.id}_${++count}.${this._ext(url)}`;
       zip.file(`word/media/${file}`, FileSave.base64(url), { base64: true });
-      const link = linkOf(item, image);
+      const link = ItemLinks.linkOf(item, image);
       if (link.kind === 'feat') out.featImgs[link.f.id] = { file, w: image.w, h: image.h };
       else {
         out.gallery.push({
@@ -140,7 +152,7 @@ export class KpDocx {
           w: image.w,
           h: image.h,
           caption: (image.caption || '').trim() || (link.kind === 'group' ? link.name : ''),
-          wide: galWide(image),
+          wide: ImageFiles.wide(image),
           sheet: image.gen === 'stdraw' || image.gen === 'stschema',
         });
       }

@@ -1,6 +1,7 @@
 import { Mm } from './mm.js';
 import { StationFire } from './station-fire.js';
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Освещение: светильники в ряд по оси помещения, число — методом коэффициента использования N = E · S · Кз / (Φ · η)

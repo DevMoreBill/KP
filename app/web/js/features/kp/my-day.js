@@ -1,5 +1,7 @@
 import { Auth } from './auth.js';
 import { Managers } from './managers.js';
+import { Cabinet } from '../crm/cabinet.js';
+import { FEAT } from '../../core/features.js';
 
 /** Кабинет менеджера — первый экран при запуске («Показывать при запуске» — настройка этого браузера). */
 export class MyDay {

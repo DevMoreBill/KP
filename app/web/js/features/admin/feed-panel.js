@@ -2,6 +2,10 @@ import { FeedDiscounts } from './feed-disc.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { FeedPurgeUi, FeedRulesUi } from './feed-rules.js';
 import { FeedJob, FeedPreview } from './feed-view.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Spoiler } from '../station/spoiler.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /** Открытый фид: сверху — что сделать сейчас и файлы поставщика; редкое — под раскрытием (запоминается). */
 export class FeedPanel {
@@ -36,7 +40,7 @@ export class FeedPanel {
     const open = feed.id === FeedState.sel;
     const when = this._when(feed);
     return `<div class="st-row fd-row${open ? ' on' : ''}" data-fd="open" data-id="${esc(feed.id)}" role="button" tabindex="0"><div><b>${esc(feed.name)}</b>
-        <span class="muted">${sup ? `поставщик: ${esc(sup)} · ` : ''}в каталоге: ${Fmt.num(feed.linked)} ${plural(feed.linked, 'позиция', 'позиции', 'позиций')}${when ? ` · ${esc(when)}` : ''}${feed.auto ? ' · автопроверка раз в день' : ''}</span>
+        <span class="muted">${sup ? `поставщик: ${esc(sup)} · ` : ''}в каталоге: ${Fmt.num(feed.linked)} ${KPGen.plural(feed.linked, 'позиция', 'позиции', 'позиций')}${when ? ` · ${esc(when)}` : ''}${feed.auto ? ' · автопроверка раз в день' : ''}</span>
         ${run ? `<span class="ok-t">${feed.job.kind === 'import' ? 'Загружаю' : 'Проверяю'}… ${feed.job.done}/${feed.job.total || '?'}</span>` : ''}</div>
       <div class="acts"><span class="fd-chev" aria-hidden="true">${open ? '▾' : '▸'}</span></div></div>`;
   }
@@ -50,7 +54,7 @@ export class FeedPanel {
     const count = (feed.discounts || []).length;
     const other = feed.discount;
     if (!count && !other) return 'не задана — закупка без скидки';
-    return `${count ? `${count} ${plural(count, 'правило', 'правила', 'правил')}` : 'без правил'}${other ? `, остальное — ${FeedFmt.dec(other)} %` : ''}`;
+    return `${count ? `${count} ${KPGen.plural(count, 'правило', 'правила', 'правил')}` : 'без правил'}${other ? `, остальное — ${FeedFmt.dec(other)} %` : ''}`;
   }
 
   /**
@@ -147,7 +151,7 @@ export class FeedActions {
   }
 
   static _unbuilt(noFile) {
-    return `<div class="fd-build"><p class="muted">${tip('<p>Парс сайта — полный список номенклатуры. «Сформировать каталог» создаёт позицию на каждое исполнение из парса (давление, ресивер, осушитель — как на сайте): описание по блокам, характеристики (сверены с прайсом — он точнее), главное фото из парса, цена из прайса.</p><p>Уже имеющиеся позиции производителя (из прошлых загрузок и заведённые вручную) сопоставляются с позициями парса и перестраиваются — id сохраняется, ссылки в КП не теряются. Лишние совпадения (дубли, например карточка «на все давления») уходят в корзину — 30 дней их можно восстановить.</p><p>После сборки парс больше не меняет позиции — только добавляет новые; описания, фото и характеристики правятся вручную. Цены обновляются загрузкой нового прайса.</p>')} Каталог производителя ещё не сформирован по полному парсу.</p></div>
+    return `<div class="fd-build"><p class="muted">${UiKit.tip('<p>Парс сайта — полный список номенклатуры. «Сформировать каталог» создаёт позицию на каждое исполнение из парса (давление, ресивер, осушитель — как на сайте): описание по блокам, характеристики (сверены с прайсом — он точнее), главное фото из парса, цена из прайса.</p><p>Уже имеющиеся позиции производителя (из прошлых загрузок и заведённые вручную) сопоставляются с позициями парса и перестраиваются — id сохраняется, ссылки в КП не теряются. Лишние совпадения (дубли, например карточка «на все давления») уходят в корзину — 30 дней их можно восстановить.</p><p>После сборки парс больше не меняет позиции — только добавляет новые; описания, фото и характеристики правятся вручную. Цены обновляются загрузкой нового прайса.</p>')} Каталог производителя ещё не сформирован по полному парсу.</p></div>
     <div class="row fd-acts"><button class="btn" type="button" data-fd="preview"${noFile}>Проверить фид</button>
       <button class="btn" type="button" data-fd="plan"${noFile}>План сборки</button>
       <button class="btn primary" type="button" data-fd="build"${noFile}>Сформировать каталог</button></div>`;
@@ -188,7 +192,7 @@ export class FeedForm {
       .join('');
     return `<label class="f"><span>Название</span><input type="text" data-fdf="name" value="${esc(feed.name || '')}" placeholder="${files ? 'Dalgakiran' : 'Remeza'}"></label>
       <label class="f"><span>Производитель по умолчанию</span><input type="text" data-fdf="maker" value="${esc(feed.maker || '')}" placeholder="${files ? 'Dalgakiran' : 'если в фиде нет поля vendor'}"></label>
-      <label class="f"><span>Поставщик в справочнике${tip('Чей это фид: поставщик из «Клиенты и поставщики → Поставщики и склады». По нему работают фильтр «Поставщик» в каталоге и выгрузка «Каталог поставщика». Не указан — поставщиком считается название фида.')}</span><select data-fdf="supplier"><option value="">— не указан (= название фида) —</option>${sups}</select></label>`;
+      <label class="f"><span>Поставщик в справочнике${UiKit.tip('Чей это фид: поставщик из «Клиенты и поставщики → Поставщики и склады». По нему работают фильтр «Поставщик» в каталоге и выгрузка «Каталог поставщика». Не указан — поставщиком считается название фида.')}</span><select data-fdf="supplier"><option value="">— не указан (= название фида) —</option>${sups}</select></label>`;
   }
 
   static _files(feed, kind, isNew) {
@@ -196,19 +200,19 @@ export class FeedForm {
       ([value, title]) => `<option value="${value}"${(feed.cur || '') === value ? ' selected' : ''}>${title}</option>`,
     ).join('');
     return `${kind}${this._common(feed, true)}
-      <label class="f"><span>Цена в прайсе — это${tip('<p><b>Наша закупка</b> — дилерский прайс: цена идёт в закупку позиции (валюта — как в прайсе), цена продажи остаётся за менеджером и «Экономикой сделки».</p><p><b>РРЦ</b> — розничный прайс: цена идёт в РРЦ и цену КП, закупка — РРЦ минус скидка.</p>')}</span><select data-fdf="priceKind"><option value="cost"${feed.priceKind !== 'rrc' ? ' selected' : ''}>наша закупка (дилерская цена)</option><option value="rrc"${feed.priceKind === 'rrc' ? ' selected' : ''}>РРЦ (розничная цена)</option></select></label>
+      <label class="f"><span>Цена в прайсе — это${UiKit.tip('<p><b>Наша закупка</b> — дилерский прайс: цена идёт в закупку позиции (валюта — как в прайсе), цена продажи остаётся за менеджером и «Экономикой сделки».</p><p><b>РРЦ</b> — розничный прайс: цена идёт в РРЦ и цену КП, закупка — РРЦ минус скидка.</p>')}</span><select data-fdf="priceKind"><option value="cost"${feed.priceKind !== 'rrc' ? ' selected' : ''}>наша закупка (дилерская цена)</option><option value="rrc"${feed.priceKind === 'rrc' ? ' selected' : ''}>РРЦ (розничная цена)</option></select></label>
       <label class="f"><span>Валюта прайса</span><select data-fdf="cur">${curs}</select></label>
-      ${isNew ? `<label class="f"><span>Скидка от цены прайса, %${tip('Если задана — закупка = цена прайса минус скидка. Пусто — закупка равна цене прайса. Сетку скидок по видам оборудования можно задать после создания фида.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(feed.discount ?? '')}" placeholder="например, 10"></label>` : ''}
-      <label class="fd-auto"><input type="checkbox" data-fdf="priceOnly"${feed.priceOnly ? ' checked' : ''}> Добавлять и позиции, которых нет в парсе (только из прайса)${tip('Строки прайса, для которых не нашлось страницы сайта: без фото и описания, с характеристиками из столбцов прайса. Разделы — по листам прайса.')}</label>
-      <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${feed.pageDesc ? ' checked' : ''}> Дополнять описание и фото со страницы товара (дольше)${tip('Программа откроет страницу каждого товара по ссылке из парса. Обычно не нужно: описание, фото и характеристики уже есть в файле парса.')}</label>`;
+      ${isNew ? `<label class="f"><span>Скидка от цены прайса, %${UiKit.tip('Если задана — закупка = цена прайса минус скидка. Пусто — закупка равна цене прайса. Сетку скидок по видам оборудования можно задать после создания фида.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(feed.discount ?? '')}" placeholder="например, 10"></label>` : ''}
+      <label class="fd-auto"><input type="checkbox" data-fdf="priceOnly"${feed.priceOnly ? ' checked' : ''}> Добавлять и позиции, которых нет в парсе (только из прайса)${UiKit.tip('Строки прайса, для которых не нашлось страницы сайта: без фото и описания, с характеристиками из столбцов прайса. Разделы — по листам прайса.')}</label>
+      <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${feed.pageDesc ? ' checked' : ''}> Дополнять описание и фото со страницы товара (дольше)${UiKit.tip('Программа откроет страницу каждого товара по ссылке из парса. Обычно не нужно: описание, фото и характеристики уже есть в файле парса.')}</label>`;
   }
 
   static _yml(feed, kind, isNew) {
     return `${kind}<label class="f wide"><span>Адрес фида (YML)</span><input type="text" inputmode="url" data-fdf="url" value="${esc(feed.url || '')}" placeholder="https://…/catalog_export/yandex.php"></label>
       ${this._common(feed, false)}
-      ${isNew ? `<label class="f"><span>Наша скидка от РРЦ, %${tip('Если задана — закупка позиции = РРЦ минус скидка; обновляется вместе с РРЦ. Пусто — закупку фид не трогает. Сетку скидок по видам оборудования можно задать после создания фида.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(feed.discount ?? '')}" placeholder="например, 25"></label>` : ''}
+      ${isNew ? `<label class="f"><span>Наша скидка от РРЦ, %${UiKit.tip('Если задана — закупка позиции = РРЦ минус скидка; обновляется вместе с РРЦ. Пусто — закупку фид не трогает. Сетку скидок по видам оборудования можно задать после создания фида.')}</span><input type="text" inputmode="decimal" data-fdf="discount" value="${esc(feed.discount ?? '')}" placeholder="например, 25"></label>` : ''}
       <label class="fd-auto"><input type="checkbox" data-fdf="auto"${feed.auto !== false ? ' checked' : ''}> Раз в день проверять РРЦ и наличие</label>
-      <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${feed.pageDesc !== false ? ' checked' : ''}> Описание, фото и применимость — со страницы товара${tip('При загрузке в каталог программа открывает страницу каждого товара (ссылка из фида): описание из блока описания (itemprop="description") — если оно длиннее описания в фиде; до 8 фото товара (без блоков «похожие товары»); характеристики, которых нет в фиде; у запчастей — применимость («Применяемость», «Подходит для…»). Страницы запоминаются на 30 дней; первая загрузка большого фида — дольше на несколько минут. Описание, исправленное вручную, не затирается.')}</label>`;
+      <label class="fd-auto"><input type="checkbox" data-fdf="pageDesc"${feed.pageDesc !== false ? ' checked' : ''}> Описание, фото и применимость — со страницы товара${UiKit.tip('При загрузке в каталог программа открывает страницу каждого товара (ссылка из фида): описание из блока описания (itemprop="description") — если оно длиннее описания в фиде; до 8 фото товара (без блоков «похожие товары»); характеристики, которых нет в фиде; у запчастей — применимость («Применяемость», «Подходит для…»). Страницы запоминаются на 30 дней; первая загрузка большого фида — дольше на несколько минут. Описание, исправленное вручную, не затирается.')}</label>`;
   }
 
   /**
@@ -237,7 +241,7 @@ export class FeedFiles {
     '<p>Книги Excel с листами по сериям: шапка «Модель» (полное название), характеристики, «Цена»/«РРЦ» (и столбцы опций). Объединённые ячейки учитываются. Можно загрузить несколько прайсов — по одному на марку или раздел; строки всех прайсов сопоставляются с парсом вместе.</p><p>Валюта берётся из шапки («Цена, €», «РРЦ, USD»). Если в файле её нет — выберите валюту у прайса (или у отдельного листа). «Дилерская цена» и «Дилер скидка, %» идут в закупку.</p><p>Новый прайс той же марки (с тем же именем файла без даты) заменяет прежний. Чтобы обновить цены, загрузите прайсы и нажмите «Обновить цены…».</p>';
 
   static _row({ kind, title, accept, hint, meta, info, drop }) {
-    return `<div class="fd-file"><div><b>${title}</b>${tip(hint)}<br>${meta ? `<span class="muted">${esc(meta.name)} · ${esc(FeedFmt.date(meta.at))} · ${info}</span>` : '<span class="bad-t">файл ещё не загружен</span>'}</div>
+    return `<div class="fd-file"><div><b>${title}</b>${UiKit.tip(hint)}<br>${meta ? `<span class="muted">${esc(meta.name)} · ${esc(FeedFmt.date(meta.at))} · ${info}</span>` : '<span class="bad-t">файл ещё не загружен</span>'}</div>
       <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept="${accept}" data-fdfile="${kind}" hidden>${meta ? 'Заменить файл' : 'Загрузить файл'}</label>${drop ? `<button class="btn ghost" type="button" data-fd="fdrop" data-kind="${drop}" title="Убрать файл">✕</button>` : ''}</div></div>`;
   }
 
@@ -251,7 +255,7 @@ export class FeedFiles {
     const pages = files.pages;
     const stock = files.stock;
     return `<div class="fd-files">
-    ${this._row({ kind: 'pages', title: 'Парс сайта (JSON или CSV)', accept: '.json,application/json,.csv,text/csv', hint: this.PAGES_TIP, meta: pages, info: pages ? `${Fmt.num(pages.rows)} ${plural(pages.rows, 'позиция', 'позиции', 'позиций')}, разделов: ${pages.cats}` : '' })}
+    ${this._row({ kind: 'pages', title: 'Парс сайта (JSON или CSV)', accept: '.json,application/json,.csv,text/csv', hint: this.PAGES_TIP, meta: pages, info: pages ? `${Fmt.num(pages.rows)} ${KPGen.plural(pages.rows, 'позиция', 'позиции', 'позиций')}, разделов: ${pages.cats}` : '' })}
     ${this.prices(FeedFmt.prices(feed))}
     ${this._row({ kind: 'stock', title: 'Остатки на складе (XLSX)', accept: FeedState.XLSX, hint: this.STOCK_TIP, meta: stock, info: stock ? FeedFmt.stockInfo(stock) : '', drop: stock ? 'stock' : '' })}
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
@@ -265,9 +269,9 @@ export class FeedFiles {
   static extra(feed) {
     const extra = (feed.files || {}).extra;
     const info = extra
-      ? `${Fmt.num(extra.series)} ${plural(extra.series, 'серия', 'серии', 'серий')}, ${Fmt.num(extra.rows)} ${plural(extra.rows, 'позиция', 'позиции', 'позиций')}${extra.logos ? `, логотипов: ${Fmt.num(extra.logos)}` : ''}`
+      ? `${Fmt.num(extra.series)} ${KPGen.plural(extra.series, 'серия', 'серии', 'серий')}, ${Fmt.num(extra.rows)} ${KPGen.plural(extra.rows, 'позиция', 'позиции', 'позиций')}${extra.logos ? `, логотипов: ${Fmt.num(extra.logos)}` : ''}`
       : '';
-    return `<div class="fd-files"><div class="fd-file"><div><b>Описания к фиду (JSON)</b>${tip(this.EXTRA_TIP)}<br>${extra ? `<span class="muted">${esc(extra.name)} · ${esc(FeedFmt.date(extra.at))} · ${info}</span>` : '<span class="muted">не загружен — описания только из фида</span>'}</div>
+    return `<div class="fd-files"><div class="fd-file"><div><b>Описания к фиду (JSON)</b>${UiKit.tip(this.EXTRA_TIP)}<br>${extra ? `<span class="muted">${esc(extra.name)} · ${esc(FeedFmt.date(extra.at))} · ${info}</span>` : '<span class="muted">не загружен — описания только из фида</span>'}</div>
       <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept=".json,application/json" data-fdfile="extra" hidden>${extra ? 'Заменить файл' : 'Загрузить файл'}</label>${extra ? '<button class="btn ghost" type="button" data-fd="fdrop" data-kind="extra" title="Убрать файл">✕</button>' : ''}</div></div>
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
   }
@@ -278,7 +282,7 @@ export class FeedFiles {
    * @returns {string}
    */
   static prices(prices) {
-    return `<div class="fd-prs"><div class="fd-file"><div><b>Прайсы поставщика (XLSX)</b>${tip(this.PRICE_TIP)}<br>${prices.length ? `<span class="muted">${prices.length} ${plural(prices.length, 'файл', 'файла', 'файлов')}</span>` : '<span class="bad-t">прайс ещё не загружен</span>'}</div>
+    return `<div class="fd-prs"><div class="fd-file"><div><b>Прайсы поставщика (XLSX)</b>${UiKit.tip(this.PRICE_TIP)}<br>${prices.length ? `<span class="muted">${prices.length} ${KPGen.plural(prices.length, 'файл', 'файла', 'файлов')}</span>` : '<span class="bad-t">прайс ещё не загружен</span>'}</div>
       <label class="btn fd-up"><input type="file" accept="${FeedState.XLSX}" data-fdfile="price" data-slot="new" multiple hidden>+ Добавить прайс</label></div>${prices.map(price => this._price(price)).join('')}</div>`;
   }
 
@@ -308,9 +312,9 @@ export class FeedFiles {
     const cur = (found.length ? found : fallback).map(code => FeedFmt.curName(code)).join(', ');
     const warn =
       missing.length && !price.curSet
-        ? `<span class="bad-t"> · валюта не указана на ${missing.length} ${plural(missing.length, 'листе', 'листах', 'листах')} — выберите</span>`
+        ? `<span class="bad-t"> · валюта не указана на ${missing.length} ${KPGen.plural(missing.length, 'листе', 'листах', 'листах')} — выберите</span>`
         : '';
-    return `<div class="fd-file fd-pr"><div><b>Прайс</b> <span class="muted">${esc(price.name)} · ${esc(FeedFmt.date(price.at))} · ${Fmt.num(price.rows)} ${plural(price.rows, 'строка', 'строки', 'строк')} на ${price.sheets} ${plural(price.sheets, 'листе', 'листах', 'листах')}, с ценой: ${Fmt.num(price.withPrice)}${cur ? `, ${esc(cur)}` : ''}</span>${warn}
+    return `<div class="fd-file fd-pr"><div><b>Прайс</b> <span class="muted">${esc(price.name)} · ${esc(FeedFmt.date(price.at))} · ${Fmt.num(price.rows)} ${KPGen.plural(price.rows, 'строка', 'строки', 'строк')} на ${price.sheets} ${KPGen.plural(price.sheets, 'листе', 'листах', 'листах')}, с ценой: ${Fmt.num(price.withPrice)}${cur ? `, ${esc(cur)}` : ''}</span>${warn}
         <label class="fd-cur"><span>Валюта, где в файле не указана:</span> ${this._curSelect(price.curSet || '', `data-fdcur="${esc(price.slot)}" aria-label="Валюта прайса"`, 'как у фида')}</label>${this._sheets(price, missing)}</div>
       <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept="${FeedState.XLSX}" data-fdfile="price" data-slot="${esc(price.slot)}" hidden>Заменить</label><button class="btn ghost" type="button" data-fd="fdrop" data-kind="price" data-slot="${esc(price.slot)}" title="Убрать прайс">✕</button></div></div>`;
   }

@@ -1,63 +1,28 @@
+import { S } from './core/state.js';
+import { MyDay } from './features/kp/my-day.js';
+import { MigrationNotice } from './features/catalog/migration-notice.js';
+import { Reminders } from './features/kp/reminders.js';
+import { Drafts } from './features/kp/drafts.js';
+import { CatalogWindow } from './features/catalog/catalog-window.js';
+import { FormView } from './ui/form-view.js';
+import { UiTexts } from './features/kp/ui-texts.js';
+import { HelpWindow } from './features/kp/help-window.js';
+import { Logos } from './features/catalog/image-slots.js';
+import { FEAT } from './core/features.js';
+import { LISTS } from './core/lists.js';
+import { Catalog } from './features/catalog/catalog-store.js';
+import { Templates } from './features/doc/templates.js';
+import { Managers } from './features/kp/managers.js';
+import { ClientStore } from './features/kp/client-store.js';
+import { EquipTypes } from './core/equip-types.js';
+import { AdminSession, Api, ServerDefaults, Srv } from './core/net.js';
+import { AiDirect } from './features/catalog/ai-chat.js';
+import { AuthMenu, AuthScreen } from './features/kp/auth-screen.js';
+import { Auth } from './features/kp/auth.js';
+import { $, esc } from './core/util.js';
+import { MyPrefs } from './features/kp/my-prefs.js';
+import { Theme } from './core/theme.js';
 // Запуск программы: проверка сервера, вход, загрузка справочников и каталога — последним модулем страницы.
-
-/** Светлая и тёмная тема: выбор хранится в браузере (и в «Моих настройках»); без выбора (auto) — как в системе. */
-export class Theme {
-  static NAMES = ['light', 'dark', 'auto'];
-  static SYSTEM = matchMedia('(prefers-color-scheme: dark)');
-  static STORE = 'kp.theme';
-
-  /**
-   * Действующая тема.
-   * @returns {'light' | 'dark'}
-   */
-  static current() {
-    const theme = document.documentElement.dataset.theme;
-    if (theme === 'dark' || theme === 'light') return theme;
-    return this.SYSTEM.matches ? 'dark' : 'light';
-  }
-
-  /**
-   * Выбрать тему: light, dark или auto (как в системе).
-   * @param {string} theme
-   */
-  static set(theme) {
-    const root = document.documentElement;
-    const fixed = theme === 'light' || theme === 'dark';
-    if (fixed) {
-      root.dataset.theme = theme;
-      root.style.colorScheme = theme;
-    } else {
-      delete root.dataset.theme;
-      root.style.colorScheme = '';
-    }
-    try {
-      if (fixed) localStorage.setItem(this.STORE, theme);
-      else localStorage.removeItem(this.STORE);
-    } catch {
-      // без хранилища браузера
-    }
-    this.paintButton();
-  }
-
-  /** Переключить светлую и тёмную (и запомнить в «Моих настройках»). */
-  static toggle() {
-    const theme = this.current() === 'dark' ? 'light' : 'dark';
-    this.set(theme);
-    MyPrefs.rememberTheme(theme);
-  }
-
-  /** Надпись пункта меню — тема, на которую переключит. */
-  static paintButton() {
-    $('#btnTheme').textContent = this.current() === 'dark' ? '☀  Светлая тема' : '☾  Тёмная тема';
-  }
-
-  /** Обработчики: пункт меню и смена темы системы. */
-  static listen() {
-    $('#btnTheme').addEventListener('click', () => Theme.toggle());
-    this.SYSTEM.addEventListener('change', () => Theme.paintButton());
-    this.paintButton();
-  }
-}
 
 /** Порядок запуска: сервер, вход, умолчания, справочники, первая отрисовка, первый экран. */
 export class App {
@@ -70,15 +35,15 @@ export class App {
       return;
     }
     this._serverMenu();
-    await authLoad();
+    await Auth.load();
     // вошёл с временным паролем — сначала свой
-    if (AUTH.enabled && AUTH.user && AUTH.user.mustChange && !AUTH.admin) {
+    if (Auth.state.enabled && Auth.state.user && Auth.state.user.mustChange && !Auth.state.admin) {
       AuthScreen.change();
       return;
     }
-    aiStatusLoad();
-    DefRegistry.load();
-    if (AUTH.enabled && !AUTH.user && !AUTH.admin) {
+    AiDirect.load();
+    ServerDefaults.load();
+    if (Auth.state.enabled && !Auth.state.user && !Auth.state.admin) {
       AuthScreen.show();
       return;
     }
@@ -126,42 +91,40 @@ export class App {
   static async _load() {
     await EquipTypes.load();
     await Promise.all([
-      loadClients(),
-      loadManagers(),
+      ClientStore.load(),
+      Managers.load(),
       Templates.load(),
-      refreshCat(),
+      Catalog.refresh(),
       LISTS.load(),
       FEAT.load(),
       MyPrefs.load(),
     ]);
-    loadLogos();
-    loadAppVersion();
-    uitLoad();
-    renderForm();
+    Logos.load();
+    HelpWindow.loadVersion();
+    UiTexts.load();
+    FormView.render();
     AuthMenu.mount();
   }
 
   static _open() {
     // поиск в каталоге — готов заранее
-    (window.requestIdleCallback || setTimeout)(() => CW.prewarm());
+    (window.requestIdleCallback || setTimeout)(() => CatalogWindow.win.prewarm());
     Drafts.start();
     Reminders.load();
     Reminders.poll();
     // «Мой день» — вместо каталога
     if (
-      !showMigrationNotice(Srv.info.migrations) &&
+      !MigrationNotice.show(Srv.info.migrations) &&
       !MyPrefs.start() &&
       !MyDay.start() &&
       !S.items.length &&
-      catCache.length
+      Catalog.cache.length
     ) {
-      openCatalog({});
+      CatalogWindow.open({});
     }
   }
 }
 
-Object.assign(globalThis, { App, Theme });
-
 App.start();
-renderForm();
+FormView.render();
 Theme.listen();

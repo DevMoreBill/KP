@@ -1,3 +1,5 @@
+import { XlsxBook } from '../../core/xlsx.js';
+import { LgTariffFile } from '../deal/lg-tariff-file.js';
 /** Ставки экспедиторов файлом: шаблон Excel, загрузка .xlsx / .csv (столбцы — по заголовкам, значения — по словам), запрос экспедитору. */
 export class ChinaRateBook {
   // поле → заголовок столбца шаблона, как узнать заголовок в чужом файле

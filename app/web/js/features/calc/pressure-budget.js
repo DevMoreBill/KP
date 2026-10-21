@@ -1,5 +1,6 @@
 import { CalcInput } from './calc-input.js';
 import { CalcNote } from './calc-note.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /** Давление: у потребителя + потери на фильтрах, осушителях и трубах → давление компрессора; аппараты — не ниже. */
 export class PressureBudget {

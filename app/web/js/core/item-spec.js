@@ -2,6 +2,7 @@ import { EquipTypes } from './equip-types.js';
 import { Attrs } from './item-attrs.js';
 import { SpecValues } from './spec-values.js';
 import { Str } from './str.js';
+import { Kit } from '../features/kit/kit.js';
 
 /** Характеристики позиции по параметрам её типа: строка главного, таблица характеристик, шаблон таблицы, место картинки. */
 export class ItemSpec {
@@ -168,7 +169,7 @@ export class CoverHint {
    * @returns {string}
    */
   static model(item) {
-    const main = typeof Kit !== 'undefined' && Kit.station(item) ? Kit.main(item) : null;
+    const main = Kit.station(item) ? Kit.main(item) : null;
     const mainAttrs = (main && main.attrs) || {};
     if (mainAttrs.model) return [mainAttrs.maker, mainAttrs.model].filter(Boolean).join(' ');
     const attrs = Attrs.of(item);

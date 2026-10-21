@@ -1,5 +1,17 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
 import { AlertsCard } from './settings-panels.js';
+import { AiDirect } from '../catalog/ai-chat.js';
+import { TypesEditor } from '../catalog/types-editor.js';
+import { Fmt } from '../../core/str.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { TemplateDesigner } from '../doc/template-designer.js';
+import { TemplateEditor } from '../doc/template-editor.js';
+import { $, esc } from '../../core/util.js';
+import { Templates } from '../doc/templates.js';
 
 /** Шаблоны КП: графический редактор, настройки, новый шаблон для компании, папка шаблонов. */
 export class TemplatesTab {
@@ -33,18 +45,18 @@ export class TemplatesTab {
       return;
     }
     if (event.target.closest('[data-tnew]')) {
-      TemplateDesigner.newCompany().catch(error => toast(`Не получилось: ${error.message || error}`));
+      TemplateDesigner.newCompany().catch(error => Toast.show(`Не получилось: ${error.message || error}`));
       return;
     }
     if (event.target.closest('[data-tfold]')) this._folder();
   }
 
   static _folder() {
-    api('/api/templates/folder', { method: 'POST' })
+    Api.request('/api/templates/folder', { method: 'POST' })
       .then(reply => {
-        if (reply && reply.remote) toast('Шаблоны лежат на компьютере-сервере, в папке программы «templates»');
+        if (reply && reply.remote) Toast.show('Шаблоны лежат на компьютере-сервере, в папке программы «templates»');
       })
-      .catch(error => toast(error.message));
+      .catch(error => Toast.show(error.message));
   }
 }
 
@@ -56,19 +68,19 @@ export class TypesTab {
    */
   static render(main) {
     const counts = {};
-    for (const card of catCache) {
-      const cat = attrsOf(card).cat || '';
+    for (const card of Catalog.cache) {
+      const cat = Attrs.of(card).cat || '';
       counts[cat] = (counts[cat] || 0) + 1;
     }
-    const units = TYPES.filter(type => !type.station);
-    const stations = TYPES.filter(type => type.station);
+    const units = EquipTypes.list.filter(type => !type.station);
+    const stations = EquipTypes.list.filter(type => type.station);
     const row = type =>
-      `<tr><td>${esc(type.name)}</td><td class="muted">${type.fields.length} ${plural(type.fields.length, 'параметр', 'параметра', 'параметров')}</td><td>${Fmt.num(counts[type.id] || 0)}</td></tr>`;
+      `<tr><td>${esc(type.name)}</td><td class="muted">${type.fields.length} ${KPGen.plural(type.fields.length, 'параметр', 'параметра', 'параметров')}</td><td>${Fmt.num(counts[type.id] || 0)}</td></tr>`;
     main.innerHTML = `<div class="st-card"><div class="row"><p class="sub" style="margin:0">Категории · ${units.length}${stations.length ? ` и станций · ${stations.length}` : ''}</p><span class="sp"></span><button class="btn primary" type="button" data-types>Открыть редактор категорий</button></div>
       <p class="muted">Параметры, фильтры, группы характеристик и шаблон таблицы. Удалить свою категорию или вернуть стандартные можно только отсюда (при входе в «Настройки»).</p>
       <table class="pv-t st-tt"><tr><th>Категория</th><th>Параметры</th><th>Товаров</th></tr>${[...units, ...stations].map(row).join('')}</table></div>`;
     main.onclick = event => {
-      if (event.target.closest('[data-types]')) openTypesEditor();
+      if (event.target.closest('[data-types]')) TypesEditor.open();
     };
   }
 }
@@ -245,7 +257,7 @@ export class AiTab {
   static async _save(main, body, message) {
     try {
       await AdminApi.post('ai', body);
-      await aiStatusLoad();
+      await AiDirect.load();
       this.render(main, { t: message });
     } catch (error) {
       this.render(main, { t: String(error.message || error), err: true });

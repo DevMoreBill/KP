@@ -99,6 +99,3 @@ export const LAYOUT = {
   VentIntake,
   VentPlan,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, LAYOUT);

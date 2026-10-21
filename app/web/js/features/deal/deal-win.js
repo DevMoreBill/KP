@@ -16,6 +16,12 @@ import { DealScheduleView } from './deal-schedule-view.js';
 import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { DealUi } from './deal-ui.js';
+import { Fmt } from '../../core/str.js';
+import { Mobile } from '../../ui/mobile.js';
+import { KpState, S } from '../../core/state.js';
+import { Morph } from '../../core/morph.js';
+import { ItemAttrs } from '../../core/item-attrs.js';
+import { $, esc } from '../../core/util.js';
 
 /**
  * Окно «Экономика сделки»: шапка с датой договора и Excel, вкладки шагов по порядку заполнения (открыта одна), правая
@@ -47,7 +53,7 @@ export class DealWin {
       ItemAttrs.during(() => DealWin.renderIn(dlg));
     } catch (error) {
       console.error(error);
-      morph(
+      Morph.apply(
         dlg,
         `<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>
       <p class="msg err" style="margin:20px">Не удалось показать расчёт: ${esc(error.message || error)}. Сообщите разработчику; данные КП не изменены.</p>`,
@@ -64,15 +70,15 @@ export class DealWin {
     DealLogistics.sync(deal);
     const kpData = DealState.inputs();
     const calc = DealCalculator.calc(kpData, deal);
-    if (DealConds.sync(calc)) persist();
+    if (DealConds.sync(calc)) KpState.persist();
     // на телефоне шапка — одна строка, дата договора — в строке с прибылью
-    const mob = isMob();
+    const mob = Mobile.isPhone();
     const date = DealWin._date(deal);
     const tabs = DealWin._tabs(calc, deal);
     const customs = DealCustoms.html(calc);
     const customer = DealWin._customer(calc);
     dlg.dataset.tab = DealUi.open;
-    morph(
+    Morph.apply(
       dlg,
       `${DealWin._head(mob ? '' : date)}${DealWin._banner(kpData)}<div class="dl-mini">${mob ? date : ''}${DealWin._mini(calc)}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
       ${DealOverview.html(calc)}
@@ -178,7 +184,7 @@ export class DealWin {
       tot: [
         'Итого заплатит заказчик',
         calc.rows.filter(row => row.inflow).reduce((sum, row) => sum + row.amount, 0),
-        `${pays} ${plural(pays, 'платёж', 'платежа', 'платежей')}, последний — ${start ? DealCal.dayRu(calc.Tend) : `день ${calc.Tend}`}`,
+        `${pays} ${KPGen.plural(pays, 'платёж', 'платежа', 'платежей')}, последний — ${start ? DealCal.dayRu(calc.Tend) : `день ${calc.Tend}`}`,
       ],
       id: 'cust',
     });

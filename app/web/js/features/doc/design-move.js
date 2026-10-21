@@ -3,6 +3,8 @@ import { DesignHistory } from './design-history.js';
 import { DesignModel } from './design-model.js';
 import { DesignPanels } from './design-panels.js';
 import { DesignView } from './design-view.js';
+import { Toast } from '../../core/toast.js';
+import { $ } from '../../core/util.js';
 
 /**
  * Перенос мышью: свой объект — в любое место страницы (место привязки и координаты, направляющие притягивают), элемент
@@ -126,7 +128,7 @@ export class DesignMove {
       });
       return;
     }
-    if (anchor.far) toast('На этой странице нет места привязки — объект привязан к ближайшему разделу выше');
+    if (anchor.far) Toast.show('На этой странице нет места привязки — объект привязан к ближайшему разделу выше');
     DesignHistory.change(
       () => {
         const item = DesignModel.item(this.sel);
@@ -158,6 +160,6 @@ export class DesignMove {
       },
       { now: true },
     );
-    if (dy < -STILL) toast('Сдвиг вверх ограничен отступом макета над элементом');
+    if (dy < -STILL) Toast.show('Сдвиг вверх ограничен отступом макета над элементом');
   }
 }

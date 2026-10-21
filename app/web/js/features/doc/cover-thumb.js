@@ -1,4 +1,8 @@
 import { PreviewDocx } from './preview-docx.js';
+import { FormView } from '../../ui/form-view.js';
+import { Steps } from '../../ui/steps.js';
+import { $, esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
 
 /** Живое превью титула в разделе «Оформление КП»: первая страница документа, вписанная по ширине рамки. */
 export class CoverThumb {
@@ -60,7 +64,7 @@ export class CoverThumb {
 
   static async _render() {
     const box = $('#cvThumb');
-    if (!box || STEP !== 'cover') return;
+    if (!box || Steps.current !== 'cover') return;
     if (this.busy) {
       this.timer = setTimeout(() => this._render(), this.BUSY_DELAY);
       return;
@@ -77,7 +81,7 @@ export class CoverThumb {
       }
     }
     this.busy = false;
-    if (STEP === 'cover' && this.key !== this._key()) this.soon();
+    if (Steps.current === 'cover' && this.key !== this._key()) this.soon();
   }
 
   static async _build(key) {
@@ -115,13 +119,13 @@ export class CoverThumb {
   /** Обработчики документа. */
   static listen() {
     addEventListener('resize', () => {
-      if (STEP === 'cover') this.fit();
+      if (Steps.current === 'cover') this.fit();
     });
     document.addEventListener('change', event => {
       if (event.target.dataset.cvphoto == null) return;
       S.cover.photoFrom = event.target.value;
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     });
   }
 }

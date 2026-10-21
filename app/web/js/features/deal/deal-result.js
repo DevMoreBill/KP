@@ -2,6 +2,8 @@ import { DealCalculator } from './deal-calculator.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
 import { InputNum } from './input-num.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Правая колонка окна: подбор цены продажи под цель (маржинальность, наценка, прибыль) с ценами позиций, безубыточная
@@ -66,8 +68,9 @@ export class DealResult {
     const rows = plan.its
       .map((item, k) => {
         const qty = +item.qty > 1 ? ` <small>× ${esc(item.qty)}</small>` : '';
-        const now = item.price && item.price !== plan.prices[k] ? `<small>сейчас ${money(item.price)}</small>` : '';
-        return `<tr><td>${esc(item.name)}${qty}</td><td class="num"><b>${money(plan.prices[k])}</b>${now}</td></tr>`;
+        const now =
+          item.price && item.price !== plan.prices[k] ? `<small>сейчас ${KPGen.money(item.price)}</small>` : '';
+        return `<tr><td>${esc(item.name)}${qty}</td><td class="num"><b>${KPGen.money(plan.prices[k])}</b>${now}</td></tr>`;
       })
       .join('');
     return `<table class="dl-plan"><thead><tr><th>Позиция</th><th class="num">Цена за ед. с НДС</th></tr></thead><tbody>${rows}</tbody></table>`;

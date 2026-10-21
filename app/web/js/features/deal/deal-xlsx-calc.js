@@ -5,6 +5,10 @@ import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
 import { DealXlsxCustoms } from './deal-xlsx-customs.js';
 import { InputNum } from './input-num.js';
+import { Money } from '../../core/money.js';
+import { XlsxBook } from '../../core/xlsx.js';
+import { Fmt } from '../../core/str.js';
+import { S } from '../../core/state.js';
 
 /**
  * Лист Excel «Расчёт»: все исходные данные (жёлтые ячейки можно менять) и формулы — цена и курсы, поставщики (позиции,

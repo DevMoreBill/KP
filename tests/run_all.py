@@ -111,7 +111,7 @@ class Runner:
         for name, cmd in style.commands():
             self.step(name, cmd)
         if self.tool('help.js', bool(node), 'Node.js'):
-            self.step('help.js читается', [node, '-e', "new Function(require('fs').readFileSync('app/web/js/features/help.js','utf8'))"])
+            self.step('help.js читается', [node, '-e', "const m = require('./app/web/js/features/help.js'); if (!m.APP_VERSIONS.length) process.exit(1)"])
 
     def suites(self):
         names = self.names or sorted(os.path.basename(f)[:-3] for f in glob.glob(os.path.join(HERE, 'test_*.py')))

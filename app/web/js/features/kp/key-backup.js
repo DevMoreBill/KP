@@ -1,3 +1,4 @@
+import { esc } from '../../core/util.js';
 /**
  * Резервная копия ключей API: файл JSON, по желанию зашифрованный паролем (PBKDF2-SHA256 + AES-GCM, Web Crypto в
  * браузере). file — загруженный файл копии: {name, at, keys, enc, err}.

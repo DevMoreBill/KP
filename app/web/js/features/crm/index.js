@@ -20,6 +20,7 @@ import { ClientSuggest } from './client-suggest.js';
 import { DealFieldsView } from './deal-fields.js';
 import { LostPick } from './lost-pick.js';
 import { MirrorPanel } from './mirror-panel.js';
+import { LISTS } from '../../core/lists.js';
 
 export const CRM = {
   CrmFmt,
@@ -48,6 +49,4 @@ export const CRM = {
   MirrorPanel,
 };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, CRM);
 LISTS.ready(CrmStages.LISTS);

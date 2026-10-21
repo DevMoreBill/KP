@@ -1,4 +1,5 @@
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
+import { XlsxBook } from '../../core/xlsx.js';
 
 /** Лист Excel «График платежей»: деньги по дням — день, дата, событие, платёж (формулой от листа «Расчёт»), остаток, финансирование. */
 export class DealXlsxGraph {

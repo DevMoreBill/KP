@@ -1,5 +1,13 @@
 import { Kit } from './kit.js';
 import { StationPurpose } from './station-spec.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { StationCalc } from '../calc/station-calc.js';
+import { KitScope } from './kit-scope.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { S } from '../../core/state.js';
+import { StationDesign } from '../station/station-design.js';
+import { SupplyDocs } from './supply-docs.js';
+import { StationDoc } from '../station/station-doc.js';
 
 /**
  * Сборка в документе КП, экономике сделки и логистике: шаблон, умеющий сборки, получает состав как есть (`data`), любой
@@ -95,7 +103,7 @@ export class KitDoc {
           qty: +item.qty || 0,
           cost: item.cost || 0,
           costCur: item.costCur || 'RUB',
-          maker: attrsOf(item).maker || '',
+          maker: Attrs.of(item).maker || '',
           item,
         });
         return;
@@ -150,7 +158,7 @@ export class KitDoc {
         catId: part.catId || '',
         name: part.name,
         role: part.role || '',
-        attrs: { ...attrs, cat: attrs.cat || attrsOf(item).cat },
+        attrs: { ...attrs, cat: attrs.cat || Attrs.of(item).cat },
       },
     };
   }
@@ -214,11 +222,11 @@ export class KitDoc {
 
   /** приложение «Расчётная записка и состав станции» */
   static _calc(item) {
-    return typeof StationCalc !== 'undefined' ? StationCalc.docGroups(item) : [];
+    return StationCalc.docGroups(item);
   }
 
   static _station(item) {
-    return !!typeById(attrsOf(item).cat).station;
+    return !!EquipTypes.byId(Attrs.of(item).cat).station;
   }
 
   static _qty(part) {

@@ -1,5 +1,10 @@
 import { CatalogFilter } from './catalog-filter.js';
 import { CatalogIndex } from './catalog-index.js';
+import { CatSections } from './cat-sections.js';
+import { Morph } from '../../core/morph.js';
+import { $, esc } from '../../core/util.js';
+import { Fmt, Str } from '../../core/str.js';
+import { EquipTypes } from '../../core/equip-types.js';
 
 /** Отбор в окне каталога: верхняя панель, плашки условий, левая панель (фильтры по параметрам и дерево категорий). */
 export class CatalogNav {
@@ -15,12 +20,12 @@ export class CatalogNav {
   }
 
   static _groups() {
-    return [...new Set(TYPES.map(type => type.group || this.OTHER))];
+    return [...new Set(EquipTypes.list.map(type => type.group || this.OTHER))];
   }
 
   static _count(counts, value) {
     if (value == null || value === '') return;
-    const key = norm(value);
+    const key = Str.norm(value);
     const found = counts.get(key) || { v: String(value), n: 0 };
     found.n++;
     counts.set(key, found);
@@ -30,7 +35,7 @@ export class CatalogNav {
     return opts
       .map(
         opt =>
-          `<option value="${esc(opt.v)}"${norm(cur) === norm(opt.v) ? ' selected' : ''}>${esc(opt.v)} (${opt.n})</option>`,
+          `<option value="${esc(opt.v)}"${Str.norm(cur) === Str.norm(opt.v) ? ' selected' : ''}>${esc(opt.v)} (${opt.n})</option>`,
       )
       .join('');
   }
@@ -56,7 +61,7 @@ export class CatalogNav {
     const cur = inF ? filter.f[key] : filter[key];
     const opts = this._sorted(counts);
     if (!opts.length && !cur) return '';
-    const extra = cur && !counts.has(norm(cur)) ? `<option selected>${esc(cur)}</option>` : '';
+    const extra = cur && !counts.has(Str.norm(cur)) ? `<option selected>${esc(cur)}</option>` : '';
     return `<label class="f"><span>${esc(label)}</span><select data-f="${key}" data-in="${inF ? 1 : ''}"><option value="">Все</option>${this._facetOptions(opts, cur)}${extra}</select></label>`;
   }
 
@@ -85,7 +90,9 @@ export class CatalogNav {
    */
   static range(win, field) {
     const range = win.F.rng[field.key] || { min: '', max: '' };
-    const has = win.docs.some(card => win.pass(card, field.key) && numOf(CatalogIndex.attrs(card)[field.key]) != null);
+    const has = win.docs.some(
+      card => win.pass(card, field.key) && Str.num(CatalogIndex.attrs(card)[field.key]) != null,
+    );
     if (!has && range.min === '' && range.max === '') return '';
     return `<div class="f"><span class="muted">${esc(field.label)}${field.unit ? `, ${esc(field.unit)}` : ''}</span><div class="kw"><input type="text" inputmode="decimal" data-rk="${esc(field.key)}" data-rs="min" placeholder="от" value="${esc(range.min ?? '')}"><input type="text" inputmode="decimal" data-rk="${esc(field.key)}" data-rs="max" placeholder="до" value="${esc(range.max ?? '')}"></div>
       ${this._rangeChips(field, range)}</div>`;
@@ -116,22 +123,23 @@ export class CatalogNav {
     const opts = this._sorted(counts)
       .map(
         opt =>
-          `<option value="${esc(opt.v)}"${norm(cur) === norm(opt.v) ? ' selected' : ''}>${esc(opt.v)} · ${opt.n}</option>`,
+          `<option value="${esc(opt.v)}"${Str.norm(cur) === Str.norm(opt.v) ? ' selected' : ''}>${esc(opt.v)} · ${opt.n}</option>`,
       )
       .join('');
-    const has = !cur || counts.has(norm(cur));
+    const has = !cur || counts.has(Str.norm(cur));
     return `<label class="cw-sel${cur ? ' on' : ''}"><span>${label}</span><select data-top="${key}" aria-label="${label}"><option value="">${all}</option>${opts}${has ? '' : `<option selected>${esc(cur)} · 0</option>`}</select></label>`;
   }
 
   static _catGroup(filter, counts, group) {
-    const types = TYPES.filter(
-      type => (type.group || this.OTHER) === group && ((counts.get(norm(type.id)) || {}).n || filter.cat === type.id),
+    const types = EquipTypes.list.filter(
+      type =>
+        (type.group || this.OTHER) === group && ((counts.get(Str.norm(type.id)) || {}).n || filter.cat === type.id),
     );
     if (!types.length) return '';
     const opts = types
       .map(
         type =>
-          `<option value="${esc(type.id)}"${filter.cat === type.id ? ' selected' : ''}>${esc(type.name)} · ${(counts.get(norm(type.id)) || {}).n || 0}</option>`,
+          `<option value="${esc(type.id)}"${filter.cat === type.id ? ' selected' : ''}>${esc(type.name)} · ${(counts.get(Str.norm(type.id)) || {}).n || 0}</option>`,
       )
       .join('');
     return `<optgroup label="${esc(group)}">${opts}</optgroup>`;
@@ -174,7 +182,7 @@ export class CatalogNav {
       cur: filter.sup,
       all: 'Все поставщики',
     });
-    morph(box, this._catSelect(win) + maker + sup + this._toggles(filter));
+    Morph.apply(box, this._catSelect(win) + maker + sup + this._toggles(filter));
   }
 
   static _rangeText(field, range) {
@@ -231,7 +239,7 @@ export class CatalogNav {
    */
   static chips(win) {
     const filter = win.F;
-    const type = filter.cat ? typeById(filter.cat) : null;
+    const type = filter.cat ? EquipTypes.byId(filter.cat) : null;
     const out = this._chipList(filter, type).map(
       ([key, text]) =>
         `<button type="button" class="cw-chip" data-chip="${esc(key)}" title="Убрать условие">${esc(text)}<i aria-hidden="true">✕</i></button>`,
@@ -267,10 +275,10 @@ export class CatalogNav {
   static nav(win) {
     const filter = win.F;
     const { counts, all } = this._countCats(win);
-    const type = filter.cat ? typeById(filter.cat) : null;
+    const type = filter.cat ? EquipTypes.byId(filter.cat) : null;
     const tab = win.tab || (type ? 'flt' : 'cats');
     const body = tab === 'cats' ? CatalogTree.html(win, counts, all) : this._filters(win, counts, type);
-    morph(
+    Morph.apply(
       $('#cwNav'),
       `${this._tabs(tab, filter)}${body}<div class="cw-navok"><button class="btn primary" type="button" data-cw="nav" id="cwNavOk">Показать позиции</button></div>`,
     );
@@ -292,7 +300,7 @@ export class CatalogNav {
       .sort((first, second) => second[1] - first[1])
       .slice(0, this.QUICK_CATS);
     return `<p class="cw-hint" style="margin:0">Выберите категорию — появятся фильтры по её параметрам: мощность, давление, производительность…</p>
-            <div class="cw-qcat">${top.map(([id, count]) => `<button type="button" class="chip" data-cat="${esc(id)}">${esc(typeById(id).name)} <i>${count}</i></button>`).join('')}</div>`;
+            <div class="cw-qcat">${top.map(([id, count]) => `<button type="button" class="chip" data-cat="${esc(id)}">${esc(EquipTypes.byId(id).name)} <i>${count}</i></button>`).join('')}</div>`;
   }
 
   static _filters(win, counts, type) {
@@ -338,7 +346,7 @@ export class CatalogTree {
   static _group(win, { group, counts, prefs }) {
     const filter = win.F;
     const shown = this._shown(win, counts, prefs.hideZero);
-    const types = TYPES.filter(type => (type.group || CatalogNav.OTHER) === group && shown(type));
+    const types = EquipTypes.list.filter(type => (type.group || CatalogNav.OTHER) === group && shown(type));
     if (!types.length) return '';
     const total = types.reduce((sum, type) => sum + (counts.get(type.id) || 0), 0);
     const shut = !!prefs.fold[group] && !types.some(type => type.id === filter.cat);

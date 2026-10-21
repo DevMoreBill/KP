@@ -1,5 +1,10 @@
 import { ContainerKind } from './container-kind.js';
 import { Kit } from './kit.js';
+import { StationPaint } from '../layout/station-paint.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Mm } from '../layout/mm.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationMods } from '../layout/station-mods.js';
 
 /** Строка характеристик контейнера «Модули» у станции из модулей (габариты в строке выше — одного модуля). */
 export class StationModsText {
@@ -8,7 +13,7 @@ export class StationModsText {
    * @returns {string}
    */
   static of(part) {
-    const mods = typeof StationMods !== 'undefined' ? StationMods.of(part) : null;
+    const mods = StationMods.of(part);
     if (!mods) return '';
     const dims = StationGeo.parseMm(part.size);
     const total = dims
@@ -39,7 +44,7 @@ export class ContainerPart {
     Object.assign(part, changes);
     const kind = ContainerKind.of(part.ctype);
     part.role = 'container';
-    const mods = typeof StationMods !== 'undefined' ? StationMods.of(part) : null;
+    const mods = StationMods.of(part);
     if (mods) part.qty = mods.n;
     this._name(part, kind);
     const roofId = StationGeo.roof(part);
@@ -62,8 +67,8 @@ export class ContainerPart {
     const kind = ContainerKind.of(ctype);
     return this.apply(Kit.newPart({ qty: 1 }), {
       ctype: kind.id,
-      ins: kind.ins || DEF('st.ins') || this.DEFAULT_INS,
-      climate: kind.climate || DEF('st.climate') || this.DEFAULT_CLIMATE,
+      ins: kind.ins || DefRegistry.value('st.ins') || this.DEFAULT_INS,
+      climate: kind.climate || DefRegistry.value('st.climate') || this.DEFAULT_CLIMATE,
     });
   }
 

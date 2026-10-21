@@ -1,3 +1,19 @@
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { StationAuto } from '../kit/station-auto.js';
+import { StationSize } from './station-size.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Modal } from '../../core/modal.js';
+import { KpState, S } from '../../core/state.js';
+import { Mm } from '../layout/mm.js';
+import { StationLayout } from '../layout/station-layout.js';
+import { StationUi } from './station-ui.js';
+import { esc } from '../../core/util.js';
+import { StationMods } from '../layout/station-mods.js';
+import { Kit } from '../kit/kit.js';
+import { StationGeo } from '../layout/station-geo.js';
 /**
  * Станция из нескольких модулей: окно раскладки. Всегда кнопкой «Модули…» в «Компоновке» и всегда с вопросом «сделать
  * так?»; раскладка — на сетке (модули перетаскиваются; на телефоне — нажать модуль, затем клетку), варианты a × b — с
@@ -242,7 +258,9 @@ export class StationModsUi {
   }
 
   static _joinCost() {
-    return DEF('st.joinCost') ? ` (${Mm.text(+DEF('st.joinCost'))} ₽ за стык)` : ' — цену укажите в составе';
+    return DefRegistry.value('st.joinCost')
+      ? ` (${Mm.text(+DefRegistry.value('st.joinCost'))} ₽ за стык)`
+      : ' — цену укажите в составе';
   }
 
   /**
@@ -461,7 +479,7 @@ export class StationModsUi {
             name: this.JOIN,
             desc: this.JOIN_DESC,
             modJoin: true,
-            cost: Math.round((+DEF('st.joinCost') || 0) * 100),
+            cost: Math.round((+DefRegistry.value('st.joinCost') || 0) * 100),
             costCur: 'RUB',
           });
     part.qty = joints;
@@ -478,9 +496,9 @@ export class StationModsUi {
     if (container) ContainerPart.apply(container);
     StationSize.refresh(item);
     StationAuto.fill(item);
-    persist();
-    renderEditor();
-    renderForm();
-    toast(message, this.TOAST_MS);
+    KpState.persist();
+    ItemEditor.render();
+    FormView.render();
+    Toast.show(message, this.TOAST_MS);
   }
 }

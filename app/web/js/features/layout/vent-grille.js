@@ -1,4 +1,5 @@
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /** Жалюзи и маркизы: размеры и пределы — раздел grille матрицы («Настройки → … → Жалюзи притока и выброса, маркизы»). */
 export class VentGrille {

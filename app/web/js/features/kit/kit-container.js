@@ -1,3 +1,15 @@
+import { StationPaint } from '../layout/station-paint.js';
+import { KitView } from './kit-view.js';
+import { DimInput } from '../../core/dim-input.js';
+import { StationSize } from '../station/station-size.js';
+import { PaintView } from './paint-view.js';
+import { Spoiler } from '../station/spoiler.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationUi } from '../station/station-ui.js';
+import { DealTerms } from '../deal/deal-terms.js';
+import { esc } from '../../core/util.js';
+import { ContainerKind } from './container-kind.js';
 /**
  * Контейнер станции во вкладке «Состав станции»: тип, размер, утепление, климат, сборщик и закупка — одной строкой;
  * крыша, пол и окраска — под раскрытием; системы контейнера — кнопками. Контейнер не выбран — плитки типов.
@@ -82,7 +94,7 @@ export class KitContainer {
           part.climate,
           'Климатическое исполнение',
         )}
-        <label class="f"><span>Сборщик контейнера${tip('Кто изготавливает контейнер и собирает станцию. Элементы «Сборщика контейнера» без своего поставщика в «Экономике сделки» попадут к нему; наше оборудование едет к нему на сборку.')}</span><input type="text" list="kitSupL" data-p="items.${index}.kit.parts.${j}.sup" value="${esc(part.sup || '')}" placeholder="производитель контейнеров"></label>
+        <label class="f"><span>Сборщик контейнера${UiKit.tip('Кто изготавливает контейнер и собирает станцию. Элементы «Сборщика контейнера» без своего поставщика в «Экономике сделки» попадут к нему; наше оборудование едет к нему на сборку.')}</span><input type="text" list="kitSupL" data-p="items.${index}.kit.parts.${j}.sup" value="${esc(part.sup || '')}" placeholder="производитель контейнеров"></label>
         <label class="f"><span>Закупка контейнера</span><span class="kit-cost"><input type="text" inputmode="decimal" data-kitcost="${index}.${j}" value="${esc(this.costText(part))}" placeholder="цена из счёта">${this.currency(index, j, part)}</span></label></div>
       <details class="kc-more"${Spoiler.attr(`cont:${item.id}`)}><summary>Крыша, пол, окраска${this.look(part)}</summary><div class="kc-g">
         ${StationGeo.SEA[part.ctype] ? '' : select('roof', this._roofs(), StationGeo.roof(part), 'Крыша')}
@@ -102,7 +114,7 @@ export class KitContainer {
     const mode = part.lenFix ? 'длина задана' : 'по оборудованию';
     const note = auto && part.sizeAuto && size ? ` <small class="muted">${mode}</small>` : '';
     const help = auto
-      ? tip(
+      ? UiKit.tip(
           'Все три окошка пустые — размер по оборудованию. Только длина (например, 10000) — длина заданная, ширина, высота и плотность компоновки (просторно, плотно, максимально плотно) — по оборудованию. Все три — размер целиком вручную.',
         )
       : '';

@@ -1,3 +1,7 @@
+import { Kit } from '../kit/kit.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { DefRegistry } from '../../core/defaults.js';
 /**
  * Запросы к ИИ для карточки оборудования: основной (объём — как у карточек категории в каталоге) и «дополнить» (только
  * недостающее, только с источником). Чего не хватает — по сравнению с образцом категории (/api/ai/profile).
@@ -15,7 +19,7 @@ export class AiPrompt {
    * @returns {number}
    */
   static get KEY_SHARE() {
-    return DEFN('ai.keyShare', 50) / this.PERCENT;
+    return DefRegistry.num('ai.keyShare', 50) / this.PERCENT;
   }
 
   /**
@@ -54,7 +58,7 @@ export class AiPrompt {
     const keys = profile.keys.filter(key => key.share >= this.KEY_SHARE).map(key => key.k);
     const labels = profile.labels.length ? `, типичные темы блоков: ${profile.labels.join('; ')}` : '';
     const groups = profile.groups > 1 ? ` в ${profile.groups} группах (${profile.groupNames.join('; ')})` : '';
-    return `Объём — как у карточек этой категории в каталоге программы (по ${profile.cards} карточкам): описание — около ${profile.features} ${plural(profile.features, 'блока', 'блоков', 'блоков')} по ~${profile.blockChars} знаков (всего ~${profile.descChars})${labels}; характеристики — около ${profile.rows} строк${groups}.
+    return `Объём — как у карточек этой категории в каталоге программы (по ${profile.cards} карточкам): описание — около ${profile.features} ${KPGen.plural(profile.features, 'блока', 'блоков', 'блоков')} по ~${profile.blockChars} знаков (всего ~${profile.descChars})${labels}; характеристики — около ${profile.rows} строк${groups}.
 Характеристики, которые есть у большинства карточек категории, — заполни каждую, для которой есть достоверное значение: ${keys.join('; ') || '—'}.
 Если достоверных данных меньше, дай меньше — объём не повод придумывать.`;
   }
@@ -90,7 +94,7 @@ export class AiPrompt {
 "parts":[{"name":"элемент станции (кроме контейнера), например «Шкаф АВР»","qty":1,"desc":"что требуется","rows":[{"k":"Параметр","v":"значение"}]}]`
       : '';
     return `{"name":"полное наименование, например «${type.item} …»",
-"spec":"ключевые характеристики одной строкой через « · », до ${Math.round(DEFN('ai.specLen', 90))} символов",
+"spec":"ключевые характеристики одной строкой через « · », до ${Math.round(DefRegistry.num('ai.specLen', 90))} символов",
 "pageTitle":"заголовок страницы оборудования",
 "features":[{"label":"Узел или особенность","text":"2–4 предложения по существу"}],
 "groups":[{"name":"Основные","rows":[{"k":"Параметр, ед.","v":"значение","hl":true}]}],
@@ -99,7 +103,8 @@ export class AiPrompt {
   }
 
   static _rules(type) {
-    const types = TYPES.filter(known => !known.station)
+    const types = EquipTypes.list
+      .filter(known => !known.station)
       .map(known => `${known.id} — ${known.name}`)
       .join('; ');
     const station = type.station
@@ -116,7 +121,7 @@ export class AiPrompt {
    * @returns {string}
    */
   static main(item, context = {}) {
-    const type = typeById(attrsOf(item).cat);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
     const parts = Kit.parts(item).filter(part => part.name);
     const facts = this.factsText(context.facts);
     const known = facts
@@ -179,14 +184,14 @@ ${String(item._src || '').trim() || '(только наименование вы
    */
   static gapsText(gap) {
     const desc = gap.desc
-      ? `описание (сейчас ${gap.feats} ${plural(gap.feats, 'блок', 'блока', 'блоков')}, ~${gap.chars} знаков)`
+      ? `описание (сейчас ${gap.feats} ${KPGen.plural(gap.feats, 'блок', 'блока', 'блоков')}, ~${gap.chars} знаков)`
       : '';
     return [desc, this._rowsGap(gap)].filter(Boolean).join('; ');
   }
 
   static _need(gap, profile) {
     const desc = gap.desc
-      ? `— описания: нужно около ${profile.features} ${plural(profile.features, 'блока', 'блоков', 'блоков')} по ~${profile.blockChars} знаков (всего ~${profile.descChars}); добавь недостающие блоки${gap.labels.length ? ` (типичные темы: ${gap.labels.join('; ')})` : ''};\n`
+      ? `— описания: нужно около ${profile.features} ${KPGen.plural(profile.features, 'блока', 'блоков', 'блоков')} по ~${profile.blockChars} знаков (всего ~${profile.descChars}); добавь недостающие блоки${gap.labels.length ? ` (типичные темы: ${gap.labels.join('; ')})` : ''};\n`
       : '';
     const keys = gap.keys.length ? `— характеристик: ${gap.keys.join('; ')};\n` : '';
     const rows =

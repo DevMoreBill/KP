@@ -1,6 +1,10 @@
 import { AdminApi } from './admin-core.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { FeedsTab } from './feeds-tab.js';
+import { Toast } from '../../core/toast.js';
+import { Fmt } from '../../core/str.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { esc } from '../../core/util.js';
 
 /** Сетка скидок поставщика: правила по категориям, приводу и мощности, «остальное», серии по приводу. */
 export class FeedDiscounts {
@@ -69,15 +73,15 @@ export class FeedDiscounts {
   static html(feed) {
     const disc = this.of(feed);
     const base = FeedFmt.costKind(feed) ? 'цены прайса' : 'РРЦ';
-    return `<div class="fd-disc"><div class="row fd-dh"><div class="sub" style="margin:0">Сетка скидок поставщика${tip(this._tip(base))}</div>
+    return `<div class="fd-disc"><div class="row fd-dh"><div class="sub" style="margin:0">Сетка скидок поставщика${UiKit.tip(this._tip(base))}</div>
       </div>
     <div class="fd-tw"><table class="fd-t fd-dt"><thead><tr><th>Правило</th><th>Категории</th><th>Привод</th><th>Мощность до, кВт</th><th>Скидка, %</th><th></th></tr></thead>
       <tbody>${disc.discounts.map((rule, index) => this._row(rule, index)).join('')}
       <tr class="fd-dother"><td><b>Остальное оборудование</b></td><td class="muted" colspan="3">всё, что не подошло под правила выше</td><td data-l="Скидка, %"><input type="text" inputmode="decimal" data-fddo="discount" value="${esc(this._num(disc.discount))}" placeholder="нет" aria-label="Скидка на остальное, %"></td><td></td></tr></tbody></table></div>
     <div class="row fd-fb"><button class="btn" type="button" data-fd="discadd">+ Правило</button></div>
     <div class="st-ed-g fd-dhint">
-      <label class="f"><span>Серии с ременным приводом${tip('Через запятую. Ищутся в названии позиции и в названии листа прайса целым словом. Пример для Dalgakiran: TIDY, DVK, DS.')}</span><input type="text" data-fdh="belt" value="${esc(disc.driveHints.belt || '')}" placeholder="TIDY, DVK, DS"></label>
-      <label class="f"><span>Серии с прямым приводом${tip('Через запятую; проверяются раньше ременных — «DVK D» точнее, чем «DVK». Частотник (VSD, INVERSYS, инвертор) определяется сам.')}</span><input type="text" data-fdh="direct" value="${esc(disc.driveHints.direct || '')}" placeholder="DVK D, IMPETUS, EAGLE"></label></div>
+      <label class="f"><span>Серии с ременным приводом${UiKit.tip('Через запятую. Ищутся в названии позиции и в названии листа прайса целым словом. Пример для Dalgakiran: TIDY, DVK, DS.')}</span><input type="text" data-fdh="belt" value="${esc(disc.driveHints.belt || '')}" placeholder="TIDY, DVK, DS"></label>
+      <label class="f"><span>Серии с прямым приводом${UiKit.tip('Через запятую; проверяются раньше ременных — «DVK D» точнее, чем «DVK». Частотник (VSD, INVERSYS, инвертор) определяется сам.')}</span><input type="text" data-fdh="direct" value="${esc(disc.driveHints.direct || '')}" placeholder="DVK D, IMPETUS, EAGLE"></label></div>
     <div class="row fd-fb"><button class="btn" type="button" data-fd="discplan">Показать распределение</button><button class="btn" type="button" data-fd="discsave">Сохранить сетку</button>
       <button class="btn primary" type="button" data-fd="discapply"${feed.linked ? '' : ' disabled title="Сначала загрузите позиции в каталог"'}>Сохранить и обновить цены</button></div>
     <div id="fdPlan">${FeedState.plan && FeedState.plan.id === feed.id ? this.plan(FeedState.plan) : ''}</div></div>`;
@@ -145,8 +149,8 @@ export class FeedDiscounts {
     return `<div class="fd-tw"><table class="fd-t"><thead><tr><th>Правило</th><th class="num">Скидка</th><th class="num">Позиций</th><th>Например</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     ${plan.unknownCount ? `<details class="more"><summary class="bad-t">Не распознано: ${Fmt.num(plan.unknownCount)} — получат скидку «остальное»</summary><p class="muted">${plan.unknown.map(entry => `${esc(entry.name)} <small>(${esc(entry.why)})</small>`).join(' · ')}</p><p class="muted">Добавьте серию в поле «Серии с ременным / прямым приводом» или укажите привод и мощность в карточке позиции.</p></details>` : ''}
-    ${plan.manual ? `<p class="muted">Закупка исправлена вручную у ${Fmt.num(plan.manual)} ${plural(plan.manual, 'позиции', 'позиций', 'позиций')} — её сетка не меняет.</p>` : ''}
-    ${plan.noprice ? `<p class="muted">Пока без цены: ${Fmt.num(plan.noprice)} ${plural(plan.noprice, 'позиция', 'позиции', 'позиций')} — закупка появится после «Сохранить и обновить цены», если в прайсе есть цена.</p>` : ''}`;
+    ${plan.manual ? `<p class="muted">Закупка исправлена вручную у ${Fmt.num(plan.manual)} ${KPGen.plural(plan.manual, 'позиции', 'позиций', 'позиций')} — её сетка не меняет.</p>` : ''}
+    ${plan.noprice ? `<p class="muted">Пока без цены: ${Fmt.num(plan.noprice)} ${KPGen.plural(plan.noprice, 'позиция', 'позиции', 'позиций')} — закупка появится после «Сохранить и обновить цены», если в прайсе есть цена.</p>` : ''}`;
   }
 
   /**
@@ -161,7 +165,7 @@ export class FeedDiscounts {
     if (!feed) return undefined;
     const ctx = { feed, button, main, disc: this.read(main) || this.of(feed) };
     if (action !== 'discadd' && action !== 'discdel' && ctx.disc.discounts.some(rule => !rule.pct)) {
-      toast('У каждого правила укажите скидку, % (или удалите правило)');
+      Toast.show('У каждого правила укажите скидку, % (или удалите правило)');
       return undefined;
     }
     const method = this.ACTIONS[action];
@@ -200,7 +204,7 @@ export class FeedDiscounts {
 
   static async _save(ctx) {
     await this._store(ctx);
-    toast('Сетка скидок сохранена');
+    Toast.show('Сетка скидок сохранена');
     FeedState.plan = null;
     return FeedsTab.render(ctx.main);
   }
@@ -208,7 +212,7 @@ export class FeedDiscounts {
   static async _apply(ctx) {
     await this._store(ctx);
     await AdminApi.post(`feeds/${FeedState.sel}/check`);
-    toast('Сетка сохранена, обновляю цены по прайсу');
+    Toast.show('Сетка сохранена, обновляю цены по прайсу');
     FeedState.plan = null;
     return FeedsTab.render(ctx.main);
   }

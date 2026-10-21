@@ -5,6 +5,3 @@ import { TzPick } from './tz-pick.js';
 import { TzQuestions } from './tz-questions.js';
 
 export const TZ_IN = { StationSup, TzFit, TzImport, TzPick, TzQuestions };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, TZ_IN);

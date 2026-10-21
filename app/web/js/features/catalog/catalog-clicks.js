@@ -1,5 +1,12 @@
 import { CatalogActions } from './catalog-actions.js';
 import { CatalogTree } from './catalog-nav.js';
+import { ModerationList } from './moderation.js';
+import { TypesEditor } from './types-editor.js';
+import { XlsImport } from './excel-import.js';
+import { EquipWizard } from '../wizard/equip-wizard.js';
+import { $ } from '../../core/util.js';
+import { Steps } from '../../ui/steps.js';
+import { CatalogExportDlg } from './catalog-export.js';
 
 /** Щелчки в окне каталога: отметки, вкладки, плашки, категории, пакетные действия, карточка, меню. */
 export class CatalogClicks {
@@ -30,7 +37,7 @@ export class CatalogClicks {
     close: win => win.close(),
     done: win => {
       win.close();
-      if (win.optFor == null && STEP !== 'equip') goStep('equip');
+      if (win.optFor == null && Steps.current !== 'equip') Steps.open('equip');
     },
     max: (win, dialog) => {
       dialog.classList.toggle('max');

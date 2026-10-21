@@ -4,6 +4,11 @@ import { DbMaint, MigrationsCard } from './maint-card.js';
 import { SettingsFileCard } from './settings-file.js';
 import { MirrorCard } from './settings-panels.js';
 import { StNav } from './settings-tools.js';
+import { Toast } from '../../core/toast.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { esc } from '../../core/util.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Fmt } from '../../core/str.js';
 
 /** «База и копии»: сводка плитками и подвкладки Выгрузить · Загрузить · Автокопии · Обслуживание · История. */
 export class BackupTab {
@@ -171,7 +176,7 @@ export class BackupTab {
     const counts = overview.counts || {};
     const count = (key, word) => (counts[key] != null ? `${word} ${Fmt.num(counts[key])}` : '');
     const disk = overview.disk;
-    const low = disk && disk.free < DEFN('srv.lowDiskGB', this.LOW_DISK_GB) * this.GIB;
+    const low = disk && disk.free < DefRegistry.num('srv.lowDiskGB', this.LOW_DISK_GB) * this.GIB;
     const [copyValue, copyNote, copyCls] = this._copy(overview);
     return (
       this._tile(
@@ -323,7 +328,7 @@ export class BackupTab {
    * @returns {string}
    */
   static fmtSel(opts) {
-    return `<label class="f"><span class="st-mh">Формат ${tip(this.FMT_TIP)}</span><select id="bkFmt" data-nodirty>${this.fmtOpts(opts)}</select></label>`;
+    return `<label class="f"><span class="st-mh">Формат ${UiKit.tip(this.FMT_TIP)}</span><select id="bkFmt" data-nodirty>${this.fmtOpts(opts)}</select></label>`;
   }
 
   /**
@@ -343,7 +348,7 @@ export class BackupTab {
   }
 
   static _head(title, help = '') {
-    return `<div class="sub st-mh">${title}${help ? ` ${tip(help)}` : ''}</div>`;
+    return `<div class="sub st-mh">${title}${help ? ` ${UiKit.tip(help)}` : ''}</div>`;
   }
 
   /**
@@ -398,7 +403,7 @@ export class BackupTab {
         ['Внутри', 'значения, списки, тексты, функции, тарифы, нормы станций, фиды, почта, права менеджеров'],
         ['Не попадают', 'пароли — никогда; ключи API — только по галочке ниже'],
       ],
-    )}<label class="ck bk-ck"><input type="checkbox" id="sfKeys" data-nodirty> С ключами API ${tip('<p>Ключи сервисов: проверка контрагентов, перевозчики, PDF, нейросеть, GitHub. Такой файл храните как пароль.</p>')}</label>${this.fmtSel()}${this.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать</button>')}</div>`;
+    )}<label class="ck bk-ck"><input type="checkbox" id="sfKeys" data-nodirty> С ключами API ${UiKit.tip('<p>Ключи сервисов: проверка контрагентов, перевозчики, PDF, нейросеть, GitHub. Такой файл храните как пароль.</p>')}</label>${this.fmtSel()}${this.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать</button>')}</div>`;
     side.querySelector('#sfKeys').onchange = async event => {
       const sure = () =>
         AdminDialog.confirm(
@@ -539,7 +544,7 @@ export class BackupTab {
     this.inn = kind === 'settings' ? 'settings' : 'db';
     const pane = this.main.querySelector('#bkPane');
     this.pane();
-    toast(
+    Toast.show(
       kind === 'settings'
         ? 'Это файл настроек — открыт пункт «Файл настроек»'
         : 'Это файл базы целиком — открыт пункт «Файл базы целиком»',
@@ -569,13 +574,13 @@ export class BackupTab {
         body: file,
       });
       status.textContent = '';
-      toast(
+      Toast.show(
         `База заменена: позиций ${Fmt.num(reply.catalog)}, КП ${Fmt.num(reply.kp)}. Прежняя сохранена: ${reply.backup.split(/[\\/]/).pop()}`,
       );
       setTimeout(() => location.reload(), this.RELOAD_MS);
     } catch (error) {
       status.textContent = '';
-      toast(`Не загружено: ${error.message || error}`);
+      Toast.show(`Не загружено: ${error.message || error}`);
     }
   }
 

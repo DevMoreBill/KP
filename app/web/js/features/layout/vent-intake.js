@@ -1,5 +1,6 @@
 import { VentCalc } from './vent-calc.js';
 import { VentGrille } from './vent-grille.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Приток: стена напротив выброса → створки ворот и сервисных дверей → свободные стены (не стена выброса); одним проёмом,

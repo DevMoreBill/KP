@@ -3,6 +3,60 @@ import { Mobile } from './mobile.js';
 import { Steps } from './steps.js';
 import { CoverSync } from './step-cover.js';
 import { Tender } from './tender.js';
+import { KpSave } from '../features/doc/kp-save.js';
+import { Discount } from '../features/kp/currency.js';
+import { Templates } from '../features/doc/templates.js';
+import { Kit } from '../features/kit/kit.js';
+import { SpecValues } from '../core/spec-values.js';
+import { Attrs, ItemParse } from '../core/item-attrs.js';
+import { CatFind, Catalog } from '../features/catalog/catalog-store.js';
+import { Str } from '../core/str.js';
+import { MailDlg } from '../features/kp/mail-dlg.js';
+import { KpFile } from '../features/doc/kp-file.js';
+import { Api, RemoteResult } from '../core/net.js';
+import { DealState } from '../features/deal/deal-state.js';
+import { ClientsExportDlg } from '../features/catalog/catalog-export.js';
+import { MyPrefs } from '../features/kp/my-prefs.js';
+import { DealCard } from '../features/crm/deal-card.js';
+import { MyDay } from '../features/kp/my-day.js';
+import { QuickSearch } from '../features/kp/quick-search.js';
+import { Journal } from '../features/kp/journal.js';
+import { CbrRates } from '../features/kp/cbr-rates.js';
+import { HelpWindow } from '../features/kp/help-window.js';
+import { UiTexts } from '../features/kp/ui-texts.js';
+import { SettingsWindow } from '../features/admin/settings-window.js';
+import { PartyCheck } from '../features/kp/party-check.js';
+import { ClientFields, ClientStore, PartyFind } from '../features/kp/client-store.js';
+import { CatalogSync } from '../features/catalog/catalog-fill.js';
+import { CatPrice, PriceHist } from '../features/kp/price-hints.js';
+import { CatalogWindow } from '../features/catalog/catalog-window.js';
+import { CatSections } from '../features/catalog/cat-sections.js';
+import { ItemEditor } from '../features/catalog/item-editor.js';
+import { EquipWizard } from '../features/wizard/equip-wizard.js';
+import { AiPart } from '../features/catalog/ai-part.js';
+import { AiSource } from '../features/catalog/ai-chat.js';
+import { AiFill } from '../features/catalog/ai-fill.js';
+import { SpecPaste } from '../features/catalog/ai-parse.js';
+import { StationModsUi } from '../features/station/station-mods-ui.js';
+import { TzImport } from '../features/tz/tz-import.js';
+import { IssueSpot } from '../features/station/issue-spot.js';
+import { LazyJs } from '../core/lazy-js.js';
+import { ExpertFix } from '../features/station/expert-fix.js';
+import { StationUi } from '../features/station/station-ui.js';
+import { StationParams } from '../features/station/station-params.js';
+import { PaintView } from '../features/kit/paint-view.js';
+import { KitView } from '../features/kit/kit-view.js';
+import { KitActions } from '../features/kit/kit-actions.js';
+import { DrawPic } from '../features/kit/draw-pic.js';
+import { StationImages } from '../features/station/station-images.js';
+import { PageImages } from '../features/catalog/page-images.js';
+import { ImageFiles } from '../features/catalog/images.js';
+import { CoverHint, ItemSpec } from '../core/item-spec.js';
+import { ItemLinks } from '../features/catalog/item-links.js';
+import { $, Uid } from '../core/util.js';
+import { EquipTypes } from '../core/equip-types.js';
+import { Toast } from '../core/toast.js';
+import { KpState, S } from '../core/state.js';
 
 // действие изменило КП — форма перерисовывается и черновик сохраняется (что вернули окна и загрузки — не в счёт)
 const RENDER = Symbol('render');
@@ -50,7 +104,7 @@ export class ItemActions {
       S.cover.touched = false;
       S.cover._src = '';
       CoverSync.run();
-      toast('Заголовок и параметры — по оборудованию КП');
+      Toast.show('Заголовок и параметры — по оборудованию КП');
       return RENDER;
     },
     dmode: ({ i, item, button }) => ItemActions._discMode(i, item, button),
@@ -58,7 +112,7 @@ export class ItemActions {
 
   static OPTIONS = {
     addOpt: ({ item }) => {
-      (item.options = item.options || []).push(newOpt(item));
+      (item.options = item.options || []).push(EquipTypes.newOpt(item));
       return RENDER;
     },
     delOpt: ({ item, j }) => {
@@ -72,11 +126,11 @@ export class ItemActions {
     attrsToGroups: ({ item }) => ItemActions._attrsToGroups(item),
     addFeatL: ({ item, button }) => {
       item.features = item.features || [];
-      item.features.push({ id: uid(), label: button.dataset.l || '', text: '' });
+      item.features.push({ id: Uid.next(), label: button.dataset.l || '', text: '' });
       item.page = true;
       return RENDER;
     },
-    featMv: ({ item, j, button }) => when(edMoveFeat(item, j, j + +button.dataset.d)),
+    featMv: ({ item, j, button }) => when(ItemLinks.moveFeat(item, j, j + +button.dataset.d)),
     delFeat: ({ item, j }) => {
       const feature = item.features[j];
       if (feature && feature.id) item.gallery = (item.gallery || []).filter(pic => pic.at !== `feat:${feature.id}`);
@@ -85,9 +139,9 @@ export class ItemActions {
     },
     autoAttrs: ({ item }) => ItemActions._autoAttrs(item),
     specTpl: ({ item }) => {
-      const added = applySpecTemplate(item);
+      const added = ItemSpec.applyTemplate(item);
       item.page = true;
-      toast(
+      Toast.show(
         added
           ? `Добавлено строк по шаблону категории: ${added} — заполните значения`
           : 'Все строки шаблона категории уже есть',
@@ -117,8 +171,8 @@ export class ItemActions {
   };
 
   static IMAGES = {
-    galAdd: ({ i, button }) => pickGallery(i, button.dataset.slot || ''),
-    galPage: ({ i, event }) => galFromPage(i, event.shiftKey),
+    galAdd: ({ i, button }) => ImageFiles.pickGallery(i, button.dataset.slot || ''),
+    galPage: ({ i, event }) => (event.shiftKey ? PageImages.ask(i) : PageImages.open(i)),
     galDel: ({ item, j }) => {
       StationImages.drop(item, j);
       return RENDER;
@@ -131,7 +185,7 @@ export class ItemActions {
       item[button.dataset.k] = null;
       return RENDER;
     },
-    pickImg: ({ i, button }) => pickImage(button.dataset.k, i),
+    pickImg: ({ i, button }) => ImageFiles.pick(button.dataset.k, i),
     drawPick: ({ i, j, button }) => DrawPic.pick(i, j, button.dataset.v),
     drawDel: ({ i, j, button }) => {
       DrawPic.del(i, j, button.dataset.v);
@@ -159,39 +213,39 @@ export class ItemActions {
   static STATION = {
     tzOut: ({ i }) =>
       LazyJs.load('tz-out/index.js')
-        .then(() => TzOut.download(i))
-        .catch(error => toast(error.message)),
+        .then(({ TzOut }) => TzOut.download(i))
+        .catch(error => Toast.show(error.message)),
     stSpot: ({ i, j }) => IssueSpot.open(i, j),
     tzLoad: ({ i }) => TzImport.pick(i),
     stlMods: ({ i }) => StationModsUi.open(i),
   };
 
   static AI_FILL = {
-    paste: ({ i }) => openPaste(i),
+    paste: ({ i }) => SpecPaste.open(i),
     aiCopy: ({ i, button }) => AiFill.copy(i, button.dataset.url || ''),
     aiMore: ({ i }) => AiFill.more(i),
-    aiFetch: ({ i }) => aiFetch(i),
+    aiFetch: ({ i }) => AiSource.fetch(i),
     aiAuto: ({ i }) => AiFill.auto(i),
-    aiProps: ({ i }) => aiProps(i),
-    aiPart: ({ i, j }) => aiPartDialog(i, j),
-    aiPartCopy: ({ i, j, button }) => aiPartCopy(i, j, button.dataset.url || ''),
+    aiProps: ({ i }) => AiSource.props(i),
+    aiPart: ({ i, j }) => AiPart.open(i, j),
+    aiPartCopy: ({ i, j, button }) => AiPart.copy(i, j, button.dataset.url || ''),
     aiApply: ({ i }) => AiFill.apply(i),
   };
 
   static CATALOG = {
     addItem: ({ button }) => EquipWizard.open('kp', button.dataset.cat || ''),
     addStation: ({ button }) => EquipWizard.open('kp', button.dataset.cat || 'station'),
-    edit: ({ i, button }) => openEditor(i, button.dataset.tab),
+    edit: ({ i, button }) => ItemEditor.open(i, button.dataset.tab),
     secOf: ({ button }) => CatSections.open(button.dataset.sec),
     catOf: ({ button }) => ItemActions._category(button.dataset.cat),
-    openCatalog: () => openCatalog({}),
+    openCatalog: () => CatalogWindow.open({}),
     priceHist: ({ i }) => PriceHist.open(i),
     catPrice: ({ i }) => CatPrice.apply(i),
-    saveCat: ({ i }) => saveCatalog(i),
+    saveCat: ({ i }) => CatalogSync.save(i),
   };
 
   static CLIENT = {
-    partyFind: () => partyFind(),
+    partyFind: () => PartyFind.run(),
     clientEdit: () => {
       S._clEdit = !S._clEdit;
       return RENDER;
@@ -203,18 +257,18 @@ export class ItemActions {
     clientChange: () => {
       ClientFields.clear(S);
       FormView.render();
-      persist();
+      KpState.persist();
       setTimeout(() => $('#clFind')?.focus(), ItemActions.FOCUS_DELAY);
     },
     checkRun: ({ button }) => PartyCheck.run(button.dataset.force === '1'),
     kpKind: ({ button }) => ItemActions._kpKind(button.dataset.v === 'tender'),
     pickObject: ({ k }) => {
-      const place = (curClient()?.objects || [])[k];
+      const place = (ClientStore.current()?.objects || [])[k];
       if (place) S.object = { ...S.object, ...place };
       return RENDER;
     },
     pickContact: ({ k }) => {
-      const contact = (curClient()?.contacts || [])[k];
+      const contact = (ClientStore.current()?.contacts || [])[k];
       if (contact) S.contact = { ...S.contact, ...contact };
       return RENDER;
     },
@@ -225,16 +279,16 @@ export class ItemActions {
     toPrice: () => Steps.open('price'),
     download: () => ItemActions._download(),
     toSave: () => ItemActions._toSave(),
-    integrations: () => openSettings('keys'),
-    settings: () => openSettings(),
+    integrations: () => SettingsWindow.open('keys'),
+    settings: () => SettingsWindow.open(),
     uitexts: () => {
       document.querySelector('details.topmenu')?.removeAttribute('open');
-      return uitToggle();
+      return UiTexts.toggle();
     },
-    help: () => openHelp(),
-    versions: () => openHelp('versions'),
-    cbr: () => loadCBR(),
-    journal: () => openJournal(),
+    help: () => HelpWindow.open(),
+    versions: () => HelpWindow.open('versions'),
+    cbr: () => CbrRates.load(),
+    journal: () => Journal.open(),
     find: () => QuickSearch.open(),
     myDay: () => MyDay.open(),
     dealOpen: ({ button }) => DealCard.open(button.dataset.id),
@@ -242,8 +296,8 @@ export class ItemActions {
     clientsExport: () => ClientsExportDlg.open(),
     deal: () => DealState.open(),
     docsFolder: () =>
-      api(`/api/folder?dir=${encodeURIComponent(KpFile.folder())}`, { method: 'POST' })
-        .then(remoteResult)
+      Api.request(`/api/folder?dir=${encodeURIComponent(KpFile.folder())}`, { method: 'POST' })
+        .then(reply => RemoteResult.show(reply))
         .catch(() => {}),
     mailKp: ({ button }) => MailDlg.open(button.dataset.id, S.number),
     openDoc: ({ button }) => ItemActions._fileAction(button.dataset.id, 'open'),
@@ -272,64 +326,64 @@ export class ItemActions {
 
   static _dup(i, item) {
     const copy = JSON.parse(JSON.stringify(item));
-    copy.id = uid();
+    copy.id = Uid.next();
     (copy.features || []).forEach(feature => {
       const old = feature.id;
-      feature.id = uid();
+      feature.id = Uid.next();
       (copy.gallery || []).forEach(pic => {
         if (pic.at === `feat:${old}`) pic.at = `feat:${feature.id}`;
       });
     });
     (copy.options || []).forEach(opt => {
-      opt.id = uid();
+      opt.id = Uid.next();
     });
     S.items.splice(i + 1, 0, copy);
-    toast('Позиция скопирована');
+    Toast.show('Позиция скопирована');
     return RENDER;
   }
 
   static _preset(item, k) {
     item.options = item.options || [];
-    const preset = presetsFor(item)[k];
-    const index = item.options.findIndex(opt => norm(opt.name) === norm(preset.name));
+    const preset = EquipTypes.presetsFor(item)[k];
+    const index = item.options.findIndex(opt => Str.norm(opt.name) === Str.norm(preset.name));
     if (index >= 0) {
       item.options.splice(index, 1);
     } else {
       const card = CatFind.name(preset.name);
-      item.options.push(newOpt(item, { ...preset, price: card?.price || 0, catId: card?.id }));
+      item.options.push(EquipTypes.newOpt(item, { ...preset, price: card?.price || 0, catId: card?.id }));
     }
     return RENDER;
   }
 
   static _attrsToGroups(item) {
-    const groups = groupsFromAttrs(item);
+    const groups = ItemSpec.groups(item);
     const keep = (item.groups || []).filter(group => !groups.some(made => made.name === group.name));
     item.groups = [...groups, ...keep];
     if (!item.hint) item.hint = CoverHint.of(item);
     item.page = true;
-    toast('Таблица характеристик сформирована');
+    Toast.show('Таблица характеристик сформирована');
     return RENDER;
   }
 
   static _autoAttrs(item) {
-    const cat = attrsOf(item).cat;
-    const type = typeById(cat);
+    const cat = Attrs.of(item).cat;
+    const type = EquipTypes.byId(cat);
     const keep = new Set(['maker', 'series', 'model', ...type.fields.map(param => param.key)]);
     const filled = value => value !== '' && value != null;
     const own = Object.fromEntries(Object.entries(item.attrs || {}).filter(([, value]) => filled(value)));
-    const merged = { ...extractAttrs(item), ...attrsFromSpec(item, type), ...own, cat };
+    const merged = { ...ItemParse.extract(item), ...SpecValues.fromSpec(item, type), ...own, cat };
     item.attrs = Object.fromEntries(
       Object.entries(merged).filter(([key, value]) => filled(value) && (key === 'cat' || keep.has(key))),
     );
-    toast('Параметры определены по характеристикам — проверьте');
+    Toast.show('Параметры определены по характеристикам — проверьте');
     return RENDER;
   }
 
   static _galMain(item, j) {
     if (!(item.gallery || [])[j]) return false;
     const was3d = StationImages.chosen(item);
-    if (!edSetMain(item, j)) return false;
-    toast(
+    if (!ItemLinks.setMain(item, j)) return false;
+    Toast.show(
       was3d
         ? 'Главное фото заменено — 3D-вид вернуть можно на вкладке «Компоновка»'
         : 'Главное фото заменено — прежнее перенесено в изображения',
@@ -338,9 +392,9 @@ export class ItemActions {
   }
 
   static _galMove(item, j, step) {
-    const free = edFreeGal(item);
+    const free = ItemLinks.freeGal(item);
     const place = free.indexOf(j) + step;
-    return when(place >= 0 && place < free.length && edMoveGal(item, j, free[place]));
+    return when(place >= 0 && place < free.length && ItemLinks.moveGal(item, j, free[place]));
   }
 
   static _stationPhoto(item, j) {
@@ -349,13 +403,14 @@ export class ItemActions {
     StationImages.chosen(item);
     item.photo = { ...part.photo };
     delete item.photoFrom;
-    toast(`Главное фото станции — фото «${part.name || 'элемента'}»`);
+    Toast.show(`Главное фото станции — фото «${part.name || 'элемента'}»`);
     return RENDER;
   }
 
   static _category(cat) {
-    if (typeById(cat).station || !catCache.some(card => attrsOf(card).cat === cat)) return EquipWizard.open('kp', cat);
-    return openCatalog({ cat });
+    if (EquipTypes.byId(cat).station || !Catalog.cache.some(card => Attrs.of(card).cat === cat))
+      return EquipWizard.open('kp', cat);
+    return CatalogWindow.open({ cat });
   }
 
   // тендерное КП — в шаблоне «Тендерный»; обратно — прежний шаблон
@@ -366,12 +421,12 @@ export class ItemActions {
     if (tender && !was && template && S.template !== 'tender') {
       S._tplPrev = S.template;
       S.template = 'tender';
-      toast(`Шаблон КП: ${template.name}`);
+      Toast.show(`Шаблон КП: ${template.name}`);
     } else if (!tender && was && S.template === 'tender') {
       const prev = Templates.list.find(tpl => tpl.id === (S._tplPrev || 'pnevmotekh') && !tpl.error);
       if (prev) {
         S.template = prev.id;
-        toast(`Шаблон КП: ${prev.name}`);
+        Toast.show(`Шаблон КП: ${prev.name}`);
       }
       delete S._tplPrev;
     }
@@ -384,7 +439,7 @@ export class ItemActions {
     if (item.disc) item.disc.type = button.dataset.v;
     const text = input ? input.value : '';
     item._discText = text;
-    item._discBad = !setDisc(item, text);
+    item._discBad = !Discount.set(item, text);
     if (!item._discBad) delete item._discText;
     return RENDER;
   }
@@ -398,7 +453,7 @@ export class ItemActions {
   static _toSave() {
     const steps = Steps.visible();
     const last = steps[steps.length - 1].id;
-    if (Mobile.isPhone() && STEP !== last) Steps.open(last);
+    if (Mobile.isPhone() && Steps.current !== last) Steps.open(last);
     const side = $('#side');
     side.scrollIntoView({ behavior: Mobile.isPhone() ? 'auto' : 'smooth' });
     side.classList.add('pulse');
@@ -406,7 +461,7 @@ export class ItemActions {
   }
 
   static _clientKps() {
-    return openJournal().then(() => {
+    return Journal.open().then(() => {
       const query = $('#jQ');
       if (query) {
         query.value = S.clientInn || S.client;
@@ -416,15 +471,15 @@ export class ItemActions {
   }
 
   static _fileAction(id, what) {
-    return api(`/api/kp/${id}/${what}`, { method: 'POST' })
-      .then(remoteResult)
-      .catch(() => toast('Файл не найден'));
+    return Api.request(`/api/kp/${id}/${what}`, { method: 'POST' })
+      .then(reply => RemoteResult.show(reply))
+      .catch(() => Toast.show('Файл не найден'));
   }
 
   static _go(link) {
     const target = link.dataset.go;
     const step = Steps.ofTarget(target, link.textContent || '');
-    if (step && step !== STEP) {
+    if (step && step !== Steps.current) {
       Steps.open(step, target);
       return;
     }
@@ -463,14 +518,14 @@ export class ItemActions {
     }
     const drop = event.target.closest('[data-drop]');
     if (drop && !event.target.closest('[data-a]')) {
-      pickImage(drop.dataset.drop, +drop.dataset.i);
+      ImageFiles.pick(drop.dataset.drop, +drop.dataset.i);
       return;
     }
     const button = event.target.closest('[data-a]');
     const handler = button && Object.hasOwn(this.ACTIONS, button.dataset.a) && this.ACTIONS[button.dataset.a];
     if (!handler || handler(this._context(button, event)) !== RENDER) return;
     FormView.render();
-    persist();
+    KpState.persist();
   }
 
   /** Обработчик щелчков формы. */

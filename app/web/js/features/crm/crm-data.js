@@ -1,4 +1,7 @@
 import { CrmFunnel } from './crm-funnel.js';
+import { ShortName } from '../kp/journal-row.js';
+import { esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
 
 /** Этапы своей воронки программы — «Настройки → Списки и тексты → Этапы сделки» (crm.stages); у сервера — тот же список. */
 export class CrmStages {
@@ -33,7 +36,7 @@ export class CrmData {
    */
   static async load() {
     const mine = ++this.seq;
-    const board = await api(`/api/crm/board?manager=${encodeURIComponent(this.who)}`);
+    const board = await Api.request(`/api/crm/board?manager=${encodeURIComponent(this.who)}`);
     if (mine === this.seq) this.board = board;
     return this.board;
   }

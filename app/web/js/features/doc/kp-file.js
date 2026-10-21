@@ -1,5 +1,9 @@
 import { KpModels } from './kp-models.js';
 import { Templates } from './templates.js';
+import { today } from '../../core/util.js';
+import { Str } from '../../core/str.js';
+import { Tender } from '../../ui/tender.js';
+import { S } from '../../core/state.js';
 
 /**
  * Имя файла КП и папка менеджера: по образцу из шаблона (fileName) с метками {номер} {префикс} {клиент} {оборудование}
@@ -27,7 +31,7 @@ export class KpFile {
    * @returns {string}
    */
   static name(settings) {
-    if (tenderNo()) return this.tender(settings);
+    if (Tender.number()) return this.tender(settings);
     const client =
       Str.fileName(String(S.client || 'клиент').replace(this.FORM, '')).slice(0, this.CLIENT_MAX) || 'клиент';
     const models = Str.fileName(KpModels.short()).slice(0, this.MODELS_MAX);
@@ -76,7 +80,7 @@ export class KpFile {
     const brand = (own.brandParts || []).map(part => part[0]).join('');
     const supplier = this._clean(own.company || template.company || brand || 'ПНЕВМОТЕХ').slice(0, this.SUPPLIER_MAX);
     const client = this._clean(String(S.client || '').replace(this.TENDER_FORM, '')).slice(0, this.NAME_MAX);
-    return `${[this._clean(tenderNo()).slice(0, this.NAME_MAX) || 'Тендер', 'КП', supplier, client].filter(Boolean).join(' ')}.docx`;
+    return `${[this._clean(Tender.number()).slice(0, this.NAME_MAX) || 'Тендер', 'КП', supplier, client].filter(Boolean).join(' ')}.docx`;
   }
 
   /**

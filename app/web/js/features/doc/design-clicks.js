@@ -5,6 +5,8 @@ import { DesignObjects } from './design-objects.js';
 import { DesignPanels } from './design-panels.js';
 import { DesignView } from './design-view.js';
 import { TemplateDesigner } from './template-designer.js';
+import { ObjPath } from '../../core/str.js';
+import { $ } from '../../core/util.js';
 
 /** Графический редактор шаблона: щелчки — выбор в документе, кнопки панелей. */
 export class DesignClicks {
@@ -159,7 +161,7 @@ export class DesignClicks {
 
   static _toggle(button) {
     const path = button.dataset.tdtog;
-    DesignHistory.change(work => setPath(work, path, !getPath(work, path)));
+    DesignHistory.change(work => ObjPath.set(work, path, !ObjPath.get(work, path)));
   }
 
   static _set(button) {
@@ -168,18 +170,18 @@ export class DesignClicks {
     if (/\.float$/.test(path)) return DesignObjects.position(path.replace(/\.float$/, ''), value);
     return DesignHistory.change(work => {
       if (value !== '') {
-        setPath(work, path, /^-?\d+(\.\d+)?$/.test(value) && !/align|Side/.test(path) ? +value : value);
+        ObjPath.set(work, path, /^-?\d+(\.\d+)?$/.test(value) && !/align|Side/.test(path) ? +value : value);
         return;
       }
       const parts = path.split('.');
-      const owner = getPath(work, parts.slice(0, -1).join('.'));
+      const owner = ObjPath.get(work, parts.slice(0, -1).join('.'));
       if (owner) delete owner[parts[parts.length - 1]];
     });
   }
 
   static _setColor(button) {
     const { v: value, tdsetc: path } = button.dataset;
-    DesignHistory.change(work => setPath(work, path, value));
+    DesignHistory.change(work => ObjPath.set(work, path, value));
   }
 
   static _step(button) {
@@ -187,8 +189,8 @@ export class DesignClicks {
     const delta = +button.dataset.d;
     DesignHistory.change(
       work => {
-        const size = Design.round((+getPath(work, path) || this.STEP_DEFAULT) + delta, this.HALVES);
-        setPath(work, path, Math.max(this.STEP_MIN, Math.min(this.STEP_MAX, size)));
+        const size = Design.round((+ObjPath.get(work, path) || this.STEP_DEFAULT) + delta, this.HALVES);
+        ObjPath.set(work, path, Math.max(this.STEP_MIN, Math.min(this.STEP_MAX, size)));
       },
       { merge: `step${path}` },
     );

@@ -20,7 +20,6 @@ import { KpReportView } from './kp-report-view.js';
 import { KpRepeat } from './kp-repeat.js';
 import { KpSaved } from './kp-saved.js';
 import { KpTrack } from './kp-track.js';
-import * as LEGACY from './legacy.js';
 import { LoginForm } from './login-form.js';
 import { MailDlg } from './mail-dlg.js';
 import { Managers, MgrLock } from './managers.js';
@@ -35,6 +34,8 @@ import { CatPrice, PriceHints, PriceHist } from './price-hints.js';
 import { QuickSearch, RecentModels } from './quick-search.js';
 import { KpLoader, Reminders } from './reminders.js';
 import { UiTexts } from './ui-texts.js';
+import { LISTS } from '../../core/lists.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 export const KP_PARTS = {
   ApiKeys,
@@ -94,10 +95,9 @@ export const KP_PARTS = {
   UiTexts,
 };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули: классы и прежние имена функций
-Object.assign(globalThis, KP_PARTS, LEGACY);
-
 LISTS.ready(['obj.purposes', 'kp.lost']);
+// «Мои настройки» менеджера — поверх «Значений программы»
+DefRegistry.personal = key => MyPrefs.def(key);
 
 UiTexts.listen();
 MgrBar.listen();

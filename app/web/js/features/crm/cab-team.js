@@ -1,6 +1,7 @@
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
+import { esc, today } from '../../core/util.js';
 
 /** «Отдел»: воронка по стадиям и итоги месяца по менеджерам (администратору и менеджерам с правом «КП других менеджеров»). */
 export class CabTeam {

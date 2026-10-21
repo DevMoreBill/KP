@@ -2,6 +2,13 @@ import { CatalogActions } from './catalog-actions.js';
 import { CatalogClicks } from './catalog-clicks.js';
 import { CatalogSorter } from './catalog-sorter.js';
 import { CatalogTree } from './catalog-nav.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { CatalogSearch } from './catalog-cache.js';
+import { Debounce } from '../../core/debounce.js';
+import { $, esc } from '../../core/util.js';
+import { AdminSession } from '../../core/net.js';
+import { Auth } from '../kp/auth.js';
+import { FEAT } from '../../core/features.js';
 
 /** Разметка окна каталога и его события (вешаются один раз на элемент окна). */
 export class CatalogEvents {
@@ -14,11 +21,13 @@ export class CatalogEvents {
     const imp = FEAT.on('catImport')
       ? '<button type="button" data-cw="xls">Импорт из Excel…</button><button type="button" data-cw="imp">Загрузить файл каталога (.json)…</button>'
       : '';
-    const xport = can('export')
+    const xport = Auth.can('export')
       ? '<button type="button" data-cw="xport">Выгрузить найденное… (Excel, JSON, XML, YML)</button>'
       : '';
     const exp =
-      ADMIN.on || AUTH.admin ? '<button type="button" data-cw="exp">Файл каталога для загрузки (.json)</button>' : '';
+      AdminSession.on || Auth.state.admin
+        ? '<button type="button" data-cw="exp">Файл каталога для загрузки (.json)</button>'
+        : '';
     return `<details class="cw-menu"><summary class="btn" title="Импорт, выгрузка, категории оборудования">Ещё<span class="cw-lbl"> ▾</span></summary><div>
          ${imp}${xport}${exp}
          <hr><button type="button" data-cw="types">Категории оборудования…</button></div></details>`;
@@ -103,7 +112,7 @@ export class CatalogEvents {
     const filter = win.F;
     filter.q = field.value;
     win.limit = win.constructor.PAGE;
-    const wait = DEFN('cat.qDelay', 180);
+    const wait = DefRegistry.num('cat.qDelay', 180);
     delay.run(
       () => {
         win.refresh();

@@ -1,3 +1,8 @@
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { $, esc } from '../../core/util.js';
+import { APP_VERSIONS, AppVersion, HELP_SECTIONS } from '../help.js';
+import { Api } from '../../core/net.js';
 /**
  * Окно «Руководство» (кнопка «?» в шапке, меню «⋯» и меню телефона): разделы — HELP_SECTIONS, история версий —
  * APP_VERSIONS (help.js). Поиск по тексту, печать раздела или всего руководства.
@@ -11,11 +16,11 @@ export class HelpWindow {
    * @returns {Promise<void>}
    */
   static loadVersion() {
-    return api('/api/version')
+    return Api.request('/api/version')
       .then(answer => {
         if (!answer || !answer.version) return;
-        APP_VERSION = String(answer.version).replace(/^(\d+\.\d+)\.0$/, '$1');
-        APP_PATCHED = !!answer.patched;
+        AppVersion.current = String(answer.version).replace(/^(\d+\.\d+)\.0$/, '$1');
+        AppVersion.patched = !!answer.patched;
       })
       .catch(() => {});
   }
@@ -38,7 +43,7 @@ export class HelpWindow {
       [
         'versions',
         'История версий',
-        `<p class="muted">Текущая версия — <b>${APP_VERSION}</b>${APP_PATCHED ? ' (установлено обновление)' : ''}.</p>${versions}`,
+        `<p class="muted">Текущая версия — <b>${AppVersion.current}</b>${AppVersion.patched ? ' (установлено обновление)' : ''}.</p>${versions}`,
       ],
     ];
   }
@@ -87,7 +92,7 @@ export class HelpWindow {
             `<button type="button" class="${id === cur[0] ? 'on' : ''}" data-hs="${id}">${esc(title)}</button>`,
         )
         .join('') || '<p class="muted">Ничего не найдено</p>';
-    ctx.dialog.innerHTML = `<div class="dlg-h"><h3>Руководство пользователя<small>Конструктор КП · версия ${APP_VERSION}</small></h3>
+    ctx.dialog.innerHTML = `<div class="dlg-h"><h3>Руководство пользователя<small>Конструктор КП · версия ${AppVersion.current}</small></h3>
         <button class="btn" type="button" data-hp="print">Печать</button><button class="icon" type="button" data-hp="close" aria-label="Закрыть">✕</button></div>
       <div class="hl-b"><nav class="hl-nav"><input type="search" id="hlQ" placeholder="Поиск по руководству" value="${esc(ctx.q)}" autocomplete="off">
         <select class="hl-sel" aria-label="Раздел">${options}</select>
@@ -123,13 +128,13 @@ export class HelpWindow {
   static _print(all) {
     const win = window.open('', '_blank');
     if (!win) {
-      toast('Разрешите всплывающие окна для печати');
+      Toast.show('Разрешите всплывающие окна для печати');
       return;
     }
     win.document
       .write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Руководство пользователя — Конструктор КП</title>
         <style>body{font:14px/1.5 Arial,sans-serif;margin:24px;color:#111}h1{font-size:22px}h2{font-size:18px;margin-top:28px;border-bottom:1px solid #ccc}h4{margin:14px 0 4px}code{background:#f2f2f2;padding:0 4px}</style></head>
-        <body><h1>Руководство пользователя — Конструктор КП (версия ${APP_VERSION})</h1>${all.map(([, title, html]) => `<h2>${esc(title)}</h2>${html}`).join('')}</body></html>`);
+        <body><h1>Руководство пользователя — Конструктор КП (версия ${AppVersion.current})</h1>${all.map(([, title, html]) => `<h2>${esc(title)}</h2>${html}`).join('')}</body></html>`);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), this.PRINT_DELAY);

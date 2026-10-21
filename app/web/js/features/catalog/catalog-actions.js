@@ -3,6 +3,16 @@ import { CatalogEditor } from './catalog-edit.js';
 import { CatalogFill } from './catalog-fill.js';
 import { CatalogIndex } from './catalog-index.js';
 import { Catalog, CatalogStore } from './catalog-store.js';
+import { FileSave } from '../../core/files.js';
+import { Api } from '../../core/net.js';
+import { CatalogBin } from './catalog-export.js';
+import { Auth } from '../kp/auth.js';
+import { $, Uid, esc, today } from '../../core/util.js';
+import { Steps } from '../../ui/steps.js';
+import { FormView } from '../../ui/form-view.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { KpState, S } from '../../core/state.js';
 
 /** Действия окна каталога: добавить в КП, перенести в категорию (с отменой), правка, копия, корзина, файл каталога. */
 export class CatalogActions {
@@ -12,7 +22,7 @@ export class CatalogActions {
   static JSON_TYPE = 'application/json; charset=utf-8';
 
   static _positions(count) {
-    return plural(count, 'позиция', 'позиции', 'позиций');
+    return KPGen.plural(count, 'позиция', 'позиции', 'позиций');
   }
 
   /**
@@ -36,15 +46,21 @@ export class CatalogActions {
       if (item.options.some(option => option.catId === id)) continue;
       const card = await Catalog.fullDoc(win.doc(id));
       if (!card) continue;
-      const attrs = attrsOf(card);
+      const attrs = Attrs.of(card);
       const short = card.short || (attrs.cat === 'ats' ? 'АВР' : attrs.model || '');
       item.options.push(
-        newOpt(item, { name: card.name, short, unit: card.unit || 'шт.', price: card.price || 0, catId: card.id }),
+        EquipTypes.newOpt(item, {
+          name: card.name,
+          short,
+          unit: card.unit || 'шт.',
+          price: card.price || 0,
+          catId: card.id,
+        }),
       );
       added++;
     }
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     win.sel.clear();
     win.list();
     win.say(added ? `Добавлено опций: ${added}` : 'Эти позиции уже добавлены опциями');
@@ -65,7 +81,7 @@ export class CatalogActions {
       }
       const card = await Catalog.fullDoc(win.doc(id));
       if (!card) continue;
-      const item = newItem();
+      const item = KpState.newItem();
       CatalogFill.fill(item, card);
       const blank = S.items.length === 1 && !S.items[0].name && !S.items[0].price;
       if (blank) S.items = [item];
@@ -87,16 +103,16 @@ export class CatalogActions {
     }
     const { added, more } = await this._addItems(win, ids);
     win.setBusy('');
-    if (STEP !== 'equip') {
-      STEP = 'equip';
+    if (Steps.current !== 'equip') {
+      Steps.current = 'equip';
       try {
         localStorage.setItem('kp.step', 'equip');
       } catch {
         // браузер не хранит
       }
     }
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     if (ids.length > 1) win.sel.clear();
     win.list();
     const done = [
@@ -122,7 +138,7 @@ export class CatalogActions {
    * @param {string} cat
    */
   static async move(win, ids, cat) {
-    const type = typeById(cat);
+    const type = EquipTypes.byId(cat);
     const todo = ids.filter(id => {
       const card = win.doc(id);
       return card && CatalogIndex.attrs(card).cat !== cat;
@@ -186,10 +202,11 @@ export class CatalogActions {
   }
 
   static _typeButtons(win, attr) {
-    const groups = [...new Set(TYPES.map(type => type.group || this.OTHER))];
+    const groups = [...new Set(EquipTypes.list.map(type => type.group || this.OTHER))];
     return groups
       .map(group => {
-        const buttons = TYPES.filter(type => (type.group || this.OTHER) === group)
+        const buttons = EquipTypes.list
+          .filter(type => (type.group || this.OTHER) === group)
           .map(
             type =>
               `<button type="button" class="btn${type.id === win.F.cat ? ' primary' : ''}" ${attr}="${esc(type.id)}">${esc(type.name)}</button>`,
@@ -225,7 +242,7 @@ export class CatalogActions {
   static moveDlg(win, ids) {
     const dialog = $('#dlg');
     dialog.classList.remove('wide');
-    dialog.innerHTML = `<div class="dlg-h"><h3>Перенести ${ids.length} ${plural(ids.length, 'позицию', 'позиции', 'позиций')} в категорию</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
+    dialog.innerHTML = `<div class="dlg-h"><h3>Перенести ${ids.length} ${KPGen.plural(ids.length, 'позицию', 'позиции', 'позиций')} в категорию</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
      <div class="dlg-b">${this._typeButtons(win, 'data-mv')}
      <div class="row" style="margin-top:16px"><button class="btn" type="button" data-mvnew>+ Новая категория…</button><span class="muted">Нужной категории нет — создайте её, и позиции сразу перенесутся.</span></div></div>`;
     dialog.showModal();
@@ -249,8 +266,8 @@ export class CatalogActions {
    * @param {string} id
    */
   static async edit(win, id) {
-    if (!can('catEdit')) {
-      cannot('catEdit');
+    if (!Auth.can('catEdit')) {
+      Auth.cannot('catEdit');
       return;
     }
     const card = await Catalog.fullDoc(win.doc(id));
@@ -263,8 +280,8 @@ export class CatalogActions {
    * @param {string} id
    */
   static async dup(win, id) {
-    if (!can('catAdd')) {
-      cannot('catAdd');
+    if (!Auth.can('catAdd')) {
+      Auth.cannot('catAdd');
       return;
     }
     const card = await Catalog.fullDoc(win.doc(id));
@@ -273,7 +290,7 @@ export class CatalogActions {
       return;
     }
     const copy = JSON.parse(JSON.stringify(card));
-    copy.id = uid() + uid();
+    copy.id = Uid.next() + Uid.next();
     copy.name = `${card.name} (копия)`;
     copy.prices = [];
     delete copy.pricesCount;
@@ -293,7 +310,7 @@ export class CatalogActions {
       win.active = null;
       win.dlg().classList.remove('pvwide');
     }
-    win.docs = catCache;
+    win.docs = Catalog.cache;
     win.note = `В корзине: ${ids.length} ${this._positions(ids.length)}`;
     win.redraw();
   }
@@ -305,7 +322,7 @@ export class CatalogActions {
       type.name &&
       Array.isArray(type.fields) &&
       type.fields.every(field => field && field.key && field.label) &&
-      !TYPES.some(known => known.id === type.id)
+      !EquipTypes.list.some(known => known.id === type.id)
     );
   }
 
@@ -315,13 +332,13 @@ export class CatalogActions {
     const add = types.filter(type => this._validType(type));
     if (!add.length) return 0;
     win.setBusy(`Добавляю категории: ${add.map(type => type.name).join(', ')}`);
-    await api('/api/types', {
+    await Api.request('/api/types', {
       method: 'PUT',
       headers: { 'Content-Type': this.JSON_TYPE },
       body: JSON.stringify({ version: 1, add }),
     });
-    await loadTypes();
-    catCache.forEach(card => CatalogIndex.forget(card));
+    await EquipTypes.load();
+    Catalog.cache.forEach(card => CatalogIndex.forget(card));
     return add.length;
   }
 

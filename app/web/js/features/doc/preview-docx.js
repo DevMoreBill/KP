@@ -1,5 +1,7 @@
 import { KpDocx } from './kp-docx.js';
 import { Templates } from './templates.js';
+import { StationImages } from '../station/station-images.js';
+import { S } from '../../core/state.js';
 
 /**
  * Документ КП для показа (vendor/docx-preview): собирается так же, как при сохранении, — без номера и записи в журнал.

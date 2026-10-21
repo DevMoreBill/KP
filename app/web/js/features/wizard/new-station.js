@@ -1,4 +1,25 @@
 import { EquipWizard } from './equip-wizard.js';
+import { KitPick } from '../kit/kit-pick.js';
+import { KitNeed } from '../kit/kit-need.js';
+import { StationImages } from '../station/station-images.js';
+import { Toast } from '../../core/toast.js';
+import { StationAuto, StationName } from '../kit/station-auto.js';
+import { StationDefaults } from '../kit/station-defaults.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { KpState, S } from '../../core/state.js';
+import { StationView3D } from '../draw/station-view3d.js';
+import { Kit } from '../kit/kit.js';
+import { StationUi } from '../station/station-ui.js';
+import { StationReq } from '../req/station-req.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { ReqNum } from '../req/req-num.js';
+import { $, esc } from '../../core/util.js';
+import { StationQuick } from '../station/station-quick.js';
+import { Mm } from '../layout/mm.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе
@@ -22,8 +43,8 @@ export class NewStation {
   static reset() {
     this.state = {
       ctype: 'block',
-      ins: DEF('st.ins') || '100 мм',
-      climate: DEF('st.climate') || 'УХЛ1',
+      ins: DefRegistry.value('st.ins') || '100 мм',
+      climate: DefRegistry.value('st.climate') || 'УХЛ1',
       req: {},
       cont: false,
     };
@@ -162,7 +183,7 @@ export class NewStation {
   /** Подобрать станцию для предпросмотра (только в КП, при верном вводе и главном требовании). */
   static async preview() {
     const { cat, where } = EquipWizard.state;
-    const type = cat && typeById(cat);
+    const type = cat && EquipTypes.byId(cat);
     if (!type || !type.station || where !== 'kp') return;
     const need = (StationQuick.NEED[this.kind(type)] || [])[0];
     const key = this.key();
@@ -260,7 +281,7 @@ export class NewStation {
    * @returns {object} позиция КП
    */
   static make(type) {
-    const item = newItem();
+    const item = KpState.newItem();
     item.attrs = { cat: type.id };
     item.page = true;
     item.features = [];
@@ -284,7 +305,7 @@ export class NewStation {
   static _valid() {
     const bad = ReqNum.errors({ req: this.state.req });
     if (!bad.length) return true;
-    toast(`Исправьте «${bad[0].label}»: ${bad[0].text}`);
+    Toast.show(`Исправьте «${bad[0].label}»: ${bad[0].text}`);
     $(`[data-nsr="${bad[0].key}"]`)?.focus();
     return false;
   }
@@ -293,7 +314,7 @@ export class NewStation {
   static _hasMain(type) {
     const need = StationQuick.NEED[this.kind(type)] || [];
     if (!need.length || ReqNum.num(this.state.req[need[0]]) > 0) return true;
-    toast(`Укажите ${need[1]} — без неё станцию не подобрать`);
+    Toast.show(`Укажите ${need[1]} — без неё станцию не подобрать`);
     $(`[data-nsr="${need[0]}"]`)?.focus();
     return false;
   }

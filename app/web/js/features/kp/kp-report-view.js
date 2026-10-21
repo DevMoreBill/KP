@@ -1,6 +1,11 @@
 import { KpDate } from './kp-date.js';
 import { KpTrack } from './kp-track.js';
 import { ShortName } from './journal-row.js';
+import { Toast } from '../../core/toast.js';
+import { XlsxBook } from '../../core/xlsx.js';
+import { FileSave } from '../../core/files.js';
+import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 
 /** Вид отчёта по КП: плитки и таблицы в окне, книга Excel. Прибыль и маржа — только при включённой экономике сделки. */
 export class KpReportView {
@@ -29,7 +34,7 @@ export class KpReportView {
   }
 
   static _rub(value) {
-    return `${money(value || 0)} ₽`;
+    return `${KPGen.money(value || 0)} ₽`;
   }
 
   static _tile(label, value, sub = '') {
@@ -164,8 +169,8 @@ export class KpReportView {
       [],
     ]);
     if (!FEAT.on('deal')) this._dropDeal(sheets);
-    saveFileA(`Отчёт_КП_${from}_${till}.xlsx`, await XlsxBook.make(sheets, 'Отчёт по КП'));
-    toast('Отчёт выгружен в Excel');
+    FileSave.download(`Отчёт_КП_${from}_${till}.xlsx`, await XlsxBook.make(sheets, 'Отчёт по КП'));
+    Toast.show('Отчёт выгружен в Excel');
   }
 
   static _cells() {

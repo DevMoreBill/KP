@@ -8,6 +8,19 @@ import { CabTeam } from './cab-team.js';
 import { CabGuide } from './cab-guide.js';
 import { DealCard } from './deal-card.js';
 import { DealNew } from './deal-new.js';
+import { Debounce } from '../../core/debounce.js';
+import { ClientCard } from '../kp/client-card.js';
+import { Str } from '../../core/str.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { Journal } from '../kp/journal.js';
+import { NewKp } from '../kp/new-kp.js';
+import { Toast } from '../../core/toast.js';
+import { Drafts } from '../kp/drafts.js';
+import { Reminders } from '../kp/reminders.js';
+import { FEAT } from '../../core/features.js';
+import { esc, today } from '../../core/util.js';
+import { MyDay } from '../kp/my-day.js';
+import { Modal } from '../../core/modal.js';
 
 /**
  * Окно кабинета менеджера: почти весь экран, шапка в одну строку (приветствие, разделы, чей кабинет, «＋ Дело / Сделка / КП»),
@@ -85,7 +98,7 @@ export class Cabinet {
     const count = CabToday.bxNew().length;
     if (!count || !CrmData.mine() || this._seenNew === count) return;
     this._seenNew = count;
-    toast(`Из Битрикс24 пришли новые сделки: ${count} — «Сегодня» → «Требуют внимания»`);
+    Toast.show(`Из Битрикс24 пришли новые сделки: ${count} — «Сегодня» → «Требуют внимания»`);
   }
 
   /** Перерисовать шапку и раздел (прокрутка раздела сохраняется). */
@@ -201,7 +214,7 @@ export class Cabinet {
       deal: () => DealNew.open(),
       newkp: () => this._leave(() => NewKp.open()),
       journal: () => this._leave(() => Journal.open()),
-      catalog: () => this._leave(() => openCatalog({})),
+      catalog: () => this._leave(() => CatalogWindow.open({})),
       back: () => this._leave(() => null),
     };
     if (actions[kind]) actions[kind]();
@@ -219,10 +232,10 @@ export class Cabinet {
    * @returns {boolean}
    */
   static match(deal, text = this.query) {
-    const wanted = norm(text);
+    const wanted = Str.norm(text);
     if (!wanted) return true;
     const words = [deal.title, deal.client, deal.clientInn, `№${deal.number}`, deal.manager];
-    return norm([...words, ...(deal.kps || []).map(offer => offer.number)].join(' ')).includes(wanted);
+    return Str.norm([...words, ...(deal.kps || []).map(offer => offer.number)].join(' ')).includes(wanted);
   }
 
   /**
@@ -290,7 +303,7 @@ export class Cabinet {
       },
       mdStart: () => {
         MyDay.setAtStart(target.checked);
-        toast(target.checked ? 'Кабинет будет открываться при запуске' : 'Кабинет — в меню «⋯»');
+        Toast.show(target.checked ? 'Кабинет будет открываться при запуске' : 'Кабинет — в меню «⋯»');
       },
     };
     if (changes[target.id]) changes[target.id]();

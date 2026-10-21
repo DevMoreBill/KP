@@ -1,3 +1,8 @@
+import { $, Uid } from '../../core/util.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { Toast } from '../../core/toast.js';
+import { DefRegistry } from '../../core/defaults.js';
 /** Подготовка картинок, которые менеджер добавляет сам: уменьшение, сжатие JPEG, обрезка белых полей. */
 export class ImgPrep {
   static DEFAULTS = [
@@ -72,7 +77,7 @@ export class ImgPrep {
    * @returns {number}
    */
   static quality() {
-    return Math.min(1, Math.max(this.MIN_Q, DEFN('cat.jpegQ', 90) / this.PERCENT));
+    return Math.min(1, Math.max(this.MIN_Q, DefRegistry.num('cat.jpegQ', 90) / this.PERCENT));
   }
 
   /**
@@ -80,7 +85,7 @@ export class ImgPrep {
    * @returns {boolean}
    */
   static crop() {
-    return DEF('cat.photoCrop') !== false;
+    return DefRegistry.value('cat.photoCrop') !== false;
   }
 }
 
@@ -226,7 +231,7 @@ export class ImageFiles {
    */
   static async prep(src, kind) {
     const img = await this.read(src);
-    const { canvas, ctx, w, h } = this._canvas(img, DEFN('cat.photoMax', 1600), false);
+    const { canvas, ctx, w, h } = this._canvas(img, DefRegistry.num('cat.photoMax', 1600), false);
     const box = ImageCrop.bounds(ctx.getImageData(0, 0, w, h).data, { w, h, step: 1, test: this._photoInk });
     const pad = Math.round(Math.max(w, h) * this.PHOTO_PAD);
     const out = ImageCrop.apply(canvas, box, { pad, extra: 0, white: kind !== 'logo' });
@@ -242,16 +247,16 @@ export class ImageFiles {
    */
   static async load(file, kind, i) {
     if (!file.type.startsWith('image/')) {
-      toast('Нужен файл изображения: JPG, PNG или WEBP');
+      Toast.show('Нужен файл изображения: JPG, PNG или WEBP');
       return;
     }
     try {
       const img = await this.prep(await this.toUrl(file), kind);
       S.items[i][kind] = img;
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     } catch {
-      toast('Не удалось открыть изображение');
+      Toast.show('Не удалось открыть изображение');
     }
   }
 
@@ -321,7 +326,7 @@ export class ImageFiles {
    */
   static async gallery(file) {
     const img = await this.read(await this.toUrl(file));
-    const { canvas, ctx, w, h } = this._canvas(img, DEFN('cat.galMax', 2000), true);
+    const { canvas, ctx, w, h } = this._canvas(img, DefRegistry.num('cat.galMax', 2000), true);
     const box = ImageCrop.bounds(ctx.getImageData(0, 0, w, h).data, { w, h, step: this.GAL_STEP, test: this._galInk });
     const pad = Math.round(Math.max(w, h) * this.GAL_PAD);
     const out = ImageCrop.apply(canvas, box, { pad, extra: 1, white: true });
@@ -344,7 +349,7 @@ export class ImageFiles {
       if (!file.type.startsWith('image/')) continue;
       try {
         const pic = await this.gallery(file);
-        item.gallery.push({ id: uid(), ...pic, caption: caption || '', slot: caption || '', at: '', on: true });
+        item.gallery.push({ id: Uid.next(), ...pic, caption: caption || '', slot: caption || '', at: '', on: true });
         added++;
         caption = '';
       } catch {
@@ -352,14 +357,14 @@ export class ImageFiles {
       }
     }
     if (!added) {
-      toast('Нужен файл изображения: JPG, PNG, WEBP');
+      Toast.show('Нужен файл изображения: JPG, PNG, WEBP');
       return;
     }
     item.page = true;
     item._open = true;
-    renderForm();
-    persist();
-    toast(added > 1 ? `Добавлено изображений: ${added}` : 'Изображение добавлено');
+    FormView.render();
+    KpState.persist();
+    Toast.show(added > 1 ? `Добавлено изображений: ${added}` : 'Изображение добавлено');
   }
 
   /**

@@ -1,4 +1,14 @@
 import { Currency } from './currency.js';
+import { Modal } from '../../core/modal.js';
+import { Fmt } from '../../core/str.js';
+import { FormView } from '../../ui/form-view.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
+import { CatalogEditor } from '../catalog/catalog-edit.js';
+import { KpState, S } from '../../core/state.js';
+import { FEAT } from '../../core/features.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Черновики КП на сервере (DraftsController, таблица drafts): незаконченное КП или несохранённые правки сохранённого,
@@ -25,7 +35,7 @@ export class Drafts {
    * @returns {number}
    */
   static autoMs() {
-    return Math.round(DEFN('kp.autosaveMin', 1) * this.MINUTE);
+    return Math.round(DefRegistry.num('kp.autosaveMin', 1) * this.MINUTE);
   }
 
   /**
@@ -33,7 +43,7 @@ export class Drafts {
    * @returns {string}
    */
   static autoText() {
-    const minutes = DEFN('kp.autosaveMin', 1);
+    const minutes = DefRegistry.num('kp.autosaveMin', 1);
     return minutes === 1 ? 'раз в минуту' : `раз в ${String(minutes).replace('.', ',')} мин`;
   }
 
@@ -100,7 +110,7 @@ export class Drafts {
    * @returns {{state: object, sig: string}|null}
    */
   static pending() {
-    if (CATED) return null;
+    if (CatalogEditor.session) return null;
     const state = this.clean();
     const sig = this.sig(state);
     const kpId = S.kpId || '';
@@ -140,7 +150,7 @@ export class Drafts {
   }
 
   static async _write(change) {
-    const totals = totalsS();
+    const totals = KpState.totals();
     const mine = S; // КП, которое сохраняем
     const body = JSON.stringify({
       state: change.state,
@@ -149,7 +159,11 @@ export class Drafts {
       cur: (S.pricing && S.pricing.cur) || 'RUB',
     });
     const put = id =>
-      api(`/api/drafts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body });
+      Api.request(`/api/drafts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body,
+      });
     let id = S._draft || this.newId();
     try {
       await put(id);
@@ -162,7 +176,7 @@ export class Drafts {
     mine._draft = id;
     if (S !== mine) return true; // пока шёл ответ, открыли другое КП — его черновиком этот id не становится
     this.base = change.sig;
-    persist();
+    KpState.persist();
     this._savedNote();
     return true;
   }
@@ -183,8 +197,8 @@ export class Drafts {
     if (this.busy) await this.running; // идёт автосохранение — дождаться, иначе изменения не отложатся
     if (!this.pending()) return true;
     if (!this.enabled()) return confirm('Несохранённые изменения текущего КП пропадут. Продолжить?');
-    if (await this._save(error => toast(`Черновик не сохранён: ${error.message || error}`))) {
-      toast('Прежнее КП отложено в черновики (журнал → «Черновики»)');
+    if (await this._save(error => Toast.show(`Черновик не сохранён: ${error.message || error}`))) {
+      Toast.show('Прежнее КП отложено в черновики (журнал → «Черновики»)');
       return true;
     }
     return confirm(
@@ -203,7 +217,7 @@ export class Drafts {
     delete S._draft;
     this.loaded();
     if (sig) this.base = sig;
-    if (id) api(`/api/drafts/${id}/delete`, { method: 'POST' }).catch(() => {});
+    if (id) Api.request(`/api/drafts/${id}/delete`, { method: 'POST' }).catch(() => {});
   }
 
   /** КП заменено копией или заготовкой: пока его не правили, откладывать нечего. */
@@ -237,7 +251,7 @@ export class Drafts {
    */
   static async list() {
     try {
-      return (await api('/api/drafts')).items || [];
+      return (await Api.request('/api/drafts')).items || [];
     } catch {
       return [];
     }
@@ -251,20 +265,20 @@ export class Drafts {
     if (S._draft !== id && !(await this.stash())) return;
     let answer;
     try {
-      answer = await api(`/api/drafts/${encodeURIComponent(id)}`);
+      answer = await Api.request(`/api/drafts/${encodeURIComponent(id)}`);
     } catch (error) {
-      toast(`Черновик не открылся: ${error.message || error}`);
+      Toast.show(`Черновик не открылся: ${error.message || error}`);
       return;
     }
-    S = Object.assign(freshState(), answer.data.state || {});
+    KpState.replace(Object.assign(KpState.fresh(), answer.data.state || {}));
     if (answer.data.rev != null) S._rev = answer.data.rev;
     S._draft = id;
     document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     window.scrollTo({ top: 0 });
     this.loaded();
-    toast(
+    Toast.show(
       answer.row.kp
         ? `Открыты несохранённые правки КП № ${answer.row.kp} — сохраните КП, чтобы они попали в журнал`
         : 'Черновик открыт',
@@ -278,11 +292,11 @@ export class Drafts {
    */
   static async remove(id) {
     try {
-      await api(`/api/drafts/${encodeURIComponent(id)}/delete`, { method: 'POST' });
+      await Api.request(`/api/drafts/${encodeURIComponent(id)}/delete`, { method: 'POST' });
       if (S._draft === id) delete S._draft;
       return true;
     } catch (error) {
-      toast(`Не удалено: ${error.message || error}`);
+      Toast.show(`Не удалено: ${error.message || error}`);
       return false;
     }
   }
@@ -293,7 +307,7 @@ export class Drafts {
    * @returns {string}
    */
   static rowHtml(row) {
-    const sum = row.sum ? ` · ${money(row.sum)} ${esc(Currency.short(row.cur || 'RUB'))}` : '';
+    const sum = row.sum ? ` · ${KPGen.money(row.sum)} ${esc(Currency.short(row.cur || 'RUB'))}` : '';
     return `<div class="st-row"><div><b>${esc(row.client || 'Клиент не указан')}</b><span class="muted">${esc(this.title(row))} · ${row.positions || 0} поз.${sum} · ${esc(Fmt.dateTime(row.updated))}${S._draft === row.id ? ' · <b>открыт сейчас</b>' : ''}</span></div>
       <div class="acts"><button class="btn" type="button" data-dro="${esc(row.id)}">Продолжить</button><button class="btn ghost" type="button" data-drd="${esc(row.id)}" title="Удалить черновик">Удалить</button></div></div>`;
   }

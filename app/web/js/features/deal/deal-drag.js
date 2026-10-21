@@ -2,6 +2,7 @@ import { DealCal } from './deal-cal.js';
 import { DealRows } from './deal-rows.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
+import { Toast } from '../../core/toast.js';
 
 /** Перетаскивание мышью: этапы оплаты (за «⠿» в строке этапа) и строки графика (платёж получит дату строки рядом). */
 export class DealDrag {
@@ -89,7 +90,7 @@ export class DealDrag {
     DealUi.drag = null;
     if (message) {
       this.touch();
-      toast(message);
+      Toast.show(message);
     }
     DealWin.render();
   }
@@ -130,7 +131,7 @@ export class DealDrag {
     }
     const message = DealRows.setRowDay(key, +row.dataset.sday);
     this.touch();
-    toast(message);
+    Toast.show(message);
     DealWin.render();
   }
 

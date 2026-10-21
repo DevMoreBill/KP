@@ -1,5 +1,27 @@
 import { Spoiler } from './spoiler.js';
 import { StationParams } from './station-params.js';
+import { StationImages } from './station-images.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { StationView3D } from '../draw/station-view3d.js';
+import { StationRender } from '../view/station-render.js';
+import { Mm } from '../layout/mm.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { StationSup } from '../tz/station-sup.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { StationCalc } from '../calc/station-calc.js';
+import { StationRules } from '../rules/station-rules.js';
+import { ExpertFix } from './expert-fix.js';
+import { KitNeed } from '../kit/kit-need.js';
+import { AirChain } from '../layout/air-chain.js';
+import { StationUi } from './station-ui.js';
+import { ReqNum } from '../req/req-num.js';
+import { esc } from '../../core/util.js';
+import { Kit } from '../kit/kit.js';
+import { StationReq } from '../req/station-req.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна
@@ -86,7 +108,7 @@ export class StationQuick {
       <div class="sq-g">${fields}${this._kindFields(item, index, kind)}${this._select(index, ['reserve', 'Резерв', StationReq.RES, req.reserve || ''])}${industry}</div>
       ${this._oil(index, kind, req)}
       <div class="sq-a"><button class="btn primary" type="button" data-sq="pick" data-i="${index}"${busy ? ' disabled' : ''}>${this._pickLabel(busy, main)}</button>
-        ${typeof TzImport !== 'undefined' ? `<button class="btn ghost" type="button" data-a="tzLoad" data-i="${index}">ТЗ заказчика: файл или текст</button>` : ''}
+        ${`<button class="btn ghost" type="button" data-a="tzLoad" data-i="${index}">ТЗ заказчика: файл или текст</button>`}
         ${req.src && req.src.name ? `<span class="muted">по ТЗ «${esc(req.src.name)}»</span>` : ''}</div>
       ${StationParams.html(item, index)}
       ${main ? this.result(item, index) : ''}
@@ -196,7 +218,7 @@ export class StationQuick {
   /** компоновка, расчёт и чего нет в каталоге — для итога */
   static _state(item) {
     const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
-    const calc = StationRules.ok() && typeof StationCalc !== 'undefined' ? StationCalc.run(item) : null;
+    const calc = StationRules.ok() ? StationCalc.run(item) : null;
     return {
       plan,
       calc,
@@ -357,14 +379,14 @@ export class StationQuick {
     if (!item || this.busy.has(item.id)) return;
     const query = this.query(item);
     if (!this._ready(item) || StationReq.ensure(item).pickSig === this.sig(query)) {
-      renderForm();
+      FormView.render();
       return;
     }
     const before = this.parts(item);
     await this._assemble(item, query);
     const changes = this.diff(before, this.parts(item));
     const what = this.CHANGED[key] || 'требование';
-    toast(
+    Toast.show(
       `Изменено ${what} — комплектующие подобраны заново${changes.length ? `: ${changes.join('; ')}` : ' (состав тот же)'}`,
       this.TOAST_LONG,
     );
@@ -380,19 +402,19 @@ export class StationQuick {
   static async _assemble(item, query) {
     const req = StationReq.ensure(item);
     this.busy.add(item.id);
-    renderEditor();
+    ItemEditor.render();
     try {
       const note = await TzPick.assemble(item, query);
       req.pick = note.slice(0, this.NOTE_MAX);
       req.pickSig = this.sig(query);
-      persist();
+      KpState.persist();
     } catch (error) {
-      toast(`Не получилось подобрать: ${(error && error.message) || error}`);
+      Toast.show(`Не получилось подобрать: ${(error && error.message) || error}`);
     } finally {
       this.busy.delete(item.id);
     }
-    renderEditor();
-    renderForm();
+    ItemEditor.render();
+    FormView.render();
     StationImages.soon(item);
   }
 
@@ -437,7 +459,7 @@ export class StationQuick {
     if (!this._pickAllowed(item)) return;
     await this._assemble(item, this.query(item));
     const calc = StationRules.ok() ? StationCalc.run(item) : null;
-    toast(
+    Toast.show(
       calc && calc.errors.length && !calc.accept
         ? 'Подобрано, но не всё выполняется — смотрите строку итога'
         : 'Станция подобрана и скомпонована — изображения для КП готовятся',
@@ -450,11 +472,11 @@ export class StationQuick {
     const need = this.NEED[kind];
     const bad = ReqNum.errors(item);
     if (bad.length) {
-      toast(`Исправьте «${bad[0].label}»: ${bad[0].text}`);
+      Toast.show(`Исправьте «${bad[0].label}»: ${bad[0].text}`);
       return false;
     }
     if (need && !(StationReq.num(StationReq.ensure(item)[need[0]]) > 0)) {
-      toast(`Укажите ${need[1]} — без неё станцию не подобрать`);
+      Toast.show(`Укажите ${need[1]} — без неё станцию не подобрать`);
       return false;
     }
     const replaced = this.REPICK[kind] || this.REPICK.pump;

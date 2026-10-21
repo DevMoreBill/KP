@@ -526,6 +526,20 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.170.0 — что сделано:** чистый код, ч. 32 — без «склеек» и общих имён:
+- Прежние имена функций (`core/legacy.js`, `ui/legacy.js`, `kp/legacy.js`, `catalog/legacy.js`, мосты в `deal/` и `admin/`, ~150 имён,
+  1 700 обращений) заменены вызовами классов; склейки удалены.
+- `util.js`, `state.js`, `defaults*.js`, `lists.js`, `help.js` — ES-модули; выход разделов в `globalThis` убран — каждый файл подключает
+  нужное `import` (2 000+ явных подключений). Обычные скрипты — только `boot.js` и `docx/kpgen.js`.
+- Общие переменные — свойства классов-владельцев: `Catalog.cache`, `ItemEditor.current`, `CatalogEditor.session`, `Steps.current`,
+  `EquipTypes.list`/`.builtin`, `ClientStore.list`/`.total`, `Managers.list`, `MgrBar.timer`, `DefRegistry.srv`, `GeoInput.extra`,
+  `AppVersion.current`; открытое КП `S` меняет только `KpState.replace`. Условия КП — `KpConditions` (`core/conditions.js`), тема —
+  `core/theme.js`, «Значения программы» с сервера — `ServerDefaults.load`, личные — `DefRegistry.personal`.
+- `/api/rules/stations.js` — модуль с `import { StationRules }`. ESLint — встроенный `no-undef` (забытый `import` — ошибка проверки).
+- Проверки в Node — `tests/js/web.js` (окружение браузера, классы по имени только в проверках, подмена методов настоящих классов);
+  прогон открывает классы в окне страницы сам (кроме `main.js` и `index.js` — их страница грузит с меткой версии).
+- Сверка: 327 проверок, слепки станций и сделки, прогон ПК и телефона в светлой и тёмной теме — разметка как у 3.169.0.
+
 **3.169.0 — что сделано:** чистый код, ч. 31 — общие помощники и запуск в ES-модулях, весь интерфейс переведён:
 - `core/` (точка входа `core/index.js`, первым модулем): `Net`, `Features`, `Money`, `Str`, `Toast`, `Files`, `Modal`, `Debounce`,
   `Morph`, `LazyJs`, `DimInput`, `XlsxStyles`, `Xlsx`, `EquipTypes`, `SpecValues`, `ItemAttrs`, `ItemSpec`; запуск — `main.js`

@@ -102,17 +102,4 @@ export const ADMIN_UI = {
   SecurityTab,
 };
 
-// прежние имена для файлов, ещё не переведённых в ES-модули (вызываются только внутри их функций)
-export const aapi = (path, opts) => AdminApi.get(path, opts);
-export const ajson = (path, body) => AdminApi.post(path, body);
-export const stConfirm = (title, text, ok) => AdminDialog.confirm(title, text, ok);
-export const openSettings = tab => SettingsWindow.open(tab);
-export const setDlg = () => SettingsWindow.dialog();
-export const stCatalogTool = action => CatalogTool.run(action);
-export const stVal = value => AuditLabels.value(value);
-export const ENT = AuditLabels.ENT;
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, ADMIN_UI, { aapi, ajson, stConfirm, openSettings, setDlg, stCatalogTool, stVal, ENT });
-
 SettingsWindow.listen();

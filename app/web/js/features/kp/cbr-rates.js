@@ -1,4 +1,12 @@
 import { Currency } from './currency.js';
+import { DEF_BY } from '../../core/defaults.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { DealWin } from '../deal/deal-win.js';
+import { FormView } from '../../ui/form-view.js';
+import { $, esc, today } from '../../core/util.js';
+import { Kit } from '../kit/kit.js';
+import { KpState, S } from '../../core/state.js';
 
 /** Курсы ЦБ РФ: кнопка «Курс ЦБ» — все валюты; программа сама (нет курса нужной валюты) — только пустые. */
 export class CbrRates {
@@ -49,12 +57,12 @@ export class CbrRates {
     if (!got.length) return;
     S.pricing.rateDate = answer.rates.date || today();
     S.pricing.rateSrc = answer.src;
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     DealWin.render();
     this._flash(got);
     const rest = emptyOnly && got.length < this.RATED.length ? ' (остальные курсы — как были)' : '';
-    toast(
+    Toast.show(
       `Курс ЦБ РФ на ${KPGen.ruDate(S.pricing.rateDate)}: ${got.map(code => `${code} ${S.pricing.rates[code]}`).join(', ')}${rest}`,
     );
   }
@@ -68,7 +76,7 @@ export class CbrRates {
     }
     let out = { rates: null, src: '', why: '' };
     try {
-      const rates = await api('/api/cbr');
+      const rates = await Api.request('/api/cbr');
       out = rates.USD
         ? { rates, src: rates.src || 'ЦБ РФ (cbr.ru)', why: '' }
         : { rates: null, src: '', why: rates.error || '' };
@@ -90,7 +98,7 @@ export class CbrRates {
     }
     document.querySelector('details.psettings')?.setAttribute('open', '');
     document.querySelector('[data-rate]')?.focus();
-    toast('Курс ЦБ не загружен — введите вручную');
+    Toast.show('Курс ЦБ не загружен — введите вручную');
   }
 
   static _flash(codes) {

@@ -1,6 +1,9 @@
 import { StationEquip } from '../layout/station-equip.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { TzPick } from './tz-pick.js';
+import { StationUi } from '../station/station-ui.js';
+import { Kit } from '../kit/kit.js';
+import { StationReq } from '../req/station-req.js';
 
 /** Подбор, при котором станция помещается в контейнер в габарите перевозки: число агрегатов, ресиверы по 500 л, снаружи. */
 export class TzFit {

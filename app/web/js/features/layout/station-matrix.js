@@ -1,4 +1,5 @@
 import { LayoutParams } from './layout-params.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /** Числа расстановки по умолчанию; действующие — правило layout.matrix («Настройки → Правила компоновки»). */
 
@@ -113,7 +114,7 @@ export class StationMatrix {
 
   /** Действующая матрица: правило layout.matrix поверх DEF (по разделам). */
   static get MATRIX() {
-    const v = typeof StationRules !== 'undefined' && StationRules.ok() ? StationRules.opt('layout.matrix') : null;
+    const v = StationRules.ok() ? StationRules.opt('layout.matrix') : null;
     if (!v || typeof v !== 'object') return StationMatrix.DEF;
     if (this.#rules !== v) {
       this.#rules = v;

@@ -1,3 +1,5 @@
+import { Str } from '../../core/str.js';
+import { Api } from '../../core/net.js';
 /**
  * Каталог в браузере для 20 000+ позиций: облегчённые карточки хранятся в IndexedDB вместе с номером последнего изменения
  * (seq) и меткой поколения базы (epoch). При запуске и после правок программа спрашивает у сервера только изменённое
@@ -182,7 +184,7 @@ export class CatalogCache {
   static async load() {
     const old = this.snap || (await this._read());
     const query = old && old.seq ? `?since=${old.seq}&epoch=${encodeURIComponent(old.epoch || '')}` : '?since=0';
-    const changes = await api(`/api/catalog/sync${query}`);
+    const changes = await Api.request(`/api/catalog/sync${query}`);
     const changed = changes.full || changes.items.length || changes.gone.length || !old || old.seq !== changes.seq;
     if (changed) this._mark(old, changes);
     this.snap = changes.full
@@ -224,7 +226,7 @@ export class CatalogSearch {
    * @returns {string}
    */
   static key(query) {
-    return norm(query || '').trim();
+    return Str.norm(query || '').trim();
   }
 
   /**
@@ -255,7 +257,7 @@ export class CatalogSearch {
     if (key.replace(/\s/g, '').length < this.MIN_CHARS) return null;
     if (this.cache.has(key)) return this.cache.get(key);
     try {
-      const answer = await api(`/api/catalog/search?q=${encodeURIComponent(key)}`);
+      const answer = await Api.request(`/api/catalog/search?q=${encodeURIComponent(key)}`);
       const ids = new Set(answer.ids || []);
       this.cache.set(key, ids);
       if (this.cache.size > this.KEEP) this.cache.delete(this.cache.keys().next().value);

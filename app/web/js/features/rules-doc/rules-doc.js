@@ -1,5 +1,9 @@
 import { DocxWriter } from '../doc/docx-writer.js';
 import { LayoutDigest } from '../layout/layout-digest.js';
+import { StationUi } from '../station/station-ui.js';
+import { Toast } from '../../core/toast.js';
+import { FileSave } from '../../core/files.js';
+import { Api } from '../../core/net.js';
 
 /** Документ «Инженерные правила и источники» (DOCX) и общий вид значений правил. */
 export class StationRulesDoc {
@@ -31,19 +35,19 @@ export class StationRulesDoc {
 
   /** Правила с сервера (действующая версия). */
   static async load() {
-    return (await api('/api/rules/stations')).rules;
+    return (await Api.request('/api/rules/stations')).rules;
   }
 
   /** Скачать документ «Инженерные правила и источники». */
   static async download() {
     try {
       const data = await this.load();
-      saveFileA(
+      FileSave.download(
         `Инженерные правила и источники — ${String(data.version || '').replace(/[\\/:*?"<>|]+/g, ' ')}.docx`,
         await this.make(data),
       );
     } catch (err) {
-      toast(`Не удалось подготовить документ: ${(err && err.message) || err}`);
+      Toast.show(`Не удалось подготовить документ: ${(err && err.message) || err}`);
     }
   }
 
@@ -59,7 +63,7 @@ export class StationRulesDoc {
   static make(data) {
     const doc = new DocxWriter({
       title: 'Инженерные правила и источники',
-      author: typeof StationUi !== 'undefined' ? StationUi.org() : 'ПНЕВМОТЕХ',
+      author: StationUi.org(),
       footer: `Инженерные правила и источники — версия ${data.version || ''}`,
     });
     const rules = data.rules || [];

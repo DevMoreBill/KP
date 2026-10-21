@@ -148,10 +148,12 @@ class StationRules:
             'byStatus': cnt,
         }
 
+    JS_IMPORT = "import { StationRules } from '/web/js/features/rules/station-rules.js';"
+
     def json_text(self) -> str:
-        """скрипт для браузера: StationRules.use({...}) — до модулей расчёта станций"""
+        """модуль для браузера: StationRules.use({...}) — до модулей расчёта станций"""
         body = json.dumps(self.current(), ensure_ascii=False).replace('</', '<\\/')
-        return f'StationRules.use({body});\n'
+        return f'{self.JS_IMPORT}\nStationRules.use({body});\n'
 
 
 class RuleShape:

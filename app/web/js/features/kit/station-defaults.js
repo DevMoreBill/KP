@@ -2,6 +2,10 @@ import { ContainerKind } from './container-kind.js';
 import { ContainerPart } from './container-part.js';
 import { Kit } from './kit.js';
 import { KitPipe } from './kit-fields.js';
+import { StationReq } from '../req/station-req.js';
+import { GensetSizing } from '../calc/genset-sizing.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Элементы станции, без которых её не бывает: мастер кладёт их в состав сразу (ДГУ — глушитель на крыше, дополнительный
@@ -205,7 +209,7 @@ export class StationDefaults {
   static tankFor(item, hours) {
     const power = this._workingKw(item);
     if (!(power > 0) || !(hours > 0)) return null;
-    const plan = typeof GensetSizing !== 'undefined' && StationRules.ok() ? GensetSizing.plan(item) : null;
+    const plan = StationRules.ok() ? GensetSizing.plan(item) : null;
     if (plan) return this._planned(plan);
     const volume = this.tank(power, hours);
     return { v: volume, rows: [{ k: 'Объём', v: `${volume} л` }, this._workRow(volume, power)] };

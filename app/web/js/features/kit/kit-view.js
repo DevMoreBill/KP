@@ -3,6 +3,27 @@ import { KitCabinet, KitPipe } from './kit-fields.js';
 import { KitContainer } from './kit-container.js';
 import { KitNeed } from './kit-need.js';
 import { KitScope } from './kit-scope.js';
+import { ExpertLog } from '../req/expert-log.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { KpState, S } from '../../core/state.js';
+import { DimRow } from '../catalog/attr-choices.js';
+import { DrawPic } from './draw-pic.js';
+import { StationMatrix } from '../layout/station-matrix.js';
+import { Mm } from '../layout/mm.js';
+import { StationUi } from '../station/station-ui.js';
+import { TankSize } from '../layout/tank-size.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { StationSup } from '../tz/station-sup.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Str } from '../../core/str.js';
+import { ContainerKind } from './container-kind.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { DealUi } from '../deal/deal-ui.js';
+import { esc } from '../../core/util.js';
+import { StationQuick } from '../station/station-quick.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { StationReq } from '../req/station-req.js';
 
 /**
  * Вкладка «Состав станции»: подбор станции, контейнер одной строкой, оборудование двумя группами по стороне поставки
@@ -63,8 +84,8 @@ export class KitView {
   }
 
   static _sups() {
-    const deal = (typeof DealUi !== 'undefined' && DealUi.sups) || [];
-    const names = [...deal.map(sup => sup.name), ...catCache.map(card => attrsOf(card).maker)].filter(Boolean);
+    const deal = DealUi.sups || [];
+    const names = [...deal.map(sup => sup.name), ...Catalog.cache.map(card => Attrs.of(card).maker)].filter(Boolean);
     return [...new Set(names)].slice(0, this.SUPS_MAX);
   }
 
@@ -112,7 +133,7 @@ export class KitView {
     const needCats = new Set(recs.map(rec => rec.cat).filter(Boolean));
     const hidden = name => recs.some(rec => rec.match && rec.match.test(name));
     const parts = Kit.parts(item);
-    const have = new Set(parts.map(part => norm(part.name)));
+    const have = new Set(parts.map(part => Str.norm(part.name)));
     // осушитель и ресивер уже есть — не предлагать
     const kinds = new Set(
       parts.map(part => StationEquip.kindOf(part)).filter(kind => kind === 'dryer' || kind === 'receiver'),
@@ -121,7 +142,7 @@ export class KitView {
       .map(preset => (Array.isArray(preset) ? preset : [preset, '']))
       .filter(([name, cat]) => {
         const sample = { name, attrs: { cat } };
-        if (have.has(norm(name)) || KitScope.def(sample) !== scope || this.SYS.test(name)) return false;
+        if (have.has(Str.norm(name)) || KitScope.def(sample) !== scope || this.SYS.test(name)) return false;
         return !kinds.has(StationEquip.kindOf(sample)) && !needCats.has(cat) && !hidden(name);
       })
       .map(([name, cat]) => this._presetChip(index, scope, name, cat))
@@ -130,7 +151,7 @@ export class KitView {
 
   static _presetChip(index, scope, name, cat) {
     const title = cat
-      ? `Подобрать в каталоге: ${esc(typeById(cat).name)}`
+      ? `Подобрать в каталоге: ${esc(EquipTypes.byId(cat).name)}`
       : 'Найти в каталоге или добавить новым элементом';
     return `<button class="chip sm" type="button" data-a="kitPreset" data-i="${index}" data-n="${esc(name)}" data-cat="${esc(cat)}" data-by="${scope}" title="${title}">+ ${esc(name)}</button>`;
   }
@@ -177,10 +198,10 @@ export class KitView {
     const name = String(part.name || '').toLowerCase();
     const word = kind && StationEquip.LABEL[kind];
     const label = word && !name.includes(word.toLowerCase().slice(0, this.LABEL_PREFIX)) ? word : '';
-    const sup = typeof StationSup !== 'undefined' ? StationSup.label(part) : '';
+    const sup = StationSup.label(part);
     const text = [
       label,
-      part.attrs && part.attrs.cat ? mainLine(part, this.MAIN_LINE) : '',
+      part.attrs && part.attrs.cat ? ItemSpec.mainLine(part, this.MAIN_LINE) : '',
       sup ? `поставщик: ${sup}` : '',
     ]
       .filter(Boolean)
@@ -252,7 +273,7 @@ export class KitView {
     const missing = parts.filter(part => !part.cost && (part.role === 'container' || KitScope.of(part) === 'our'));
     const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
     const layout = this._layoutChip(plan);
-    return `<div class="kit-sum"><span>Закупка изделия${parts.some(part => part.costCur && part.costCur !== 'RUB') ? ' (по курсам КП)' : ''}</span><b>${Number.isFinite(cost) ? `${money(cost)} ₽` : 'нет курса валюты — укажите в шаге «Цены»'}</b>
+    return `<div class="kit-sum"><span>Закупка изделия${parts.some(part => part.costCur && part.costCur !== 'RUB') ? ' (по курсам КП)' : ''}</span><b>${Number.isFinite(cost) ? `${KPGen.money(cost)} ₽` : 'нет курса валюты — укажите в шаге «Цены»'}</b>
       ${layout ? `<button type="button" class="chip sm ${layout[0]}" data-edtab="layout">${layout[1]} → компоновка</button>` : ''}
       <button class="btn ghost sm" type="button" data-a="tzOut" data-i="${index}">Скачать ТЗ на сборку</button>
       ${missing.length ? `<small class="warn-t">не указана закупка: ${missing.map(part => esc(part.name || 'без названия')).join(', ')}</small>` : ''}</div>`;
@@ -286,7 +307,7 @@ export class KitView {
     if (!part) return false;
     if (this.open.has(part.id)) this.open.delete(part.id);
     else this.open.add(part.id);
-    renderEditor();
+    ItemEditor.render();
     return 'async';
   }
 
@@ -300,16 +321,16 @@ export class KitView {
 
   static _hidePick(item) {
     delete StationReq.ensure(item).pick;
-    persist();
-    renderEditor();
+    KpState.persist();
+    ItemEditor.render();
     return 'async';
   }
 
   static _resetExpert(item, part, button) {
     ExpertLog.reset(item, String(button.dataset.k || '').split(','));
     StationUi.cache.delete(item.id);
-    persist();
-    renderEditor();
+    KpState.persist();
+    ItemEditor.render();
     return 'async';
   }
 }

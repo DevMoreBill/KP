@@ -1,4 +1,23 @@
 import { NewStation } from './new-station.js';
+import { TzImport } from '../tz/tz-import.js';
+import { Toast } from '../../core/toast.js';
+import { SpecPaste } from '../catalog/ai-parse.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { CatalogEditor } from '../catalog/catalog-edit.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { FormView } from '../../ui/form-view.js';
+import { Steps } from '../../ui/steps.js';
+import { Kit } from '../kit/kit.js';
+import { KpState, S } from '../../core/state.js';
+import { AiDirect, AiSource } from '../catalog/ai-chat.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { QuickFind } from '../../ui/step-equipment.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { FEAT } from '../../core/features.js';
+import { $, Uid, esc } from '../../core/util.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Auth } from '../kp/auth.js';
 
 /**
  * Окно «Добавить оборудование» — один порядок для КП и для каталога: что добавляем (найти в каталоге — только в КП,
@@ -35,7 +54,7 @@ export class EquipWizard {
     Object.assign(this.state, { where: where || 'kp', cat: '', q: '', url: '', name: '', busy: false });
     NewStation.reset();
     if (pre === 'station') this.state.cat = 'station';
-    else if (pre && TYPES.some(type => type.id === pre)) this.state.cat = pre;
+    else if (pre && EquipTypes.list.some(type => type.id === pre)) this.state.cat = pre;
     const dialog = $('#dlg');
     dialog.className = 'wide nw';
     this.draw();
@@ -44,13 +63,13 @@ export class EquipWizard {
   }
 
   static _stations() {
-    return TYPES.filter(type => type.station);
+    return EquipTypes.list.filter(type => type.station);
   }
 
   /** Перерисовать окно по состоянию. */
   static draw() {
     const { where, cat } = this.state;
-    const type = cat && cat !== 'station' ? typeById(cat) : null;
+    const type = cat && cat !== 'station' ? EquipTypes.byId(cat) : null;
     const back = cat ? `<button class="btn ghost" type="button" data-nw="back">← Назад</button>` : '';
     const title = `${where === 'catalog' ? 'Новая позиция каталога' : 'Добавить оборудование'}${type ? ` <small class="muted">· ${esc(type.station ? type.item : type.name)}</small>` : ''}`;
     $('#dlg').innerHTML =
@@ -83,7 +102,9 @@ export class EquipWizard {
   }
 
   static _units() {
-    return TYPES.filter(type => !type.station && (this.state.where === 'catalog' || type.role !== 'accessory'));
+    return EquipTypes.list.filter(
+      type => !type.station && (this.state.where === 'catalog' || type.role !== 'accessory'),
+    );
   }
 
   static _start() {
@@ -107,8 +128,8 @@ export class EquipWizard {
   static _groups() {
     const units = this._units();
     const counts = new Map();
-    catCache.forEach(card => {
-      const cat = attrsOf(card).cat;
+    Catalog.cache.forEach(card => {
+      const cat = Attrs.of(card).cat;
       counts.set(cat, (counts.get(cat) || 0) + 1);
     });
     const groups = [...new Set(units.map(type => type.group || 'Прочее'))];
@@ -132,12 +153,12 @@ export class EquipWizard {
    */
   static found() {
     if (!this.state.q.trim()) return '';
-    const hits = quickMatches(this.state.q);
+    const hits = QuickFind.matches(this.state.q);
     if (!hits.length) return '<p class="muted">В каталоге не нашлось — заведите карточку ниже: выберите категорию.</p>';
     return hits
       .map(
         card =>
-          `<button type="button" class="nw-hit" data-nwadd="${esc(card.id)}">${card.photo ? `<img src="${esc(card.photo.src)}" alt="">` : '<i></i>'}<span><b>${esc(card.name)}</b><small>${esc(mainLine(card, this.MAIN_LINE) || card.spec || '')}</small></span><em>В КП</em></button>`,
+          `<button type="button" class="nw-hit" data-nwadd="${esc(card.id)}">${card.photo ? `<img src="${esc(card.photo.src)}" alt="">` : '<i></i>'}<span><b>${esc(card.name)}</b><small>${esc(ItemSpec.mainLine(card, this.MAIN_LINE) || card.spec || '')}</small></span><em>В КП</em></button>`,
       )
       .join('');
   }
@@ -145,8 +166,8 @@ export class EquipWizard {
   // единица оборудования: как заполнить карточку
   static _unit(type) {
     const { url, busy, name } = this.state;
-    const aiText = AI_DIRECT.enabled
-      ? `${esc(AI_DIRECT.provider)} прямо в программе: вставьте текст паспорта, загрузите ТЗ или укажите модель — описание и характеристики разложатся по полям одной кнопкой.`
+    const aiText = AiDirect.state.enabled
+      ? `${esc(AiDirect.state.provider)} прямо в программе: вставьте текст паспорта, загрузите ТЗ или укажите модель — описание и характеристики разложатся по полям одной кнопкой.`
       : 'ChatGPT, Claude, Алиса, GigaChat, DeepSeek — любой. Вставьте текст паспорта или только модель: ИИ разложит описание и характеристики по полям.';
     const urlBox = `<div class="nw-url"><input type="url" id="nwUrl" value="${esc(url)}" placeholder="https://… страница товара" autocomplete="off"><button class="btn primary" type="button" data-nwgo="url"${busy ? ' disabled' : ''}>${busy ? 'Загружаю…' : 'Загрузить'}</button></div>`;
     return `<label class="f nw-name"><span>Наименование или модель <small class="muted">— можно заполнить позже</small></span><input type="text" id="nwName" value="${esc(name)}" placeholder="${esc(type.item)} …, например «Grundfos CR 32-4»" autocomplete="off"></label>
@@ -185,26 +206,26 @@ export class EquipWizard {
     const blank = S.items.length === 1 && !first.name.trim() && !first.price && !Kit.has(first);
     if (blank) S.items = [item];
     else S.items.push(item);
-    if (STEP !== 'equip') STEP = 'equip';
-    renderForm();
-    persist();
-    openEditor(S.items.indexOf(item), tab);
+    if (Steps.current !== 'equip') Steps.current = 'equip';
+    FormView.render();
+    KpState.persist();
+    ItemEditor.open(S.items.indexOf(item), tab);
     if (after) after(S.items.indexOf(item));
   }
 
   static _toCatalog(item, tab, after) {
     const { _src, _srcProps, _srcUrl, _srcImgs } = item;
-    const doc = CatalogEditor.toDoc(item, { id: uid() + uid(), prices: [] });
+    const doc = CatalogEditor.toDoc(item, { id: Uid.next() + Uid.next(), prices: [] });
     CatalogEditor.openNew(doc, saved => CatalogWindow.win.afterSave(saved));
     Object.assign(S.items[0], { _src, _srcProps, _srcUrl, _srcImgs, _aiStep: item._aiStep, _aiMsg: item._aiMsg });
-    EDIT.tab = tab;
-    renderEditor();
+    ItemEditor.current.tab = tab;
+    ItemEditor.render();
     if (after) after(0);
   }
 
   static async _makeUnit(how) {
-    const type = typeById(this.state.cat);
-    const item = newItem();
+    const type = EquipTypes.byId(this.state.cat);
+    const item = KpState.newItem();
     item.attrs = { cat: type.id };
     item.page = true;
     item.name = this.state.name.trim();
@@ -219,10 +240,10 @@ export class EquipWizard {
       return;
     }
     if (how === 'paste') {
-      this.finish(item, 'spec', index => openPaste(index));
+      this.finish(item, 'spec', index => SpecPaste.open(index));
       return;
     }
-    item.features = [{ id: uid(), label: '', text: '' }];
+    item.features = [{ id: Uid.next(), label: '', text: '' }];
     this.finish(item, 'main');
   }
 
@@ -230,17 +251,17 @@ export class EquipWizard {
     const url = String(($('#nwUrl') || {}).value || this.state.url).trim();
     this.state.url = url;
     if (!this.URL_RE.test(url)) {
-      toast('Вставьте ссылку на страницу товара (начинается с http)');
+      Toast.show('Вставьте ссылку на страницу товара (начинается с http)');
       return;
     }
     this.state.busy = true;
     this.draw();
     item._srcUrl = url;
-    const ok = await aiFetchInto(item);
+    const ok = await AiSource.fetchInto(item);
     this.state.busy = false;
     if (!ok) {
       this.draw();
-      toast(item._aiMsg || 'Страница не прочитана');
+      Toast.show(item._aiMsg || 'Страница не прочитана');
       return;
     }
     this.finish(item, 'ai');
@@ -283,7 +304,7 @@ export class EquipWizard {
     }
     const hit = target.closest('[data-nwadd]');
     if (hit) {
-      this._addFound(catCache.find(card => card.id === hit.dataset.nwadd));
+      this._addFound(Catalog.cache.find(card => card.id === hit.dataset.nwadd));
       return;
     }
     const fillHow = target.closest('[data-nwgo]');
@@ -294,7 +315,7 @@ export class EquipWizard {
     }
     const button = target.closest('[data-nw]');
     const method = button && this.BUTTONS[button.dataset.nw];
-    if (method) this[method](typeById(this.state.cat));
+    if (method) this[method](EquipTypes.byId(this.state.cat));
   }
 
   static _pickCat(cat) {
@@ -305,7 +326,7 @@ export class EquipWizard {
 
   static _addFound(card) {
     this._close();
-    if (card) addFromCatalog(card);
+    if (card) QuickFind.add(card);
   }
 
   static _back(type) {
@@ -315,7 +336,7 @@ export class EquipWizard {
 
   static _newType() {
     this._close();
-    cwNewType(id => this.open('catalog', id));
+    CatalogWindow.win.newType(id => this.open('catalog', id));
   }
 
   static _toggleCont() {
@@ -355,7 +376,7 @@ export class EquipWizard {
     const target = event.target;
     if (!target.closest || !target.closest('#dlg.nw') || event.key !== 'Enter') return;
     if (target.id === 'nwQ') {
-      const card = quickMatches(this.state.q)[0];
+      const card = QuickFind.matches(this.state.q)[0];
       if (card) {
         event.preventDefault();
         this._addFound(card);
@@ -368,7 +389,7 @@ export class EquipWizard {
     }
     if (target.dataset.nsr) {
       event.preventDefault();
-      NewStation.pick(typeById(this.state.cat));
+      NewStation.pick(EquipTypes.byId(this.state.cat));
     }
   }
 }

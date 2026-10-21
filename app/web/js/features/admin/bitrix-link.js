@@ -1,5 +1,7 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
 import { BitrixPanel } from './bitrix-panel.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { esc } from '../../core/util.js';
 
 /** «Связь и включение»: адрес вебхука (ключ — только на сервере), проверка, обмен кнопками. */
 export class BitrixLink {
@@ -192,7 +194,7 @@ export class BitrixFlow {
     return `<div class="st-card"><p class="sub">Направление обмена</p>
       <div class="seg bx-seg" role="radiogroup">${modes}</div>
       <p class="muted bx-why">${this.WHY[rules.mode] || this.BOTH}</p></div>
-    <div class="st-card"><p class="sub">По видам данных${tip('<p>Можно задать своё направление каждому виду данных поверх общего.</p><p>Пример: общее — «в обе стороны», а «Компании и контакты» — «только из Битрикса в программу»: сделки и дела обмениваются в обе стороны, а компании в Битриксе программа не создаёт и не правит — только забирает их контакты в справочник клиентов.</p>')}</p>
+    <div class="st-card"><p class="sub">По видам данных${UiKit.tip('<p>Можно задать своё направление каждому виду данных поверх общего.</p><p>Пример: общее — «в обе стороны», а «Компании и контакты» — «только из Битрикса в программу»: сделки и дела обмениваются в обе стороны, а компании в Битриксе программа не создаёт и не правит — только забирает их контакты в справочник клиентов.</p>')}</p>
       ${kinds}
       <p class="muted">Свои направления у менеджеров — в «Менеджеры» (действует и общее, и своё).</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow">Сохранить</button></div></div>`;
@@ -241,10 +243,10 @@ export class BitrixSend {
   static _company(company) {
     const panel = BitrixPanel;
     return `<div class="st-card"><p class="sub">Компании</p>
-      <div class="bx-map"><label>Искать компанию в Битриксе${tip('<p>Как найти в Битриксе компанию клиента сделки программы, чтобы не создать дубль.</p><p>«По ИНН, затем по названию» — сначала реквизиты (ИНН 7701234567), не нашлась — точное название («ООО «Ромашка»»).</p>')}</label>${panel.sel('id="bxFind"', Object.entries(panel.FIND), company.find || 'inn_name', 'Поиск компании')}</div>
+      <div class="bx-map"><label>Искать компанию в Битриксе${UiKit.tip('<p>Как найти в Битриксе компанию клиента сделки программы, чтобы не создать дубль.</p><p>«По ИНН, затем по названию» — сначала реквизиты (ИНН 7701234567), не нашлась — точное название («ООО «Ромашка»»).</p>')}</label>${panel.sel('id="bxFind"', Object.entries(panel.FIND), company.find || 'inn_name', 'Поиск компании')}</div>
       ${panel.chk('id="bxCreate"', company.create !== false, 'Не нашлась — создать компанию в Битриксе')}
       ${panel.chk('id="bxReqs"', company.reqs !== false, 'С реквизитами (ИНН, КПП, ОГРН, адрес)')}
-      <div class="bx-map"><label>Контакты (телефон, почта)${tip('<p>Обмен контактами клиента. «В обе стороны» — контакты из КП уходят в компанию Битрикса, а телефоны, почта и сотрудники компании Битрикса дописываются в справочник клиентов программы (без повторов, реквизиты программы не меняются).</p>')}</label>${panel.sel('id="bxCons"', panel.dirOpts(['both', 'in', 'out', 'off']), company.contacts || 'both', 'Контакты')}</div></div>`;
+      <div class="bx-map"><label>Контакты (телефон, почта)${UiKit.tip('<p>Обмен контактами клиента. «В обе стороны» — контакты из КП уходят в компанию Битрикса, а телефоны, почта и сотрудники компании Битрикса дописываются в справочник клиентов программы (без повторов, реквизиты программы не меняются).</p>')}</label>${panel.sel('id="bxCons"', panel.dirOpts(['both', 'in', 'out', 'off']), company.contacts || 'both', 'Контакты')}</div></div>`;
   }
 
   static _tasks(tasks) {
@@ -253,7 +255,7 @@ export class BitrixSend {
       ([key, label]) =>
         `<div class="bx-map"><label>${esc(label)} → в Битриксе</label>${panel.sel(`data-bxtask="${key}"`, Object.entries(panel.TASK_AS), (tasks.kinds || {})[key] || 'todo', label)}</div>`,
     ).join('');
-    return `<div class="st-card"><p class="sub">Дела${tip('<p>Каким делом Битрикса становится дело программы. «Дело (универсальное)» — новое дело Битрикса с крайним сроком; «звонок», «встреча» — дела этих видов (в старых версиях Битрикса); «не передавать» — дело остаётся только в программе.</p>')}</p>
+    return `<div class="st-card"><p class="sub">Дела${UiKit.tip('<p>Каким делом Битрикса становится дело программы. «Дело (универсальное)» — новое дело Битрикса с крайним сроком; «звонок», «встреча» — дела этих видов (в старых версиях Битрикса); «не передавать» — дело остаётся только в программе.</p>')}</p>
       ${kinds}
       ${panel.chk('id="bxCancel"', tasks.cancel !== false, 'Передавать отмену дела («Отменено — …»)')}
       ${panel.chk('id="bxOther"', tasks.other !== false, 'Загружать дела, заведённые в Битриксе вручную')}
@@ -271,7 +273,7 @@ export class BitrixSend {
     const files = send.files || {};
     return `<div class="st-card"><p class="sub">Товары сделки</p>
       ${panel.chk('id="bxRows"', send.rows !== false, 'Передавать товары')}
-      <div class="bx-map"><label>Как${tip('<p>«Позиции последнего КП» — каждая позиция строкой с ценой со скидкой и НДС, как в документе КП.</p><p>«Одной строкой» — «КП № 2026-015» на итоговую сумму: удобно, если в Битриксе товары не ведут.</p>')}</label>${panel.sel(
+      <div class="bx-map"><label>Как${UiKit.tip('<p>«Позиции последнего КП» — каждая позиция строкой с ценой со скидкой и НДС, как в документе КП.</p><p>«Одной строкой» — «КП № 2026-015» на итоговую сумму: удобно, если в Битриксе товары не ведут.</p>')}</label>${panel.sel(
         'id="bxRowsHow"',
         [
           ['kp', 'позиции последнего КП (цены со скидкой, с НДС)'],
@@ -328,10 +330,10 @@ export class BitrixSchedule {
     const state = BitrixPanel.state;
     const sched = BitrixPanel.rules().sched || {};
     return `<div class="st-card"><p class="sub">Расписание обмена</p>
-      <div class="bx-map"><label>Спрашивать изменения раз в, с${tip('<p>Как часто программа забирает из Битрикса изменения и новые сделки. Пример: 90 — раз в полторы минуты. Меньше — быстрее, но больше запросов к порталу (не реже 30 с).</p>')}</label><input type="number" id="bxPoll" min="30" max="3600" inputmode="numeric" value="${state.pollSec || this.POLL_SEC}"></div>
+      <div class="bx-map"><label>Спрашивать изменения раз в, с${UiKit.tip('<p>Как часто программа забирает из Битрикса изменения и новые сделки. Пример: 90 — раз в полторы минуты. Меньше — быстрее, но больше запросов к порталу (не реже 30 с).</p>')}</label><input type="number" id="bxPoll" min="30" max="3600" inputmode="numeric" value="${state.pollSec || this.POLL_SEC}"></div>
       <div class="bx-map"><label>Часы обмена (пусто — круглосуточно)</label><span class="bx-hours"><input type="time" id="bxFrom" value="${esc(sched.from || '')}" aria-label="С"> — <input type="time" id="bxTo" value="${esc(sched.to || '')}" aria-label="До"></span></div>
-      <div class="bx-map"><label>Записей за один обмен${tip('<p>Сколько сделок и дел отправить за один раз. Остальное уйдёт следующим обменом. Пример: 200 — при первом включении 1 000 сделок уйдут за 5 обменов (около 8 минут при опросе раз в 90 с).</p>')}</label><input type="number" id="bxBatch" min="10" max="2000" inputmode="numeric" value="${sched.batch || this.BATCH}"></div>
-      <div class="bx-map"><label>Попыток отправки записи (потом — «Не отправлено»)${tip('<p>Битрикс недоступен или ответил ошибкой — запись пробуется снова с паузой от 1 минуты до часа. После стольких попыток она попадает в «Журнал и проверка → Не отправлено», откуда её можно повторить вручную.</p>')}</label><input type="number" id="bxTries" min="1" max="100" inputmode="numeric" value="${sched.tries || this.TRIES}"></div>
+      <div class="bx-map"><label>Записей за один обмен${UiKit.tip('<p>Сколько сделок и дел отправить за один раз. Остальное уйдёт следующим обменом. Пример: 200 — при первом включении 1 000 сделок уйдут за 5 обменов (около 8 минут при опросе раз в 90 с).</p>')}</label><input type="number" id="bxBatch" min="10" max="2000" inputmode="numeric" value="${sched.batch || this.BATCH}"></div>
+      <div class="bx-map"><label>Попыток отправки записи (потом — «Не отправлено»)${UiKit.tip('<p>Битрикс недоступен или ответил ошибкой — запись пробуется снова с паузой от 1 минуты до часа. После стольких попыток она попадает в «Журнал и проверка → Не отправлено», откуда её можно повторить вручную.</p>')}</label><input type="number" id="bxTries" min="1" max="100" inputmode="numeric" value="${sched.tries || this.TRIES}"></div>
       <p class="muted">Вне часов обмена фоновый обмен ждёт; кнопки «Обменяться сейчас», «Загрузить из Битрикса», «Выгрузить сделку» работают всегда. Повтор после ошибки — с паузой от 1 минуты до часа.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSched">Сохранить</button></div></div>`;
   }

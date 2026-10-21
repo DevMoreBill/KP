@@ -1,6 +1,20 @@
 import { CatalogCache } from './catalog-cache.js';
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { Logos } from './image-slots.js';
+import { Kit } from '../kit/kit.js';
+import { FormView } from '../../ui/form-view.js';
+import { Auth } from '../kp/auth.js';
+import { Toast } from '../../core/toast.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Str } from '../../core/str.js';
+import { KpState, S } from '../../core/state.js';
+import { Currency } from '../kp/currency.js';
+import { CatFeatures } from '../kit/kit-part.js';
+import { PriceCalc } from '../kp/price-calc.js';
+import { CoverSync } from '../../ui/step-cover.js';
+import { CoverHint, ItemSpec } from '../../core/item-spec.js';
+import { Uid } from '../../core/util.js';
+import { RecentModels } from '../kp/quick-search.js';
 
 /** Позиция КП из карточки каталога: всё содержимое карточки, цена — в валюте КП, без следов прежнего оборудования. */
 export class CatalogFill {
@@ -35,10 +49,10 @@ export class CatalogFill {
    */
   static fill(item, card) {
     RecentModels.add(card); // «Недавно добавленные модели» в едином поиске
-    item.gallery = this._copy(card.gallery || []).map(pic => ({ ...pic, id: pic.id || uid() }));
+    item.gallery = this._copy(card.gallery || []).map(pic => ({ ...pic, id: pic.id || Uid.next() }));
     let doc = card;
     if (!doc.hint) doc = { ...doc, hint: CoverHint.of(doc) };
-    if (!(doc.groups || []).length) doc = { ...doc, groups: groupsFromAttrs(doc) };
+    if (!(doc.groups || []).length) doc = { ...doc, groups: ItemSpec.groups(doc) };
     Object.assign(item, this._fields(item, doc));
     delete item._priceText;
     delete item._costText;
@@ -47,7 +61,7 @@ export class CatalogFill {
     this._cost(item, doc);
     if (!item.logo) Logos.auto(item); // логотип производителя из каталога, если у модели его нет
     item.page = !!(item.photo || item.groups.length || item.features.some(feat => feat.text));
-    coverSync();
+    CoverSync.run();
   }
 
   // сборка из каталога — со своим составом
@@ -63,7 +77,7 @@ export class CatalogFill {
     item.mmode = doc.mmode;
     item.priceManual = false;
     this._price(item, doc.priceCur || 'RUB');
-    if (item.cost && !item.price) applyCalc(item); // у модели нет цены — по закупке и марже из каталога
+    if (item.cost && !item.price) PriceCalc.apply(item); // у модели нет цены — по закупке и марже из каталога
   }
 
   static _fields(item, doc) {
@@ -82,7 +96,7 @@ export class CatalogFill {
       attrs: { ...(doc.attrs || {}) },
       options: this._copy(doc.options || []).map(option => ({
         ...option,
-        id: uid(),
+        id: Uid.next(),
         qty: option.unit === 'усл.' ? 1 : +item.qty || 1,
       })),
     };
@@ -90,9 +104,9 @@ export class CatalogFill {
 
   // цена каталога в валюте КП по курсу; курса нет — без цены
   static _price(item, priceCur) {
-    if (!item.price || priceCur === kpCur()) return;
-    const from = rateOf(priceCur);
-    const into = rateOf(kpCur());
+    if (!item.price || priceCur === Currency.current()) return;
+    const from = Currency.rate(priceCur);
+    const into = Currency.rate(Currency.current());
     item.price = from > 0 && into > 0 ? Math.round((item.price * from) / into) : 0;
   }
 }
@@ -133,10 +147,10 @@ export class CatalogSync {
     const byId = new Map(list.map(doc => [doc.id, doc]));
     const byName = new Map();
     for (const doc of list) {
-      const key = norm(doc.name);
+      const key = Str.norm(doc.name);
       if (!byName.has(key)) byName.set(key, doc);
     }
-    return { byId, byName, find: (id, name) => byId.get(id) || byName.get(norm(name)) };
+    return { byId, byName, find: (id, name) => byId.get(id) || byName.get(Str.norm(name)) };
   }
 
   static async _fullDocs(index) {
@@ -160,7 +174,7 @@ export class CatalogSync {
   }
 
   static _keep() {
-    return Math.round(DEFN('cat.priceKeep', 50));
+    return Math.round(DefRegistry.num('cat.priceKeep', 50));
   }
 
   static async _doc(item, { index, full }) {
@@ -177,14 +191,14 @@ export class CatalogSync {
 
   static async _item(item, { number, index, full }) {
     const doc = await this._doc(item, { index, full });
-    const base = doc ? JSON.parse(JSON.stringify(doc)) : { id: uid() + uid(), prices: [] };
+    const base = doc ? JSON.parse(JSON.stringify(doc)) : { id: Uid.next() + Uid.next(), prices: [] };
     Object.assign(base, this._fields(item, base));
     this._photoFrom(base, doc);
     this._history(base, number, {
       date: S.date,
       client: S.client,
       price: item.price,
-      cur: kpCur(),
+      cur: Currency.current(),
       cost: item.cost || 0,
       costCur: item.costCur || 'RUB',
       qty: +item.qty,
@@ -207,7 +221,7 @@ export class CatalogSync {
       name: item.name,
       spec: item.spec || base.spec || '',
       price: item.price,
-      priceCur: kpCur(),
+      priceCur: Currency.current(),
       cost: item.cost || base.cost || 0,
       costCur: item.cost ? item.costCur || 'RUB' : base.costCur || 'RUB',
       margin: item.margin ?? base.margin,
@@ -264,7 +278,7 @@ export class CatalogSync {
     const doc = await Catalog.fullDoc(index.find(option.catId, option.name)); // полная позиция, а не карточка списка
     const base = doc
       ? JSON.parse(JSON.stringify(doc))
-      : { id: uid() + uid(), kind: 'option', prices: [], features: [], groups: [] }; // новая — всегда опция
+      : { id: Uid.next() + Uid.next(), kind: 'option', prices: [], features: [], groups: [] }; // новая — всегда опция
     Object.assign(base, {
       name: option.name,
       price: option.price,
@@ -283,7 +297,7 @@ export class CatalogSync {
     await CatalogStore.putAuto(base);
     option.catId = base.id;
     index.byId.set(base.id, base);
-    if (!index.byName.has(norm(base.name))) index.byName.set(norm(base.name), base);
+    if (!index.byName.has(Str.norm(base.name))) index.byName.set(Str.norm(base.name), base);
   }
 
   /**
@@ -293,24 +307,24 @@ export class CatalogSync {
   static async save(index) {
     const item = S.items[index];
     if (!item.name.trim()) {
-      toast('Сначала укажите наименование');
+      Toast.show('Сначала укажите наименование');
       return;
     }
     const need = CatFind.id(item.catId) ? 'catEdit' : 'catAdd';
-    if (!can(need)) {
-      cannot(need);
+    if (!Auth.can(need)) {
+      Auth.cannot(need);
       return;
     }
     // карточка каталога — целиком (категория, закупка, история цен, галерея), поверх — поля редактора позиции
     const known = item.catId && CatFind.id(item.catId);
     const cur = known ? await Catalog.fullDoc(known) : null;
     if (cur && cur._light) {
-      toast('Карточка каталога не загрузилась — повторите, когда будет связь с сервером');
+      Toast.show('Карточка каталога не загрузилась — повторите, когда будет связь с сервером');
       return;
     }
     await this._put(item, this._saveDoc(item, cur));
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 
   static async _put(item, doc) {
@@ -320,13 +334,13 @@ export class CatalogSync {
       if (saved && saved.logo) item.logo = saved.logo;
       item.catId = doc.id;
       await Catalog.refresh();
-      toast(
+      Toast.show(
         saved._pending
           ? 'Отправлено на модерацию — изменения появятся после одобрения администратором'
           : 'Позиция сохранена в каталог',
       );
     } catch (error) {
-      toast(`Не удалось сохранить в каталог: ${error.message || error}`);
+      Toast.show(`Не удалось сохранить в каталог: ${error.message || error}`);
     }
   }
 
@@ -341,7 +355,7 @@ export class CatalogSync {
       : {};
     return {
       ...(cur ? JSON.parse(JSON.stringify(cur)) : {}),
-      id: item.catId || uid() + uid(),
+      id: item.catId || Uid.next() + Uid.next(),
       name: item.name,
       spec: item.spec,
       price: item.price,

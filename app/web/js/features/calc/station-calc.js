@@ -10,6 +10,14 @@ import { PressureBudget } from './pressure-budget.js';
 import { PumpSizing } from './pump-sizing.js';
 import { ReceiverSizing } from './receiver-sizing.js';
 import { VentSizing } from './vent-sizing.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { Spoiler } from '../station/spoiler.js';
+import { Kit } from '../kit/kit.js';
+import { StationRules } from '../rules/station-rules.js';
+import { StationReq } from '../req/station-req.js';
+import { ReqNum } from '../req/req-num.js';
+import { StationUi } from '../station/station-ui.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Расчёт модульной станции по требованиям заказчика, составу и инженерным правилам: каждый шаг — данные, формула,

@@ -1,4 +1,8 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
+import { Toast } from '../../core/toast.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /** Обслуживание базы: автокопии (архивы ZIP), сжатие и проверка, срок журнала действий, изображения без ссылок. */
 export class DbMaint {
@@ -47,7 +51,7 @@ export class DbMaint {
   static _copies(maint) {
     const others = maint.others || {};
     const packed = maint.compressed;
-    return `<div class="sub st-mh">Автоматические копии ${tip('<p>Каждый день при первом запуске (и раз в сутки, пока работает сервер отдела) программа делает копию базы, проверяет её встроенной проверкой SQLite и сжимает в архив ZIP (в 15–20 раз меньше файла базы; файл kp.sqlite3 — внутри). Восстановить — «Загрузить → Файл базы целиком»: он принимает и архив. Хранятся копии за 7 последних дней, по одной на 4 последние недели и на 12 последних месяцев.</p>')}</div>
+    return `<div class="sub st-mh">Автоматические копии ${UiKit.tip('<p>Каждый день при первом запуске (и раз в сутки, пока работает сервер отдела) программа делает копию базы, проверяет её встроенной проверкой SQLite и сжимает в архив ZIP (в 15–20 раз меньше файла базы; файл kp.sqlite3 — внутри). Восстановить — «Загрузить → Файл базы целиком»: он принимает и архив. Хранятся копии за 7 последних дней, по одной на 4 последние недели и на 12 последних месяцев.</p>')}</div>
       <table class="pv-t bk-kv">
         <tr><td>Последняя копия</td><td>${this.last(maint.backup || {})}</td></tr>
         <tr><td>Копий в папке</td><td>${maint.copies}${maint.copies ? ` · ${Fmt.size(maint.copiesBytes)} · с ${esc(KPGen.ruDate(maint.oldest))}` : ''}<br><small class="muted">${esc(maint.dir)}</small></td></tr>
@@ -74,7 +78,7 @@ export class DbMaint {
       year =>
         `<option value="${year}"${year === maint.auditYears ? ' selected' : ''}>${year} ${this._yearWord(year)}</option>`,
     ).join('');
-    return `<div class="sub st-mh">Обслуживание базы ${tip('<p>Раз в месяц база сама сжимается и проверяется встроенной проверкой SQLite. Журнал действий старше заданного срока переносится в архив (папка backup/audit-archive рядом с базой).</p><p>«Изображения без ссылок» — файлы в папке img, на которые не ссылается ни каталог, ни КП, ни история и корзина.</p>')}</div>
+    return `<div class="sub st-mh">Обслуживание базы ${UiKit.tip('<p>Раз в месяц база сама сжимается и проверяется встроенной проверкой SQLite. Журнал действий старше заданного срока переносится в архив (папка backup/audit-archive рядом с базой).</p><p>«Изображения без ссылок» — файлы в папке img, на которые не ссылается ни каталог, ни КП, ни история и корзина.</p>')}</div>
       <table class="pv-t bk-kv">
         <tr><td>Сжатие и проверка</td><td>${vacuum ? `${esc(Fmt.dateTime(vacuum.at))} · ${Fmt.size(vacuum.before)} → ${Fmt.size(vacuum.after)} · ${check}` : 'ещё не выполнялись'}</td></tr>
         <tr><td>Журнал действий</td><td>${Fmt.num(maint.auditRows)} записей${maint.auditOldest ? ` с ${esc(KPGen.ruDate(maint.auditOldest))}` : ''} · хранить <select id="mAudY" class="st-inl" aria-label="Срок хранения журнала">${years}</select>${audit && audit.archived ? ` · в архиве ${Fmt.num(audit.archived)}` : ''}</td></tr>
@@ -97,7 +101,7 @@ export class DbMaint {
     try {
       await this[method](box, button, section);
     } catch (error) {
-      toast(`Не выполнено: ${error.message || error}`);
+      Toast.show(`Не выполнено: ${error.message || error}`);
       this.render(box, null, section);
     }
   }
@@ -105,14 +109,14 @@ export class DbMaint {
   static async _backup(box, button, section) {
     this._busy(button, 'Копирую…');
     const reply = await AdminApi.post('maint/backup');
-    toast(reply.backup && reply.backup.ok ? 'Копия создана и проверена' : 'Копия не создана');
+    Toast.show(reply.backup && reply.backup.ok ? 'Копия создана и проверена' : 'Копия не создана');
     return this.render(box, reply, section);
   }
 
   static async _run(box, button, section) {
     this._busy(button, 'Сжимаю…');
     const reply = await AdminApi.post('maint/run');
-    toast('База сжата и проверена');
+    Toast.show('База сжата и проверена');
     return this.render(box, reply, section);
   }
 
@@ -121,7 +125,7 @@ export class DbMaint {
     const found = await AdminApi.get('maint/images');
     const more = found.count > found.sample.length ? '<br>…' : '';
     box.querySelector('#mImg').innerHTML = found.count
-      ? `${found.count} файлов · ${Fmt.size(found.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${found.count}">Удалить</button>${tip(`<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>${found.sample.map(esc).join('<br>')}${more}</p>`)}`
+      ? `${found.count} файлов · ${Fmt.size(found.bytes)} <button class="btn ghost" type="button" data-mt="imgdel" data-n="${found.count}">Удалить</button>${UiKit.tip(`<p>Файлы в папке img, на которые нет ссылок ни в каталоге, ни в КП, ни в истории версий и корзине (и которым больше месяца), а также всё из папки img/unused.</p><p>${found.sample.map(esc).join('<br>')}${more}</p>`)}`
       : 'лишних нет';
   }
 
@@ -134,7 +138,7 @@ export class DbMaint {
       return undefined;
     this._busy(button, 'Удаляю…');
     const reply = await AdminApi.post('maint/images');
-    toast(`Удалено: ${reply.deleted} (${Fmt.size(reply.bytes)})`);
+    Toast.show(`Удалено: ${reply.deleted} (${Fmt.size(reply.bytes)})`);
     return this.render(box, null, section);
   }
 
@@ -147,10 +151,12 @@ export class DbMaint {
     }
     try {
       const reply = await AdminApi.post('maint/audit', { years });
-      toast(reply.archivedNow ? `В архив перенесено записей: ${reply.archivedNow}` : 'Срок хранения журнала сохранён');
+      Toast.show(
+        reply.archivedNow ? `В архив перенесено записей: ${reply.archivedNow}` : 'Срок хранения журнала сохранён',
+      );
       this.render(box, reply, section);
     } catch (error) {
-      toast(`Не сохранено: ${error.message}`);
+      Toast.show(`Не сохранено: ${error.message}`);
     }
   }
 }
@@ -194,7 +200,7 @@ export class MigrationsCard {
     )
       return;
     await AdminApi.post(`migrations/${button.dataset.mdown}/down`);
-    toast('Миграция откачена');
+    Toast.show('Миграция откачена');
     this.render(box);
   }
 }

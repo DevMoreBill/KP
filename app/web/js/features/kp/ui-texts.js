@@ -1,3 +1,6 @@
+import { esc } from '../../core/util.js';
+import { Toast } from '../../core/toast.js';
+import { AdminSession, Api } from '../../core/net.js';
 /**
  * Тексты интерфейса, изменённые администратором: названия меню и разделов, подписи полей, кнопки, подсказки. Хранятся
  * на сервере ({исходный текст: новый}) и применяются у всех: после любой перерисовки текст заменяется (MutationObserver).
@@ -42,7 +45,7 @@ export class UiTexts {
    * @returns {Promise<void>}
    */
   static load() {
-    return api('/api/uitexts')
+    return Api.request('/api/uitexts')
       .then(map => {
         this.state.map = map && typeof map === 'object' ? map : {};
         this.index();
@@ -173,13 +176,13 @@ export class UiTexts {
       document.querySelectorAll('.uit-pen,.uit-bar').forEach(el => el.remove());
       return;
     }
-    if (!ADMIN.on) {
+    if (!AdminSession.on) {
       this.state.edit = false;
       document.body.classList.remove('uit-edit');
-      toast('Править тексты может администратор: войдите в «Настройки»');
+      Toast.show('Править тексты может администратор: войдите в «Настройки»');
       return;
     }
-    toast('Правка текстов: нажмите ✎ у надписи. «Готово» — выйти');
+    Toast.show('Правка текстов: нажмите ✎ у надписи. «Готово» — выйти');
     this._schedule();
   }
 
@@ -258,21 +261,21 @@ export class UiTexts {
       else state.map[field.orig] = next;
     });
     try {
-      await api('/api/uitexts', {
+      await Api.request('/api/uitexts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(state.map),
       });
     } catch (error) {
       state.map = old;
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
       return;
     }
     this.index();
     this.apply(document.body, back);
     this.apply(document.body);
     done();
-    toast(message);
+    Toast.show(message);
     this._schedule();
   }
 
@@ -326,9 +329,9 @@ export class UiTexts {
     });
     document.addEventListener('kp:admin', () => {
       document.querySelectorAll('[data-a="uitexts"]').forEach(button => {
-        button.hidden = !ADMIN.on;
+        button.hidden = !AdminSession.on;
       });
-      if (this.state.edit && !ADMIN.on) this.stopEdit();
+      if (this.state.edit && !AdminSession.on) this.stopEdit();
     });
   }
 }

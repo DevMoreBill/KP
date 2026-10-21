@@ -3,6 +3,12 @@ import { TemplateDraft } from './template-draft.js';
 import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
 import { Translit } from './translit.js';
+import { ObjPath } from '../../core/str.js';
+import { FormView } from '../../ui/form-view.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
+import { S } from '../../core/state.js';
 
 /**
  * Редактор шаблона КП («Настроить»): форма строится по editor.json из папки шаблона, настройки сохраняются в template.json.
@@ -110,7 +116,7 @@ export class TemplateEditor {
     this.state.note = text;
     const line = $('#teState');
     if (!line) {
-      toast(text);
+      Toast.show(text);
       return;
     }
     line.textContent = text;
@@ -131,7 +137,7 @@ export class TemplateEditor {
     const box = $('#teHist');
     if (!box) return;
     try {
-      const list = await api(`/api/templates/${encodeURIComponent(this.state.id)}/history`);
+      const list = await Api.request(`/api/templates/${encodeURIComponent(this.state.id)}/history`);
       box.innerHTML = list.length
         ? list
             .map(
@@ -158,13 +164,13 @@ export class TemplateEditor {
 
   static async _reload() {
     await Templates.load();
-    renderForm();
+    FormView.render();
   }
 
   static async _save() {
     const state = this.state;
     const body = JSON.stringify(JSON.parse(JSON.stringify(state.work)), null, 2);
-    await api(this._url('file?name=template.json'), { method: 'PUT', headers: this.JSON_HEADERS, body });
+    await Api.request(this._url('file?name=template.json'), { method: 'PUT', headers: this.JSON_HEADERS, body });
     state.dirty = false;
     Templates.dropCache(state.id);
     await this._reload();
@@ -174,7 +180,7 @@ export class TemplateEditor {
   }
 
   static async _putFile(name, file) {
-    await api(this._url(`file?name=${encodeURIComponent(name)}`), { method: 'PUT', body: file }); // с токеном сессии администратора
+    await Api.request(this._url(`file?name=${encodeURIComponent(name)}`), { method: 'PUT', body: file }); // с токеном сессии администратора
   }
 
   static _close() {
@@ -205,7 +211,9 @@ export class TemplateEditor {
     );
     if (!name) return undefined;
     const id = Translit.templateId(name);
-    await api(this._url(`copy?to=${encodeURIComponent(id)}&title=${encodeURIComponent(name)}`), { method: 'POST' });
+    await Api.request(this._url(`copy?to=${encodeURIComponent(id)}&title=${encodeURIComponent(name)}`), {
+      method: 'POST',
+    });
     await this._reload();
     state.note = `Создан шаблон «${name}» (папка templates/${id})`;
     return this._reopen(id);
@@ -213,7 +221,7 @@ export class TemplateEditor {
 
   static async _reset() {
     if (!confirm('Вернуть заводской вариант шаблона? Текущие файлы останутся в истории версий.')) return undefined;
-    await api(this._url('reset'), { method: 'POST' });
+    await Api.request(this._url('reset'), { method: 'POST' });
     await this._reload();
     this.state.note = 'Заводской шаблон восстановлен, прежние файлы — в истории';
     return this._reopen(this.state.id);
@@ -227,7 +235,7 @@ export class TemplateEditor {
       )
     )
       return undefined;
-    await api(this._url('delete'), { method: 'POST' });
+    await Api.request(this._url('delete'), { method: 'POST' });
     Templates.dropCache(state.id);
     await this._reload();
     state.note = 'Шаблон удалён (папка перенесена в templates/_deleted)';
@@ -272,7 +280,7 @@ export class TemplateEditor {
     if (data.hex) {
       const hex = field.value.replace(/^#/, '').toUpperCase();
       if (!/^[0-9A-F]{6}$/.test(hex)) return;
-      setPath(work, data.hex, hex);
+      ObjPath.set(work, data.hex, hex);
       const color = field.parentNode.querySelector('[data-color]');
       if (color) color.value = `#${hex}`;
       this._dirty();
@@ -280,14 +288,14 @@ export class TemplateEditor {
     }
     if (data.color) {
       const hex = field.value.replace('#', '').toUpperCase();
-      setPath(work, data.color, hex);
+      ObjPath.set(work, data.color, hex);
       const text = field.parentNode.querySelector('[data-hex]');
       if (text) text.value = hex;
       this._dirty();
       return;
     }
     if (data.pair && field.tagName !== 'SELECT') {
-      getPath(work, data.pair)[+data.i][+data.j] = field.value;
+      ObjPath.get(work, data.pair)[+data.i][+data.j] = field.value;
       this._dirty();
     }
   }
@@ -299,7 +307,7 @@ export class TemplateEditor {
       value = value === '' ? '' : +value;
       if (value !== '' && !isFinite(value)) return;
     }
-    setPath(this.state.work, key, value);
+    ObjPath.set(this.state.work, key, value);
     this._dirty();
     if (/^styles\./.test(key) || key === 'font') this._samples();
   }
@@ -325,7 +333,7 @@ export class TemplateEditor {
       return;
     }
     if (data.pair && field.tagName === 'SELECT') {
-      getPath(state.work, data.pair)[+data.i][+data.j] = field.value;
+      ObjPath.get(state.work, data.pair)[+data.i][+data.j] = field.value;
       this._dirty();
       this._refresh();
       return;
@@ -352,7 +360,7 @@ export class TemplateEditor {
       await this._putFile(name, file);
       Templates.dropCache(state.id);
       state.pack = await Templates.pack(state.id);
-      setPath(state.work, data.img, name);
+      ObjPath.set(state.work, data.img, name);
       this._dirty();
       this._refresh();
       this.note('Картинка загружена — нажмите «Сохранить»');
@@ -404,18 +412,18 @@ export class TemplateEditor {
   static _buttonSwitch(button) {
     const work = this.state.work;
     const path = button.dataset.sw;
-    setPath(work, path, !getPath(work, path));
+    ObjPath.set(work, path, !ObjPath.get(work, path));
     this._dirty();
-    button.setAttribute('aria-checked', String(!!getPath(work, path)));
+    button.setAttribute('aria-checked', String(!!ObjPath.get(work, path)));
   }
 
   static _buttonStyle(button) {
     const work = this.state.work;
     const path = button.dataset.st;
     const prop = button.dataset.prop;
-    const style = getPath(work, path) || {};
+    const style = ObjPath.get(work, path) || {};
     style[prop] = !style[prop];
-    setPath(work, path, style);
+    ObjPath.set(work, path, style);
     this._dirty();
     button.classList.toggle('on', !!style[prop]);
     button.setAttribute('aria-pressed', String(!!style[prop]));
@@ -440,28 +448,28 @@ export class TemplateEditor {
 
   static _buttonRowAdd(button) {
     const work = this.state.work;
-    const list = getPath(work, button.dataset.rowAdd) || [];
+    const list = ObjPath.get(work, button.dataset.rowAdd) || [];
     list.push(button.dataset.kind === 'brand' ? ['', 'BLUE'] : ['', '']);
-    setPath(work, button.dataset.rowAdd, list);
+    ObjPath.set(work, button.dataset.rowAdd, list);
     this._dirty();
     this._refresh();
   }
 
   static _buttonRowDelete(button) {
-    getPath(this.state.work, button.dataset.rowDel).splice(+button.dataset.i, 1);
+    ObjPath.get(this.state.work, button.dataset.rowDel).splice(+button.dataset.i, 1);
     this._dirty();
     this._refresh();
   }
 
   static _buttonImageDelete(button) {
-    setPath(this.state.work, button.dataset.imgDel, '');
+    ObjPath.set(this.state.work, button.dataset.imgDel, '');
     this._dirty();
     this._refresh();
   }
 
   static async _buttonOpen(button) {
     const name = button.dataset.teOpen;
-    const result = await api(this._url(`open?name=${encodeURIComponent(name)}`), { method: 'POST' });
+    const result = await Api.request(this._url(`open?name=${encodeURIComponent(name)}`), { method: 'POST' });
     if (result && result.remote) {
       this.note('Файлы шаблона открываются на компьютере-сервере отдела — используйте «Скачать» и «Заменить…»');
     } else if (name === 'base.docx') {
@@ -472,7 +480,7 @@ export class TemplateEditor {
   static async _buttonRestore(button) {
     const state = this.state;
     if (state.dirty && !confirm('Несохранённые изменения в окне пропадут. Продолжить?')) return;
-    const result = await api(this._url(`restore?name=${encodeURIComponent(button.dataset.teRestore)}`), {
+    const result = await Api.request(this._url(`restore?name=${encodeURIComponent(button.dataset.teRestore)}`), {
       method: 'POST',
     });
     await this._reload();
@@ -488,7 +496,7 @@ export class TemplateEditor {
       const key = input.dataset.k.replace(/\.size$/, '');
       const field = ((form.tabs.find(row2 => row2.id === tab) || {}).fields || []).find(item => item.key === key) || {};
       const sample = row.querySelector('.te-sample');
-      if (sample) sample.setAttribute('style', TemplateFields.sample(getPath(work, key) || {}, field));
+      if (sample) sample.setAttribute('style', TemplateFields.sample(ObjPath.get(work, key) || {}, field));
     });
   }
 }

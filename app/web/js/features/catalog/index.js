@@ -30,7 +30,6 @@ import { DescTab } from './item-desc.js';
 import { EditorDrag, ItemEditor } from './item-editor.js';
 import { ItemLinks } from './item-links.js';
 import { ItemTabs } from './item-tabs.js';
-import * as LEGACY from './legacy.js';
 import { MigrationNotice } from './migration-notice.js';
 import { ModerationDiff } from './moderation-diff.js';
 import { ModerationList, ModerationView } from './moderation.js';
@@ -40,6 +39,8 @@ import { Suppliers } from './suppliers.js';
 import { GoodsTab, TrashTab } from './trash-tab.js';
 import { TypeForm } from './type-form.js';
 import { TypesEditor } from './types-editor.js';
+import { LISTS } from '../../core/lists.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 export const CATALOG = {
   AiChat,
@@ -109,9 +110,6 @@ export const CATALOG = {
   XlsTable,
 };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, CATALOG, LEGACY);
-
 // «Значения программы» — в прежнем порядке разделов
 DefRegistry.add(...Catalog.DEFAULTS);
 DefRegistry.add(...CatSections.DEFAULTS);
@@ -127,4 +125,4 @@ ItemEditor.listen();
 AiSource.listen();
 AiFill.listen();
 // нейросети для автозаполнения — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
-if (typeof LISTS !== 'undefined') LISTS.ready(AiChat.LISTS);
+LISTS.ready(AiChat.LISTS);

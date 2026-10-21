@@ -1,4 +1,11 @@
 import { UiKit } from './ui-kit.js';
+import { CoverHint } from '../core/item-spec.js';
+import { Kit } from '../features/kit/kit.js';
+import { CatalogEditor } from '../features/catalog/catalog-edit.js';
+import { esc } from '../core/util.js';
+import { Templates } from '../features/doc/templates.js';
+import { KpModels } from '../features/doc/kp-models.js';
+import { S } from '../core/state.js';
 
 /** Раздел 4 «Оформление КП»: шаблон документа, заголовок, модель, описание и ключевые параметры (первая страница КП). */
 export class CoverStep {
@@ -45,7 +52,7 @@ export class CoverStep {
     if (!multi) {
       return `<p>Поля заполняются из каталога при выборе оборудования — проверьте и поправьте при необходимости.</p><p>Щелчок по превью — предпросмотр всего КП.</p>`;
     }
-    return `<p>В КП ${models} ${plural(models, 'модель', 'модели', 'моделей')}: на титуле будет блок «Оборудование в предложении» с фото, мощностью, исполнением и количеством каждой модели (если моделей много — сводка по видам оборудования). Заголовок и описание подставятся сами; заполните поля, чтобы задать свои. Ключевые параметры в этом режиме не выводятся.</p><p>Фото модели — первое фото позиции; поменять — в карточке позиции.</p>`;
+    return `<p>В КП ${models} ${KPGen.plural(models, 'модель', 'модели', 'моделей')}: на титуле будет блок «Оборудование в предложении» с фото, мощностью, исполнением и количеством каждой модели (если моделей много — сводка по видам оборудования). Заголовок и описание подставятся сами; заполните поля, чтобы задать свои. Ключевые параметры в этом режиме не выводятся.</p><p>Фото модели — первое фото позиции; поменять — в карточке позиции.</p>`;
   }
 
   static _photo(withPhoto, current) {
@@ -85,7 +92,7 @@ export class CoverSync {
 
   /** Обновить титул по оборудованию. */
   static run() {
-    if (CATED || S.cover.touched) return;
+    if (CatalogEditor.session || S.cover.touched) return;
     const named = item => String(item.name || '').trim();
     const item = S.items.find(one => one.id === S.cover.photoFrom && named(one)) || S.items.find(named);
     const hint = item ? this._hint(item) : { title: '', model: '', desc: '', kpis: [] };

@@ -4,6 +4,7 @@ import { StationClear } from './station-clear.js';
 import { StationEquip } from './station-equip.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationMods } from './station-mods.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Свод «как программа компонует станцию» из действующих правил: в «Настройках», во вкладке «Компоновка» и в документе

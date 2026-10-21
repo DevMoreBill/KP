@@ -1,3 +1,5 @@
+import { ImageFiles } from '../catalog/images.js';
+import { Kit } from '../kit/kit.js';
 /** Цвета RGB: расстояние, насыщенность, запись #rrggbb. */
 class Rgb {
   /** Расстояние между цветами (сумма разностей каналов). */
@@ -331,7 +333,7 @@ export class PhotoTint {
       const src = PhotoTint.src(item);
       if (!src || PhotoTint.cache.has(src)) continue;
       try {
-        const res = PhotoTint.of(await readImg(src));
+        const res = PhotoTint.of(await ImageFiles.read(src));
         PhotoTint.cache.set(src, res.hex);
         if (res.zones.length) PhotoTint.zones.set(src, res.zones);
       } catch {

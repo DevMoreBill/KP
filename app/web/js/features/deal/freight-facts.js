@@ -2,6 +2,10 @@ import { Freight } from './freight.js';
 import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
+import { Toast } from '../../core/toast.js';
+import { Fmt } from '../../core/str.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Сверка тарифов со счетами перевозчиков (администратор): счета хранятся вместе с тарифами (facts); каждый счёт
@@ -53,7 +57,7 @@ export class FreightFacts {
    * @returns {string}
    */
   static html(tariffs) {
-    return `<div class="lg-facts"><div class="sub" style="margin-top:14px">Сверка со счетами перевозчиков ${tip(FreightFacts.TIP)}</div>
+    return `<div class="lg-facts"><div class="sub" style="margin-top:14px">Сверка со счетами перевозчиков ${UiKit.tip(FreightFacts.TIP)}</div>
       <div class="lg-tw"><table class="lg-st lg-fa" id="lgFa"><thead><tr><th>Дата</th><th>Маршрут</th><th>Км</th><th>Машина</th><th>По счёту, ₽ с НДС</th><th>По тарифу</th><th>Отклонение</th><th></th></tr></thead>
         <tbody>${FreightFacts.facts()
           .map(fact => FreightFacts.row(fact, tariffs))
@@ -137,7 +141,7 @@ export class FreightFacts {
     const action = same
       ? '<span class="muted">совпадает</span>'
       : `<button class="btn ghost sm" type="button" data-lgfa="apply" data-id="${esc(cls.id)}">Применить</button>`;
-    return `<tr><td><b>${esc(cls.name)}</b> — ${cls.n} ${plural(cls.n, 'счёт', 'счёта', 'счетов')}:
+    return `<tr><td><b>${esc(cls.name)}</b> — ${cls.n} ${KPGen.plural(cls.n, 'счёт', 'счёта', 'счетов')}:
         средняя ошибка тарифа ${pct(cls.before)} → после поправки ${pct(cls.after)}<br><small class="muted">${esc(cls.how)}: подача и минимум ${factor(cls.a)}, ставки за км ${factor(cls.b)} →
         подача ${Fmt.rub(fit.base)}, ${Fmt.rub(fit.km)}/км до ${far} км, ${Fmt.rub(fit.kmFar)}/км дальше, минимум ${Fmt.rub(fit.min)}</small></td>
         <td class="num">${action}</td></tr>`;
@@ -168,7 +172,7 @@ export class FreightFacts {
 
   static _add(body, { tariffs, update }) {
     if (body.children.length >= FreightFacts.MAX) {
-      toast(`Не больше ${FreightFacts.MAX} счетов`);
+      Toast.show(`Не больше ${FreightFacts.MAX} счетов`);
       return;
     }
     body.insertAdjacentHTML(
@@ -194,8 +198,8 @@ export class FreightFacts {
     for (const key of ['base', 'min', 'km', 'kmFar']) put(key, cls.fitted[key]);
     const auto = row.querySelector('[data-k=auto]');
     if (auto) auto.checked = false;
-    row.dataset.src = `по счетам перевозчиков: ${cls.n} ${plural(cls.n, 'счёт', 'счёта', 'счетов')}, ${new Date().toLocaleDateString('ru-RU')}`;
+    row.dataset.src = `по счетам перевозчиков: ${cls.n} ${KPGen.plural(cls.n, 'счёт', 'счёта', 'счетов')}, ${new Date().toLocaleDateString('ru-RU')}`;
     row.classList.add('lg-upd');
-    toast(`«${cls.name}»: тариф поправлен по счетам — нажмите «Сохранить тарифы»`);
+    Toast.show(`«${cls.name}»: тариф поправлен по счетам — нажмите «Сохранить тарифы»`);
   }
 }

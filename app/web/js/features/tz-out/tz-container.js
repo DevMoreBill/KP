@@ -5,6 +5,8 @@ import { StationNorms } from '../layout/station-norms.js';
 import { StationPaint } from '../layout/station-paint.js';
 import { TzDoors } from './tz-doors.js';
 import { TzSystems } from './tz-systems.js';
+import { KitView } from '../kit/kit-view.js';
+import { ContainerKind } from '../kit/container-kind.js';
 
 /** Раздел ТЗ «Контейнер и его системы»: строки таблицы требований. */
 export class TzContainer {

@@ -1,4 +1,9 @@
 import { Design } from './design.js';
+import { Uid } from '../../core/util.js';
+import { CatalogFill } from '../catalog/catalog-fill.js';
+import { Catalog, CatalogStore } from '../catalog/catalog-store.js';
+import { KpState, S } from '../../core/state.js';
+import { KpConditions } from '../../core/conditions.js';
 
 /** Графический редактор шаблона: пример КП для показа оформления, когда в текущем КП нет позиций. */
 export class DesignDemo {
@@ -21,7 +26,7 @@ export class DesignDemo {
   };
 
   static _base() {
-    const demo = freshState();
+    const demo = KpState.fresh();
     Object.assign(demo, {
       client: 'ООО «Пример заказчика»',
       clientInn: '7700000000',
@@ -31,14 +36,14 @@ export class DesignDemo {
       manager: { ...S.manager, name: S.manager.name || 'Петров Пётр', position: S.manager.position || 'Менеджер' },
     });
     demo.conditions.forEach(condition => {
-      condition.value = (COND.find(row => row[0] === condition.label) || [0, ['—']])[1][0];
+      condition.value = (KpConditions.LIST.find(row => row[0] === condition.label) || [0, ['—']])[1][0];
     });
     return demo;
   }
 
   static async _catalog() {
     try {
-      return await store().list();
+      return await CatalogStore.list();
     } catch {
       return [];
     }
@@ -46,7 +51,7 @@ export class DesignDemo {
 
   static async _doc(row) {
     try {
-      return await fullDoc(row);
+      return await Catalog.fullDoc(row);
     } catch {
       return null;
     }
@@ -55,13 +60,13 @@ export class DesignDemo {
   // пример подставляется без ожидания: пока S — пример, автосохранение черновика не успеет его записать
   static _fill(demo, item, doc) {
     const previous = S;
-    S = demo;
+    KpState.replace(demo);
     try {
-      if (doc) fillFromCat(item, doc);
+      if (doc) CatalogFill.fill(item, doc);
     } catch {
       /* позиция каталога без нужных полей — остаётся пустой */
     } finally {
-      S = previous;
+      KpState.replace(previous);
     }
   }
 
@@ -80,7 +85,7 @@ export class DesignDemo {
     const priced = list.filter(row => row.price && row.photo).slice(0, 1);
     const pick = priced.concat(list.filter(row => row.price && !row.photo)).slice(0, this.SHOWN);
     for (const row of pick) {
-      const item = newItem();
+      const item = KpState.newItem();
       const doc = await this._doc(row);
       this._fill(demo, item, doc);
       item.qty = 1;
@@ -91,10 +96,10 @@ export class DesignDemo {
   }
 
   static _sample() {
-    const item = newItem();
+    const item = KpState.newItem();
     Object.assign(item, JSON.parse(JSON.stringify(this.SAMPLE)), {
       features: [
-        { id: uid(), label: 'Назначение', text: 'Пример описания оборудования для показа оформления шаблона.' },
+        { id: Uid.next(), label: 'Назначение', text: 'Пример описания оборудования для показа оформления шаблона.' },
       ],
     });
     return item;

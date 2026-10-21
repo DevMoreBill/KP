@@ -1,5 +1,6 @@
 import { AirChain } from '../layout/air-chain.js';
 import { CalcNote } from './calc-note.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Осушители: поправки производителя F = Fp · Fвх · Fокр (· Fтр — номинал серии не для +3 °C); серии нет — типовая

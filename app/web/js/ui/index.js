@@ -4,7 +4,6 @@ import { FieldEvents } from './field-events.js';
 import { FormView, Popups } from './form-view.js';
 import { GeoInput, GeoParse } from './geo-input.js';
 import { ItemActions } from './item-actions.js';
-import * as LEGACY from './legacy.js';
 import { Mobile } from './mobile.js';
 import { Problems, SidePanel } from './side-panel.js';
 import { ClientPrev, ClientStep } from './step-client.js';
@@ -46,9 +45,6 @@ export const UI_PARTS = {
   TenderBlock,
   UiKit,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули: классы и прежние имена функций
-Object.assign(globalThis, UI_PARTS, LEGACY);
 
 Steps.restore();
 Mobile.watch();

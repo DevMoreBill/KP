@@ -1,4 +1,12 @@
 import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
+import { CopyText } from '../../core/files.js';
+import { Modal } from '../../core/modal.js';
+import { Powers } from '../kp/auth.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Fmt } from '../../core/str.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
 
 /** «Мой пароль»: смена своего пароля и правила доступа. */
 export class SecurityTab {
@@ -21,7 +29,7 @@ export class SecurityTab {
       event.preventDefault();
       try {
         await AdminApi.post('password', { old: $('#pwO').value, new: $('#pwN').value });
-        toast('Пароль изменён');
+        Toast.show('Пароль изменён');
         this.render(main);
       } catch (error) {
         $('#pwE').textContent = error.message;
@@ -54,7 +62,7 @@ export class AdminsTab {
   }
 
   static _min() {
-    return DEFN('srv.adminPwMin', this.PW_MIN);
+    return DefRegistry.num('srv.adminPwMin', this.PW_MIN);
   }
 
   static _row(user, reply) {
@@ -76,7 +84,7 @@ export class AdminsTab {
         name: $('#uN').value.trim(),
         password: $('#uP').value,
       });
-      toast('Администратор добавлен');
+      Toast.show('Администратор добавлен');
       this.render(main);
     } catch (error) {
       $('#uE').textContent = error.message;
@@ -92,7 +100,7 @@ export class AdminsTab {
       if (!(await this[this.ACTIONS[button.dataset.uact]](login, user, reply))) return;
       this.render(main);
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
     }
   }
 
@@ -106,7 +114,7 @@ export class AdminsTab {
     )
       return false;
     await AdminApi.post('users', { action: 'delete', login });
-    toast('Удалён');
+    Toast.show('Удалён');
     return true;
   }
 
@@ -117,7 +125,7 @@ export class AdminsTab {
     ]);
     if (!values) return false;
     await AdminApi.post('users', { action: 'edit', login, newLogin: values.newLogin, name: values.name });
-    toast('Сохранено');
+    Toast.show('Сохранено');
     if (login === reply.me)
       AdminState.status = { ...AdminState.status, login: values.newLogin, name: values.name || values.newLogin };
     return true;
@@ -129,7 +137,7 @@ export class AdminsTab {
     ]);
     if (!values) return false;
     await AdminApi.post('users', { action: 'password', login, password: values.password });
-    toast('Пароль изменён');
+    Toast.show('Пароль изменён');
     return true;
   }
 }
@@ -159,7 +167,7 @@ export class AccessPanel {
   static async open(main) {
     const reply = await AdminApi.get('access');
     main.innerHTML = `${this._switch(reply)}
-      <div class="st-card"><div class="row"><div class="sub" style="margin:0">Менеджеры и права · ${reply.managers.length} ${tip(this.HELP)}</div></div>
+      <div class="st-card"><div class="row"><div class="sub" style="margin:0">Менеджеры и права · ${reply.managers.length} ${UiKit.tip(this.HELP)}</div></div>
       ${reply.managers.length ? this._table(reply) : '<p class="muted">Менеджеров ещё нет — их добавляют в шаге «Менеджер» конструктора или ниже, в «Контактах».</p>'}
       <p class="muted">Права действуют, когда вход по паролю включён. «Чужие КП» — видеть их в журнале, открывать и сохранять; без него менеджер видит только свои КП. «Экономика» — своих КП (чужих — вместе с правом на чужие КП).
         <b>Особые права</b> (выделены, по умолчанию выключены): «Удалять» — товары в корзину (восстанавливает и чистит корзину администратор); «Без модерации» — свои правки товаров сразу в каталог, принимать и отклонять правки других, править справочник поставщиков; «Выгрузка» — каталог и клиентов в файл (без закупки).</p></div>`;
@@ -174,7 +182,7 @@ export class AccessPanel {
         <label class="sw"><input type="checkbox" id="acOn"${reply.enabled ? ' checked' : ''}><span>${reply.enabled ? 'включён' : 'выключен'}</span></label></div>
       <p class="muted">${text}
         Администратор входит в «Настройки» своим паролем и может всё.</p>
-      <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
+      <div class="ac-help"><label class="f"><span>«Забыли пароль?» на экране входа — к кому обращаться ${UiKit.tip('Менеджер видит этот текст до входа, под ссылкой «Забыли пароль?». Укажите, кто сбрасывает пароль и как с ним связаться. Пусто — только общая подсказка «обратитесь к администратору».')}</span>
         <input type="text" id="acHelp" maxlength="200" value="${esc(reply.help || '')}" placeholder="Например: пароль сбросит Иванов Иван, доб. 123"></label><button class="btn" type="button" id="acHelpSave">Сохранить</button></div></div>`;
   }
 
@@ -229,17 +237,17 @@ export class AccessPanel {
       try {
         const saved = await AdminApi.post('access', { help: $('#acHelp').value });
         $('#acHelp').value = saved.help || '';
-        toast('Подсказка сохранена');
+        Toast.show('Подсказка сохранена');
       } catch (error) {
-        toast(error.message || String(error));
+        Toast.show(error.message || String(error));
       }
     };
     $('#acOn').onchange = async event => {
       try {
         await AdminApi.post('access', { enabled: event.target.checked });
-        toast(event.target.checked ? 'Вход по паролю включён' : 'Вход по паролю выключен');
+        Toast.show(event.target.checked ? 'Вход по паролю включён' : 'Вход по паролю выключен');
       } catch (error) {
-        toast(error.message || String(error));
+        Toast.show(error.message || String(error));
       }
       this.open(main);
     };
@@ -260,9 +268,9 @@ export class AccessPanel {
       });
     try {
       await this._post(id, { perms });
-      toast('Права сохранены');
+      Toast.show('Права сохранены');
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       this.open(main);
     }
   }
@@ -276,12 +284,12 @@ export class AccessPanel {
       if ((await this[this.ACTIONS[button.dataset.ac]](manager)) === false) return;
       this.open(main);
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
     }
   }
 
   static async _login(manager) {
-    const min = DEFN('srv.userPwMin', this.PW_MIN);
+    const min = DefRegistry.num('srv.userPwMin', this.PW_MIN);
     const label = manager.hasPassword
       ? `Новый пароль (пусто — не менять), не короче ${min} символов`
       : `Пароль, не короче ${min} символов`;
@@ -291,17 +299,17 @@ export class AccessPanel {
     ]);
     if (!values) return false;
     if (!manager.hasPassword && !values.password) {
-      toast('Задайте пароль');
+      Toast.show('Задайте пароль');
       return false;
     }
     await this._post(manager.id, { login: values.login, ...(values.password ? { password: values.password } : {}) });
-    toast('Сохранено');
+    Toast.show('Сохранено');
     return true;
   }
 
   static async _block(manager) {
     await this._post(manager.id, { blocked: !manager.blocked });
-    toast(manager.blocked ? 'Вход разрешён' : 'Вход запрещён, сессии закрыты');
+    Toast.show(manager.blocked ? 'Вход разрешён' : 'Вход запрещён, сессии закрыты');
     return true;
   }
 
@@ -313,7 +321,7 @@ export class AccessPanel {
     const text = `${manager.name || manager.login}: закроются все входы (${manager.sessions}) — на компьютерах и телефонах. Пароль не меняется: менеджер войдёт снова своим.`;
     if (!(await AdminDialog.confirm('Выйти на всех устройствах?', text, 'Закрыть входы'))) return false;
     const reply = await AdminApi.post(`access/${encodeURIComponent(manager.id)}/logout`);
-    toast(reply.closed ? `Входы закрыты: ${reply.closed}` : 'Открытых входов не было');
+    Toast.show(reply.closed ? `Входы закрыты: ${reply.closed}` : 'Открытых входов не было');
     return true;
   }
 
@@ -357,7 +365,7 @@ export class AccessPanel {
     );
     modal.$('#acCopy').onclick = async () => {
       const ok = await CopyText.copy(reply.password);
-      toast(ok ? 'Пароль скопирован' : 'Не скопировалось — выделите пароль и скопируйте вручную');
+      Toast.show(ok ? 'Пароль скопирован' : 'Не скопировалось — выделите пароль и скопируйте вручную');
       if (ok) return;
       const selection = getSelection();
       const range = document.createRange();

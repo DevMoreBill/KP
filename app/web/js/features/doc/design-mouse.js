@@ -7,6 +7,7 @@ import { DesignMove } from './design-move.js';
 import { DesignResize } from './design-resize.js';
 import { DesignSort } from './design-sort.js';
 import { DesignView } from './design-view.js';
+import { $ } from '../../core/util.js';
 
 /** Графический редактор шаблона: обработчики документа — мышь, клавиши, поля, масштаб колесом, подсказки. */
 export class DesignMouse {

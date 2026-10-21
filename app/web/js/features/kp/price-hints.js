@@ -1,5 +1,13 @@
 import { Currency } from './currency.js';
 import { KpDate } from './kp-date.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { Modal } from '../../core/modal.js';
+import { FEAT } from '../../core/features.js';
+import { CatFind, Catalog } from '../catalog/catalog-store.js';
+import { FeedBadge } from '../catalog/feed-badge.js';
+import { esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
 
 /** Подсказка под строкой цены: скидка для заказчика, контроль РРЦ, цена в каталоге, цены в прошлых КП. */
 export class PriceHints {
@@ -16,7 +24,7 @@ export class PriceHints {
     const short = Currency.short(Currency.current());
     const discount = KPGen.unitDisc(item);
     const disc = discount
-      ? `Скидка ${money(discount)} ${short} за ед. · цена для заказчика <b>${money((item.price || 0) - discount)} ${short}</b>`
+      ? `Скидка ${KPGen.money(discount)} ${short} за ед. · цена для заказчика <b>${KPGen.money((item.price || 0) - discount)} ${short}</b>`
       : '';
     const rrc = this._rrc(item, (item.price || 0) - discount);
     return [disc, rrc, CatPrice.hint(item), PriceHist.hint(item)].filter(Boolean).join('<br>');
@@ -33,8 +41,8 @@ export class PriceHints {
 
   static _rrcText(card, rrc) {
     return {
-      stock: card.stock ? ` · ${esc(feedStockTxt(card.stock))}` : '',
-      rrcText: `РРЦ ${money(rrc.price)} ${Currency.short(rrc.cur || 'RUB')}`,
+      stock: card.stock ? ` · ${esc(FeedBadge.stockText(card.stock))}` : '',
+      rrcText: `РРЦ ${KPGen.money(rrc.price)} ${Currency.short(rrc.cur || 'RUB')}`,
     };
   }
 
@@ -74,7 +82,7 @@ export class PriceHist {
   }
 
   static _fmt(price) {
-    return `${money(price.price)} ${Currency.short(price.cur || 'RUB')}`;
+    return `${KPGen.money(price.price)} ${Currency.short(price.cur || 'RUB')}`;
   }
 
   static _where(last) {
@@ -97,7 +105,7 @@ export class PriceHist {
     const same = rows.filter(row => (row.cur || 'RUB') === (last.cur || 'RUB')).map(row => row.price);
     const low = Math.min(...same);
     const high = Math.max(...same);
-    const range = same.length > 1 && low !== high ? ` · от ${money(low)} до ${money(high)}` : '';
+    const range = same.length > 1 && low !== high ? ` · от ${KPGen.money(low)} до ${KPGen.money(high)}` : '';
     const where = this._where(last);
     const more =
       index >= 0
@@ -121,11 +129,11 @@ export class PriceHist {
     if (!item) return;
     const lite = this.doc(item);
     if (!lite) return;
-    const rows = this._rows(await fullDoc(lite));
+    const rows = this._rows(await Catalog.fullDoc(lite));
     const short = Currency.short(Currency.current());
     const modal = new Modal(
       `<div class="dlg-h"><h3>Цены в прошлых КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <p class="muted" style="margin:0 0 10px">${esc(item.name)}${item.price ? ` · сейчас <b>${money(item.price)} ${short}</b>` : ''}</p>
+      <p class="muted" style="margin:0 0 10px">${esc(item.name)}${item.price ? ` · сейчас <b>${KPGen.money(item.price)} ${short}</b>` : ''}</p>
       <div class="ph-l"><table class="ph-t"><thead><tr><th>Дата</th><th>КП</th><th>Клиент</th><th class="num">Кол-во</th><th class="num">Цена</th><th></th></tr></thead><tbody>
       ${rows.map((row, k) => this._row(row, k)).join('')}</tbody></table></div>`,
       'ph-dlg',
@@ -154,9 +162,9 @@ export class PriceHist {
     item.priceManual = true;
     delete item._priceText;
     modal.close();
-    renderForm();
-    persist();
-    toast(`Цена из КП № ${row.number || ''}: ${this._fmt(row)}`);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Цена из КП № ${row.number || ''}: ${this._fmt(row)}`);
   }
 }
 
@@ -207,7 +215,7 @@ export class CatPrice {
     const diff = this.diff(item);
     const index = S.items.indexOf(item);
     if (!diff || index < 0) return '';
-    return `<span class="cp-h">В каталоге сейчас <b>${money(diff.cat)} ${Currency.short(Currency.current())}</b> (${diff.pct > 0 ? '+' : ''}${String(diff.pct).replace('.', ',')} %)
+    return `<span class="cp-h">В каталоге сейчас <b>${KPGen.money(diff.cat)} ${Currency.short(Currency.current())}</b> (${diff.pct > 0 ? '+' : ''}${String(diff.pct).replace('.', ',')} %)
       <button class="lnk" type="button" data-a="catPrice" data-i="${index}">обновить цену</button></span>`;
   }
 
@@ -222,8 +230,8 @@ export class CatPrice {
     item.price = diff.cat;
     delete item._priceText;
     item.priceManual = false;
-    renderForm();
-    persist();
-    toast(`Цена «${item.name}» — как в каталоге: ${money(diff.cat)} ${Currency.short(Currency.current())}`);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Цена «${item.name}» — как в каталоге: ${KPGen.money(diff.cat)} ${Currency.short(Currency.current())}`);
   }
 }

@@ -32,6 +32,8 @@ import { StationPower } from './station-power.js';
 import { StationSockets } from './station-sockets.js';
 import { StationTidy } from './station-tidy.js';
 import { StationVent } from './station-vent.js';
+import { AppVersion } from '../help.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Компоновка станции в контейнере: оборудование рядами с проходом обслуживания, двери и ворота, трубопровод, подбор размера
@@ -72,11 +74,8 @@ export class StationLayout {
 
   /** Отпечаток всего, от чего зависит компоновка: изменился — чертёж и 3D-вид пора обновить. */
   static hash(input) {
-    const rules =
-      typeof StationRules !== 'undefined' && StationRules.ok()
-        ? `${StationRules.version()}.${StationRules.stamp()}`
-        : '';
-    const app = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
+    const rules = StationRules.ok() ? `${StationRules.version()}.${StationRules.stamp()}` : '';
+    const app = AppVersion.current;
     const parts = (input.parts || [])
       .filter(part => part && part.role !== 'container')
       .map(part => StationLayout._hashPart(part));

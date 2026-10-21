@@ -8,7 +8,4 @@ import { StationReq } from './station-req.js';
 
 export const REQ = { ExpertLog, ReceiverSync, ReqChecks, ReqForm, ReqLine, ReqNum, StationReq };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, REQ);
-
 ReqForm.listen();

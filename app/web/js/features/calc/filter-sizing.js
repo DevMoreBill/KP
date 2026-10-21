@@ -1,6 +1,8 @@
 import { AirChain } from '../layout/air-chain.js';
 import { CalcNote } from './calc-note.js';
 import { DryerSizing } from './dryer-sizing.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /** Фильтры: поправка производительности на давление (серия производителя или типовая формула), ступени по классу ISO 8573-1. */
 export class FilterSizing {
@@ -117,6 +119,6 @@ export class FilterSizing {
   /** Безмасляный компрессор: пары масла — только из всасываемого воздуха, угольный фильтр — по анализу воздуха. */
   static oilFree(unit) {
     if (/^(да|есть|true)$/i.test(String(unit.attrs.oilFree ?? ''))) return true;
-    return typeof TzPick !== 'undefined' && TzPick.oilFree({ name: unit.name, attrs: unit.attrs });
+    return TzPick.oilFree({ name: unit.name, attrs: unit.attrs });
   }
 }

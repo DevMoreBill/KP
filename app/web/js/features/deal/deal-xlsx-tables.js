@@ -1,6 +1,9 @@
 import { DealFmt } from './deal-fmt.js';
 import { DealTerms } from './deal-terms.js';
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
+import { XlsxBook } from '../../core/xlsx.js';
+import { Currency } from '../kp/currency.js';
+import { S } from '../../core/state.js';
 
 /** Таблицы листа «Сводка»: позиции, себестоимость, поставщики, оплата заказчика, деньги и налоги, замечания. */
 export class DealXlsxSummaryTables {
@@ -70,12 +73,12 @@ export class DealXlsxSummaryTables {
   // продажа позиции без НДС в рублях; сумма по позициям приводится к выручке расчёта
   _sales(items) {
     const calc = this.calc;
-    const rate = rateOf(kpCur()) > 0 ? rateOf(kpCur()) : 0;
+    const rate = Currency.rate(Currency.current()) > 0 ? Currency.rate(Currency.current()) : 0;
     const saleOf = item => {
       const options = (item.options || [])
         .filter(option => option.name)
         .map(option => ({ qty: +option.qty || 0, price: option.price || 0 }));
-      const sum = totals([{ qty: +item.qty || 0, price: item.price || 0, disc: item.disc, options }], 0).sum;
+      const sum = KPGen.totals([{ qty: +item.qty || 0, price: item.price || 0, disc: item.disc, options }], 0).sum;
       return ((sum / DealXlsxSummaryTables.KOPECKS) * rate) / (1 + calc.v / DealXlsxCalc.PCT);
     };
     const sales = items.map(saleOf);

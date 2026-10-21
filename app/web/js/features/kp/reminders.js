@@ -1,6 +1,14 @@
 import { Drafts } from './drafts.js';
 import { KpDate } from './kp-date.js';
 import { KpTrack } from './kp-track.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { $, esc, today } from '../../core/util.js';
+import { Api } from '../../core/net.js';
+import { FEAT } from '../../core/features.js';
 
 /** Напоминания: колокольчик в шапке (перезвонить, срок действия КП, отправлено без ответа). */
 export class Reminders {
@@ -17,7 +25,7 @@ export class Reminders {
       return;
     }
     try {
-      this.items = (await api('/api/reminders')).items || [];
+      this.items = (await Api.request('/api/reminders')).items || [];
     } catch {
       this.items = [];
     }
@@ -37,7 +45,7 @@ export class Reminders {
   }
 
   static _snooze() {
-    return Math.round(DEFN('kp.remSnooze', 1));
+    return Math.round(DefRegistry.num('kp.remSnooze', 1));
   }
 
   /** Колокольчик сам проверяет напоминания раз в N минут («Значения программы»), пока вкладка открыта. */
@@ -47,7 +55,7 @@ export class Reminders {
         if (!document.hidden) this.load();
         this.poll();
       },
-      DEFN('kp.remRefresh', 10) * this.MINUTE,
+      DefRegistry.num('kp.remRefresh', 10) * this.MINUTE,
     );
   }
 
@@ -61,7 +69,7 @@ export class Reminders {
   }
 
   static _days(count) {
-    return `${count} ${plural(count, 'день', 'дня', 'дней')}`;
+    return `${count} ${KPGen.plural(count, 'день', 'дня', 'дней')}`;
   }
 
   static _row(item, index, snooze) {
@@ -103,7 +111,7 @@ export class Reminders {
     try {
       await this._act(modal, kind, item);
     } catch (error) {
-      toast(`Не получилось: ${error.message}`);
+      Toast.show(`Не получилось: ${error.message}`);
     }
   }
 
@@ -114,7 +122,7 @@ export class Reminders {
       return;
     }
     if (kind === 'rs') {
-      const found = (await api(`/api/history?limit=1&q=${encodeURIComponent(item.number)}`)).items?.find(
+      const found = (await Api.request(`/api/history?limit=1&q=${encodeURIComponent(item.number)}`)).items?.find(
         row => row.id === item.id,
       );
       modal.close();
@@ -146,12 +154,12 @@ export class KpLoader {
    */
   static async byId(id) {
     if (!(await Drafts.stash())) return;
-    const state = await api(`/api/kp/${encodeURIComponent(id)}/state`);
-    S = Object.assign(freshState(), state);
+    const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
+    KpState.replace(Object.assign(KpState.fresh(), state));
     document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     window.scrollTo({ top: 0 });
-    toast(`КП № ${S.number || id} открыто`);
+    Toast.show(`КП № ${S.number || id} открыто`);
   }
 }

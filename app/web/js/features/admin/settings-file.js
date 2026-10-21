@@ -3,6 +3,10 @@ import { BackupTab } from './backup-tab.js';
 import { DataTransfer } from './data-transfer.js';
 import { SettingsWindow } from './settings-window.js';
 import { StRefresh } from './settings-tools.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Toast } from '../../core/toast.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /** Все настройки программы в файл и обратно (сервер — data_bundle.SettingsFile): ключи API — по галочке, пароли — никогда. */
 export class SettingsFileCard {
@@ -91,7 +95,7 @@ export class SettingsFileCard {
     const keys = [...main.querySelectorAll('[data-sfk]:checked')].map(input => input.dataset.sfk);
     if (!file) return;
     if (!keys.length) {
-      toast('Отметьте разделы');
+      Toast.show('Отметьте разделы');
       return;
     }
     if (
@@ -110,15 +114,15 @@ export class SettingsFileCard {
         body: file,
       });
       this.file = null;
-      toast(
+      Toast.show(
         `Загружено разделов: ${reply.applied.length}${reply.errors.length ? `; не загружено: ${reply.errors.join('; ')}` : ''}`,
       );
       await StRefresh.all();
-      await loadTypes();
+      await EquipTypes.load();
       SettingsWindow.tab();
     } catch (error) {
       button.disabled = false;
-      toast(`Не загружено: ${error.message || error}`);
+      Toast.show(`Не загружено: ${error.message || error}`);
     }
   }
 }

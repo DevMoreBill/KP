@@ -1,4 +1,5 @@
 import { StationRulesDoc } from './rules-doc.js';
+import { esc, today } from '../../core/util.js';
 
 /** Правка значения любого правила формой по его виду (число, список, таблица, параметры). */
 export class RuleEdit {

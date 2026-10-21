@@ -1,3 +1,6 @@
+import { ClientMatchText } from '../kp/client-find.js';
+import { esc } from '../../core/util.js';
+import { ClientStore } from '../kp/client-store.js';
 /**
  * Подсказка клиента под полем ввода: по названию, ИНН, телефону, e-mail или ФИО контакта (поиск — на сервере). Совпало по
  * контакту у нескольких компаний — список с пометкой, чем совпало, менеджер выбирает нужную.

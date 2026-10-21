@@ -156,7 +156,7 @@ void main(){ vec4 a=texture(uT, vU); float c=clamp(a.a, 0.0, 1.0); vec3 col=a.a>
     const tex = gl.createTexture();
     let canvas = null;
     try {
-      canvas = decal && typeof StDecal !== 'undefined' ? StDecal.canvas(decal) : null;
+      canvas = decal ? StDecal.canvas(decal) : null;
     } catch (err) {
       canvas = null;
     }

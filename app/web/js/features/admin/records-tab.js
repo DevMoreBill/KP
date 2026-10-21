@@ -2,6 +2,21 @@ import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
 import { DirEditor } from './dir-editor.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty } from './settings-tools.js';
+import { XlsImport } from '../catalog/excel-import.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { KpState, S } from '../../core/state.js';
+import { Drafts } from '../kp/drafts.js';
+import { CatalogEditor } from '../catalog/catalog-edit.js';
+import { Api } from '../../core/net.js';
+import { FormView } from '../../ui/form-view.js';
+import { Managers } from '../kp/managers.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { Toast } from '../../core/toast.js';
+import { KpFilesPanel } from '../kp/kp-files.js';
+import { ClientsImport } from '../kp/clients-import.js';
+import { Debounce } from '../../core/debounce.js';
+import { $, esc } from '../../core/util.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Записи базы: КП, товары, клиенты, поставщики, контакты менеджеров — поиск, правка, удаление в корзину (вкладка на каждый
@@ -52,7 +67,7 @@ export class RecordsTab {
   }
 
   static _trashDays() {
-    return DEFN('srv.trashDays', this.TRASH_DAYS);
+    return DefRegistry.num('srv.trashDays', this.TRASH_DAYS);
   }
 
   static _bar(reply) {
@@ -132,7 +147,7 @@ export class RecordsTab {
   static async _click(main, event) {
     if (event.target.closest('.st-ed')) return;
     if (event.target.closest('[data-dimp]')) {
-      openClientsImport();
+      ClientsImport.open();
       return;
     }
     const files = event.target.closest('[data-dfiles]');
@@ -163,7 +178,7 @@ export class RecordsTab {
     try {
       await DirEditor.open(AdminState.del.type, id);
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       return;
     }
     this.render(main);
@@ -175,7 +190,7 @@ export class RecordsTab {
       try {
         await RecordEdit.open(type, id, () => this.render(main));
       } catch (error) {
-        toast(error.message || String(error));
+        Toast.show(error.message || String(error));
       }
       return;
     }
@@ -196,9 +211,9 @@ export class RecordsTab {
     if (!(await AdminDialog.confirm(`Удалить? ${label}: ${count}`, text, 'Удалить'))) return;
     const reply = await AdminApi.post('delete', { type: del.type, ids: [...del.sel] });
     del.sel.clear();
-    toast(`Удалено: ${reply.deleted}`);
-    if (del.type === 'catalog') refreshCat();
-    if (del.type === 'manager') loadManagers().then(renderForm);
+    Toast.show(`Удалено: ${reply.deleted}`);
+    if (del.type === 'catalog') Catalog.refresh();
+    if (del.type === 'manager') Managers.load().then(() => FormView.render());
     this.render(main);
   }
 }
@@ -217,22 +232,22 @@ export class RecordEdit {
       return;
     }
     if (type !== 'catalog') return;
-    const doc = await api(`/api/catalog/${encodeURIComponent(id)}`);
-    openCatEditor(doc, () => {
-      refreshCat();
+    const doc = await Api.request(`/api/catalog/${encodeURIComponent(id)}`);
+    CatalogEditor.open(doc, () => {
+      Catalog.refresh();
       after();
     });
   }
 
   static async _kp(id) {
     if (!(await Drafts.stash())) return;
-    const state = await api(`/api/kp/${encodeURIComponent(id)}/state`);
-    S = Object.assign(freshState(), state);
+    const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
+    KpState.replace(Object.assign(KpState.fresh(), state));
     SettingsWindow.dialog().close();
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     window.scrollTo({ top: 0 });
-    toast(`КП № ${S.number || ''} открыто для редактирования`);
+    Toast.show(`КП № ${S.number || ''} открыто для редактирования`);
   }
 }
 
@@ -244,11 +259,11 @@ export class CatalogTool {
    * @returns {*}
    */
   static run(action) {
-    if (action === 'exp') return CW.exportFile();
-    if (action === 'xls') return openXlsImport('');
+    if (action === 'exp') return CatalogWindow.win.exportFile();
+    if (action === 'xls') return XlsImport.open('');
     if (action === 'open') {
       SettingsWindow.dialog().close();
-      return openCatalog({});
+      return CatalogWindow.open({});
     }
     this._load();
     return undefined;
@@ -265,8 +280,8 @@ export class CatalogTool {
       input.remove();
       if (!file) return;
       SettingsWindow.dialog().close();
-      await openCatalog({});
-      CW.importFile(file);
+      await CatalogWindow.open({});
+      CatalogWindow.win.importFile(file);
     };
     input.click();
   }

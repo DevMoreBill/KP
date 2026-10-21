@@ -4,6 +4,8 @@ import { DealPresets } from './deal-presets.js';
 import { DealRows } from './deal-rows.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Этапы оплаты поставщику и заказчику — одинаковой строкой: ⠿ № название · доля · когда + дней (кал./раб.) · дата · сумма;

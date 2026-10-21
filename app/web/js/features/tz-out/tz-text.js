@@ -12,6 +12,12 @@ import { StationNorms } from '../layout/station-norms.js';
 import { StationPipe } from '../layout/station-pipe.js';
 import { StationPower } from '../layout/station-power.js';
 import { TzContainer } from './tz-container.js';
+import { KitScope } from '../kit/kit-scope.js';
+import { KitView } from '../kit/kit-view.js';
+import { S } from '../../core/state.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { StationReq } from '../req/station-req.js';
+import { Kit } from '../kit/kit.js';
 
 /** Текст ТЗ на сборку станции: разделы по порядку, нумерация — сквозная. */
 export class TzText {

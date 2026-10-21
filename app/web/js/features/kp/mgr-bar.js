@@ -1,10 +1,16 @@
 import { Managers, MgrLock } from './managers.js';
+import { Morph } from '../../core/morph.js';
+import { $, esc } from '../../core/util.js';
+import { Str } from '../../core/str.js';
+import { S } from '../../core/state.js';
 
 /**
  * Выбор менеджера в разделе «Менеджер»: выбран из справочника — правки сохраняются сами; не выбран — подсказка,
  * а «Сохранить в справочник» появляется, когда ФИО уже вписано (до этого сохранять нечего).
  */
 export class MgrBar {
+  // отложенное сохранение контактов менеджера (запись КП сбрасывает его)
+  static timer = null;
   static SAVE_DELAY = 900;
 
   /**
@@ -21,14 +27,16 @@ export class MgrBar {
    */
   static inner() {
     if (MgrLock.locked()) return MgrLock.html();
-    const current = MGRS.find(row => row.id === S.managerId);
+    const current = Managers.list.find(row => row.id === S.managerId);
     const typed = !!String(S.manager.name || '').trim();
     // КП прежней версии: менеджер записан под старым кодом, а в справочнике есть с тем же ФИО — предложить взять оттуда
-    const same = !current && typed ? MGRS.find(row => norm(row.name) === norm(S.manager.name)) : null;
-    const options = MGRS.map(
-      row =>
-        `<option value="${esc(row.id)}"${row.id === S.managerId ? ' selected' : ''}>${esc(row.name)}${row.position ? ` — ${esc(row.position)}` : ''}</option>`,
-    ).join('');
+    const same = !current && typed ? Managers.list.find(row => Str.norm(row.name) === Str.norm(S.manager.name)) : null;
+    const options = Managers.list
+      .map(
+        row =>
+          `<option value="${esc(row.id)}"${row.id === S.managerId ? ' selected' : ''}>${esc(row.name)}${row.position ? ` — ${esc(row.position)}` : ''}</option>`,
+      )
+      .join('');
     return `<label class="f"><span>Менеджер в КП</span><select id="mgrSel" aria-label="Выбор менеджера">
         ${current ? '' : `<option value="" selected>${typed ? `${esc(S.manager.name)} — не в справочнике` : '— выберите из списка —'}</option>`}
         ${options}</select></label>
@@ -54,7 +62,7 @@ export class MgrBar {
   /** ФИО вписано или стёрто у менеджера не из справочника — показать или убрать «Сохранить в справочник». */
   static refresh() {
     const bar = document.querySelector('.mgrbar');
-    if (bar) morph(bar, this.inner());
+    if (bar) Morph.apply(bar, this.inner());
   }
 
   /** Ввод контактов, выбор в списке, кнопки панели. */
@@ -85,9 +93,9 @@ export class MgrBar {
       return;
     }
     if (!path.startsWith('manager.') || !S.managerId) return;
-    clearTimeout(mgrT);
+    clearTimeout(MgrBar.timer);
     const status = $('#mgrStat');
     if (status) status.textContent = 'Сохраняю…';
-    mgrT = setTimeout(() => Managers.saveQuiet(), this.SAVE_DELAY);
+    MgrBar.timer = setTimeout(() => Managers.saveQuiet(), this.SAVE_DELAY);
   }
 }

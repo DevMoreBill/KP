@@ -1,5 +1,7 @@
 import { CatalogFilter } from './catalog-filter.js';
 import { Suppliers } from './suppliers.js';
+import { Str } from '../../core/str.js';
+import { Attrs } from '../../core/item-attrs.js';
 
 /**
  * Поиск по каталогу: «DVK30-13» = «DVK D 30-13», «5.5» = «5,5», «далгакиран» = «Dalgakiran», латинская «C» в «СА11» =
@@ -67,7 +69,7 @@ export class CatalogIndex {
    * @returns {object}
    */
   static attrs(card) {
-    if (!card._a) card._a = attrsOf(card);
+    if (!card._a) card._a = Attrs.of(card);
     return card._a;
   }
 
@@ -80,7 +82,7 @@ export class CatalogIndex {
   static normValue(card, key) {
     if (!card._nv) card._nv = {};
     const memo = card._nv;
-    if (!(key in memo)) memo[key] = norm(this.attrs(card)[key]);
+    if (!(key in memo)) memo[key] = Str.norm(this.attrs(card)[key]);
     return memo[key];
   }
 
@@ -128,7 +130,7 @@ export class CatalogIndex {
 
   static _plain(card, attrs) {
     const rows = (card.groups || []).flatMap(group => (group.rows || []).map(row => `${row.k} ${row.v}`));
-    return norm(
+    return Str.norm(
       [card.name, card.spec, card.st || '', this.art(card), Suppliers.of(card), ...Object.values(attrs), ...rows].join(
         ' ',
       ),
@@ -145,18 +147,18 @@ export class CatalogIndex {
     const attrs = this.attrs(card);
     const plain = this._plain(card, attrs);
     // транслит — только название, марка, модель, артикул: транслит всего текста занимал около трети памяти поиска
-    const short = norm(
+    const short = Str.norm(
       [card.name, attrs.maker, attrs.model, attrs.series, this.art(card), Suppliers.of(card)].filter(Boolean).join(' '),
     );
-    const model = norm([attrs.model, card.name, this.art(card)].filter(Boolean).join(' '));
+    const model = Str.norm([attrs.model, card.name, this.art(card)].filter(Boolean).join(' '));
     card._hay = {
       plain,
       fold: this.fold(plain),
       tr: this.translit(short),
       model: this.fold(model),
       model2: this.fold(model.replace(/(^|\s)[a-zа-яё](?=\s)/g, ' ')), // «DVK D 30-13» → «dvk3013»
-      m0: this.fold(norm(attrs.model || '')),
-      name: norm(card.name),
+      m0: this.fold(Str.norm(attrs.model || '')),
+      name: Str.norm(card.name),
     };
     return card._hay;
   }

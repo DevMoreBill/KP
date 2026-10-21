@@ -2,6 +2,20 @@ import { ExpertLog } from './expert-log.js';
 import { ReceiverSync } from './receiver-sync.js';
 import { ReqNum } from './req-num.js';
 import { StationReq } from './station-req.js';
+import { StationQuick } from '../station/station-quick.js';
+import { Toast } from '../../core/toast.js';
+import { Kit } from '../kit/kit.js';
+import { StationSize } from '../station/station-size.js';
+import { StationUi } from '../station/station-ui.js';
+import { FormView } from '../../ui/form-view.js';
+import { StationParams } from '../station/station-params.js';
+import { KpState, S } from '../../core/state.js';
+import { ReceiverPlan } from '../layout/receiver-plan.js';
+import { Mm } from '../layout/mm.js';
+import { ExpertFix } from '../station/expert-fix.js';
+import { Spoiler } from '../station/spoiler.js';
+import { SupplyDocs } from '../kit/supply-docs.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Форма «Все требования, условия расчёта и проверки» (под раскрывающимся блоком «Подбора станции»): проверки состава,
@@ -205,8 +219,8 @@ export class ReqForm {
     this._syncReceivers(item, field);
     if (this._repick({ index, item, target, key, field })) return;
     if ((key === 'ats' || key === 'scada') && target.checked) this._addCabinets(item);
-    persist();
-    renderForm();
+    KpState.persist();
+    FormView.render();
   }
 
   // значение поля в требования; менеджер решил сам — подбор «снаружи» и типоразмер 500 л больше не меняет
@@ -234,19 +248,19 @@ export class ReqForm {
     if (!changed) return;
     Kit.sync(item);
     this._relayout(item);
-    toast(`Ресиверы по расчёту: ${changed}`);
+    Toast.show(`Ресиверы по расчёту: ${changed}`);
   }
 
   // главное требование изменилось у подобранной станции — комплектующие подбираются заново, с уведомлением
   static _repick({ index, item, target, key, field }) {
     if (key === 'basis' && Kit.main(item)) {
-      persist();
+      KpState.persist();
       StationQuick.auto(index, 'flow');
       return true;
     }
     if (!StationQuick.AUTO.includes(field) || !target.dataset.p || !Kit.main(item)) return false;
     StationReq.ensure(item)[field] = target.value;
-    persist();
+    KpState.persist();
     StationQuick.auto(index, field);
     return true;
   }
@@ -256,6 +270,6 @@ export class ReqForm {
     if (!added.length) return;
     Kit.sync(item);
     this._relayout(item);
-    toast(`Добавлено в состав: ${added.join(', ')}`);
+    Toast.show(`Добавлено в состав: ${added.join(', ')}`);
   }
 }

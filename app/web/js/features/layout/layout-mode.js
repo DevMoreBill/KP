@@ -1,5 +1,6 @@
 import { Mm } from './mm.js';
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Режимы-исключения компрессорной, чтобы станция прошла по габариту перевозки: без продольного прохода (ends), проход

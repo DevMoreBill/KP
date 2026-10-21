@@ -1,5 +1,6 @@
 import { DealCalcBase } from './deal-calc-base.js';
 import { DealSchedule } from './deal-schedule.js';
+import { Money } from '../../core/money.js';
 
 /**
  * Расчёт сделки: график платежей, финансирование, итоги, структура затрат. Финансирование — простой процент (месяц —

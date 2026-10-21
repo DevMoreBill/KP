@@ -58,6 +58,8 @@ import { LgValues } from './lg-values.js';
 import { LgCard, LgView } from './lg-view.js';
 import { SupplierCalc } from './supplier-calc.js';
 import { TnVed } from './tn-ved.js';
+import { LISTS } from '../../core/lists.js';
+import { GeoInput } from '../../ui/geo-input.js';
 
 export const DEAL = {
   DealBind,
@@ -134,22 +136,9 @@ export const DEAL = {
   TnVed,
 };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, DEAL);
-
-// прежние имена, которыми пользуются ещё не переведённые файлы других частей интерфейса
-Object.assign(globalThis, {
-  DL: DealUi,
-  LG: LgState,
-  dealCalc: (kpData, deal) => DealCalculator.calc(kpData, deal),
-  dealXlsx: (opts = {}) => (opts.blob ? DealXlsx.blob() : DealXlsx.save()),
-  lgN: text => LgGeo.norm(text),
-  LG_IDX: LgGeo.IDX,
-});
-
 DealValues.register();
 LgValues.register();
 if (typeof document !== 'undefined' && document.addEventListener) DealRows.listen();
-if (typeof GEO_EXTRA !== 'undefined') GEO_EXTRA.wh = input => DealLogistics.warehouses(input);
+GeoInput.extra.wh = input => DealLogistics.warehouses(input);
 // страны поставщиков — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
-if (typeof LISTS !== 'undefined') LISTS.ready(DealTerms.LISTS);
+LISTS.ready(DealTerms.LISTS);

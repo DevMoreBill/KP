@@ -4,6 +4,7 @@ import { StationMods } from './station-mods.js';
 import { StationNorms } from './station-norms.js';
 import { StationTidy } from './station-tidy.js';
 import { VentCalc } from './vent-calc.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Отопление и вентиляция контейнера: теплопотери ограждений и инфильтрации, самый холодный режим работы, конвекторы

@@ -1,4 +1,7 @@
 import { CatalogIndex } from './catalog-index.js';
+import { CatalogSearch } from './catalog-cache.js';
+import { Str } from '../../core/str.js';
+import { CatSections } from './cat-sections.js';
 
 /** Условия отбора окна каталога: поиск, раздел, категория, производитель, поставщик, параметры категории. */
 export class CatalogFilter {
@@ -130,10 +133,10 @@ export class CatalogFilter {
 
   _valuesOk(card, skip) {
     for (const key of CatalogFilter.TOP_KEYS) {
-      if (key !== skip && this[key] && CatalogIndex.normValue(card, key) !== norm(this[key])) return false;
+      if (key !== skip && this[key] && CatalogIndex.normValue(card, key) !== Str.norm(this[key])) return false;
     }
     for (const key in this.f) {
-      if (key !== skip && this.f[key] && CatalogIndex.normValue(card, key) !== norm(this.f[key])) return false;
+      if (key !== skip && this.f[key] && CatalogIndex.normValue(card, key) !== Str.norm(this.f[key])) return false;
     }
     return true;
   }
@@ -146,7 +149,7 @@ export class CatalogFilter {
     for (const key in this.rng) {
       const range = this.rng[key];
       if (key === skip || !range) continue;
-      const value = numOf(CatalogIndex.attrs(card)[key]);
+      const value = Str.num(CatalogIndex.attrs(card)[key]);
       if (CatalogFilter._set(range.min) && !(value >= +range.min)) return false;
       if (CatalogFilter._set(range.max) && !(value <= +range.max)) return false;
     }
@@ -154,7 +157,7 @@ export class CatalogFilter {
   }
 
   _restOk(card, skip, win) {
-    if (skip !== 'sup' && this.sup && norm(win.supplierOf(card) || CatalogFilter.NOSUP) !== norm(this.sup))
+    if (skip !== 'sup' && this.sup && Str.norm(win.supplierOf(card) || CatalogFilter.NOSUP) !== Str.norm(this.sup))
       return false;
     if (this.priced && !card.price) return false;
     if (this.stock && !CatalogIndex.inStock(card)) return false;
@@ -181,11 +184,11 @@ export class CatalogFilter {
   _prepare() {
     if (this._qs === this.q) return;
     this._qs = this.q;
-    this._qw = norm(this.q)
+    this._qw = Str.norm(this.q)
       .split(' ')
       .filter(Boolean)
       .map(word => CatalogIndex.word(word));
-    this._qf = CatalogIndex.fold(norm(this.q));
+    this._qf = CatalogIndex.fold(Str.norm(this.q));
     this._qm = new Map();
   }
 
@@ -234,7 +237,7 @@ export class CatalogFilter {
    * @returns {number}
    */
   rel(card) {
-    const query = norm(this.q);
+    const query = Str.norm(this.q);
     if (!query) return 2;
     const fold = this._qs === this.q ? this._qf : CatalogIndex.fold(query);
     const hay = CatalogIndex.hay(card);

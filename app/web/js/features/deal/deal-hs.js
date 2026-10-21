@@ -3,6 +3,14 @@ import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { InputNum } from './input-num.js';
 import { TnVed } from './tn-ved.js';
+import { AdminDialog } from '../admin/admin-core.js';
+import { Toast } from '../../core/toast.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { Api } from '../../core/net.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { $, Uid, esc } from '../../core/util.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { S } from '../../core/state.js';
 
 /**
  * Коды ТН ВЭД и пошлины: позиция сделки (вручную в этом КП → по модели → по категории → справочно по виду и
@@ -21,7 +29,7 @@ export class DealHs {
    * @returns {{code: string, duty: string, src: string, ref: object|null}}
    */
   static of(item, deal = S.deal) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     const cus = DealUi.cus || {};
     const cat = item.role === 'container' ? 'container' : attrs.cat;
     const ref = TnVed.pick(item, attrs, cat);
@@ -71,7 +79,9 @@ export class DealHs {
    */
   static cats() {
     const cus = DealUi.cus || {};
-    const out = [...TYPES, { id: 'container', name: 'Блок-контейнер (станции)' }].map(type => DealHs._cat(type, cus));
+    const out = [...EquipTypes.list, { id: 'container', name: 'Блок-контейнер (станции)' }].map(type =>
+      DealHs._cat(type, cus),
+    );
     for (const [key, row] of Object.entries(cus)) {
       if (!key.startsWith('cat:x_')) continue;
       out.push({
@@ -117,7 +127,7 @@ export class DealHs {
       note: row.note || '',
       name: row.name || '',
     });
-    await api('/api/customs', { method: 'PUT', headers: DealHs.JSON_HEAD, body });
+    await Api.request('/api/customs', { method: 'PUT', headers: DealHs.JSON_HEAD, body });
     DealUi.cus = DealUi.cus || {};
     if (key.startsWith('cat:x_') && !row.name) delete DealUi.cus[key];
     else DealUi.cus[key] = { ...(DealUi.cus[key] || {}), ...row };
@@ -145,8 +155,8 @@ export class DealHs {
     DealUi.cus = DealUi.cus || {};
     DealUi.cus[key] = { ...value };
     const body = JSON.stringify({ key, code: value.code, duty: value.duty, note: '' });
-    api('/api/customs', { method: 'PUT', headers: DealHs.JSON_HEAD, body }).catch(() =>
-      toast('Код не сохранён в справочнике — проверьте связь с сервером'),
+    Api.request('/api/customs', { method: 'PUT', headers: DealHs.JSON_HEAD, body }).catch(() =>
+      Toast.show('Код не сохранён в справочнике — проверьте связь с сервером'),
     );
   }
 
@@ -253,18 +263,18 @@ export class DealHsDir {
   }
 
   async _add() {
-    const key = `cat:x_${uid()}`;
+    const key = `cat:x_${Uid.next()}`;
     try {
       await DealHs.put(key, { name: 'Новая категория', code: '', duty: '0' });
       this.draw();
       this.dlg.querySelector(`[data-key="${key}"] [data-hf="name"]`)?.select();
     } catch (err) {
-      toast(`Не удалось добавить: ${err.message || err}`);
+      Toast.show(`Не удалось добавить: ${err.message || err}`);
     }
   }
 
   async _delete(key) {
-    const ok = await stConfirm(
+    const ok = await AdminDialog.confirm(
       'Удалить категорию?',
       'Категория пропадёт из справочника; у моделей, где её выбрали, код и ставка останутся.',
       'Удалить',
@@ -277,7 +287,7 @@ export class DealHsDir {
       await DealHs.put(key, row);
       this.draw();
     } catch (err) {
-      toast(`${fail}: ${err.message || err}`);
+      Toast.show(`${fail}: ${err.message || err}`);
     }
   }
 
@@ -290,14 +300,14 @@ export class DealHsDir {
       value[input.dataset.hf] = input.value.trim();
     });
     if (key.startsWith('cat:x_') && !value.name) {
-      toast('Укажите название категории');
+      Toast.show('Укажите название категории');
       return;
     }
     try {
       await DealHs.put(key, value);
-      toast('Сохранено в справочнике');
+      Toast.show('Сохранено в справочнике');
     } catch (err) {
-      toast(`Не удалось сохранить: ${err.message || err}`);
+      Toast.show(`Не удалось сохранить: ${err.message || err}`);
     }
   }
 }

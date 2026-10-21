@@ -1,3 +1,5 @@
+import { CatalogWindow } from './catalog-window.js';
+import { $, esc } from '../../core/util.js';
 /** Разовое сообщение после обновления каталога (app/catalog_migrate.py) и раскладки изображений по папкам (app/images.py). */
 export class MigrationNotice {
   static KEY = 'kp.migSeen';

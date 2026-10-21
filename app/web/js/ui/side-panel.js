@@ -1,5 +1,21 @@
 import { Steps } from './steps.js';
 import { Tender } from './tender.js';
+import { CatalogEditor } from '../features/catalog/catalog-edit.js';
+import { Templates } from '../features/doc/templates.js';
+import { ShortName } from '../features/kp/journal-row.js';
+import { KpFile } from '../features/doc/kp-file.js';
+import { PdfExport } from '../features/doc/pdf-export.js';
+import { DealSide } from '../features/deal/deal-side.js';
+import { DealDefaults } from '../features/deal/deal-defaults.js';
+import { Morph } from '../core/morph.js';
+import { $, esc } from '../core/util.js';
+import { KpModels } from '../features/doc/kp-models.js';
+import { Currency, Discount } from '../features/kp/currency.js';
+import { StationCalc } from '../features/calc/station-calc.js';
+import { StationUi } from '../features/station/station-ui.js';
+import { Price } from '../core/str.js';
+import { Inn } from '../features/kp/client-store.js';
+import { KpState, S } from '../core/state.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {
@@ -17,7 +33,7 @@ export class Problems {
     const out = [];
     if (!S.client.trim()) out.push(['Укажите получателя', 'st-client']);
     if (!S.date) out.push(['Укажите дату', 'st-client']);
-    if (S.clientInn && !validInn(S.clientInn)) out.push(['ИНН получателя указан с ошибкой', 'st-client']);
+    if (S.clientInn && !Inn.valid(S.clientInn)) out.push(['ИНН получателя указан с ошибкой', 'st-client']);
     if (Tender.active() && !Tender.number()) out.push(['Тендер: укажите № закупки', 'st-tender']);
     if (Tender.active() && String(S.tender.url || '').trim() && !Tender.url()) {
       out.push(['Тендер: ссылка должна начинаться с http:// или https://', 'st-tender']);
@@ -36,7 +52,7 @@ export class Problems {
     if (!item.name.trim()) out.push([`${label}: нет наименования`, `item-${item.id}`]);
     if (!(Number.isInteger(+item.qty) && +item.qty >= 1))
       out.push([`${label}: количество — целое число от 1`, `item-${item.id}`]);
-    if (!item.price || Number.isNaN(parsePrice(item._priceText ?? fmtPrice(item.price)))) {
+    if (!item.price || Number.isNaN(Price.parse(item._priceText ?? Price.text(item.price)))) {
       out.push([`${label}: укажите цену`, `prow-${item.id}`]);
     }
     if (StationUi.blocked(item))
@@ -47,7 +63,7 @@ export class Problems {
       out.push([`${label}: расчёт станции — ${calc[0].text}${more}`, `item-${item.id}`]);
     }
     if (item._discBad) {
-      const why = discType(item) === 'sum' ? 'сумма не больше цены за единицу' : 'процент от 0 до 99,99';
+      const why = Discount.type(item) === 'sum' ? 'сумма не больше цены за единицу' : 'процент от 0 до 99,99';
       out.push([`${label}: скидка — ${why}`, `prow-${item.id}`]);
     }
     return out;
@@ -59,7 +75,7 @@ export class Problems {
       if (!opt.name.trim()) return;
       const label = `Позиция ${i + 1}, опция «${opt.short || opt.name}»`;
       if (!(Number.isInteger(+opt.qty) && +opt.qty >= 1)) out.push([`${label}: количество`, `item-${item.id}`]);
-      if (Number.isNaN(parsePrice(opt._priceText ?? ''))) out.push([`${label}: цена`, `item-${item.id}`]);
+      if (Number.isNaN(Price.parse(opt._priceText ?? ''))) out.push([`${label}: цена`, `item-${item.id}`]);
     });
     return out;
   }
@@ -69,9 +85,9 @@ export class Problems {
     if (!S.cover.model.trim() && KpModels.list().length < 2) out.push(['Титул: укажите модель или серию', 'st-cover']);
     const vat = +S.vat;
     if (!(vat >= 0 && vat <= this.VAT_MAX)) out.push(['Проверьте ставку НДС', 'st-price']);
-    const currencies = [kpCur(), ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB')];
+    const currencies = [Currency.current(), ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB')];
     for (const code of new Set(currencies.filter(cur => cur !== 'RUB'))) {
-      if (!(rateOf(code) > 0)) out.push([`Укажите курс ${code}`, 'st-price']);
+      if (!(Currency.rate(code) > 0)) out.push([`Укажите курс ${code}`, 'st-price']);
     }
     if (!S.manager.name.trim() || !S.manager.phone.trim()) out.push(['Контакты: ФИО и телефон', 'st-manager']);
     return out;
@@ -85,13 +101,13 @@ export class Problems {
 export class SidePanel {
   /** Перерисовать панель. */
   static render() {
-    const totals = totalsS();
+    const totals = KpState.totals();
     const list = Problems.list();
-    const currency = curSh(kpCur());
+    const currency = Currency.short(Currency.current());
     const number = $('#kpno');
     if (number) number.textContent = S.number ? `КП № ${S.number}` : '';
     this.mbar(totals, list, currency);
-    morph(
+    Morph.apply(
       $('#side'),
       `<h2 class="side-h">Итог и сохранение</h2>${this.total(totals, currency)}${this.actions(list)}${DealDefaults.allowed() ? DealSide.html() : ''}`,
     );
@@ -106,19 +122,19 @@ export class SidePanel {
   static total(totals, currency) {
     const count = S.items.length;
     const rub =
-      kpCur() !== 'RUB' && rateOf(kpCur()) > 0
-        ? `<dt>В рублях по курсу</dt><dd>${money(Math.round(totals.sum * rateOf(kpCur())))}</dd>`
+      Currency.current() !== 'RUB' && Currency.rate(Currency.current()) > 0
+        ? `<dt>В рублях по курсу</dt><dd>${KPGen.money(Math.round(totals.sum * Currency.rate(Currency.current())))}</dd>`
         : '';
     const discount = totals.discount
-      ? `<dt>Без скидки</dt><dd>${money(totals.gross)}</dd><dt>Скидка для заказчика</dt><dd>−${money(totals.discount)}</dd>`
+      ? `<dt>Без скидки</dt><dd>${KPGen.money(totals.gross)}</dd><dt>Скидка для заказчика</dt><dd>−${KPGen.money(totals.discount)}</dd>`
       : '';
     const inWords = totals.sum
-      ? esc(words(totals.sum).replace(/^./, char => char.toUpperCase()))
+      ? esc(Price.words(totals.sum).replace(/^./, char => char.toUpperCase()))
       : 'Сумма прописью появится после ввода цен.';
     return `<div class="total"><div class="lab">Итого к оплате с НДС</div>
-      <div class="big">${money(totals.sum)} <small>${currency}</small></div>
-      <dl>${discount}<dt>в т. ч. НДС ${esc(S.vat)} %</dt><dd>${money(totals.vat)}</dd>${rub}</dl>
-      <div class="tot-n">${count} ${plural(count, 'позиция', 'позиции', 'позиций')} · ${totals.units} ${plural(totals.units, 'единица', 'единицы', 'единиц')} оборудования</div>
+      <div class="big">${KPGen.money(totals.sum)} <small>${currency}</small></div>
+      <dl>${discount}<dt>в т. ч. НДС ${esc(S.vat)} %</dt><dd>${KPGen.money(totals.vat)}</dd>${rub}</dl>
+      <div class="tot-n">${count} ${KPGen.plural(count, 'позиция', 'позиции', 'позиций')} · ${totals.units} ${KPGen.plural(totals.units, 'единица', 'единицы', 'единиц')} оборудования</div>
       <div class="words">${inWords}</div></div>`;
   }
 
@@ -143,8 +159,8 @@ export class SidePanel {
   }
 
   static _manager() {
-    if (!Steps.mgrLine() || STEP === 'mgr') return '';
-    return `<div class="tplside">Менеджер: <b>${esc(jShort(S.manager.name))}</b>, ${esc(S.manager.phone)} <button type="button" data-step="mgr">изменить</button></div>`;
+    if (!Steps.mgrLine() || Steps.current === 'mgr') return '';
+    return `<div class="tplside">Менеджер: <b>${esc(ShortName.of(S.manager.name))}</b>, ${esc(S.manager.phone)} <button type="button" data-step="mgr">изменить</button></div>`;
   }
 
   static _template() {
@@ -162,13 +178,13 @@ export class SidePanel {
     const bar = $('#mbar');
     if (!bar) return;
     const steps = Steps.visible();
-    const k = steps.findIndex(step => step.id === STEP);
+    const k = steps.findIndex(step => step.id === Steps.current);
     const prev = steps[k - 1];
     const back = prev
       ? `<button class="mb-back" type="button" data-step="${prev.id}" aria-label="Назад: ${esc(prev.t)}"><span aria-hidden="true">‹</span></button>`
       : '<span class="mb-back" aria-hidden="true"></span>';
-    const sum = `<button class="mb-sum" type="button" data-a="toSave"><small>${list.length ? `Итого · не заполнено: ${list.length}` : 'Итого · всё готово'}</small><b>${money(totals.sum)} ${esc(currency)}</b></button>`;
-    morph(bar, back + sum + this._next(steps[k + 1], list));
+    const sum = `<button class="mb-sum" type="button" data-a="toSave"><small>${list.length ? `Итого · не заполнено: ${list.length}` : 'Итого · всё готово'}</small><b>${KPGen.money(totals.sum)} ${esc(currency)}</b></button>`;
+    Morph.apply(bar, back + sum + this._next(steps[k + 1], list));
   }
 
   static _next(next, list) {
@@ -185,14 +201,14 @@ export class SidePanel {
   static updateLive() {
     S.items.forEach((item, i) => {
       const sum = document.querySelector(`[data-sum="${i}"]`);
-      if (sum) sum.textContent = money(itemSum(item));
+      if (sum) sum.textContent = KPGen.money(KpState.itemSum(item));
       (item.options || []).forEach((opt, j) => {
         const cell = document.querySelector(`[data-osum="${i}.${j}"]`);
-        if (cell) cell.textContent = opt.price ? money((+opt.qty || 0) * opt.price) : '—';
+        if (cell) cell.textContent = opt.price ? KPGen.money((+opt.qty || 0) * opt.price) : '—';
       });
     });
-    if (CATED) return;
+    if (CatalogEditor.session) return;
     this.render();
-    persist();
+    KpState.persist();
   }
 }

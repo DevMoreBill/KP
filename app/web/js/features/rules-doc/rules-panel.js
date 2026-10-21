@@ -5,6 +5,10 @@ import { RuleEdit } from './rule-edit.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 import { StationRulesDoc } from './rules-doc.js';
+import { StationUi } from '../station/station-ui.js';
+import { FileSave } from '../../core/files.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
 
 const JSON_POST = { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' } };
 
@@ -135,7 +139,7 @@ export class RulesPanel {
   }
 
   /** fn с ошибкой — toast (или свой обработчик); true — выполнилось. */
-  _try(action, fail = err => toast(err.message)) {
+  _try(action, fail = err => Toast.show(err.message)) {
     try {
       action();
       return true;
@@ -296,7 +300,7 @@ export class RulesPanel {
       },
       err => {
         this.layout.work = old;
-        toast(err.message);
+        Toast.show(err.message);
       },
     );
     return built
@@ -339,7 +343,7 @@ export class RulesPanel {
 
   _rl_json() {
     const blob = new Blob([JSON.stringify(this.data, null, 1)], { type: 'application/json' });
-    saveFileA(`Правила станций ${this.data.version || ''}.json`, blob);
+    FileSave.download(`Правила станций ${this.data.version || ''}.json`, blob);
   }
 
   _rl_reset() {
@@ -357,7 +361,7 @@ export class RulesPanel {
       picker.accept = '';
       if (!file) return;
       if (file.size > 2 * 1024 * 1024) {
-        toast('Файл больше 2 МБ');
+        Toast.show('Файл больше 2 МБ');
         return;
       }
       this.post({ ...JSON_POST, body: file });
@@ -374,12 +378,12 @@ export class RulesPanel {
       StationRules.use(this.data);
       this.layout.work = null;
       this.ruleEdit.id = '';
-      if (typeof StationUi !== 'undefined') StationUi.cache.clear();
+      StationUi.cache.clear();
       StationCalc.cache.clear();
-      toast(`${what}: сохранено, версия ${this.info.version || ''}`);
+      Toast.show(`${what}: сохранено, версия ${this.info.version || ''}`);
       this.render(false);
     } catch (err) {
-      toast(`Не принято: ${err.message || err}`);
+      Toast.show(`Не принято: ${err.message || err}`);
     }
   }
 }

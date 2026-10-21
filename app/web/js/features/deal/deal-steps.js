@@ -4,6 +4,10 @@ import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { LgState } from './lg-state.js';
+import { S } from '../../core/state.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Шаги окна «Экономика сделки» — вкладки: карточка шага с итогом и переходом к соседним; состояние и краткий итог каждого
@@ -138,7 +142,7 @@ export class DealSteps {
 
   static _schedule(calc) {
     const peak = calc.rows.reduce((min, row) => Math.min(min, row.balance), 0);
-    const days = `${calc.Tend} ${plural(calc.Tend, 'день', 'дня', 'дней')}`;
+    const days = `${calc.Tend} ${KPGen.plural(calc.Tend, 'день', 'дня', 'дней')}`;
     return {
       st: 'info',
       sum: `${days} до последней оплаты · финансирование ${Fmt.rub(calc.F)}${peak < 0 ? ` · пик вложений ${Fmt.rub(-peak)}` : ''}`,

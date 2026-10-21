@@ -2,6 +2,15 @@ import { Currency } from './currency.js';
 import { Drafts } from './drafts.js';
 import { Managers } from './managers.js';
 import { ShortName } from './journal-row.js';
+import { Fmt } from '../../core/str.js';
+import { Steps } from '../../ui/steps.js';
+import { FormView } from '../../ui/form-view.js';
+import { Uid, esc, today } from '../../core/util.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { KpState, S } from '../../core/state.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { FEAT } from '../../core/features.js';
 
 /** Заготовка — КП без клиента (позиции, условия, цены), общая для всех: новое КП из заготовки за один щелчок. */
 export class Presets {
@@ -48,7 +57,7 @@ export class Presets {
    */
   static async list() {
     try {
-      const answer = await api('/api/presets');
+      const answer = await Api.request('/api/presets');
       this.myId = answer.me;
       return answer.items || [];
     } catch {
@@ -59,7 +68,7 @@ export class Presets {
   /** Сохранить текущее КП как заготовку. */
   static ask() {
     if (!S.items.length) {
-      toast('Добавьте в КП позиции — заготовка хранит позиции, цены и условия');
+      Toast.show('Добавьте в КП позиции — заготовка хранит позиции, цены и условия');
       return;
     }
     const title = S.items
@@ -95,15 +104,15 @@ export class Presets {
     const state = Drafts.clean();
     for (const key of this.DROP) delete state[key];
     try {
-      await api(`/api/presets/${Drafts.newId('p')}`, {
+      await Api.request(`/api/presets/${Drafts.newId('p')}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({ state, title, sum: totalsS().sum, cur: (S.pricing && S.pricing.cur) || 'RUB' }),
+        body: JSON.stringify({ state, title, sum: KpState.totals().sum, cur: (S.pricing && S.pricing.cur) || 'RUB' }),
       });
       modal.close();
-      toast(`Заготовка «${title}» сохранена — «Новое КП» → по заготовке`);
+      Toast.show(`Заготовка «${title}» сохранена — «Новое КП» → по заготовке`);
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
     }
   }
 
@@ -115,25 +124,25 @@ export class Presets {
     if (!(await Drafts.stash())) return;
     let answer;
     try {
-      answer = await api(`/api/presets/${encodeURIComponent(id)}`);
+      answer = await Api.request(`/api/presets/${encodeURIComponent(id)}`);
     } catch (error) {
-      toast(`Заготовка не открылась: ${error.message || error}`);
+      Toast.show(`Заготовка не открылась: ${error.message || error}`);
       return;
     }
     const keep = { manager: S.manager, managerId: S.managerId };
-    S = Object.assign(freshState(), answer.data.state || {}, keep);
+    KpState.replace(Object.assign(KpState.fresh(), answer.data.state || {}, keep));
     S.authorId = Managers.meId() || S.managerId || '';
     S.date = today();
     S.items.forEach(item => {
-      item.id = uid();
+      item.id = Uid.next();
     });
     document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     Drafts.loaded();
     window.scrollTo({ top: 0 });
-    goStep('client');
-    toast(`Новое КП по заготовке «${answer.row.title}» — укажите клиента`);
+    Steps.open('client');
+    Toast.show(`Новое КП по заготовке «${answer.row.title}» — укажите клиента`);
   }
 
   /**
@@ -143,11 +152,11 @@ export class Presets {
    */
   static async remove(id) {
     try {
-      await api(`/api/presets/${encodeURIComponent(id)}/delete`, { method: 'POST' });
-      toast('Заготовка удалена');
+      await Api.request(`/api/presets/${encodeURIComponent(id)}/delete`, { method: 'POST' });
+      Toast.show('Заготовка удалена');
       return true;
     } catch (error) {
-      toast(`Не удалено: ${error.message || error}`);
+      Toast.show(`Не удалено: ${error.message || error}`);
       return false;
     }
   }
@@ -158,8 +167,8 @@ export class Presets {
    * @returns {string}
    */
   static rowHtml(row) {
-    const mine = row.owner === this.myId || ADMIN.on;
-    const sum = row.sum ? ` · ${money(row.sum)} ${esc(Currency.short(row.cur || 'RUB'))}` : '';
+    const mine = row.owner === this.myId || AdminSession.on;
+    const sum = row.sum ? ` · ${KPGen.money(row.sum)} ${esc(Currency.short(row.cur || 'RUB'))}` : '';
     const owner = row.owner_name ? ` · ${esc(ShortName.of(row.owner_name))}` : '';
     const drop = mine
       ? `<button class="btn ghost" type="button" data-prd="${esc(row.id)}" data-prt="${esc(row.title)}">Удалить</button>`

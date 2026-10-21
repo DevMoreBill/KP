@@ -1,3 +1,22 @@
+import { AdminSession } from '../core/net.js';
+import { AuthMenu } from '../features/kp/auth-screen.js';
+import { DealDefaults } from '../features/deal/deal-defaults.js';
+import { Presets } from '../features/kp/presets.js';
+import { Theme } from '../core/theme.js';
+import { Modal } from '../core/modal.js';
+import { FormView } from './form-view.js';
+import { SettingsWindow } from '../features/admin/settings-window.js';
+import { MyPrefs } from '../features/kp/my-prefs.js';
+import { HelpWindow } from '../features/kp/help-window.js';
+import { DealState } from '../features/deal/deal-state.js';
+import { KpPreview } from '../features/doc/kp-preview.js';
+import { CatalogWindow } from '../features/catalog/catalog-window.js';
+import { Reminders } from '../features/kp/reminders.js';
+import { MyDay } from '../features/kp/my-day.js';
+import { QuickSearch } from '../features/kp/quick-search.js';
+import { Journal } from '../features/kp/journal.js';
+import { UiTexts } from '../features/kp/ui-texts.js';
+import { $ } from '../core/util.js';
 /**
  * Телефон (Safari iOS, Chrome Android): режим «mob» на <html> (ставится ещё в <head>, чтобы не мигала настольная
  * раскладка), меню «☰», поле названия по высоте текста, пустые поля дат, шапка прячется при прокрутке вниз.
@@ -13,18 +32,18 @@ export class Mobile {
   // пункт меню → действие; настольные функции (папки на сервере, импорт, типы) — на компьютере
   static MENU = {
     new: () => $('#btnNew').click(),
-    uitexts: () => uitToggle(),
-    journal: () => openJournal(),
+    uitexts: () => UiTexts.toggle(),
+    journal: () => Journal.open(),
     find: () => QuickSearch.open(),
     myday: () => MyDay.open(),
     reminders: () => Reminders.open(),
-    catalog: () => openCatalog({}),
+    catalog: () => CatalogWindow.open({}),
     preview: () => KpPreview.open(),
     deal: () => DealState.open(),
-    help: () => openHelp(),
+    help: () => HelpWindow.open(),
     theme: () => $('#btnTheme').click(),
     prefs: () => MyPrefs.open(),
-    settings: () => openSettings(),
+    settings: () => SettingsWindow.open(),
   };
 
   /**
@@ -45,7 +64,7 @@ export class Mobile {
     query.addEventListener('change', () => {
       const was = this.isPhone();
       apply();
-      if (was !== query.matches) renderForm();
+      if (was !== query.matches) FormView.render();
     });
     apply();
   }
@@ -76,7 +95,7 @@ export class Mobile {
       ${DealDefaults.allowed() ? item('deal', '₽', 'Экономика сделки', 'Прибыль, финансирование, Excel') : ''}
       ${item('help', '?', 'Руководство', 'Как пользоваться, история версий')}
       <hr>${item('prefs', '☺', 'Мои настройки', 'Тема, стартовый экран, мои условия, подпись в письмах')}${item('theme', dark ? '☀' : '☾', dark ? 'Светлая тема' : 'Тёмная тема', '')}
-      ${AuthMenu.mobileItems(item)}${item('settings', '⚙', 'Настройки', 'Для администратора')}${ADMIN.on ? item('uitexts', '✎', 'Тексты интерфейса', 'Правка надписей и подсказок') : ''}`;
+      ${AuthMenu.mobileItems(item)}${item('settings', '⚙', 'Настройки', 'Для администратора')}${AdminSession.on ? item('uitexts', '✎', 'Тексты интерфейса', 'Правка надписей и подсказок') : ''}`;
   }
 
   static _menuClick(dialog, event) {

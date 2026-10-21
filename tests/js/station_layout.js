@@ -1520,7 +1520,7 @@ Check.run('выброс горячего воздуха — над сервис�
     if (Object.values(p.vent.ducts).every(v=>v==='wall')){ const m=new Map(); for (const q of out(p)) m.set(q.duct, [...(m.get(q.duct)||[]), q.w+'×'+q.h]);
       assert.ok(new Set([...m.values()].map(v=>v.sort().join())).size===1, 'разные компрессоры — одни решётки: '+JSON.stringify([...m])); } }
   // версия программы — в отпечатке станции: новая программа пересобирает картинки и при своих сохранённых правилах
-  { const inp={ cont:C('block'), parts:[comp, dryer] }, h0=StationLayout.hash(inp); global.APP_VERSION='9.9.9'; const h1=StationLayout.hash(inp); delete global.APP_VERSION;
+  { const inp={ cont:C('block'), parts:[comp, dryer] }, h0=StationLayout.hash(inp); AppVersion.current='9.9.9'; const h1=StationLayout.hash(inp); AppVersion.current='';
     assert.ok(h0!==h1, 'отпечаток зависит от версии программы'); }
   for (const [kw, size, n] of [[55, '1600 × 1000 × 1600', 2], [90, '1900 × 1200 × 1800', 3], [15, '1000 × 700 × 1100', 4], [132, '2200 × 1300 × 1900', 2]]){
     const c=P('Винтовой компрессор '+kw, { cat:'comp_screw', kw, size, mass:kw*15 }, { role:'main', qty:n });

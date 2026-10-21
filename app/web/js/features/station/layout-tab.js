@@ -1,3 +1,35 @@
+import { StationRules } from '../rules/station-rules.js';
+import { LayoutDigest } from '../layout/layout-digest.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { AirChain } from '../layout/air-chain.js';
+import { StationHeat } from '../layout/station-heat.js';
+import { StationLight } from '../layout/station-light.js';
+import { StationFire } from '../layout/station-fire.js';
+import { StationPower } from '../layout/station-power.js';
+import { StationDrawing } from '../draw/station-drawing.js';
+import { StationLayout } from '../layout/station-layout.js';
+import { StationView3D } from '../draw/station-view3d.js';
+import { StationRender } from '../view/station-render.js';
+import { PhotoTint } from '../view/photo-tint.js';
+import { DrawPic } from '../kit/draw-pic.js';
+import { EskdFont } from '../eskd/eskd-font.js';
+import { EskdSheet } from '../eskd/eskd-sheet.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { IssueSpot } from './issue-spot.js';
+import { ExpertFix } from './expert-fix.js';
+import { Spoiler } from './spoiler.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Mm } from '../layout/mm.js';
+import { StationCalc } from '../calc/station-calc.js';
+import { StationModsUi } from './station-mods-ui.js';
+import { StationTidy } from '../layout/station-tidy.js';
+import { StationImages } from './station-images.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { Kit } from '../kit/kit.js';
+import { esc } from '../../core/util.js';
+import { StationUi } from './station-ui.js';
+import { KpState } from '../../core/state.js';
+import { StationSize } from './station-size.js';
 /**
  * Вкладка «Компоновка» карточки станции: помещается ли оборудование, замечания с решениями, разрез и виды снаружи,
  * габаритный чертёж и схема, доступ к оборудованию, подготовка воздуха, системы контейнера, расчёт и как расставляется.
@@ -16,7 +48,7 @@ export class LayoutTab {
    * @returns {string}
    */
   static html(item, index) {
-    if (StationSize.apply(item)) persist();
+    if (StationSize.apply(item)) KpState.persist();
     const plan = StationUi.plan(item);
     if (plan.level === 'none')
       return `<div class="ed-sec stl"><p class="stl-none">${esc(plan.text)}</p>${this.how()}</div>`;
@@ -37,7 +69,7 @@ export class LayoutTab {
       ${this.access(plan, item)}
       ${this.air(plan, item, index)}
       ${this.systems(plan, item)}
-      ${typeof StationCalc !== 'undefined' ? StationCalc.html(item, index) : ''}
+      ${StationCalc.html(item, index)}
       ${this.how()}</div>`;
   }
 
@@ -99,7 +131,7 @@ export class LayoutTab {
     const tidy = plan.tidy;
     if (!tidy || !(tidy.good.length || tidy.bad.length)) return '';
     const lines = [...tidy.good.map(text => `✓ ${esc(text)}`), ...tidy.bad.map(text => `• ${esc(text)}`)];
-    return ` ${tip(`<b>Аккуратность компоновки</b><br>${lines.join('<br>')}<br><span class="muted">Из вариантов равной площади программа берёт аккуратнейший («Настройки → Правила компоновки → Аккуратность»).</span>`)}`;
+    return ` ${UiKit.tip(`<b>Аккуратность компоновки</b><br>${lines.join('<br>')}<br><span class="muted">Из вариантов равной площади программа берёт аккуратнейший («Настройки → Правила компоновки → Аккуратность»).</span>`)}`;
   }
 
   /** замечания (ошибки и предупреждения) и сведения, с пояснениями «изображения не готовы» и «КП не сохранится» */
@@ -144,7 +176,7 @@ export class LayoutTab {
   static _issueLine(item, index, plan) {
     let fixes = null;
     const fix = issue => {
-      if (issue.level === 'info' || typeof ExpertFix === 'undefined') return '';
+      if (issue.level === 'info') return '';
       fixes = fixes || ExpertFix.list(item);
       return ExpertFix.btn(item, index, issue.text, fixes);
     };
@@ -161,10 +193,10 @@ export class LayoutTab {
   /** чертёж — встроенным шрифтом, как в КП; свои рисунки моделей; цвет оборудования — по его фото */
   static _loadAssets(item) {
     const redraw = changed => {
-      if (changed) renderEditor();
+      if (changed) ItemEditor.render();
     };
     if (!EskdSheet.FONT_DATA) EskdFont.load().then(redraw);
-    if (typeof DrawPic !== 'undefined' && DrawPic.pending(item)) DrawPic.load(item).then(redraw);
+    if (DrawPic.pending(item)) DrawPic.load(item).then(redraw);
     if (PhotoTint.pending(item)) PhotoTint.load(item).then(redraw);
   }
 

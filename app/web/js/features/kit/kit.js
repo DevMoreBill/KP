@@ -1,3 +1,7 @@
+import { Currency } from '../kp/currency.js';
+import { Uid } from '../../core/util.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
 /**
  * Сборка: одна позиция КП из нескольких элементов (`x.kit.parts`) — основное оборудование (`role: 'main'`), контейнер
  * (`role: 'container'`) и прочие элементы; закупка изделия — сумма закупок элементов по курсам КП.
@@ -37,7 +41,7 @@ export class Kit {
    * @returns {object|null}
    */
   static station(item) {
-    return typeById(attrsOf(item).cat).station || null;
+    return EquipTypes.byId(Attrs.of(item).cat).station || null;
   }
 
   /**
@@ -73,7 +77,7 @@ export class Kit {
    * @returns {object}
    */
   static newPart(fields = {}) {
-    return { id: uid(), name: '', qty: 1, cost: 0, costCur: 'RUB', sup: '', desc: '', rows: [], ...fields };
+    return { id: Uid.next(), name: '', qty: 1, cost: 0, costCur: 'RUB', sup: '', desc: '', rows: [], ...fields };
   }
 
   /**

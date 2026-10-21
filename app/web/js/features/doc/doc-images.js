@@ -1,3 +1,6 @@
+import { esc } from '../../core/util.js';
+import { ImageFiles } from '../catalog/images.js';
+import { FileSave } from '../../core/files.js';
 /**
  * Изображения документа КП: файл пропал (удалён из папки картинок, база перенесена без картинок) — КП собирается без него,
  * а кому не хватило фото — в списке missing (показывается после сохранения и в предпросмотре).
@@ -46,7 +49,7 @@ export class DocImages {
     const url = await this.url(image, who);
     if (!url) return null;
     try {
-      return await tileFrom({ src: url });
+      return await ImageFiles.tile({ src: url });
     } catch {
       this._miss(who);
       return null;

@@ -1,3 +1,7 @@
+import { LgState } from '../deal/lg-state.js';
+import { Toast } from '../../core/toast.js';
+import { esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
 /**
  * Перевозчики: включение и адреса API («Настройки → Внешние сервисы → Ключи API», под ключами доставки). Адрес пустой —
  * действует адрес программы; перевозчик сменил адрес — вписать новый и «Проверить». Сервер: /api/logistics/carriers.
@@ -10,7 +14,7 @@ export class CarrierApis {
   static async card() {
     let answer = { carriers: [] };
     try {
-      answer = await api('/api/logistics/carriers');
+      answer = await Api.request('/api/logistics/carriers');
     } catch (error) {
       return `<div class="st-card"><p class="msg err">Перевозчики: ${esc(error.message || error)}</p></div>`;
     }
@@ -54,13 +58,13 @@ export class CarrierApis {
    */
   static async save(host) {
     if (!(await this._put(host))) return false;
-    toast('Перевозчики сохранены');
+    Toast.show('Перевозчики сохранены');
     return true;
   }
 
   static async _put(host) {
     try {
-      await api('/api/logistics/carriers', {
+      await Api.request('/api/logistics/carriers', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(this._body(host)),
@@ -68,7 +72,7 @@ export class CarrierApis {
       LgState.status = null;
       return true;
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
       return false;
     }
   }
@@ -105,7 +109,7 @@ export class CarrierApis {
     out.className = 'muted ca-res';
     out.textContent = 'Проверяю…';
     try {
-      const answer = await api('/api/logistics/carriers/test', {
+      const answer = await Api.request('/api/logistics/carriers/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ id: row.dataset.ca }),

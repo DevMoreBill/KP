@@ -3,6 +3,8 @@ import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { DealValues } from './deal-values.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /**
  * Вкладка «График платежей»: деньги по дням — кто, когда и сколько платит; день или дата платежа правится, строка
@@ -57,7 +59,7 @@ export class DealScheduleView {
    */
   static html(calc) {
     const start = DealCal.contractDate();
-    const days = `${calc.Tend} ${plural(calc.Tend, 'день', 'дня', 'дней')}`;
+    const days = `${calc.Tend} ${KPGen.plural(calc.Tend, 'день', 'дня', 'дней')}`;
     const until = start ? ` · до ${DealCal.dayRu(calc.Tend)}` : '';
     const reset = Object.keys(DealState.deal().days || {}).length
       ? '<div class="dl-d0"><span class="muted">Даты некоторых платежей изменены вручную.</span><button type="button" class="btn ghost" data-dlx="resetdays">↺ Вернуть даты по срокам</button></div>'
@@ -88,7 +90,7 @@ export class DealScheduleView {
     const start = DealCal.contractDate();
     const when = day => `день ${day}${start ? ` · ${DealCal.dayRu(day)}` : ''}`;
     const sum = pick => calc.rows.filter(pick).reduce((total, row) => total + Math.abs(row.amount), 0);
-    const count = list => `${list.length} ${plural(list.length, 'платёж', 'платежа', 'платежей')}`;
+    const count = list => `${list.length} ${KPGen.plural(list.length, 'платёж', 'платежа', 'платежей')}`;
     const out = calc.rows.filter(row => !row.inflow);
     const pays = calc.rows.filter(row => row.inflow);
     const peak = calc.rows.reduce((min, row) => (row.balance < min.v ? { v: row.balance, row } : min), {

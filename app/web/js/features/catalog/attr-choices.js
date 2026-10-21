@@ -1,3 +1,8 @@
+import { UiKit } from '../../ui/ui-kit.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { esc } from '../../core/util.js';
+import { DimInput } from '../../core/dim-input.js';
 /**
  * Варианты выбора параметра позиции: значение не из списка категории («2/1» в ступенях Remeza, «Прямой» в приводе) остаётся
  * в списке — иначе окно показало бы «—» и при сохранении карточки стёрло бы его.
@@ -82,18 +87,18 @@ export class AttrsBlock {
    */
   static html(item, i) {
     const path = `items.${i}.attrs`;
-    const auto = attrsOf(item);
+    const auto = Attrs.of(item);
     const cat = auto.cat;
-    const type = typeById(cat);
+    const type = EquipTypes.byId(cat);
     const input = field => this._input({ path, attrs: item.attrs || {}, auto }, field);
     const groups = [...this._groups(type).entries()]
       .map(
         ([group, fields]) => `<p class="agrp">${esc(group)}</p><div class="attrs">${fields.map(input).join('')}</div>`,
       )
       .join('');
-    return `<div><div class="sub">Категория и параметры${tip(`Набор параметров зависит от категории «${esc(type.name)}». Они работают в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик — серым показано, что будет подставлено.`)} <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
+    return `<div><div class="sub">Категория и параметры${UiKit.tip(`Набор параметров зависит от категории «${esc(type.name)}». Они работают в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик — серым показано, что будет подставлено.`)} <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
       <button class="btn ghost" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать таблицу характеристик</button></div>
-   <div class="attrs"><label class="f"><span>Категория</span><select data-p="${path}.cat" data-retype="${i}">${typeOptionsHtml(cat)}</select></label>
+   <div class="attrs"><label class="f"><span>Категория</span><select data-p="${path}.cat" data-retype="${i}">${EquipTypes.optionsHtml(cat)}</select></label>
    ${input({ key: 'maker', label: 'Производитель' })}${input({ key: 'series', label: 'Серия' })}${input({ key: 'model', label: 'Модель' })}</div>
    ${groups}</div>`;
   }

@@ -5,12 +5,24 @@ import { Logos } from './image-slots.js';
 import { DescTab } from './item-desc.js';
 import { ItemLinks } from './item-links.js';
 import { ItemTabs } from './item-tabs.js';
+import { Morph } from '../../core/morph.js';
+import { AdminSession } from '../../core/net.js';
+import { StationImages } from '../station/station-images.js';
+import { FormView } from '../../ui/form-view.js';
+import { $, esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
+import { FEAT } from '../../core/features.js';
+import { Kit } from '../kit/kit.js';
+import { StationUi } from '../station/station-ui.js';
+import { KitView } from '../kit/kit-view.js';
 
 /**
  * Карточка позиции (окно с вкладками): основное, состав и компоновка станции, автозаполнение, описание и фото,
  * характеристики, опции. Открытая карточка — EDIT {i, tab}; в каталоге (CATED) — та же карточка с ценой в каталоге.
  */
 export class ItemEditor {
+  // открытая карточка позиции {i, tab}
+  static current = null;
   static TABS = [
     ['main', 'Основное'],
     ['kit', 'Состав станции'],
@@ -59,8 +71,8 @@ export class ItemEditor {
    */
   static open(i, tab) {
     const item = S.items[i];
-    if (item && Logos.auto(item)) persist();
-    EDIT = { i, tab: tab || (item && Kit.station(item) ? 'kit' : 'main') };
+    if (item && Logos.auto(item)) KpState.persist();
+    ItemEditor.current = { i, tab: tab || (item && Kit.station(item) ? 'kit' : 'main') };
     const dialog = $('#edlg');
     this.render();
     if (!dialog.open) dialog.showModal();
@@ -69,19 +81,19 @@ export class ItemEditor {
   /** Закрыть карточку («Готово»). */
   static close() {
     const dialog = $('#edlg');
-    EDIT = null;
+    ItemEditor.current = null;
     if (dialog.open) dialog.close();
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     StationImages.syncAll().then(changed => {
-      if (changed) renderForm();
+      if (changed) FormView.render();
     });
   }
 
   static _head(item, i) {
-    if (CATED) {
+    if (CatalogEditor.session) {
       const note =
-        CatalogWindow.win.mod && !ADMIN.on
+        CatalogWindow.win.mod && !AdminSession.on
           ? '<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>'
           : '';
       return `<h3><span class="ed-cat">Каталог</span>${esc(item.name || 'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${note}<button class="btn primary" type="button" data-catsave>${CatalogEditor.saveLabel()}</button>`;
@@ -123,21 +135,22 @@ export class ItemEditor {
     return this.tabs(item)
       .map(
         ([key, label]) =>
-          `<button type="button" class="ed-tab${EDIT.tab === key ? ' on' : ''}" data-edtab="${key}">${label}${key === 'layout' ? StationUi.badge(item) : ''}</button>`,
+          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${label}${key === 'layout' ? StationUi.badge(item) : ''}</button>`,
       )
       .join('');
   }
 
   static _prepare(item) {
-    if (!this.tabs(item).some(([key]) => key === EDIT.tab)) EDIT.tab = 'main';
-    if (!CATED && EDIT.tab !== 'layout' && StationUi.enabled(item)) StationImages.soon(item); // 3D и листы — сразу по составу
+    if (!this.tabs(item).some(([key]) => key === ItemEditor.current.tab)) ItemEditor.current.tab = 'main';
+    if (!CatalogEditor.session && ItemEditor.current.tab !== 'layout' && StationUi.enabled(item))
+      StationImages.soon(item); // 3D и листы — сразу по составу
   }
 
   /** Перерисовать карточку (фокус и прокрутка сохраняются). */
   static render() {
     const dialog = $('#edlg');
-    if (!EDIT) return;
-    const i = EDIT.i;
+    if (!ItemEditor.current) return;
+    const i = ItemEditor.current.i;
     const item = S.items[i];
     if (!item) {
       this.close();
@@ -146,13 +159,13 @@ export class ItemEditor {
     this._prepare(item);
     const path = document.activeElement?.dataset?.p;
     const top = dialog.querySelector('.ed-b')?.scrollTop || 0;
-    const body = (this.BODIES[EDIT.tab] || this.BODIES.ai)(item, i);
+    const body = (this.BODIES[ItemEditor.current.tab] || this.BODIES.ai)(item, i);
     const head = this._head(item, i);
-    dialog.classList.toggle('catmode', !!CATED);
+    dialog.classList.toggle('catmode', !!CatalogEditor.session);
     const active = document.activeElement;
-    const switched = dialog.dataset.tab !== EDIT.tab;
-    dialog.dataset.tab = EDIT.tab;
-    morph(
+    const switched = dialog.dataset.tab !== ItemEditor.current.tab;
+    dialog.dataset.tab = ItemEditor.current.tab;
+    Morph.apply(
       dialog,
       `<div class="dlg-h">${head}</div>
     <div class="ed-tabs">${this._tabsHtml(item)}</div>
@@ -172,13 +185,13 @@ export class ItemEditor {
     }
     const tab = event.target.closest('[data-edtab]');
     if (tab) {
-      EDIT.tab = tab.dataset.edtab;
+      ItemEditor.current.tab = tab.dataset.edtab;
       this.render();
       return;
     }
     const nav = event.target.closest('[data-ednav]');
     if (nav) {
-      this._go(dialog, EDIT.i + +nav.dataset.ednav);
+      this._go(dialog, ItemEditor.current.i + +nav.dataset.ednav);
       return;
     }
     const photo = event.target.closest('[data-fimg]');
@@ -187,7 +200,7 @@ export class ItemEditor {
 
   static _go(dialog, k) {
     if (!S.items[k]) return;
-    EDIT.i = k;
+    ItemEditor.current.i = k;
     this.render();
     dialog.querySelector('.ed-b').scrollTop = 0;
   }
@@ -204,17 +217,17 @@ export class ItemEditor {
   // закрытие пришло позже повторного открытия — не сбрасывать
   static _closed(event) {
     if (event.target.id !== 'edlg' || event.target.open) return;
-    if (CATED) {
-      S.items = CATED.items; // окно закрыто не кнопками карточки каталога — правки не сохраняются
-      CATED = null;
-      EDIT = null;
-      renderForm();
+    if (CatalogEditor.session) {
+      S.items = CatalogEditor.session.items; // окно закрыто не кнопками карточки каталога — правки не сохраняются
+      CatalogEditor.session = null;
+      ItemEditor.current = null;
+      FormView.render();
       return;
     }
-    if (!EDIT) return;
-    EDIT = null;
-    renderForm();
-    persist();
+    if (!ItemEditor.current) return;
+    ItemEditor.current = null;
+    FormView.render();
+    KpState.persist();
   }
 
   /** Обработчики карточки (вешаются один раз). */
@@ -226,8 +239,8 @@ export class ItemEditor {
       if (field.dataset.gat == null) return;
       const pic = S.items[+field.dataset.gat].gallery[+field.dataset.j];
       pic.at = field.value === 'free' ? 'free' : field.value;
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     });
     EditorDrag.listen();
   }
@@ -315,8 +328,8 @@ export class EditorDrag {
       moved = ItemLinks.moveFeat(item, from, place);
     } else moved = this._moveGal(item, from, { target: +box.dataset.gj, after });
     if (!moved) return;
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 
   /** Перетаскивание блоков и изображений. */

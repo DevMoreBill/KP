@@ -1,4 +1,8 @@
 import { ClientStore, Inn, OrgName } from './client-store.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { FormView } from '../../ui/form-view.js';
+import { $, esc, today } from '../../core/util.js';
 
 /** Загрузка клиентов списком ИНН: реквизиты из ЕГРЮЛ ФНС (или Checko / DaData, если указаны ключи) → справочник. */
 export class ClientsImport {
@@ -149,16 +153,16 @@ export class ClientsImport {
     await ClientStore.load();
     this._table();
     this._count();
-    renderForm();
+    FormView.render();
   }
 
   static async _one(row) {
     try {
-      const party = await api(`/api/party?inn=${row.inn}`);
+      const party = await Api.request(`/api/party?inn=${row.inn}`);
       if (party.error) throw new Error(party.error.replace(/^Не удалось получить данные\.\s*/, ''));
       const known = await ClientStore.byId(`inn${row.inn}`);
       const client = this._record(party, row.inn, known);
-      row.c = await api(`/api/clients/${client.id}`, {
+      row.c = await Api.request(`/api/clients/${client.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(client),
@@ -228,9 +232,9 @@ export class ClientsImport {
       const { found } = this.innsFrom(await this._textOf(input.files[0]));
       $('#ciText').value = found.join('\n');
       this._count();
-      if (!found.length) toast('В файле не найдено ИНН');
+      if (!found.length) Toast.show('В файле не найдено ИНН');
     } catch (error) {
-      toast(`Не удалось прочитать файл: ${error.message}`);
+      Toast.show(`Не удалось прочитать файл: ${error.message}`);
     }
   }
 

@@ -1,3 +1,10 @@
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { CopyText } from '../../core/files.js';
+import { $, esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
 /** Нейросеть прямо в программе (включает администратор: «Настройки → Нейросеть»): запрос через сервер. */
 export class AiDirect {
   static state = { enabled: false, provider: '', model: '', busy: {} };
@@ -6,7 +13,7 @@ export class AiDirect {
   /** Включена ли нейросеть и какая. */
   static async load() {
     try {
-      Object.assign(this.state, await api('/api/ai/status'));
+      Object.assign(this.state, await Api.request('/api/ai/status'));
     } catch {
       this.state.enabled = false;
     }
@@ -18,7 +25,7 @@ export class AiDirect {
    * @returns {Promise<string>}
    */
   static async ask(prompt) {
-    const answer = await api('/api/ai/fill', {
+    const answer = await Api.request('/api/ai/fill', {
       method: 'POST',
       headers: { 'Content-Type': this.JSON_TYPE },
       body: JSON.stringify({ prompt }),
@@ -157,7 +164,7 @@ export class AiSource {
   static _note(item, page, props) {
     const chars = (page.text || '').length.toLocaleString('ru-RU');
     const found = props.length
-      ? ` и ${props.length} ${plural(props.length, 'характеристика', 'характеристики', 'характеристик')}`
+      ? ` и ${props.length} ${KPGen.plural(props.length, 'характеристика', 'характеристики', 'характеристик')}`
       : '';
     const imgs = item._srcImgs.length ? `, найдено фото: ${item._srcImgs.length} — выберите главное ниже` : '';
     const skipped = page.imgsSkipped ? ` (мелких и пустых картинок пропущено: ${page.imgsSkipped})` : '';
@@ -178,7 +185,7 @@ export class AiSource {
     }
     let page;
     try {
-      page = await api('/api/pagetext', {
+      page = await Api.request('/api/pagetext', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -195,7 +202,7 @@ export class AiSource {
     const props = (page.props || []).filter(prop => prop[0] && prop[1]);
     item._src = this._text(url, page, props);
     item._srcProps = props;
-    item._srcImgs = (page.imgs || []).slice(0, Math.round(DEFN('img.maxCount', 12)));
+    item._srcImgs = (page.imgs || []).slice(0, Math.round(DefRegistry.num('img.maxCount', 12)));
     if (!item.pageUrl && !(item.feed && item.feed.url)) item.pageUrl = url;
     if (!String(item.name || '').trim() && page.title) item.name = page.title.slice(0, this.NAME_LEN);
     item._aiMsg = this._note(item, page, props);
@@ -209,10 +216,10 @@ export class AiSource {
   static async fetch(i) {
     const item = S.items[i];
     item._aiMsg = 'Загружаю страницу…';
-    renderForm();
+    FormView.render();
     await this.fetchInto(item);
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 
   /**
@@ -229,9 +236,9 @@ export class AiSource {
     item.groups = [group];
     item.page = true;
     item._aiMsg = `В характеристики перенесено строк: ${props.length}. Описание и параметры — через ИИ (шаг 2) или вручную.`;
-    renderForm();
-    persist();
-    toast('Характеристики со страницы перенесены');
+    FormView.render();
+    KpState.persist();
+    Toast.show('Характеристики со страницы перенесены');
   }
 
   static async _file(field) {
@@ -239,17 +246,17 @@ export class AiSource {
     const file = field.files[0];
     field.value = '';
     item._aiMsg = `Читаю «${file.name}»…`;
-    renderForm();
+    FormView.render();
     try {
       const text = await AiFileText.read(file);
-      item._src = `Файл: ${file.name}\n\n${text.slice(0, Math.round(DEFN('ai.fileChars', 60000)))}`;
+      item._src = `Файл: ${file.name}\n\n${text.slice(0, Math.round(DefRegistry.num('ai.fileChars', 60000)))}`;
       item._aiStep = 2;
       item._aiMsg = `Файл «${file.name}» загружен (${text.length.toLocaleString('ru-RU')} знаков). Дальше — шаг 2.`;
     } catch (error) {
       item._aiMsg = String(error.message || error);
     }
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 
   /** Файл паспорта (шаг 1). */
@@ -326,7 +333,7 @@ export class AiFileText {
     if (/\.(txt|csv|md|tsv)$/.test(name) || /^text\//.test(file.type || '')) return await file.text();
     if (/\.pdf$/.test(name) || file.type === 'application/pdf') {
       // текст PDF читает сервер (pdf_text.py); скан без текста — понятная ошибка
-      const answer = await api('/api/pdftext', {
+      const answer = await Api.request('/api/pdftext', {
         method: 'POST',
         headers: { 'Content-Type': 'application/pdf' },
         body: file,

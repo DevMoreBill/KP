@@ -1,6 +1,20 @@
 import { AiChat, AiDirect, AiSource } from './ai-chat.js';
 import { AiParse } from './ai-parse.js';
 import { AiPrompt } from './ai-prompt.js';
+import { StationAuto } from '../kit/station-auto.js';
+import { Kit } from '../kit/kit.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { Str } from '../../core/str.js';
+import { Toast } from '../../core/toast.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { CoverSync } from '../../ui/step-cover.js';
+import { CatalogEditor } from './catalog-edit.js';
+import { Uid, esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { FormView } from '../../ui/form-view.js';
+import { Api } from '../../core/net.js';
+import { Attrs } from '../../core/item-attrs.js';
 
 /**
  * Заполнение карточки с ИИ: объём — как у карточек этой категории в каталоге (образец — /api/ai/profile), недостающее
@@ -16,7 +30,7 @@ export class AiFill {
   static URL_RE = /^https?:\/\//;
 
   static _key(item, cat) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     return [cat || attrs.cat || '', attrs.maker || '', item.name || '', item.catId || ''].join('|');
   }
 
@@ -27,7 +41,7 @@ export class AiFill {
    * @returns {Promise<{profile: object|null, facts: object[]}>}
    */
   static async context(item, cat) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     const key = this._key(item, cat);
     if (this.ctx[key]) return this.ctx[key];
     const query = new URLSearchParams({
@@ -39,7 +53,7 @@ export class AiFill {
     });
     let answer;
     try {
-      answer = await api(`/api/ai/profile?${query}`);
+      answer = await Api.request(`/api/ai/profile?${query}`);
     } catch {
       answer = {};
     }
@@ -54,7 +68,7 @@ export class AiFill {
    */
   static promptNow(item) {
     const context = this.ctx[this._key(item)];
-    if (!context) this.context(item).then(() => renderForm());
+    if (!context) this.context(item).then(() => FormView.render());
     return AiPrompt.main(item, context || {});
   }
 
@@ -167,7 +181,7 @@ export class AiFill {
     const gap = context && AiPrompt.gaps(data, context.profile);
     if (!gap || AiDirect.state.busy[item.id]) return '';
     const button =
-      AiDirect.state.enabled && DEF('ai.supplement') !== false
+      AiDirect.state.enabled && DefRegistry.value('ai.supplement') !== false
         ? ''
         : ` <button class="lnk" type="button" data-a="aiMore" data-i="${S.items.indexOf(item)}">Скопировать запрос «дополнить»</button>`;
     return `<p class="ai-gap">По сравнению с каталогом не хватает: ${esc(AiPrompt.gapsText(gap))}.${button}</p>`;
@@ -193,13 +207,13 @@ export class AiFill {
     if (String(item._src || '').trim() || !this.URL_RE.test(item._srcUrl || item.pageUrl || '')) return;
     item._srcUrl = item._srcUrl || item.pageUrl;
     item._aiMsg = 'Загружаю страницу товара — это достоверный источник…';
-    renderForm();
+    FormView.render();
     await AiSource.fetchInto(item);
   }
 
   static async _supplement(item, data, { gap, context, who }) {
     item._aiMsg = `Не хватает: ${AiPrompt.gapsText(gap)} — ${who} ищет достоверные данные…`;
-    renderForm();
+    FormView.render();
     try {
       const add = AiParse.parse(await AiDirect.ask(AiPrompt.supplement(item, data, gap, context)));
       if (add && add.kind !== 'bad') return this.merge(data, add.j);
@@ -214,7 +228,7 @@ export class AiFill {
     const left = AiPrompt.gaps(data, profile);
     const more =
       added && (added.rows.length || added.features.length)
-        ? `, дополнено: ${added.features.length} ${plural(added.features.length, 'блок', 'блока', 'блоков')} описания и ${added.rows.length} ${plural(added.rows.length, 'характеристика', 'характеристики', 'характеристик')}`
+        ? `, дополнено: ${added.features.length} ${KPGen.plural(added.features.length, 'блок', 'блока', 'блоков')} описания и ${added.rows.length} ${KPGen.plural(added.rows.length, 'характеристика', 'характеристики', 'характеристик')}`
         : '';
     const none = left ? `. Достоверных данных не нашлось: ${AiPrompt.gapsText(left)} — оставлено пустым` : '';
     return `Ответ получен${more}${none}. Проверьте, что заполнится, и нажмите «Заполнить карточку».`;
@@ -223,7 +237,7 @@ export class AiFill {
   static async _run(item, who) {
     await this._page(item);
     item._aiMsg = `${who} заполняет карточку… обычно 20–60 секунд`;
-    renderForm();
+    FormView.render();
     const context = await this.context(item);
     const raw = await AiDirect.ask(AiPrompt.main(item, context));
     const answer = AiParse.parse(raw);
@@ -233,11 +247,12 @@ export class AiFill {
       item._aiMsg = answer ? answer.err : 'Пустой ответ — повторите';
       return;
     }
-    const cat = (answer.j.attrs && answer.j.attrs.cat) || attrsOf(item).cat;
+    const cat = (answer.j.attrs && answer.j.attrs.cat) || Attrs.of(item).cat;
     const full = await this.context(item, cat);
     const gap = AiPrompt.gaps(answer.j, full.profile);
     let data = answer.j;
-    if (gap && DEF('ai.supplement') !== false) data = await this._supplement(item, data, { gap, context: full, who });
+    if (gap && DefRegistry.value('ai.supplement') !== false)
+      data = await this._supplement(item, data, { gap, context: full, who });
     item._ans = JSON.stringify(data, null, 1);
     item._aiStep = 3;
     item._aiMsg = this._done(data, full.profile);
@@ -252,7 +267,7 @@ export class AiFill {
     if (!item || AiDirect.state.busy[item.id]) return;
     if (this._empty(item)) {
       item._aiMsg = 'Сначала шаг 1: ссылка, текст или хотя бы модель в наименовании.';
-      renderForm();
+      FormView.render();
       return;
     }
     AiDirect.state.busy[item.id] = true;
@@ -262,8 +277,8 @@ export class AiFill {
       item._aiMsg = String(error.message || error);
     } finally {
       delete AiDirect.state.busy[item.id];
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     }
   }
 
@@ -276,7 +291,7 @@ export class AiFill {
     const item = S.items[i];
     if (this._empty(item)) {
       item._aiMsg = 'Сначала шаг 1: ссылка, текст или хотя бы модель.';
-      renderForm();
+      FormView.render();
       return;
     }
     const context = this.ctx[this._key(item)] || {}; // образец уже загружен при показе вкладки; копирование — сразу
@@ -287,8 +302,8 @@ export class AiFill {
         : 'Скопируйте запрос из окна.';
       item._aiStep = 3;
       item._ansBase = '';
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     });
   }
 
@@ -309,8 +324,8 @@ export class AiFill {
       item._aiMsg = ok
         ? 'Запрос «дополнить» скопирован — отправьте его в том же чате, ответ вставьте в шаг 3: он добавится к основному.'
         : 'Скопируйте запрос из окна.';
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     });
   }
 
@@ -350,7 +365,7 @@ class AiApply {
   static _feats(item, data, keep) {
     const feats = (data.features || [])
       .filter(feat => feat && (feat.label || feat.text))
-      .map(feat => ({ id: uid(), label: String(feat.label || ''), text: String(feat.text || '') }));
+      .map(feat => ({ id: Uid.next(), label: String(feat.label || ''), text: String(feat.text || '') }));
     if (feats.length && (!keep || !(item.features || []).some(feat => feat.text))) item.features = feats;
     return feats.length;
   }
@@ -380,12 +395,12 @@ class AiApply {
 
   // титул, параметры, станция по ТЗ
   static _rest(item, data, keep) {
-    if (data.cover && typeof data.cover === 'object' && !CATED) {
+    if (data.cover && typeof data.cover === 'object' && !CatalogEditor.session) {
       item.hint = data.cover;
-      coverSync();
+      CoverSync.run();
     }
     if (data.attrs && typeof data.attrs === 'object') AiAttrs.apply(item, data.attrs, { keep });
-    if (typeById(attrsOf(item).cat).station) AiAttrs.station(item, data);
+    if (EquipTypes.byId(Attrs.of(item).cat).station) AiAttrs.station(item, data);
   }
 
   /**
@@ -396,11 +411,11 @@ class AiApply {
   static run(item, answer) {
     if (!answer || answer.kind === 'bad') {
       item._aiMsg = answer ? answer.err : 'Вставьте ответ ИИ в поле шага 3.';
-      renderForm();
+      FormView.render();
       return;
     }
     const data = answer.j;
-    const keep = !!(item._aiKeep ?? DEF('ai.keep'));
+    const keep = !!(item._aiKeep ?? DefRegistry.value('ai.keep'));
     this._texts(item, data, keep);
     const feats = this._feats(item, data, keep);
     const groups = this._groups(item, data, keep);
@@ -410,9 +425,9 @@ class AiApply {
     item._ansBase = '';
     item._aiStep = 0;
     item._aiMsg = this._note(data.added);
-    renderForm();
-    persist();
-    toast('Карточка заполнена из ответа ИИ');
+    FormView.render();
+    KpState.persist();
+    Toast.show('Карточка заполнена из ответа ИИ');
   }
 }
 
@@ -423,8 +438,8 @@ class AiAttrs {
   }
 
   static _cat(item, keepCat) {
-    const known = TYPES.some(type => type.id === item.attrs.cat);
-    if (keepCat && (typeById(keepCat).station || !known))
+    const known = EquipTypes.list.some(type => type.id === item.attrs.cat);
+    if (keepCat && (EquipTypes.byId(keepCat).station || !known))
       item.attrs.cat = keepCat; // станцию ИИ не переклассифицирует
     else if (!known) delete item.attrs.cat;
   }
@@ -444,10 +459,10 @@ class AiAttrs {
     );
     item.attrs = keep ? { ...add, ...this._filled(item.attrs) } : { ...(item.attrs || {}), ...add };
     this._cat(item, keepCat);
-    const type = typeById(item.attrs.cat || keepCat);
+    const type = EquipTypes.byId(item.attrs.cat || keepCat);
     for (const field of type.fields) {
       if (!field.num || item.attrs[field.key] == null) continue;
-      const num = numOf(item.attrs[field.key]);
+      const num = Str.num(item.attrs[field.key]);
       item.attrs[field.key] = num != null ? num : item.attrs[field.key];
     }
   }
@@ -464,7 +479,7 @@ class AiAttrs {
       parts.push(container);
     }
     for (const row of rows) {
-      const old = container.rows.find(one => norm(one.k) === norm(row.k));
+      const old = container.rows.find(one => Str.norm(one.k) === Str.norm(row.k));
       if (old) old.v = row.v;
       else container.rows.push(row);
     }
@@ -478,11 +493,11 @@ class AiAttrs {
   static station(item, data) {
     item.kit = item.kit || { parts: [] };
     const parts = item.kit.parts;
-    const have = new Set(parts.map(part => norm(part.name)));
+    const have = new Set(parts.map(part => Str.norm(part.name)));
     this._container(parts, this._rows(data.container && data.container.rows));
     for (const part of data.parts || []) {
-      if (!part || !String(part.name || '').trim() || have.has(norm(part.name))) continue;
-      have.add(norm(part.name));
+      if (!part || !String(part.name || '').trim() || have.has(Str.norm(part.name))) continue;
+      have.add(Str.norm(part.name));
       parts.push(
         Kit.newPart({
           name: String(part.name).trim(),

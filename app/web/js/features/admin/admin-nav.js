@@ -12,6 +12,13 @@ import { AiTab, MailTab, TemplatesTab, TypesTab } from './service-tabs.js';
 import { AuditTab, ModerationTab, StatsTab } from './review-tabs.js';
 import { ChangedPanel, ConnectionsPanel, SettingsHistoryPanel } from './settings-panels.js';
 import { SettingsSearch, StDirty } from './settings-tools.js';
+import { esc } from '../../core/util.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { ApiKeys } from '../kp/api-keys.js';
+import { Toast } from '../../core/toast.js';
+import { LazyJs } from '../../core/lazy-js.js';
+import { FreightSettings } from '../deal/freight-settings.js';
+import { GoodsTab, TrashTab } from '../catalog/trash-tab.js';
 
 /**
  * Разделы и вкладки «Настроек»: обзор отдельной кнопкой и четыре раздела по задачам администратора (+ Битрикс24). У вкладки:
@@ -188,8 +195,8 @@ export class AdminNav {
           hint: 'Отступы, проходы, ворота, вентиляция, отопление, ресиверы и все расчёты станций в контейнере: значение, источник, пределы.',
           open: main =>
             LazyJs.load('rules-doc/index.js')
-              .then(() => new RulesPanel(main).open())
-              .catch(error => toast(error.message)),
+              .then(({ RulesPanel }) => new RulesPanel(main).open())
+              .catch(error => Toast.show(error.message)),
         },
         {
           key: 'changes',
@@ -257,7 +264,7 @@ export class AdminNav {
           key: 'trash',
           label: 'Корзина',
           get hint() {
-            return `Удалённое хранится ${DEFN('srv.trashDays', AdminNav.TRASH_DAYS)} дн.: восстановить, удалить навсегда, очистить.`;
+            return `Удалённое хранится ${DefRegistry.num('srv.trashDays', AdminNav.TRASH_DAYS)} дн.: восстановить, удалить навсегда, очистить.`;
           },
           open: main => TrashTab.render(main),
         },

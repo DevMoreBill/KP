@@ -6,6 +6,8 @@ import { LgMoney } from './lg-money.js';
 import { LgOffers } from './lg-offers.js';
 import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /**
  * Перевозчик и цена (все предложения «дверь в дверь», выбор — любое или максимальное) и итог доставки по России в расчёт
@@ -145,7 +147,8 @@ export class LgCarrier {
 
   _how(manual, cur) {
     const { fin, res } = this;
-    const days = res.days && !res.need ? ` · в пути ≈ ${res.days} ${plural(res.days, 'день', 'дня', 'дней')}` : '';
+    const days =
+      res.days && !res.need ? ` · в пути ≈ ${res.days} ${KPGen.plural(res.days, 'день', 'дня', 'дней')}` : '';
     if (manual) {
       return `своя сумма (например, по счёту перевозчика)${cur === 'RUB' ? '' : ' — в расчёт сделки идут рубли по курсу ЦБ'}${days}`;
     }

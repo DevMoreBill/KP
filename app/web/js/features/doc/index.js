@@ -14,6 +14,7 @@ import { TemplateEditor } from './template-editor.js';
 import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
 import { Translit } from './translit.js';
+import { LISTS } from '../../core/lists.js';
 
 export const DOC = {
   CoverThumb,
@@ -32,9 +33,6 @@ export const DOC = {
   Templates,
   Translit,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, DOC);
 
 Templates.listen();
 TemplateEditor.listen();

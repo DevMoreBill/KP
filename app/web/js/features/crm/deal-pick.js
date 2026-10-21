@@ -1,3 +1,11 @@
+import { FormView } from '../../ui/form-view.js';
+import { Steps } from '../../ui/steps.js';
+import { Api } from '../../core/net.js';
+import { esc } from '../../core/util.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Str } from '../../core/str.js';
+import { S } from '../../core/state.js';
+import { MyDay } from '../kp/my-day.js';
 /** Раздел «Клиент» КП: в какую сделку попадёт КП (показывается, когда у клиента есть незакрытые сделки или КП уже в сделке). */
 export class DealPick {
   static state = { key: '', items: [], current: '', stages: [], busy: false };
@@ -8,7 +16,7 @@ export class DealPick {
    */
   static html() {
     if (!MyDay.enabled() || !(S.client || S.clientInn)) return '';
-    const key = [String(S.clientInn || '').replace(/\D/g, ''), norm(S.client), S.kpId || ''].join('|');
+    const key = [String(S.clientInn || '').replace(/\D/g, ''), Str.norm(S.client), S.kpId || ''].join('|');
     const state = this.state;
     if (state.key !== key) {
       if (!state.busy) this._load(key);
@@ -16,7 +24,7 @@ export class DealPick {
     }
     if (!state.items.length) return '';
     const picked = S.dealId || state.current || '';
-    return `<div class="csec deal-pick"><p class="sub">Сделка${tip('<p>Все КП по одной задаче клиента (объект, закупка) собираются в одну сделку — в «Кабинете» видно сумму, стадию и дела по ней.</p><p>Выберите сделку, к которой относится это КП, или оставьте новую.</p>')}</p>
+    return `<div class="csec deal-pick"><p class="sub">Сделка${UiKit.tip('<p>Все КП по одной задаче клиента (объект, закупка) собираются в одну сделку — в «Кабинете» видно сумму, стадию и дела по ней.</p><p>Выберите сделку, к которой относится это КП, или оставьте новую.</p>')}</p>
       <div class="row dp-r"><select data-p="dealId" aria-label="Сделка для этого КП">${this._options(picked)}</select>${this._open(picked)}</div></div>`;
   }
 
@@ -45,7 +53,7 @@ export class DealPick {
     state.busy = true;
     const [inn, , offer] = key.split('|');
     try {
-      const found = await api(
+      const found = await Api.request(
         `/api/crm/pick?inn=${encodeURIComponent(inn)}&name=${encodeURIComponent(S.client || '')}&kp=${encodeURIComponent(offer)}`,
       );
       Object.assign(state, { items: found.items || [], current: found.current || '', stages: found.stages || [] });
@@ -54,6 +62,6 @@ export class DealPick {
     }
     state.key = key;
     state.busy = false;
-    if (STEP === 'client' && state.items.length) renderForm();
+    if (Steps.current === 'client' && state.items.length) FormView.render();
   }
 }

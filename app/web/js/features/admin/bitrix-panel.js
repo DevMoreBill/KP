@@ -2,6 +2,9 @@ import { AdminApi } from './admin-core.js';
 import { BitrixFields, BitrixLog, BitrixManagers, BitrixOld, BitrixStages } from './bitrix-tabs.js';
 import { BitrixFlow, BitrixLink, BitrixSchedule, BitrixSend } from './bitrix-link.js';
 import { StDirty } from './settings-tools.js';
+import { MirrorPanel } from '../crm/mirror-panel.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /** «Битрикс24»: связь кабинета менеджера с Битрикс24 (app/bitrix.py, правила обмена — app/bitrix_rules.py), вкладка — пункт меню. */
 export class BitrixPanel {

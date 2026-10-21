@@ -1,3 +1,7 @@
+import { FEAT } from '../../core/features.js';
+import { esc } from '../../core/util.js';
+import { Currency } from '../kp/currency.js';
+import { Str } from '../../core/str.js';
 /** РРЦ и наличие у поставщика (позиции из товарного фида, feeds.py): значки в списке и карточке каталога. */
 export class FeedBadge {
   static _qtyText(stock) {
@@ -49,10 +53,12 @@ export class FeedBadge {
 
   static _rrc(rrc) {
     if (!rrc) return '';
-    const cur = curSh(rrc.cur || 'RUB');
-    const prev = rrc.prev ? `; прежняя ${money(rrc.prev)} ${cur}${rrc.prevAt ? ` (${esc(rrc.prevAt)})` : ''}` : '';
+    const cur = Currency.short(rrc.cur || 'RUB');
+    const prev = rrc.prev
+      ? `; прежняя ${KPGen.money(rrc.prev)} ${cur}${rrc.prevAt ? ` (${esc(rrc.prevAt)})` : ''}`
+      : '';
     const title = `Рекомендованная розничная цена поставщика${rrc.at ? ` на ${esc(rrc.at)}` : ''}${prev}`;
-    return `<span class="fd-rrc" title="${title}">РРЦ ${money(rrc.price)} ${cur}${this._arrow(rrc)}</span>`;
+    return `<span class="fd-rrc" title="${title}">РРЦ ${KPGen.money(rrc.price)} ${cur}${this._arrow(rrc)}</span>`;
   }
 
   static _state(stock) {

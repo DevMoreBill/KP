@@ -1,3 +1,7 @@
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
 /**
  * Ответ ИИ → объект. Понимает блок ```json, текст вокруг, «умные» кавычки, запятые перед } и ], комментарии //.
  * Не JSON — строки «Параметр: значение» / таблица из двух колонок становятся характеристиками.
@@ -77,7 +81,7 @@ export class AiParse {
   }
 
   static _count(count, one, few, many) {
-    return `${count} ${plural(count, one, few, many)}`;
+    return `${count} ${KPGen.plural(count, one, few, many)}`;
   }
 
   static _rows(data) {
@@ -157,14 +161,14 @@ export class SpecPaste {
   static _add(dialog, i) {
     const groups = AiParse.specs($('#pasteArea').value);
     if (!groups.length) {
-      toast('Не нашёл строк с параметрами');
+      Toast.show('Не нашёл строк с параметрами');
       return;
     }
     const item = S.items[i];
     item.groups = $('#pasteRepl').checked ? groups : item.groups.concat(groups);
     dialog.close();
-    renderForm();
-    persist();
-    toast(`Добавлено строк: ${groups.reduce((sum, group) => sum + group.rows.length, 0)}`);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Добавлено строк: ${groups.reduce((sum, group) => sum + group.rows.length, 0)}`);
   }
 }

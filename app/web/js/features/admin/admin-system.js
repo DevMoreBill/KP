@@ -1,4 +1,8 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
+import { Fmt } from '../../core/str.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { esc } from '../../core/util.js';
 
 /**
  * «Обслуживание»: обновления программы, сведения о системе, журнал сервера, перезапуск; в «Обзоре» — «Требует внимания»
@@ -77,7 +81,7 @@ export class AdminSystem {
     try {
       await AdminApi.post('restart');
     } catch (error) {
-      toast(`Не перезапущено: ${error.message || error}`);
+      Toast.show(`Не перезапущено: ${error.message || error}`);
       return;
     }
     const modal = new Modal(
@@ -266,7 +270,7 @@ export class AdminSystem {
     try {
       await this[method]({ main, button, ...ctx });
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       this.updates(main);
     }
   }
@@ -314,7 +318,7 @@ export class AdminSystem {
       nightly: main.querySelector('#upNight').value,
       nightHour: +main.querySelector('#upHour').value,
     });
-    toast('Сохранено');
+    Toast.show('Сохранено');
     return this.updates(main);
   }
 
@@ -324,7 +328,7 @@ export class AdminSystem {
     if (token) body.token = token;
     if (button.dataset.up === 'deltok') body.token = '';
     await AdminApi.post('update', body);
-    toast('Сохранено');
+    Toast.show('Сохранено');
     return this.updates(main);
   }
 
@@ -444,7 +448,7 @@ export class AdminSystem {
     try {
       await AdminApi.post('folder', { which: folder.dataset.fold });
     } catch (error) {
-      toast(error.message);
+      Toast.show(error.message);
     }
   }
 }

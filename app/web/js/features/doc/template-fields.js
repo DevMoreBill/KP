@@ -1,5 +1,8 @@
 import { TemplateEditor } from './template-editor.js';
 import { Templates } from './templates.js';
+import { Srv } from '../../core/net.js';
+import { esc } from '../../core/util.js';
+import { ObjPath } from '../../core/str.js';
 
 /**
  * Поля формы редактора шаблона по описанию editor.json: текст, шрифт, число, переключатель, список, цвет, пары
@@ -78,7 +81,7 @@ export class TemplateFields {
   static html(field) {
     const method = this.KINDS[field.type];
     if (!method) return '';
-    const value = field.key ? getPath(this._state.work || {}, field.key) : undefined;
+    const value = field.key ? ObjPath.get(this._state.work || {}, field.key) : undefined;
     const ctx = {
       field,
       value,
@@ -262,7 +265,7 @@ export class TemplateFields {
   }
 
   static _card({ file, title, text, openLabel }) {
-    const remote = SRV.info && SRV.info.local === false;
+    const remote = Srv.info && Srv.info.local === false;
     const folder = encodeURIComponent(this._state.id);
     return `<div class="te-card"><div><b>${esc(title)}</b> <code>${esc(file)}</code><p class="muted">${text}</p></div>
     <div class="row">${remote ? '' : `<button class="btn" type="button" data-te-open="${esc(file)}">${esc(openLabel)}</button>`}
@@ -273,7 +276,7 @@ export class TemplateFields {
   static _files() {
     const { id, pack } = this._state;
     const info = Templates.list.find(row => row.id === id) || {};
-    const remote = SRV.info && SRV.info.local === false;
+    const remote = Srv.info && Srv.info.local === false;
     const page = pack ? esc(Templates.pageInfo(pack.sect)) : '';
     return `<div class="te-files">
     ${this._card({ file: 'base.docx', title: 'Основа Word', text: `Шапка страницы (логотип, реквизиты), поля, размер листа, стили Word. ${page}. Откройте в Word, измените верхний колонтитул или поля (Макет → Поля), сохраните и закройте — программа подхватит изменения при следующем сохранении КП. Ширина таблиц подстраивается под поля автоматически.`, openLabel: 'Открыть в Word' })}

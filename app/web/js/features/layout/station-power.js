@@ -1,6 +1,7 @@
 import { Num } from './num.js';
 import { StationHeat } from './station-heat.js';
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Электрические нагрузки: установленная мощность — сумма потребителей; расчётная — большее из режимов «работа» и «простой

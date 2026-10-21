@@ -7,6 +7,12 @@ import { TemplateDraft } from './template-draft.js';
 import { TemplateEditor } from './template-editor.js';
 import { Templates } from './templates.js';
 import { Translit } from './translit.js';
+import { $ } from '../../core/util.js';
+import { FormView } from '../../ui/form-view.js';
+import { S } from '../../core/state.js';
+import { Toast } from '../../core/toast.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { Modal } from '../../core/modal.js';
 
 /**
  * Графический редактор шаблона КП (только администратор): документ виден как в Word, свои картинки и надписи ставятся мышью
@@ -46,8 +52,8 @@ export class TemplateDesigner {
    * @param {string} [id] шаблон; нет — выбранный в КП
    */
   static async open(id) {
-    if (!ADMIN.on) {
-      toast('Графический редактор шаблона доступен администратору: войдите в «Настройках»');
+    if (!AdminSession.on) {
+      Toast.show('Графический редактор шаблона доступен администратору: войдите в «Настройках»');
       return;
     }
     const state = Design.state;
@@ -94,7 +100,7 @@ export class TemplateDesigner {
   }
 
   static async _putJson(id, work) {
-    await api(`/api/templates/${encodeURIComponent(id)}/file?name=template.json`, {
+    await Api.request(`/api/templates/${encodeURIComponent(id)}/file?name=template.json`, {
       method: 'PUT',
       headers: this.JSON_HEADERS,
       body: JSON.stringify(work, null, 2),
@@ -108,7 +114,7 @@ export class TemplateDesigner {
     state.saved = JSON.stringify(state.work);
     Templates.dropCache(state.id);
     await Templates.load();
-    renderForm();
+    FormView.render();
     state.pack = await Templates.pack(state.id);
     state.note = 'Шаблон сохранён. Прежняя версия — в истории («Форма» → «Файлы шаблона»).';
     DesignPanels.top();
@@ -116,7 +122,7 @@ export class TemplateDesigner {
 
   static async _copy(from, name) {
     const id = Translit.templateId(name);
-    await api(
+    await Api.request(
       `/api/templates/${encodeURIComponent(from)}/copy?to=${encodeURIComponent(id)}&title=${encodeURIComponent(name.trim())}`,
       {
         method: 'POST',
@@ -139,7 +145,7 @@ export class TemplateDesigner {
     await this._putJson(id, work);
     state.saved = JSON.stringify(state.work);
     await Templates.load();
-    renderForm();
+    FormView.render();
     await this.open(id);
     state.note = `Создан шаблон «${name.trim()}» (папка templates/${id}). Выбрать его для КП — в разделе «Оформление КП».`;
     DesignPanels.top();
@@ -147,8 +153,8 @@ export class TemplateDesigner {
 
   /** Новый шаблон для другой компании: копия основного шаблона, сразу в редакторе на вкладке «Шапка». */
   static async newCompany() {
-    if (!ADMIN.on) {
-      toast('Создавать шаблоны может администратор: войдите в «Настройках»');
+    if (!AdminSession.on) {
+      Toast.show('Создавать шаблоны может администратор: войдите в «Настройках»');
       return;
     }
     const usable = Templates.list.filter(template => !template.error);
@@ -158,7 +164,7 @@ export class TemplateDesigner {
     if (!name || !name.trim()) return;
     const id = await this._copy(from, name);
     await Templates.load();
-    renderForm();
+    FormView.render();
     Design.state.tab = 'head';
     await this.open(id);
     Design.state.note = `Создан шаблон «${name.trim()}». Задайте шапку с логотипом, фирменный знак и цвета, затем «Сохранить».`;
@@ -187,7 +193,7 @@ export class TemplateDesigner {
     if (!/^image\/(png|jpeg)$/.test(file.type)) throw new Error('нужна картинка PNG или JPEG');
     const ext = file.type === 'image/png' ? 'png' : 'jpg';
     const name = `${this.UPLOAD_NAMES[kind] || 'img_'}${Date.now().toString(this.UID_BASE)}.${ext}`;
-    await api(`/api/templates/${encodeURIComponent(Design.state.id)}/file?name=${encodeURIComponent(name)}`, {
+    await Api.request(`/api/templates/${encodeURIComponent(Design.state.id)}/file?name=${encodeURIComponent(name)}`, {
       method: 'PUT',
       body: file,
     });
@@ -198,7 +204,7 @@ export class TemplateDesigner {
   static async trial() {
     const state = Design.state;
     if (!S.items.length) {
-      toast('В КП нет позиций — добавьте оборудование, чтобы скачать пробный файл');
+      Toast.show('В КП нет позиций — добавьте оборудование, чтобы скачать пробный файл');
       return;
     }
     state.note = 'Собираю пробный файл…';

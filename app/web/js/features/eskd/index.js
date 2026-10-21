@@ -25,6 +25,3 @@ export const ESKD = {
   SchemeUnits,
   StationScheme,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, ESKD);

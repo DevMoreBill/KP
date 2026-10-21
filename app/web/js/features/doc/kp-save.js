@@ -3,6 +3,31 @@ import { KpDocx } from './kp-docx.js';
 import { KpFile } from './kp-file.js';
 import { PdfExport } from './pdf-export.js';
 import { Templates } from './templates.js';
+import { KpSaved } from '../kp/kp-saved.js';
+import { FEAT } from '../../core/features.js';
+import { DealXlsx } from '../deal/deal-xlsx.js';
+import { DealPlan, KpLines } from '../deal/deal-side.js';
+import { KpDate } from '../kp/kp-date.js';
+import { DealState } from '../deal/deal-state.js';
+import { KpEconomics } from '../kp/price-calc.js';
+import { Tender } from '../../ui/tender.js';
+import { ClientStore } from '../kp/client-store.js';
+import { CatalogSync } from '../catalog/catalog-fill.js';
+import { DrawPic } from '../kit/draw-pic.js';
+import { Kit } from '../kit/kit.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { DealDefaults } from '../deal/deal-defaults.js';
+import { Api, ImgUpload, Srv } from '../../core/net.js';
+import { FormView } from '../../ui/form-view.js';
+import { CondMemory } from '../../ui/step-conds.js';
+import { Toast } from '../../core/toast.js';
+import { MgrBar } from '../kp/mgr-bar.js';
+import { Managers, MgrLock } from '../kp/managers.js';
+import { Drafts } from '../kp/drafts.js';
+import { Problems } from '../../ui/side-panel.js';
+import { $, esc } from '../../core/util.js';
+import { StationImages } from '../station/station-images.js';
+import { KpState, S } from '../../core/state.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
@@ -48,7 +73,7 @@ export class KpSave {
   static async run() {
     const message = $('#dlmsg');
     const button = document.querySelector('[data-a="download"]');
-    if (problems().length || this.busy) return;
+    if (Problems.list().length || this.busy) return;
     if (!window.JSZip) {
       message.className = 'msg err';
       message.textContent = 'Не загрузился модуль сборки файла. Обновите страницу.';
@@ -81,8 +106,8 @@ export class KpSave {
     if (!StationImages.confirmSave()) throw this._declined('изображения станции не готовы');
     MgrLock.apply(); // вход по паролю: в КП — контакты вошедшего менеджера
     if (MgrLock.locked()) {
-      clearTimeout(mgrT);
-      await saveManager(true); // свежие правки своих контактов — в карточку до записи КП
+      clearTimeout(MgrBar.timer);
+      await Managers.saveQuiet(); // свежие правки своих контактов — в карточку до записи КП
     }
     const state = KpDocx.state();
     const isNew = !S.kpId;
@@ -92,9 +117,9 @@ export class KpSave {
     button.textContent = 'Сохраняю в журнал…';
     Drafts.paused = true; // автосохранение черновика не вмешивается в сохранение КП
     await this._uploadImages();
-    if (!S.managerId && String(S.manager.name || '').trim()) await saveManager(true); // новый менеджер — в справочник
-    if (!S.authorId) S.authorId = meId() || S.managerId || '';
-    const totals = totalsS();
+    if (!S.managerId && String(S.manager.name || '').trim()) await Managers.saveQuiet(); // новый менеджер — в справочник
+    if (!S.authorId) S.authorId = Managers.meId() || S.managerId || '';
+    const totals = KpState.totals();
     const fileName = KpFile.name();
     if (!S.createdAt) S.createdAt = new Date().toISOString();
     const sig = await this._journal();
@@ -102,11 +127,11 @@ export class KpSave {
     await this._meta(totals, saved);
     await Drafts.saved(sig); // КП в журнале — черновик не нужен; правки во время сохранения остаются несохранёнными
     if (Drafts.sig(Drafts.clean()) !== sig)
-      toast('Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз');
+      Toast.show('Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз');
     const pdf = await this._pdf(button);
-    rememberConds();
-    persist();
-    renderForm();
+    CondMemory.remember();
+    KpState.persist();
+    FormView.render();
     this._done(pdf, isNew);
   }
 
@@ -122,32 +147,33 @@ export class KpSave {
   // новое КП — номер с сервера; КП успели пересохранить у коллеги — спросить до записи файла
   static async _number(state) {
     if (!S.kpId) {
-      const created = await api('/api/kp/new', { method: 'POST' });
+      const created = await Api.request('/api/kp/new', { method: 'POST' });
       S.kpId = created.id;
       S.number = created.number;
       state.kpId = created.id;
       state.number = created.number;
-      S.authorId = meId() || S.managerId || '';
+      S.authorId = Managers.meId() || S.managerId || '';
       S._rev = 0;
       return;
     }
     if (S._rev != null) {
-      const current = await api(`/api/kp/${S.kpId}/rev`);
+      const current = await Api.request(`/api/kp/${S.kpId}/rev`);
       if (current.rev === S._rev) return;
       if (!Api.ask(current, '/api/kp/')) throw this._declined('declined');
       S._rev = current.rev;
       return;
     }
-    if (!S.authorId && DealDefaults.allowed()) S.authorId = meId() || S.managerId || ''; // КП прежней версии
+    if (!S.authorId && DealDefaults.allowed()) S.authorId = Managers.meId() || S.managerId || ''; // КП прежней версии
   }
 
   static async _uploadImages() {
     for (const item of S.items) {
-      item.photo = await ImgUpload.put(item.photo, imgPlace(item, 'photo'));
-      item.logo = await ImgUpload.put(item.logo, imgPlace(item, 'logo'));
+      item.photo = await ImgUpload.put(item.photo, ItemSpec.imgPlace(item, 'photo'));
+      item.logo = await ImgUpload.put(item.logo, ItemSpec.imgPlace(item, 'logo'));
       await this._uploadGallery(item);
       for (const part of Kit.parts(item)) {
-        if (part.photo) part.photo = await ImgUpload.put(part.photo, imgPlace(item, 'gallery', { caption: part.name }));
+        if (part.photo)
+          part.photo = await ImgUpload.put(part.photo, ItemSpec.imgPlace(item, 'gallery', { caption: part.name }));
         if (part.draw) part.draw = await DrawPic.upload(part.draw, item, part.name);
       }
       if (item.draw) item.draw = await DrawPic.upload(item.draw, item);
@@ -156,7 +182,7 @@ export class KpSave {
 
   static async _uploadGallery(item) {
     for (const image of item.gallery || []) {
-      const uploaded = await ImgUpload.put(image, imgPlace(item, 'gallery', image));
+      const uploaded = await ImgUpload.put(image, ItemSpec.imgPlace(item, 'gallery', image));
       if (uploaded) image.src = uploaded.src;
     }
   }
@@ -164,7 +190,11 @@ export class KpSave {
   static async _putState() {
     const clean = Drafts.clean();
     const headers = { ...this.JSON_HEADERS, ...(S._rev != null ? { 'X-KP-Rev': String(S._rev) } : {}) };
-    const result = await api(`/api/kp/${S.kpId}/state`, { method: 'PUT', headers, body: JSON.stringify(clean) });
+    const result = await Api.request(`/api/kp/${S.kpId}/state`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(clean),
+    });
     if (result && result.rev != null) S._rev = result.rev;
     return Drafts.sig(clean);
   }
@@ -178,8 +208,8 @@ export class KpSave {
   static async _journal() {
     let sig = await this._putState();
     const ids = this._catalogIds();
-    await syncCatalog(S.number);
-    await saveClient(true);
+    await CatalogSync.run(S.number);
+    await ClientStore.saveUsed();
     if (this._catalogIds() !== ids) sig = await this._putState(); // новые позиции каталога — их коды в КП
     return sig;
   }
@@ -187,7 +217,7 @@ export class KpSave {
   // имя файла может получить «(2)», если такое уже занято другим КП (два КП по одному тендеру)
   static async _putDocx(blob, fileName) {
     const query = `name=${encodeURIComponent(fileName)}&dir=${encodeURIComponent(KpFile.folder())}`;
-    const result = await api(`/api/kp/${S.kpId}/docx?${query}`, { method: 'PUT', body: blob });
+    const result = await Api.request(`/api/kp/${S.kpId}/docx?${query}`, { method: 'PUT', body: blob });
     const saved = (result && result.rel ? String(result.rel).split('/').pop() : '') || fileName;
     S._file = saved;
     return saved;
@@ -206,11 +236,11 @@ export class KpSave {
       items: S.items.map(item => item.name).slice(0, 3),
       file,
       manager: S.manager.name,
-      tender: tenderNo() ? { number: tenderNo(), url: tenderUrl() } : undefined,
+      tender: Tender.number() ? { number: Tender.number(), url: Tender.url() } : undefined,
       managerPost: S.manager.position || '',
       createdAt: S.createdAt,
       savedAt: new Date().toISOString(),
-      econ: kpEconomics(),
+      econ: KpEconomics.of(),
       authorId: S.authorId || '',
       managerId: S.managerId || '',
       deal: DealState.summary(),
@@ -223,13 +253,13 @@ export class KpSave {
 
   static async _meta(totals, file) {
     const body = JSON.stringify(this._metaBody(totals, file));
-    const result = await api(`/api/kp/${S.kpId}/meta`, { method: 'PUT', headers: this.JSON_HEADERS, body });
+    const result = await Api.request(`/api/kp/${S.kpId}/meta`, { method: 'PUT', headers: this.JSON_HEADERS, body });
     if (result && result.deal) S.dealId = result.deal; // КП в сделке: следующее сохранение — в ту же сделку
     // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
     if (!result || !result.bx || !S.deal || !S.deal.touched || !DealDefaults.allowed()) return;
     const kpId = S.kpId;
     DealXlsx.blob()
-      .then(xlsx => xlsx && api(`/api/kp/${kpId}/econ`, { method: 'PUT', body: xlsx }))
+      .then(xlsx => xlsx && Api.request(`/api/kp/${kpId}/econ`, { method: 'PUT', body: xlsx }))
       .catch(error => console.warn('Экономика для Битрикс24 не отправлена:', error));
   }
 
@@ -251,7 +281,7 @@ export class KpSave {
       ? `<button class="btn" type="button" data-a="openPdf" data-id="${id}">${remote ? 'Скачать PDF' : 'Открыть PDF'}</button>`
       : '';
     const folder =
-      remote && !SRV.info.docsShare
+      remote && !Srv.info.docsShare
         ? ''
         : `<button class="btn" type="button" data-a="showDoc" data-id="${id}">${remote ? 'Путь к файлу' : 'Показать в папке'}</button>`;
     const mail = FEAT.on('mail')
@@ -261,7 +291,7 @@ export class KpSave {
   }
 
   static _done(pdf, isNew) {
-    const remote = SRV.info && SRV.info.local === false;
+    const remote = Srv.info && Srv.info.local === false;
     const box = $('#dlmsg');
     box.className = 'msg ok';
     const failed = pdf.err

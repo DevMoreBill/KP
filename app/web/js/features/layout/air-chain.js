@@ -1,6 +1,7 @@
 import { AirCheck } from './air-check.js';
 import { PressureVessel } from './pressure-vessel.js';
 import { StationEquip } from './station-equip.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Подготовка сжатого воздуха по ходу воздуха: компрессоры → (влагоотделитель) → «мокрый» ресивер → фильтры →

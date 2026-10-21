@@ -5,6 +5,7 @@ import { StWalls } from './st-walls.js';
 import { VentCalc } from './vent-calc.js';
 import { VentGrille } from './vent-grille.js';
 import { VentIntake } from './vent-intake.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Места жалюзи по расчёту (решения ПНЕВМОТЕХ). Приток и выброс — никогда на одной стене. Выброс компрессоров: над их

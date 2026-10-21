@@ -1,16 +1,21 @@
 import { StationEquip } from '../layout/station-equip.js';
 import { StationMatrix } from '../layout/station-matrix.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { Kit } from '../kit/kit.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { Str } from '../../core/str.js';
 /** Один поставщик в станции: при равных условиях — оборудование того же поставщика, что и основные агрегаты. */
 export class StationSup {
   static ctx = ''; // поставщик основного оборудования станции, под которую идёт подбор
   static EPS = 1e-9;
   /** Ключ поставщика для сравнения. */
   static key(supplier) {
-    return norm(supplier || '');
+    return Str.norm(supplier || '');
   }
   /** Поставщик позиции каталога. */
   static of(item) {
-    return item && typeof CW !== 'undefined' ? this.key(CW.supplierOf(item)) : '';
+    return item ? this.key(CatalogWindow.win.supplierOf(item)) : '';
   }
   /** Допуск приоритета поставщика (доля запаса). */
   static get TOL() {
@@ -19,7 +24,7 @@ export class StationSup {
   /** поставщик основного оборудования станции x (компрессоры, ДГУ, насосы — роль main) */
   static use(station) {
     const part = Kit.parts(station).find(z => z.role === 'main'),
-      item = part && catCache.find(z => z.id === part.catId);
+      item = part && Catalog.cache.find(z => z.id === part.catId);
     this.ctx = this.of(item);
     return this.ctx;
   }
@@ -31,13 +36,13 @@ export class StationSup {
   static cover(item, cats) {
     const supplier = this.of(item);
     if (!supplier || !(this.TOL > 0)) return 0;
-    return cats.filter(k => catCache.some(z => attrsOf(z).cat === k && this.of(z) === supplier)).length;
+    return cats.filter(k => Catalog.cache.some(z => Attrs.of(z).cat === k && this.of(z) === supplier)).length;
   }
   /** выбор из кандидатов [{…, score}] при «равных условиях»: в пределах допуска от лучшего — с наибольшим rank, затем лучший */
   /** поставщик элемента состава p (позиция каталога), как в каталоге: «ООО Альфа» | '' */
   static label(part) {
-    const item = part && part.catId ? catCache.find(z => z.id === part.catId) : null;
-    return item && typeof CW !== 'undefined' ? String(CW.supplierOf(item) || '').trim() : '';
+    const item = part && part.catId ? Catalog.cache.find(z => z.id === part.catId) : null;
+    return item ? String(CatalogWindow.win.supplierOf(item) || '').trim() : '';
   }
   /** поставщики оборудования станции (наше: агрегаты, подготовка воздуха, ресиверы, баки): «Всё у одного поставщика: …» /
    *  «Поставщиков: 2 — Альфа (компрессоры, осушитель); Бета (ресиверы)» | '' — оборудования из каталога нет */

@@ -1,5 +1,7 @@
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
+import { Money } from '../../core/money.js';
+import { esc, today } from '../../core/util.js';
 
 /** Сводка сделки плитками: сумма, оплата заказчика, что дальше, поставка — с первого взгляда, без прокрутки. */
 export class DealSummary {

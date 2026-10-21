@@ -1,3 +1,6 @@
+import { KpDate } from '../kp/kp-date.js';
+import { esc, today } from '../../core/util.js';
+import { Money } from '../../core/money.js';
 /** Показ сумм и дат кабинета: суммы сделок — в копейках, даты — ГГГГ-ММ-ДД. */
 export class CrmFmt {
   static KOPECKS = 100;

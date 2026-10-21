@@ -5,6 +5,12 @@ import { DealSteps } from './deal-steps.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealValues } from './deal-values.js';
 import { TnVed } from './tn-ved.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { S } from '../../core/state.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /**
  * Вкладка «Таможня»: режим по поставщику (рассчитать по позициям, ЕАЭС, сумма целиком, нет), коды ТН ВЭД и пошлины
@@ -99,7 +105,7 @@ export class DealCustoms {
     const item = line.item;
     const hsCode = DealHs.of(item);
     const own = customs.lines.find(row => row.id === line.id);
-    const kind = item.role === 'container' ? 'блок-контейнер' : typeById(attrsOf(item).cat).name;
+    const kind = item.role === 'container' ? 'блок-контейнер' : EquipTypes.byId(Attrs.of(item).cat).name;
     const options = cats
       .map(
         cat =>

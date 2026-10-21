@@ -1,6 +1,13 @@
 import { Drafts } from './drafts.js';
 import { Managers } from './managers.js';
 import { Presets } from './presets.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { FormView } from '../../ui/form-view.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
+import { Modal } from '../../core/modal.js';
 
 /** «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики. */
 export class NewKp {
@@ -60,7 +67,7 @@ export class NewKp {
   }
 
   static _drafts(drafts) {
-    const shown = Math.round(DEFN('kp.newKpDrafts', 5));
+    const shown = Math.round(DefRegistry.num('kp.newKpDrafts', 5));
     if (!drafts.length || !shown) return '';
     const all =
       drafts.length > shown
@@ -124,23 +131,23 @@ export class NewKp {
 
   /** Чистое КП с моими контактами (без вывода) — для КП по сделке, клиенту. */
   static fresh() {
-    S = freshState();
+    KpState.replace(KpState.fresh());
     this.myContacts();
   }
 
   /** Пустое КП и сразу каталог. */
   static blank() {
     this.fresh();
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     window.scrollTo({ top: 0 });
-    if (catCache.length) openCatalog({});
+    if (Catalog.cache.length) CatalogWindow.open({});
   }
 
   /** Контакты менеджера в новом КП: запомненные этим браузером, иначе — из карточки «кто я» (новый компьютер). */
   static myContacts() {
     if (String(S.manager.name || '').trim()) return;
-    const manager = MGRS.find(row => row.id === Managers.meId());
+    const manager = Managers.list.find(row => row.id === Managers.meId());
     if (!manager) return;
     S.managerId = manager.id;
     S.manager = { ...S.manager, ...Managers.fields(manager) };

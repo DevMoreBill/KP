@@ -6,6 +6,14 @@ import { StationPaint } from '../layout/station-paint.js';
 import { StationRender } from '../view/station-render.js';
 import { StationView3D } from '../draw/station-view3d.js';
 import { TzText } from './tz-text.js';
+import { ImageFiles } from '../catalog/images.js';
+import { StationImages } from '../station/station-images.js';
+import { StationUi } from '../station/station-ui.js';
+import { DrawPic } from '../kit/draw-pic.js';
+import { FileSave } from '../../core/files.js';
+import { Toast } from '../../core/toast.js';
+import { Kit } from '../kit/kit.js';
+import { S } from '../../core/state.js';
 
 /** ТЗ на сборку станции для сборщика — документ Word с чертежом, схемой и 3D-видом в приложениях. */
 export class TzOut {
@@ -21,30 +29,31 @@ export class TzOut {
   static async download(i) {
     const x = S.items[i];
     if (!x || !Kit.station(x) || !Kit.has(x)) {
-      toast('ТЗ на сборку — для станции в контейнере с составом');
+      Toast.show('ТЗ на сборку — для станции в контейнере с составом');
       return;
     }
-    toast('Готовлю ТЗ на сборку…');
+    Toast.show('Готовлю ТЗ на сборку…');
     try {
       await this._save(x);
     } catch (err) {
-      toast(`Не удалось подготовить ТЗ на сборку: ${err?.message || err}`);
+      Toast.show(`Не удалось подготовить ТЗ на сборку: ${err?.message || err}`);
     }
   }
 
   static async _save(x) {
     const blob = await this.make(x);
     const name = `${this.NAME(x.name) || 'станция'}${S.number ? ` — КП ${this.NAME(S.number)}` : ''}`;
-    saveFileA(`ТЗ на сборку — ${name}.docx`, blob);
+    FileSave.download(`ТЗ на сборку — ${name}.docx`, blob);
     const container = Kit.container(x) || {};
     const booklet = StationPaint.book(container) && container.paintFile; // буклет окраски в PDF — вторым файлом рядом с ТЗ
-    if (booklet && booklet.pdf) saveFileA(`Буклет окраски — ${name}.pdf`, await (await fetch(booklet.src)).blob());
+    if (booklet && booklet.pdf)
+      FileSave.download(`Буклет окраски — ${name}.pdf`, await (await fetch(booklet.src)).blob());
   }
 
   /** Документ .docx (Blob). */
   static async make(x) {
     await EskdFont.load();
-    if (typeof DrawPic !== 'undefined') await DrawPic.load(x);
+    await DrawPic.load(x);
     await PhotoTint.load(x);
     const plan = StationUi.plan(x);
     const meta = StationUi.meta(x, plan);
@@ -130,7 +139,7 @@ export class TzOut {
   /** Картинка по адресу → {src: data:image/png, w, h}; не загрузилась — null. */
   static async pic(src) {
     try {
-      const image = await readImg(src);
+      const image = await ImageFiles.read(src);
       const canvas = document.createElement('canvas');
       canvas.width = image.naturalWidth || image.width;
       canvas.height = image.naturalHeight || image.height;

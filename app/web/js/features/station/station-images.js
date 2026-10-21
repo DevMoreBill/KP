@@ -1,3 +1,19 @@
+import { StationRules } from '../rules/station-rules.js';
+import { EskdSheet } from '../eskd/eskd-sheet.js';
+import { ImageFiles } from '../catalog/images.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { FormView } from '../../ui/form-view.js';
+import { StationDrawing } from '../draw/station-drawing.js';
+import { Uid } from '../../core/util.js';
+import { StationView3D } from '../draw/station-view3d.js';
+import { StationRender } from '../view/station-render.js';
+import { PhotoTint } from '../view/photo-tint.js';
+import { DrawPic } from '../kit/draw-pic.js';
+import { EskdFont } from '../eskd/eskd-font.js';
+import { StationSize } from './station-size.js';
+import { Kit } from '../kit/kit.js';
+import { StationUi } from './station-ui.js';
+import { KpState, S } from '../../core/state.js';
 /**
  * Картинки станции для КП по расстановке: 3D-вид — главное фото, виды снаружи с четырёх сторон, габаритный чертёж (все
  * листы) и схема — в изображениях после характеристик. Своё фото менеджера не заменяется; убранное менеджером — выключает
@@ -109,7 +125,7 @@ export class StationImages {
   /** шрифт и свои рисунки — внутрь листов; цвета по фото изменили расстановку — заново; затем 3D-вид, виды, листы, схема */
   static async _render(item, plan, opts, scheme) {
     await EskdFont.load();
-    if (typeof DrawPic !== 'undefined') await DrawPic.load(item);
+    await DrawPic.load(item);
     if (await PhotoTint.load(item)) {
       this.busy.delete(item.id);
       return this.sync(item);
@@ -165,7 +181,7 @@ export class StationImages {
     const image = await this.raster(scheme.cls.svg(plan, meta), 'image/png');
     const old = place >= 0 ? item.gallery[place] : null;
     const pic = {
-      id: old ? old.id : uid(),
+      id: old ? old.id : Uid.next(),
       ...image,
       caption: scheme.name,
       slot: '',
@@ -209,7 +225,7 @@ export class StationImages {
     if (!image) return false;
     const old = place >= 0 ? item.gallery[place] : null;
     const pic = {
-      id: old ? old.id : uid(),
+      id: old ? old.id : Uid.next(),
       ...image,
       caption,
       slot: '',
@@ -275,7 +291,7 @@ export class StationImages {
   static async _sheet(sheets, page, old, sheetsKey) {
     const image = await this.raster(sheets[page], 'image/png');
     return {
-      id: old ? old.id : uid(),
+      id: old ? old.id : Uid.next(),
       ...image,
       caption: sheets.length > 1 ? `Габаритный чертёж, лист ${page + 1}` : 'Габаритный чертёж',
       slot: '',
@@ -321,7 +337,7 @@ export class StationImages {
   static async syncAll() {
     let changed = false;
     for (const item of S.items) if (await this.sync(item)) changed = true;
-    if (changed) persist();
+    if (changed) KpState.persist();
     return changed;
   }
 
@@ -356,9 +372,10 @@ export class StationImages {
       return;
     }
     if (!(await this.sync(item))) return;
-    persist();
-    renderForm();
-    if (EDIT && EDIT.tab === 'layout' && S.items[EDIT.i] === item) renderEditor();
+    KpState.persist();
+    FormView.render();
+    if (ItemEditor.current && ItemEditor.current.tab === 'layout' && S.items[ItemEditor.current.i] === item)
+      ItemEditor.render();
   }
 
   /**
@@ -368,7 +385,7 @@ export class StationImages {
    * @returns {Promise<{src: string, w: number, h: number}>}
    */
   static async raster(svg, type) {
-    const image = await readImg(StationUi.url(svg));
+    const image = await ImageFiles.read(StationUi.url(svg));
     const width = image.naturalWidth || image.width;
     const height = image.naturalHeight || image.height;
     const canvas = document.createElement('canvas');

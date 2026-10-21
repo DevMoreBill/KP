@@ -1,3 +1,7 @@
+import { StationAuto } from '../kit/station-auto.js';
+import { KpState, S } from '../../core/state.js';
+import { esc } from '../../core/util.js';
+import { StationReq } from '../req/station-req.js';
 /**
  * Свои параметры станции (ручной режим): строки «параметр — значение» в требованиях станции, которых нет в полях подбора
  * (точка росы, исполнение, шум, гарантия…); в КП — в таблице характеристик станции после автоматических.
@@ -102,8 +106,8 @@ export class StationParams {
    */
   static changed(item) {
     setTimeout(() => {
-      if (typeof StationAuto !== 'undefined') StationAuto.fill(item);
-      persist();
+      StationAuto.fill(item);
+      KpState.persist();
     }, 0);
   }
 }

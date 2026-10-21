@@ -7,6 +7,15 @@ import { KpTrack } from './kp-track.js';
 import { Managers } from './managers.js';
 import { KpLoader } from './reminders.js';
 import { ShortName } from './journal-row.js';
+import { Steps } from '../../ui/steps.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 
 /**
  * Карточка клиента: реквизиты, контакты и объекты из справочника, все КП клиента с итогами по статусам, заметки отдела.
@@ -71,7 +80,7 @@ export class ClientCard {
     return notes
       .map(
         note =>
-          `<div class="cc-n"><div><span class="muted">${esc(Fmt.dateTime(note.at))} · ${esc(note.by || '')}</span><p>${esc(note.text)}</p></div>${note.uid === myId || ADMIN.on ? `<button class="icon" type="button" data-ccnd="${esc(note.at)}" aria-label="Удалить заметку" title="Удалить заметку">✕</button>` : ''}</div>`,
+          `<div class="cc-n"><div><span class="muted">${esc(Fmt.dateTime(note.at))} · ${esc(note.by || '')}</span><p>${esc(note.text)}</p></div>${note.uid === myId || AdminSession.on ? `<button class="icon" type="button" data-ccnd="${esc(note.at)}" aria-label="Удалить заметку" title="Удалить заметку">✕</button>` : ''}</div>`,
       )
       .join('');
   }
@@ -88,11 +97,11 @@ export class ClientCard {
     if (!this.enabled()) return;
     let answer;
     try {
-      answer = await api(
+      answer = await Api.request(
         `/api/clientcard?id=${encodeURIComponent(query.id || '')}&inn=${encodeURIComponent(query.inn || '')}&name=${encodeURIComponent(query.name || '')}`,
       );
     } catch (error) {
-      toast(`Карточка клиента недоступна: ${error.message || error}`);
+      Toast.show(`Карточка клиента недоступна: ${error.message || error}`);
       return;
     }
     const ctx = { answer, client: answer.client || {}, kps: answer.kps || [], myId: Managers.meId() || '' };
@@ -142,9 +151,9 @@ export class ClientCard {
       ? this.tile(
           'В работе',
           open,
-          `${money(kps.length ? (answer.total || 0) - total('won') - total('lost') : 0)} руб.`,
+          `${KPGen.money(kps.length ? (answer.total || 0) - total('won') - total('lost') : 0)} руб.`,
         ) +
-        this.tile('Выиграно', won, `${money(total('won'))} руб.`) +
+        this.tile('Выиграно', won, `${KPGen.money(total('won'))} руб.`) +
         this.tile(
           'Конверсия',
           closed ? `${Math.round((won / closed) * this.PERCENT)} %` : '—',
@@ -152,7 +161,7 @@ export class ClientCard {
         )
       : '';
     const last = kps[0];
-    return `<div class="cc-tiles">${this.tile('Всего КП', kps.length, `${money(answer.total || 0)} руб.`)}
+    return `<div class="cc-tiles">${this.tile('Всего КП', kps.length, `${KPGen.money(answer.total || 0)} руб.`)}
         ${track}
         ${this.tile('Последнее КП', last ? esc(KpDate.ddmm(last.date)) : '—', last ? esc(ShortName.of(last.manager || '')) : '')}</div>`;
   }
@@ -175,7 +184,7 @@ export class ClientCard {
   static _kpRow(row) {
     const more = row.positions > 1 ? ` и ещё ${row.positions - 1}` : '';
     const status = FEAT.on('track') ? `<span class="md-st">${KpTrack.chip(row)}</span>` : '';
-    return `<div class="md-r"><span class="md-n">№ ${esc(row.number)}</span><div><b>${esc(KpDate.ddmm(row.date))} · ${money(this.sum(row))} ${esc(Currency.short((row.econ && row.econ.cur) || 'RUB'))}</b><span class="muted">${esc((row.items || [])[0] || '')}${more} · ${esc(ShortName.of(row.manager || ''))}</span>${status}</div><button class="btn sm ghost" type="button" data-ccr="${esc(row.id)}" title="Новое КП этому клиенту: позиции те же, дата — сегодня, цены — как сейчас в каталоге">Повторить</button><button class="btn sm" type="button" data-cco="${esc(row.id)}">Открыть</button></div>`;
+    return `<div class="md-r"><span class="md-n">№ ${esc(row.number)}</span><div><b>${esc(KpDate.ddmm(row.date))} · ${KPGen.money(this.sum(row))} ${esc(Currency.short((row.econ && row.econ.cur) || 'RUB'))}</b><span class="muted">${esc((row.items || [])[0] || '')}${more} · ${esc(ShortName.of(row.manager || ''))}</span>${status}</div><button class="btn sm ghost" type="button" data-ccr="${esc(row.id)}" title="Новое КП этому клиенту: позиции те же, дата — сегодня, цены — как сейчас в каталоге">Повторить</button><button class="btn sm" type="button" data-cco="${esc(row.id)}">Открыть</button></div>`;
   }
 
   static _side({ answer, client, myId }) {
@@ -212,7 +221,7 @@ export class ClientCard {
 
   static async _note({ modal, client, myId }, body) {
     try {
-      const answer = await api('/api/clientcard/note', {
+      const answer = await Api.request('/api/clientcard/note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ id: client.id, ...body }),
@@ -220,7 +229,7 @@ export class ClientCard {
       modal.$('#ccNotes').innerHTML = this.notesHtml(answer.notes || [], myId);
       return true;
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
       return false;
     }
   }
@@ -238,7 +247,7 @@ export class ClientCard {
       '[data-cco]',
       (ctx, button) => {
         ctx.modal.close();
-        KpLoader.byId(button.dataset.cco).catch(error => toast(`Не открылось: ${error.message}`));
+        KpLoader.byId(button.dataset.cco).catch(error => Toast.show(`Не открылось: ${error.message}`));
       },
     ],
     ['[data-jst]', (ctx, button) => ClientCard._status(ctx, button)],
@@ -282,17 +291,17 @@ export class ClientCard {
   static async _newKp({ modal, client, answer }) {
     modal.close();
     if (!(await Drafts.stash())) return;
-    S = freshState();
+    KpState.replace(KpState.fresh());
     if (client.id) ClientStore.apply(client);
     else {
       S.client = answer.name || '';
       S.clientInn = answer.inn || '';
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
     }
     Drafts.loaded();
-    goStep('equip');
-    toast(`Новое КП для ${client.name || answer.name || 'клиента'}`);
+    Steps.open('equip');
+    Toast.show(`Новое КП для ${client.name || answer.name || 'клиента'}`);
   }
 
   /** Название клиента со ссылкой открывает карточку. */

@@ -1,3 +1,5 @@
+import { Money } from '../../core/money.js';
+import { DefRegistry } from '../../core/defaults.js';
 /**
  * Значения экономики сделки, которые правит администратор: «Настройки → Значения программы → Экономика сделки» (реестр —
  * DefRegistry). Встроенные — прежние значения программы; читаются в момент расчёта. Шкала таможенного сбора — здесь же.
@@ -25,7 +27,7 @@ export class DealValues {
    * @returns {number}
    */
   static num(key, fallback) {
-    return typeof DEFN === 'function' ? DEFN(key, fallback) : fallback;
+    return DefRegistry.num(key, fallback);
   }
 
   /**
@@ -313,7 +315,6 @@ export class DealValues {
 
   /** Значения раздела «Экономика сделки» — в реестр «Значений программы». */
   static register() {
-    if (typeof DefRegistry === 'undefined') return;
     DefRegistry.add(this.GROUPS, [...this._feeRows(), ...this.VALUES]);
   }
 }

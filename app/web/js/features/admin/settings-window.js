@@ -2,6 +2,15 @@ import { AdminApi, AdminState } from './admin-core.js';
 import { AdminNav } from './admin-nav.js';
 import { SettingsHistoryPanel } from './settings-panels.js';
 import { SettingsSearch, StDirty, StNav } from './settings-tools.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { LoginForm } from '../kp/login-form.js';
+import { Toast } from '../../core/toast.js';
+import { FEAT } from '../../core/features.js';
+import { $, esc } from '../../core/util.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { Mobile } from '../../ui/mobile.js';
+import { Modal } from '../../core/modal.js';
 
 /**
  * Окно «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py): размер окна запоминается, вход,
@@ -30,7 +39,8 @@ export class SettingsWindow {
     });
     let timer = null;
     new ResizeObserver(() => {
-      if (!dialog.open || isMob() || dialog.classList.contains('max') || dialog.classList.contains('login')) return;
+      if (!dialog.open || Mobile.isPhone() || dialog.classList.contains('max') || dialog.classList.contains('login'))
+        return;
       clearTimeout(timer);
       timer = setTimeout(() => this._resized(dialog), this.RESIZE_WAIT);
     }).observe(dialog);
@@ -71,12 +81,12 @@ export class SettingsWindow {
   static async open(tab) {
     if (tab) AdminState.tab = tab;
     const dialog = this.dialog();
-    if (!ADMIN.on) dialog.classList.add('login');
+    if (!AdminSession.on) dialog.classList.add('login');
     if (!dialog.open) dialog.showModal();
     dialog.innerHTML = '<p class="empty">Загружаю…</p>';
     try {
-      const status = await api('/api/admin/status');
-      ADMIN.set(status.admin, status.csrf);
+      const status = await Api.request('/api/admin/status');
+      AdminSession.set(status.admin, status.csrf);
       AdminState.status = status;
     } catch {
       AdminState.status = {};
@@ -85,8 +95,8 @@ export class SettingsWindow {
   }
 
   static _head(status) {
-    const who = ADMIN.on && status.name ? `<small>${esc(status.name)} · ${esc(status.login || '')}</small>` : '';
-    const logout = ADMIN.on ? '<button class="btn ghost" type="button" data-st="logout">Выйти</button>' : '';
+    const who = AdminSession.on && status.name ? `<small>${esc(status.name)} · ${esc(status.login || '')}</small>` : '';
+    const logout = AdminSession.on ? '<button class="btn ghost" type="button" data-st="logout">Выйти</button>' : '';
     return `<div class="dlg-h"><h3>Настройки${who}</h3>${logout}<button class="icon st-maxb" type="button" data-st="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна меняется, если потянуть за правый нижний угол">⤢</button><button class="icon" type="button" data-st="close" aria-label="Закрыть">✕</button></div>`;
   }
 
@@ -95,8 +105,8 @@ export class SettingsWindow {
     const dialog = this.dialog();
     const status = AdminState.status || {};
     const head = this._head(status);
-    dialog.classList.toggle('login', !ADMIN.on);
-    if (!ADMIN.on) {
+    dialog.classList.toggle('login', !AdminSession.on);
+    if (!AdminSession.on) {
       AdminLogin.render(dialog, head, status);
       return;
     }
@@ -119,7 +129,7 @@ export class SettingsWindow {
     try {
       await AdminNav.open(main, AdminState.tab, { click });
     } catch (error) {
-      if (ADMIN.on) main.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
+      if (AdminSession.on) main.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
     }
   }
 
@@ -165,10 +175,10 @@ export class SettingsWindow {
     AdminApi.post('logout')
       .catch(() => {})
       .then(() => {
-        ADMIN.set(false);
+        AdminSession.set(false);
         this.render();
         FEAT.refresh();
-        toast('Вы вышли из «Настроек»');
+        Toast.show('Вы вышли из «Настроек»');
       });
   }
 }
@@ -213,14 +223,14 @@ export class AdminLogin {
   }
 
   static _fields(setup, status) {
-    const min = DEFN('srv.adminPwMin', this.PW_MIN);
+    const min = DefRegistry.num('srv.adminPwMin', this.PW_MIN);
     return `${LoginForm.login('stLg', 'Логин', setup ? 'admin' : this._last(), 'placeholder="admin"')}
         ${setup ? '<label class="f"><span>Имя (для журнала действий)</span><input type="text" id="stNm" autocomplete="name" placeholder="Например, Петров А. В."></label>' : ''}
         ${LoginForm.password('stPw', setup ? `Пароль — не короче ${min} символов, буквы и цифры` : 'Пароль', setup ? 'new-password' : 'current-password')}
         ${setup ? LoginForm.password('stPw2', 'Повторите пароль', 'new-password') : ''}
         <p class="auth-err" id="stErr" role="alert" aria-live="assertive" hidden></p>
         <button class="btn primary auth-go" type="submit">${setup ? 'Создать и войти' : 'Войти'}</button>
-        <div class="muted st-login-note">Через ${status.idleMinutes || this.IDLE_MIN} мин бездействия вход закрывается.${tip('Только в «Настройках»: удаление и правка данных, модерация, резервные копии, шаблоны, ключи API, вход менеджеров и администраторы. Забыли пароль — его меняет другой администратор («Сотрудники и вход → Администраторы»).')}</div>`;
+        <div class="muted st-login-note">Через ${status.idleMinutes || this.IDLE_MIN} мин бездействия вход закрывается.${UiKit.tip('Только в «Настройках»: удаление и правка данных, модерация, резервные копии, шаблоны, ключи API, вход менеджеров и администраторы. Забыли пароль — его меняет другой администратор («Сотрудники и вход → Администраторы»).')}</div>`;
   }
 
   static async _send(setup, status) {
@@ -235,8 +245,8 @@ export class AdminLogin {
     } catch {
       // хранилище браузера недоступно — логин не запоминается
     }
-    ADMIN.set(true, reply.csrf);
-    const fresh = await api('/api/admin/status').catch(() => ({}));
+    AdminSession.set(true, reply.csrf);
+    const fresh = await Api.request('/api/admin/status').catch(() => ({}));
     AdminState.status = { ...status, ...fresh, hasPassword: true };
     SettingsWindow.render();
     FEAT.refresh();

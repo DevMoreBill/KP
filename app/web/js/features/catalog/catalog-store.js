@@ -1,4 +1,11 @@
 import { CatalogCache, CatalogSearch } from './catalog-cache.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { $, esc } from '../../core/util.js';
+import { Attrs, CatAttrs } from '../../core/item-attrs.js';
+import { Str } from '../../core/str.js';
+import { DrawPic } from '../kit/draw-pic.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { Api, ImgUpload } from '../../core/net.js';
 
 /** Каталог на сервере: список, позиция целиком, сохранение (картинки — файлами на сервер отдела). */
 export class CatalogStore {
@@ -9,7 +16,7 @@ export class CatalogStore {
    * @returns {Promise<object[]>}
    */
   static async list() {
-    return await api('/api/catalog');
+    return await Api.request('/api/catalog');
   }
 
   /**
@@ -18,7 +25,7 @@ export class CatalogStore {
    * @returns {Promise<object>}
    */
   static async get(id) {
-    return await api(`/api/catalog/${encodeURIComponent(id)}`);
+    return await Api.request(`/api/catalog/${encodeURIComponent(id)}`);
   }
 
   /**
@@ -26,15 +33,18 @@ export class CatalogStore {
    * @returns {Promise<object[]>}
    */
   static async full() {
-    return await api('/api/catalog?full=1');
+    return await Api.request('/api/catalog?full=1');
   }
 
   static async _images(doc) {
-    const photo = await ImgUpload.put(doc.photo, imgPlace(doc, 'photo'));
-    const logo = await ImgUpload.put(doc.logo, imgPlace(doc, 'logo'));
+    const photo = await ImgUpload.put(doc.photo, ItemSpec.imgPlace(doc, 'photo'));
+    const logo = await ImgUpload.put(doc.logo, ItemSpec.imgPlace(doc, 'logo'));
     const gallery = doc.gallery
       ? await Promise.all(
-          doc.gallery.map(async pic => ({ ...pic, ...(await ImgUpload.put(pic, imgPlace(doc, 'gallery', pic))) })),
+          doc.gallery.map(async pic => ({
+            ...pic,
+            ...(await ImgUpload.put(pic, ItemSpec.imgPlace(doc, 'gallery', pic))),
+          })),
         )
       : doc.gallery;
     const draw = doc.draw ? await DrawPic.upload(doc.draw, doc) : doc.draw;
@@ -67,7 +77,7 @@ export class CatalogStore {
       ...edit,
       ...(saved._rev != null ? { 'X-KP-Rev': String(saved._rev) } : {}),
     };
-    const answer = await api(`/api/catalog/${saved.id}`, {
+    const answer = await Api.request(`/api/catalog/${saved.id}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify({ ...saved, _rev: undefined }),
@@ -89,14 +99,14 @@ export class CatFind {
   static byName = new Map();
 
   static _sync() {
-    if (this.list === catCache && this.size === catCache.length) return;
-    this.list = catCache;
-    this.size = catCache.length;
+    if (this.list === Catalog.cache && this.size === Catalog.cache.length) return;
+    this.list = Catalog.cache;
+    this.size = Catalog.cache.length;
     this.byId = new Map();
     this.byName = new Map();
-    for (const card of catCache) {
+    for (const card of Catalog.cache) {
       if (!this.byId.has(card.id)) this.byId.set(card.id, card);
-      const key = norm(card.name);
+      const key = Str.norm(card.name);
       if (!this.byName.has(key)) this.byName.set(key, card);
     }
   }
@@ -119,12 +129,14 @@ export class CatFind {
    */
   static name(name) {
     this._sync();
-    return this.byName.get(norm(name)) || null;
+    return this.byName.get(Str.norm(name)) || null;
   }
 }
 
 /** Каталог в программе: загрузка с кэшем, полная позиция, подсказки названий опций. */
 export class Catalog {
+  // каталог в браузере (Catalog.refresh)
+  static cache = [];
   static WARM_SLICE = 12;
   // поиск и список каталога — «Настройки → Значения программы → Каталог, фото, фиды, ИИ»
   static DEFAULTS = [
@@ -214,15 +226,15 @@ export class Catalog {
   /** Каталог: из IndexedDB + изменения с сервера; не вышло — целиком с сервера. */
   static async refresh() {
     try {
-      catCache = await CatalogCache.load();
+      Catalog.cache = await CatalogCache.load();
     } catch {
       try {
-        catCache = await CatalogStore.list();
+        Catalog.cache = await CatalogStore.list();
       } catch {
-        catCache = [];
+        Catalog.cache = [];
       }
     }
-    CatAttrs.mark(catCache);
+    CatAttrs.mark(Catalog.cache);
     CatalogSearch.drop();
     this.renderDatalist();
     this.warm();
@@ -231,13 +243,13 @@ export class Catalog {
   /** Разбор характеристик карточек — заранее, в простое браузера. */
   static warm() {
     let index = 0;
-    const list = catCache;
+    const list = Catalog.cache;
     const idle = window.requestIdleCallback || setTimeout;
     const step = () => {
       const end = performance.now() + this.WARM_SLICE;
       while (index < list.length && performance.now() < end) {
         const card = list[index++];
-        if (!card._a) card._a = attrsOf(card);
+        if (!card._a) card._a = Attrs.of(card);
       }
       if (index < list.length) idle(step);
     };
@@ -253,10 +265,12 @@ export class Catalog {
       document.body.appendChild(box);
     }
     const names = new Set(
-      TYPES.flatMap(type => (type.options || []).map(option => (Array.isArray(option) ? option[0] : option.name))),
+      EquipTypes.list.flatMap(type =>
+        (type.options || []).map(option => (Array.isArray(option) ? option[0] : option.name)),
+      ),
     );
-    catCache.forEach(card => {
-      if (typeById(EquipTypes.detect(card)).role === 'accessory') names.add(card.name); // EquipTypes.detect ≡ attrsOf(x).cat, без разбора
+    Catalog.cache.forEach(card => {
+      if (EquipTypes.byId(EquipTypes.detect(card)).role === 'accessory') names.add(card.name); // EquipTypes.detect ≡ attrsOf(x).cat, без разбора
     });
     box.innerHTML = [...names].map(name => `<option value="${esc(name)}">`).join('');
   }

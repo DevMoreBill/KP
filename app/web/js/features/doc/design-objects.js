@@ -3,6 +3,8 @@ import { DesignHistory } from './design-history.js';
 import { DesignModel } from './design-model.js';
 import { DesignPanels } from './design-panels.js';
 import { DesignView } from './design-view.js';
+import { ObjPath } from '../../core/str.js';
+import { $ } from '../../core/util.js';
 
 /** Графический редактор шаблона: свои надписи и картинки — добавить, копия, удалить, сдвиг, свободно / в тексте. */
 export class DesignObjects {
@@ -216,7 +218,7 @@ export class DesignObjects {
     const rect = element ? element.getBoundingClientRect() : null;
     const anchor = float && rect ? DesignView.anchorFor(rect.left, rect.top) : null;
     DesignHistory.change(work => {
-      const item = getPath(work, path);
+      const item = ObjPath.get(work, path);
       if (!item) return;
       item.float = float;
       if (!float || !anchor) return;
@@ -238,6 +240,6 @@ export class DesignObjects {
   static setNumber(path, value) {
     const number = Design.num(value);
     if (value === '' || !isFinite(number)) return;
-    DesignHistory.change(work => setPath(work, path, number), { merge: path, panels: false });
+    DesignHistory.change(work => ObjPath.set(work, path, number), { merge: path, panels: false });
   }
 }

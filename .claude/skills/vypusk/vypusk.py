@@ -40,7 +40,7 @@ class Release:
         if tuple(map(int, v.split('.'))) <= tuple(map(int, old.split('.'))):
             raise ValueError('Новая версия %s должна быть больше текущей %s (обновление ставится только поверх старой).' % (v, old))
         self._write(self.VERSION_PY, re.sub(r"VERSION = '[\d.]+'", "VERSION = '%s'" % v, self._read(self.VERSION_PY), count=1))
-        self._write(self.HELP_JS, re.sub(r"let APP_VERSION = '[\d.]+'", "let APP_VERSION = '%s'" % v, self._read(self.HELP_JS), count=1))
+        self._write(self.HELP_JS, re.sub(r"const APP_VERSION = '[\d.]+'", "const APP_VERSION = '%s'" % v, self._read(self.HELP_JS), count=1))
         return old
 
     def missing(self, v):
@@ -48,8 +48,8 @@ class Release:
         first = re.search(r"const APP_VERSIONS = \[\s*\['([\d.]+)'", self._read(self.HELP_JS))
         if not first or first.group(1) != v:
             out.append("help.js: первая запись APP_VERSIONS — ['%s', 'ДД.ММ.ГГГГ', [ …пункты для менеджера… ]]" % v)
-        if "let APP_VERSION = '%s'" % v not in self._read(self.HELP_JS):
-            out.append("help.js: let APP_VERSION = '%s'" % v)
+        if "const APP_VERSION = '%s'" % v not in self._read(self.HELP_JS):
+            out.append("help.js: export const APP_VERSION = '%s'" % v)
         if '**%s ' % v not in self._read(('README.md',)):
             out.append('README.md: раздел «**%s — что сделано:**» со списком (перед прежней версией)' % v)
         if '- **%s**' % v not in self._read(('docs', 'context', 'app-map.md')):

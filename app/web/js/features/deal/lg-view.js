@@ -10,6 +10,8 @@ import { LgFmt } from './lg-fmt.js';
 import { LgOffers } from './lg-offers.js';
 import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /** Вкладка «Логистика»: по каждому поставщику — до границы, маршрут по России, груз, транспорт и разгрузка, цены, итог. */
 export class LgView {
@@ -240,7 +242,7 @@ export class LgCard {
       .map(([title, sum]) => `<tr><td>${esc(title)}</td><td class="num">${Fmt.rub(sum)}</td></tr>`)
       .join('');
     return `<div class="lg-veh"><div class="lg-vh"><b>${count > 1 ? `Машина ${i + 1}: ` : ''}${esc(vehicle.C.name)}</b>
-          <span class="muted">${units} ${plural(units, 'место', 'места', 'мест')} · ${LgCargoIn.kgText(vehicle.fit.mass)} · занято ${LgCargoIn.mmText(vehicle.fit.depth)} из ${LgCargoIn.mmText(vehicle.C.L)}</span>
+          <span class="muted">${units} ${KPGen.plural(units, 'место', 'места', 'мест')} · ${LgCargoIn.kgText(vehicle.fit.mass)} · занято ${LgCargoIn.mmText(vehicle.fit.depth)} из ${LgCargoIn.mmText(vehicle.C.L)}</span>
           ${tags}</div>
           <table class="lg-p">${parts}</table></div>`;
   }

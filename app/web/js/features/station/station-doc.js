@@ -1,4 +1,22 @@
 import { StationDesign } from './station-design.js';
+import { Toast } from '../../core/toast.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { KpState, S } from '../../core/state.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { AiChat, AiDirect } from '../catalog/ai-chat.js';
+import { Uid } from '../../core/util.js';
+import { AiParse } from '../catalog/ai-parse.js';
+import { StationReq } from '../req/station-req.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Mm } from '../layout/mm.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { Kit } from '../kit/kit.js';
+import { StationUi } from './station-ui.js';
+import { TankSize } from '../layout/tank-size.js';
+import { AirChain } from '../layout/air-chain.js';
+import { StationEquip } from '../layout/station-equip.js';
 
 /**
  * Станция в документе КП: какие элементы состава — карточками с описанием (основные агрегаты), какие характеристики —
@@ -178,10 +196,10 @@ export class StationBrief {
    * @returns {string}
    */
   static facts(item) {
-    const type = typeById(attrsOf(item).cat);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
     const main = Kit.main(item);
     const lines = [`Изделие: ${type.item || type.name} — «${String(item.name || '').trim()}».`];
-    const kpi = mainLine(item, this.KPI);
+    const kpi = ItemSpec.mainLine(item, this.KPI);
     if (kpi) lines.push(`Основные параметры: ${kpi}.`);
     if (main) lines.push(`Основное оборудование: ${main.name}${this._qty(main)}.`);
     const rest = Kit.parts(item).filter(
@@ -240,7 +258,7 @@ ${this.facts(item)}`;
    * @returns {string}
    */
   static parse(raw) {
-    const parsed = aiParse(raw);
+    const parsed = AiParse.parse(raw);
     if (parsed && parsed.kind === 'json' && parsed.j && typeof parsed.j.text === 'string') return parsed.j.text.trim();
     const text = String(raw || '')
       .replace(/```[a-z]*|```/gi, '')
@@ -262,7 +280,7 @@ ${this.facts(item)}`;
     item.features = item.features || [];
     let block = item.features.find(row => row.label === this.LABEL);
     if (!block) {
-      block = { id: uid(), label: this.LABEL, text: '' };
+      block = { id: Uid.next(), label: this.LABEL, text: '' };
       item.features.unshift(block);
     }
     block.text = line;
@@ -277,11 +295,11 @@ ${this.facts(item)}`;
    * @returns {string}
    */
   static html(item, index) {
-    const direct = typeof AI_DIRECT !== 'undefined' && AI_DIRECT.enabled;
+    const direct = AiDirect.state.enabled;
     const writeButton = direct ? this._goButton(item, index) : '';
-    return `<div class="ed-sec sb"><div class="sub">Краткое описание станции — ИИ${tip('Нейросеть пишет 4–6 предложений для КП только по данным станции: состав, параметры, устройство контейнера. Результат — блок «Описание станции» ниже, его можно поправить. В КП он стоит первым, вместо шаблонного «Назначение и состав». «Устройство станции» программа собирает сама из компоновки.')}</div>
+    return `<div class="ed-sec sb"><div class="sub">Краткое описание станции — ИИ${UiKit.tip('Нейросеть пишет 4–6 предложений для КП только по данным станции: состав, параметры, устройство контейнера. Результат — блок «Описание станции» ниже, его можно поправить. В КП он стоит первым, вместо шаблонного «Назначение и состав». «Устройство станции» программа собирает сама из компоновки.')}</div>
       <div class="row sb-a">${writeButton}
-        ${aiSitesHtml('sbCopy', index, direct ? ' data-alt="1"' : '')}</div>
+        ${AiChat.sitesHtml('sbCopy', index, direct ? ' data-alt="1"' : '')}</div>
       ${direct ? '' : `<p class="muted sb-h">Встроенная нейросеть не включена («Настройки → Нейросеть») — скопируйте запрос в ИИ-чат и вставьте ответ:</p>`}
       <details class="ai-pr"${direct ? '' : ' open'}><summary>${direct ? 'Через ИИ-чат в браузере' : 'Ответ ИИ-чата'}</summary><textarea rows="3" data-sbans="${index}" placeholder="Вставьте ответ ИИ-чата"></textarea>
         <div class="row"><button class="btn" type="button" data-sb="paste" data-i="${index}">Вставить в описание</button></div></details></div>`;
@@ -306,17 +324,17 @@ ${this.facts(item)}`;
     const item = S.items[index];
     if (!item || this.busy.has(item.id)) return;
     this.busy.add(item.id);
-    renderEditor();
+    ItemEditor.render();
     try {
-      const text = this.parse(await aiDirect(this.prompt(item)));
+      const text = this.parse(await AiDirect.ask(this.prompt(item)));
       if (!this.apply(item, text)) throw new Error('пустой ответ');
-      persist();
-      toast('Описание станции написано — проверьте и поправьте при необходимости');
+      KpState.persist();
+      Toast.show('Описание станции написано — проверьте и поправьте при необходимости');
     } catch (error) {
-      toast(`Нейросеть не ответила: ${(error && error.message) || error}`);
+      Toast.show(`Нейросеть не ответила: ${(error && error.message) || error}`);
     } finally {
       this.busy.delete(item.id);
-      renderEditor();
+      ItemEditor.render();
     }
   }
 
@@ -329,12 +347,12 @@ ${this.facts(item)}`;
     const field = document.querySelector(`[data-sbans="${index}"]`);
     if (!item || !field) return;
     if (!this.apply(item, this.parse(field.value))) {
-      toast('Вставьте ответ ИИ-чата');
+      Toast.show('Вставьте ответ ИИ-чата');
       return;
     }
-    persist();
-    renderEditor();
-    toast('Описание станции вставлено');
+    KpState.persist();
+    ItemEditor.render();
+    Toast.show('Описание станции вставлено');
   }
 
   /** Кнопки блока: написать, вставить ответ, скопировать запрос для ИИ-чата. */
@@ -354,8 +372,8 @@ ${this.facts(item)}`;
   static _copy(button, index) {
     const item = S.items[index];
     if (!item) return;
-    aiSend(this.prompt(item), button.dataset.url, copied =>
-      toast(
+    AiChat.send(this.prompt(item), button.dataset.url, copied =>
+      Toast.show(
         copied
           ? 'Запрос скопирован — вставьте его в ИИ-чат, ответ — в поле «Ответ ИИ-чата»'
           : 'Скопируйте запрос вручную',

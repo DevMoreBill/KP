@@ -1,6 +1,14 @@
 import { CatalogCache } from './catalog-cache.js';
 import { CatalogStore } from './catalog-store.js';
 import { CatalogWindow } from './catalog-window.js';
+import { Price } from '../../core/str.js';
+import { FormView } from '../../ui/form-view.js';
+import { Toast } from '../../core/toast.js';
+import { AdminSession } from '../../core/net.js';
+import { ItemEditor } from './item-editor.js';
+import { Kit } from '../kit/kit.js';
+import { $, Uid, esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.
@@ -8,6 +16,8 @@ import { CatalogWindow } from './catalog-window.js';
  * перерисовывается, после закрытия всё возвращается как было.
  */
 export class CatalogEditor {
+  // правка позиции каталога: пока она открыта, S.items подменены — черновик не сохраняется
+  static session = null;
   static TEMP = ['_light', '_a', '_nv', '_hay', '_sup', '_pq', 'pricesCount', 'st', 'src', 'art']; // служебные поля карточки
   static FOCUS_DELAY = 30;
 
@@ -23,14 +33,14 @@ export class CatalogEditor {
   static toItem(doc) {
     const copy = JSON.parse(JSON.stringify(doc));
     this.TEMP.forEach(key => delete copy[key]);
-    return Object.assign(newItem(), copy, {
+    return Object.assign(KpState.newItem(), copy, {
       qty: 1,
       page: true,
       features: copy.features || [],
       groups: copy.groups || [],
       attrs: copy.attrs || {},
-      options: (copy.options || []).map(option => ({ ...option, id: option.id || uid() })),
-      gallery: (copy.gallery || []).map(pic => ({ ...pic, id: pic.id || uid() })),
+      options: (copy.options || []).map(option => ({ ...option, id: option.id || Uid.next() })),
+      gallery: (copy.gallery || []).map(pic => ({ ...pic, id: pic.id || Uid.next() })),
     });
   }
 
@@ -124,12 +134,12 @@ export class CatalogEditor {
       CatalogWindow.win.say('Не удалось загрузить позицию целиком — повторите');
       return;
     }
-    if (CATED || EDIT) return;
+    if (CatalogEditor.session || ItemEditor.current) return;
     const item = this.toItem(doc);
-    CATED = { items: S.items, base: doc, onSave, snap: '', isNew };
+    CatalogEditor.session = { items: S.items, base: doc, onSave, snap: '', isNew };
     S.items = [item];
-    CATED.snap = JSON.stringify(this.toDoc(item, doc));
-    openEditor(0, 'main');
+    CatalogEditor.session.snap = JSON.stringify(this.toDoc(item, doc));
+    ItemEditor.open(0, 'main');
   }
 
   /**
@@ -155,7 +165,7 @@ export class CatalogEditor {
    * @returns {string}
    */
   static saveLabel() {
-    return CatalogWindow.win.mod && !ADMIN.on ? 'Отправить на модерацию' : 'Сохранить в каталог';
+    return CatalogWindow.win.mod && !AdminSession.on ? 'Отправить на модерацию' : 'Сохранить в каталог';
   }
 
   /**
@@ -163,11 +173,15 @@ export class CatalogEditor {
    * @returns {boolean}
    */
   static dirty() {
-    return !!CATED && (CATED.isNew || JSON.stringify(this.toDoc(S.items[0], CATED.base)) !== CATED.snap);
+    return (
+      !!CatalogEditor.session &&
+      (CatalogEditor.session.isNew ||
+        JSON.stringify(this.toDoc(S.items[0], CatalogEditor.session.base)) !== CatalogEditor.session.snap)
+    );
   }
 
   static async _put(item) {
-    let doc = this.toDoc(item, CATED.base);
+    let doc = this.toDoc(item, CatalogEditor.session.base);
     doc.updatedAt = new Date().toISOString();
     const button = $('#edlg [data-catsave]');
     if (button) {
@@ -181,33 +195,34 @@ export class CatalogEditor {
         button.disabled = false;
         button.textContent = this.saveLabel();
       }
-      toast(`Не удалось сохранить в каталог: ${error.message || error}`);
+      Toast.show(`Не удалось сохранить в каталог: ${error.message || error}`);
       return null;
     }
-    if (doc._pending) toast('Отправлено на модерацию — изменения появятся в каталоге после одобрения администратором');
+    if (doc._pending)
+      Toast.show('Отправлено на модерацию — изменения появятся в каталоге после одобрения администратором');
     return doc;
   }
 
   static async _finish(doc) {
-    const after = CATED.onSave;
-    S.items = CATED.items;
-    CATED = null;
-    EDIT = null;
+    const after = CatalogEditor.session.onSave;
+    S.items = CatalogEditor.session.items;
+    CatalogEditor.session = null;
+    ItemEditor.current = null;
     const dialog = $('#edlg');
     if (dialog.open) dialog.close();
-    renderForm();
+    FormView.render();
     if (doc && after) await after(doc);
   }
 
   /** «Сохранить в каталог». */
   static async save() {
-    if (!CATED) return;
+    if (!CatalogEditor.session) return;
     const item = S.items[0];
     if (!String(item.name || '').trim()) {
-      EDIT.tab = 'main';
-      renderEditor();
+      ItemEditor.current.tab = 'main';
+      ItemEditor.render();
       setTimeout(() => $('#edlg [data-p="items.0.name"]')?.focus(), this.FOCUS_DELAY);
-      toast('Укажите наименование позиции');
+      Toast.show('Укажите наименование позиции');
       return;
     }
     const doc = await this._put(item);
@@ -216,7 +231,7 @@ export class CatalogEditor {
 
   /** «Отмена» и Esc — с вопросом, если есть несохранённые правки. */
   static async cancel() {
-    if (!CATED) return;
+    if (!CatalogEditor.session) return;
     if (this.dirty() && !confirm('Закрыть без сохранения? Изменения позиции каталога будут потеряны.')) return;
     await this._finish(null);
   }
@@ -224,14 +239,14 @@ export class CatalogEditor {
   /** Обработчики карточки каталога (вешаются один раз). */
   static listen() {
     document.addEventListener('click', event => {
-      if (!CATED || !event.target.closest('#edlg')) return;
+      if (!CatalogEditor.session || !event.target.closest('#edlg')) return;
       if (event.target.closest('[data-catsave]')) this.save();
       else if (event.target.closest('[data-catcancel]')) this.cancel();
     });
     document.addEventListener(
       'cancel',
       event => {
-        if (event.target.id !== 'edlg' || !CATED) return;
+        if (event.target.id !== 'edlg' || !CatalogEditor.session) return;
         event.preventDefault();
         this.cancel();
       },
@@ -251,10 +266,10 @@ export class CatalogPrice {
   }
 
   static _cur(card, key) {
-    const opts = Object.keys(CURS)
+    const opts = Object.keys(KPGen.CURS)
       .map(
         code =>
-          `<option value="${code}"${(card[key] || 'RUB') === code ? ' selected' : ''}>${esc(CURS[code].sh)}</option>`,
+          `<option value="${code}"${(card[key] || 'RUB') === code ? ' selected' : ''}>${esc(KPGen.CURS[code].sh)}</option>`,
       )
       .join('');
     return `<select data-ccur="${key}" aria-label="Валюта">${opts}</select>`;
@@ -266,8 +281,8 @@ export class CatalogPrice {
    * @returns {string}
    */
   static html(card) {
-    const priceText = card._priceText ?? (card.price ? money(card.price) : '');
-    const costText = card._costText ?? (card.cost ? money(card.cost) : '');
+    const priceText = card._priceText ?? (card.price ? KPGen.money(card.price) : '');
+    const costText = card._costText ?? (card.cost ? KPGen.money(card.cost) : '');
     return `<div class="ed-sec"><p class="sub">Цена в каталоге</p><div class="cprice">
       <label class="f"><span>Цена продажи</span><input type="text" inputmode="decimal" class="num" data-cprice="price" value="${esc(priceText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта</span>${this._cur(card, 'priceCur')}</label>
       <label class="f"><span>Закупка</span><input type="text" inputmode="decimal" class="num" data-cprice="cost" value="${esc(costText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта закупки</span>${this._cur(card, 'costCur')}</label></div>
@@ -277,7 +292,7 @@ export class CatalogPrice {
   static _input(field) {
     const card = S.items[0];
     const key = field.dataset.cprice;
-    const value = parsePrice(field.value);
+    const value = Price.parse(field.value);
     card[`_${key}Text`] = field.value;
     card[key] = Number.isNaN(value) ? 0 : value;
     card[`${key}Src`] = 'manual';
@@ -286,23 +301,23 @@ export class CatalogPrice {
 
   static _blur(field) {
     const card = S.items[0];
-    const value = parsePrice(field.value);
+    const value = Price.parse(field.value);
     if (Number.isNaN(value)) return;
     delete card[`_${field.dataset.cprice}Text`];
-    field.value = value ? money(value) : '';
+    field.value = value ? KPGen.money(value) : '';
   }
 
   /** Ввод цены и валюты. */
   static listen() {
     document.addEventListener('input', event => {
-      if (event.target.dataset.cprice != null && CATED) this._input(event.target);
+      if (event.target.dataset.cprice != null && CatalogEditor.session) this._input(event.target);
     });
     document.addEventListener('focusout', event => {
-      if (event.target.dataset.cprice != null && CATED) this._blur(event.target);
+      if (event.target.dataset.cprice != null && CatalogEditor.session) this._blur(event.target);
     });
     document.addEventListener('change', event => {
       const field = event.target;
-      if (field.dataset.ccur != null && CATED) S.items[0][field.dataset.ccur] = field.value;
+      if (field.dataset.ccur != null && CatalogEditor.session) S.items[0][field.dataset.ccur] = field.value;
     });
   }
 }

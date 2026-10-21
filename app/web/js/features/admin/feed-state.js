@@ -1,3 +1,6 @@
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
+import { Currency } from '../kp/currency.js';
 /** Состояние вкладки «Фиды поставщиков» (пока открыта программа). */
 export class FeedState {
   static sel = null; // открытый фид
@@ -73,7 +76,7 @@ export class FeedFmt {
    * @returns {string}
    */
   static rub(kop) {
-    return kop == null ? '—' : `${money(kop)} ₽`;
+    return kop == null ? '—' : `${KPGen.money(kop)} ₽`;
   }
 
   /**
@@ -83,7 +86,7 @@ export class FeedFmt {
    * @returns {string}
    */
   static money(kop, cur) {
-    return kop == null ? '—' : `${money(kop)} ${curSh(cur || 'RUB')}`;
+    return kop == null ? '—' : `${KPGen.money(kop)} ${Currency.short(cur || 'RUB')}`;
   }
 
   /**
@@ -191,7 +194,7 @@ export class FeedFmt {
    */
   static stockInfo(stock) {
     const units = stock.units != null && stock.units !== stock.inStock ? `, всего ${Fmt.num(stock.units)} шт.` : '';
-    return `${Fmt.num(stock.rows)} ${plural(stock.rows, 'модель', 'модели', 'моделей')}, в наличии: ${Fmt.num(stock.inStock)}${units}${(stock.whs || []).length ? ` · склады: ${stock.whs.map(esc).join(', ')}` : ''}`;
+    return `${Fmt.num(stock.rows)} ${KPGen.plural(stock.rows, 'модель', 'модели', 'моделей')}, в наличии: ${Fmt.num(stock.inStock)}${units}${(stock.whs || []).length ? ` · склады: ${stock.whs.map(esc).join(', ')}` : ''}`;
   }
 
   /**

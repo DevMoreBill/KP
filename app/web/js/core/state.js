@@ -1,105 +1,21 @@
-// Состояние КП (S) и общие переменные, которые читают и переписывают и ES-модули, и обычные скрипты. Обычный скрипт:
-// S создаётся при загрузке страницы (до ES-модулей), а глобальные let можно переприсвоить из модуля только так.
-'use strict';
-
-// что ещё подставляется в новое КП («Настройки → Значения программы → КП и документы → Новое КП»)
-DefRegistry.add(
-  [],
-  [
-    [
-      'kp.showClients',
-      'kp',
-      'Страница «Наши клиенты» в новом КП',
-      'bool',
-      true,
-      {
-        hint: 'Включено — в новом КП сразу стоит переключатель «Страница „Наши клиенты“ в КП» (раздел «Оформление КП»): в документ попадает страница с логотипами клиентов компании. Выключено — страницы нет, менеджер включает её сам, когда нужно.',
-      },
-    ],
-  ],
-);
-
-// условия КП и базовые варианты для быстрого выбора (раздел «Условия», кнопка ▾ у поля)
-const COND = [
-  [
-    'Срок поставки',
-    [
-      'В наличии на складе',
-      '5–10 рабочих дней',
-      '10 рабочих дней',
-      '20 рабочих дней',
-      '30 рабочих дней',
-      '45 рабочих дней',
-      '60 рабочих дней',
-      '90 календарных дней',
-      'По согласованию',
-    ],
-  ],
-  [
-    'Условия оплаты',
-    [
-      '100 % предоплата',
-      '50 % аванс, 50 % перед отгрузкой',
-      '30 % аванс, 70 % перед отгрузкой',
-      '70 % аванс, 30 % после поставки',
-      'Отсрочка платежа 30 дней',
-      'По согласованию',
-    ],
-  ],
-  [
-    'Гарантия',
-    [
-      '12 месяцев',
-      '18 месяцев',
-      '24 месяца',
-      '36 месяцев',
-      '12 месяцев или 1 000 моточасов',
-      '24 месяца или 2 000 моточасов',
-      '12 месяцев с даты ввода в эксплуатацию',
-    ],
-  ],
-  [
-    'Доставка',
-    [
-      'Самовывоз со склада в Москве',
-      'Доставка до объекта включена',
-      'Доставка по Москве включена',
-      'Доставка рассчитывается отдельно',
-      'Доставка транспортной компанией за счёт покупателя',
-    ],
-  ],
-  [
-    'Срок действия предложения',
-    ['5 рабочих дней', '10 рабочих дней', '14 дней', '30 дней', 'До конца текущего месяца'],
-  ],
-  [
-    'Монтаж, ШМР и ПНР',
-    [
-      'Шефмонтаж и пусконаладочные работы входят в стоимость',
-      'Монтаж и пусконаладочные работы входят в стоимость',
-      'Не входят в стоимость, выполняются по отдельному договору',
-      'По согласованию',
-    ],
-  ],
-];
-
-// типовые оговорки для «Дополнительных условий» (добавляются строкой)
-const COND_EXTRA = [
-  'Цена действительна при заказе всего комплекта оборудования.',
-  'Пусконаладочные работы выполняются по отдельному договору.',
-  'Стоимость доставки рассчитывается отдельно.',
-  'Срок поставки уточняется на момент оплаты.',
-  'Цена может быть изменена при изменении курса валют более чем на 3 %.',
-  'Монтаж оборудования в стоимость не входит.',
-  'Гарантия действует при обслуживании в авторизованном сервисном центре.',
-];
+// КП, которое сейчас открыто (S), черновик в браузере, новое КП и итоги. S меняется только через KpState.replace — ES-модули
+// видят новое значение сразу (живая привязка export let). Новое КП берёт «Значения программы» КП — они регистрируются раньше.
+import './defaults-srv.js';
+import './defaults-kp.js';
+import { CoverSync } from '../ui/step-cover.js';
+import { StationAuto, StationName } from '../features/kit/station-auto.js';
+import { Kit } from '../features/kit/kit.js';
+import { CatalogEditor } from '../features/catalog/catalog-edit.js';
+import { DefRegistry } from './defaults.js';
+import { $, Uid, today } from './util.js';
+import { KpConditions } from './conditions.js';
 
 /**
  * Черновик КП в браузере (на случай закрытия вкладки). Большие картинки (data:, 3D-виды и листы чертежа станции —
  * мегабайты) хранятся отдельными записями и пишутся один раз: иначе каждая правка КП ждала бы запись нескольких мегабайт.
  * В черновике вместо картинки — ссылка REF+номер.
  */
-class LocalDraft {
+export class LocalDraft {
   static KEY = 'kp.draft';
   static PRE = 'kp.img.';
   static REF = '\u0000img:';
@@ -188,7 +104,7 @@ class LocalDraft {
 }
 
 /** Новое КП, позиция, черновик в браузере, итоги. */
-class KpState {
+export class KpState {
   // контакты компании (телефон, сайт, адрес, режим работы) — из «Значений программы» (mgr.*)
   static MANAGER = {
     name: '',
@@ -205,6 +121,8 @@ class KpState {
   static VAT = 22;
   static MARGIN = 35;
   static SAVE_MS = 400;
+  // отложенная запись черновика (persist)
+  static saveTimer = null;
 
   /**
    * Пустая позиция КП.
@@ -212,7 +130,7 @@ class KpState {
    */
   static newItem() {
     return {
-      id: uid(),
+      id: Uid.next(),
       name: '',
       spec: '',
       qty: 1,
@@ -237,7 +155,7 @@ class KpState {
   static defManager() {
     const manager = { ...this.MANAGER };
     for (const key of this.COMPANY_KEYS) {
-      const value = DEF(`mgr.${key}`);
+      const value = DefRegistry.value(`mgr.${key}`);
       manager[key] = value == null ? '' : value;
     }
     return manager;
@@ -262,15 +180,20 @@ class KpState {
     return {
       ...this._client(),
       date: today(),
-      city: DEF('kp.city') || '',
-      vat: DEFN('kp.vat', this.VAT),
-      showClients: DEF('kp.showClients') !== false,
+      city: DefRegistry.value('kp.city') || '',
+      vat: DefRegistry.num('kp.vat', this.VAT),
+      showClients: DefRegistry.value('kp.showClients') !== false,
       cover: { title: '', model: '', desc: '', kpis: [{}, {}, {}, {}], touched: false },
       pricing: this._pricing(),
       items: [],
-      conditions: COND.map(cond => ({ label: cond[0], value: DEF(`cond.${cond[0]}`) || '' })),
+      conditions: KpConditions.LIST.map(cond => ({
+        label: cond[0],
+        value: DefRegistry.value(`cond.${cond[0]}`) || '',
+      })),
       // текст условий из «Умолчаний» — как автоматический: «Экономика сделки» заменит его своим расчётом, пока его не правили
-      condAuto: Object.fromEntries(COND.map(cond => [cond[0], DEF(`cond.${cond[0]}`)]).filter(pair => pair[1])),
+      condAuto: Object.fromEntries(
+        KpConditions.LIST.map(cond => [cond[0], DefRegistry.value(`cond.${cond[0]}`)]).filter(pair => pair[1]),
+      ),
       condExtra: '',
       manager: { ...manager },
       managerId: '',
@@ -299,14 +222,14 @@ class KpState {
 
   static _pricing() {
     return {
-      cur: DEF('kp.cur') || 'RUB',
+      cur: DefRegistry.value('kp.cur') || 'RUB',
       rates: { USD: '', EUR: '', CNY: '' },
       rateDate: '',
       rateSrc: '',
       margin: this.MARGIN,
       mode: 'margin',
       costNoVat: false,
-      round: DEF('kp.round') || '1',
+      round: DefRegistry.value('kp.round') || '1',
     };
   }
 
@@ -342,20 +265,20 @@ class KpState {
 
   /** Состав и титул — по позициям; черновик в браузере — с задержкой (правка позиции каталога его не трогает). */
   static persist() {
-    if (CATED) return;
+    if (CatalogEditor.session) return;
     // закупка сборки — по текущим курсам; параметры станции — по составу
     S.items.forEach(item => {
       Kit.sync(item);
       StationAuto.fill(item);
       StationName.apply(item);
     });
-    coverSync();
-    clearTimeout(saveT);
-    saveT = setTimeout(() => this._saveDraft(), this.SAVE_MS);
+    CoverSync.run();
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this._saveDraft(), this.SAVE_MS);
   }
 
   static _saveDraft() {
-    if (CATED) return;
+    if (CatalogEditor.session) return;
     const el = $('#saved');
     try {
       LocalDraft.save(S);
@@ -410,44 +333,19 @@ class KpState {
     }));
     return KPGen.totals(items, +S.vat || 0);
   }
+
+  /**
+   * Открыть другое КП (новое, из журнала, черновика).
+   * @param {object} state
+   * @returns {object}
+   */
+  static replace(state) {
+    S = state;
+    return S;
+  }
 }
 
-// прежние имена — их вызывают все разделы
-const newItem = () => KpState.newItem();
-const defManager = () => KpState.defManager();
-const freshState = () => KpState.fresh();
-const persist = () => KpState.persist();
-const itemSum = item => KpState.itemSum(item);
-const totalsS = () => KpState.totals();
-
-LocalDraft.watch();
+if (typeof window !== 'undefined') LocalDraft.watch();
 
 // eslint-disable-next-line id-length -- КП, которое сейчас открыто: им пользуются все разделы
-let S = KpState.restore();
-
-// отложенная запись черновика (persist; окно «Экономика сделки» сбрасывает её перед своей записью)
-let saveT;
-
-// CLIENTS — последние использованные и найденные клиенты (их тысячи, поиск — на сервере), CLIENTS_ALL — сколько всего;
-// MGRS — менеджеры; mgrT — отложенное сохранение контактов менеджера (docx/build.js сбрасывает его перед записью КП)
-let CLIENTS = [];
-let CLIENTS_ALL = 0;
-let MGRS = [];
-let mgrT = null;
-
-// правка позиции каталога в карточке (features/catalog/catalog-edit.js): пока она открыта, S.items подменены — черновик не сохраняется
-var CATED = null;
-
-// каталог в браузере (Catalog.refresh) и открытая карточка позиции (ItemEditor): присваивают и читают все разделы
-let catCache = [];
-let EDIT = null;
-
-// типы оборудования (EquipTypes.load): встроенные + свои отдела и встроенный справочник для сравнения; загрузка заменяет массив
-// целиком — окна, которые помнят разбор по TYPES, видят смену справочника
-let TYPES = [];
-let TYPES_BUILTIN = null;
-
-// открытый раздел формы КП (ui/steps.js — Steps) и свои подсказки полей адреса (ui/geo-input.js — GeoInput,
-// склады поставщиков добавляет features/deal): общие для нескольких модулей
-let STEP = 'client';
-const GEO_EXTRA = {};
+export let S = KpState.restore();

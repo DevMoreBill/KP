@@ -1,3 +1,10 @@
+import { StationReq } from '../req/station-req.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationUi } from './station-ui.js';
+import { KitView } from '../kit/kit-view.js';
+import { Kit } from '../kit/kit.js';
+import { Mm } from '../layout/mm.js';
 /**
  * Блок КП «Устройство станции»: контейнер, размещение, сжатый воздух, вентиляция, отопление, освещение, электропитание,
  * пожарная безопасность — из компоновки и систем контейнера, без выдуманных значений.

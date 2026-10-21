@@ -2,6 +2,9 @@ import { DealCal } from './deal-cal.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
+import { Fmt, ObjPath } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { Money } from '../../core/money.js';
 
 /** Числа и поля ввода окна «Экономика сделки»: рубли, проценты, поле с отметкой источника, срок днями или датой. */
 export class DealFmt {
@@ -87,7 +90,7 @@ export class DealFmt {
    */
   static field(label, path, opts = {}) {
     const deal = DealState.deal();
-    const raw = getPath(deal, path);
+    const raw = ObjPath.get(deal, path);
     const err = opts.calc && opts.calc.err[path];
     const { value, badge } = DealFmt._source(path, raw, opts);
     const input = opts.select ? DealFmt._select(label, path, raw, opts.select) : DealFmt._input(path, value, opts, err);
@@ -134,7 +137,7 @@ export class DealFmt {
 
   static _cur(curPath, deal) {
     if (!curPath) return '';
-    const now = getPath(deal, curPath) || 'RUB';
+    const now = ObjPath.get(deal, curPath) || 'RUB';
     const options = DealTerms.CURS.map(cur => `<option${now === cur ? ' selected' : ''}>${cur}</option>`).join('');
     return `<select data-dl="${curPath}" aria-label="Валюта">${options}</select>`;
   }
@@ -162,7 +165,7 @@ export class DealFmt {
   }
 
   static _date(label, path, date, deal) {
-    const kind = date.kind === false ? '' : getPath(deal, `${path}K`);
+    const kind = date.kind === false ? '' : ObjPath.get(deal, `${path}K`);
     return DealFmt.dateIn(path, { base: date.base, val: date.val, label, kind });
   }
 
@@ -201,7 +204,7 @@ export class DealFmt {
    * @returns {string}
    */
   static dayKind(path) {
-    const work = getPath(DealState.deal(), `${path}K`) === 'work';
+    const work = ObjPath.get(DealState.deal(), `${path}K`) === 'work';
     return `<select class="dl-dk" data-dl="${esc(path)}K" aria-label="Календарные или рабочие дни" title="Календарные или рабочие дни"><option value="">кал. дн.</option><option value="work"${work ? ' selected' : ''}>раб. дн.</option></select>`;
   }
 }

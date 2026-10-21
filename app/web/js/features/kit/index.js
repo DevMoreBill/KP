@@ -17,6 +17,7 @@ import { StationAuto, StationAutoVal, StationName } from './station-auto.js';
 import { StationDefaults } from './station-defaults.js';
 import { StationPurpose, StationSpec } from './station-spec.js';
 import { SupplyDocs } from './supply-docs.js';
+import { LISTS } from '../../core/lists.js';
 
 export const KIT = {
   CatFeatures,
@@ -48,9 +49,6 @@ export const KIT = {
   SupplyDocs,
 };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, KIT);
-
 KitActions.listen();
 // списки контейнеров и состава — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
-if (typeof LISTS !== 'undefined') LISTS.ready([...ContainerKind.LISTS, ...Kit.LISTS]);
+LISTS.ready([...ContainerKind.LISTS, ...Kit.LISTS]);

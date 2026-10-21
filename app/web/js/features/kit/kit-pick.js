@@ -2,6 +2,20 @@ import { Kit } from './kit.js';
 import { KitPart } from './kit-part.js';
 import { StationDefaults } from './station-defaults.js';
 import { StationAuto, StationName } from './station-auto.js';
+import { StationUi } from '../station/station-ui.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { KitScope } from './kit-scope.js';
+import { KpState, S } from '../../core/state.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { KitNeed } from './kit-need.js';
+import { $, esc } from '../../core/util.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { Str } from '../../core/str.js';
+import { Attrs, CatAttrs } from '../../core/item-attrs.js';
 
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций
@@ -20,7 +34,7 @@ export class PickFind {
    */
   static hay(card, attrs) {
     if (card._pq != null && CatAttrs.cards.has(card)) return card._pq;
-    const hay = norm([card.name, attrs.maker, attrs.model, attrs.series].join(' '));
+    const hay = Str.norm([card.name, attrs.maker, attrs.model, attrs.series].join(' '));
     if (CatAttrs.cards.has(card)) card._pq = hay;
     return hay;
   }
@@ -32,9 +46,9 @@ export class PickFind {
    * @returns {number}
    */
   static key(card) {
-    const attrs = attrsOf(card);
-    if (/^comp_/.test(attrs.cat) && typeof TzPick !== 'undefined') return TzPick.flow(card) || this.LAST;
-    return numOf(attrs[typeById(attrs.cat).main || 'kw']) ?? this.LAST;
+    const attrs = Attrs.of(card);
+    if (/^comp_/.test(attrs.cat)) return TzPick.flow(card) || this.LAST;
+    return Str.num(attrs[EquipTypes.byId(attrs.cat).main || 'kw']) ?? this.LAST;
   }
 
   /**
@@ -83,12 +97,12 @@ export class PickFilter {
   }
 
   static _pool(cats) {
-    return catCache.filter(card => !cats || cats.includes(attrsOf(card).cat));
+    return Catalog.cache.filter(card => !cats || cats.includes(Attrs.of(card).cat));
   }
 
   static _fields(filter) {
     return filter.cat
-      ? typeById(filter.cat)
+      ? EquipTypes.byId(filter.cat)
           .fields.filter(field => field.facet || field.range)
           .slice(0, this.FIELDS)
       : [];
@@ -105,7 +119,7 @@ export class PickFilter {
    * @returns {string}
    */
   static html(filter, cats) {
-    const pool = this._pool(cats).filter(card => !filter.cat || attrsOf(card).cat === filter.cat);
+    const pool = this._pool(cats).filter(card => !filter.cat || Attrs.of(card).cat === filter.cat);
     const fields = this._fields(filter)
       .map(field => this._field(field, filter, pool))
       .join('');
@@ -114,15 +128,15 @@ export class PickFilter {
 
   static _catSelect(filter, cats) {
     if (cats && cats.length <= 1) return '';
-    const options = (cats || TYPES.map(type => type.id))
-      .filter(cat => !typeById(cat).station)
-      .map(cat => this._opt(cat, typeById(cat).name, filter.cat === cat))
+    const options = (cats || EquipTypes.list.map(type => type.id))
+      .filter(cat => !EquipTypes.byId(cat).station)
+      .map(cat => this._opt(cat, EquipTypes.byId(cat).name, filter.cat === cat))
       .join('');
     return `<label class="f"><span>Вид</span><select data-pf="cat">${this._opt('', 'Все', !filter.cat)}${options}</select></label>`;
   }
 
   static _makerSelect(filter, pool) {
-    const makers = [...new Set(pool.map(card => attrsOf(card).maker).filter(Boolean))].sort((one, two) =>
+    const makers = [...new Set(pool.map(card => Attrs.of(card).maker).filter(Boolean))].sort((one, two) =>
       one.localeCompare(two, 'ru'),
     );
     const options = makers.map(maker => this._opt(maker, maker, filter.maker === maker)).join('');
@@ -148,7 +162,7 @@ export class PickFilter {
         : [
             ...new Set(
               pool
-                .map(card => attrsOf(card)[field.key])
+                .map(card => Attrs.of(card)[field.key])
                 .filter(value => value != null && value !== '')
                 .map(String),
             ),
@@ -164,7 +178,7 @@ export class PickFilter {
    * @returns {boolean}
    */
   static matches(card, filter, cats) {
-    const attrs = attrsOf(card);
+    const attrs = Attrs.of(card);
     return [
       () => this._category(attrs, filter, cats),
       () => !filter.maker || attrs.maker === filter.maker,
@@ -185,7 +199,7 @@ export class PickFilter {
     const from = this.num(low);
     const upTo = this.num(high);
     if (from == null && upTo == null) return true;
-    const number = numOf(value);
+    const number = Str.num(value);
     if (number == null) return false;
     return !((from != null && number < from) || (upTo != null && number > upTo));
   }
@@ -199,7 +213,7 @@ export class PickFilter {
   static _query(card, attrs, filter) {
     if (!filter.q.trim()) return true;
     if (!(filter._w && filter._w.q === filter.q))
-      filter._w = { q: filter.q, w: norm(filter.q).split(' ').filter(Boolean) };
+      filter._w = { q: filter.q, w: Str.norm(filter.q).split(' ').filter(Boolean) };
     const hay = PickFind.hay(card, attrs);
     return filter._w.w.every(word => hay.includes(word));
   }
@@ -259,9 +273,9 @@ export class PickFilter {
       card.photo && card.photo.src
         ? `<img src="${esc(card.photo.src)}" alt="" loading="lazy" decoding="async">`
         : '<span class="kit-noimg"></span>';
-    const params = mainLine(card, this.MAIN_PARAMS);
-    const cost = card.cost ? ` · закупка ${money(card.cost)} ${card.costCur || 'RUB'}` : '';
-    return `<button type="button" class="kit-pick${cls}" ${attr}="${esc(card.id)}">${photo}<span>${tag}<b>${esc(card.name)}</b><small class="muted">${esc(typeById(attrsOf(card).cat).name)}${params ? ` · ${esc(params)}` : ''}${cost}</small></span></button>`;
+    const params = ItemSpec.mainLine(card, this.MAIN_PARAMS);
+    const cost = card.cost ? ` · закупка ${KPGen.money(card.cost)} ${card.costCur || 'RUB'}` : '';
+    return `<button type="button" class="kit-pick${cls}" ${attr}="${esc(card.id)}">${photo}<span>${tag}<b>${esc(card.name)}</b><small class="muted">${esc(EquipTypes.byId(Attrs.of(card).cat).name)}${params ? ` · ${esc(params)}` : ''}${cost}</small></span></button>`;
   }
 }
 
@@ -291,7 +305,7 @@ export class KitPick {
     if (name && !cats) this.filter.q = name;
     this.all = false;
     this._usePreset();
-    this.best = preset && preset.best ? catCache.find(card => card.id === preset.best.id) : null;
+    this.best = preset && preset.best ? Catalog.cache.find(card => card.id === preset.best.id) : null;
   }
 
   _usePreset() {
@@ -441,9 +455,9 @@ export class KitPick {
     item.kit.parts.push(part);
     item.page = true;
     this.dialog.close();
-    renderForm();
-    persist();
-    toast('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»');
+    FormView.render();
+    KpState.persist();
+    Toast.show('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»');
   }
 
   _presetRows(part) {
@@ -457,10 +471,10 @@ export class KitPick {
   }
 
   async _pick(cardId) {
-    const lite = catCache.find(card => card.id === cardId);
+    const lite = Catalog.cache.find(card => card.id === cardId);
     let doc = lite;
     try {
-      doc = await api(`/api/catalog/${encodeURIComponent(lite.id)}`);
+      doc = await Api.request(`/api/catalog/${encodeURIComponent(lite.id)}`);
     } catch {
       // нет связи — элемент из краткой карточки
     }
@@ -472,12 +486,12 @@ export class KitPick {
     Kit.sync(item);
     StationAuto.fill(item);
     StationName.apply(item);
-    if (typeof StationUi !== 'undefined') StationUi.cache.delete(item.id);
+    StationUi.cache.delete(item.id);
     this.dialog.close();
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     const qty = +part.qty > 1 ? `${part.qty} × ` : '';
-    toast(`${this.preset && this.preset.replace ? 'Заменено: ' : 'Добавлено в состав: '}${qty}${doc.name}`);
+    Toast.show(`${this.preset && this.preset.replace ? 'Заменено: ' : 'Добавлено в состав: '}${qty}${doc.name}`);
   }
 
   /** «⇄ Заменить» в строке — на её место; основное оборудование — перед контейнером */

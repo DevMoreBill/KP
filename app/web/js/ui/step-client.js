@@ -1,6 +1,20 @@
 import { FormView } from './form-view.js';
 import { TenderBlock } from './tender.js';
 import { UiKit } from './ui-kit.js';
+import { Str } from '../core/str.js';
+import { ClientCard } from '../features/kp/client-card.js';
+import { DealPick } from '../features/crm/deal-pick.js';
+import { PartyCheck } from '../features/kp/party-check.js';
+import { ClientFields, ClientStore, Inn } from '../features/kp/client-store.js';
+import { Steps } from './steps.js';
+import { Api } from '../core/net.js';
+import { DefRegistry } from '../core/defaults.js';
+import { KpTrack } from '../features/kp/kp-track.js';
+import { ShortName } from '../features/kp/journal-row.js';
+import { KpDate } from '../features/kp/kp-date.js';
+import { esc, today } from '../core/util.js';
+import { S } from '../core/state.js';
+import { FEAT } from '../core/features.js';
 
 /**
  * У клиента уже есть недавние КП (по ИНН, за срок «kp.dupDays» из «Значений программы») — чтобы два менеджера не
@@ -35,7 +49,7 @@ export class ClientPrev {
       .slice(0, this.SHOWN)
       .map(
         saved =>
-          `<b>№ ${esc(saved.number)}</b> от ${esc(KpDate.ddmm(saved.date))} — ${esc(jShort(saved.manager || ''))}, ${esc(KP_STATUS[KpTrack.status(saved.track)].toLowerCase())}`,
+          `<b>№ ${esc(saved.number)}</b> от ${esc(KpDate.ddmm(saved.date))} — ${esc(ShortName.of(saved.manager || ''))}, ${esc(KpTrack.STATUS[KpTrack.status(saved.track)].toLowerCase())}`,
       )
       .join('; ');
     const more = items.length > this.SHOWN ? ` и ещё ${items.length - this.SHOWN}` : '';
@@ -50,9 +64,9 @@ export class ClientPrev {
   static async load(key) {
     const state = this.state;
     state.busy = true;
-    const since = KpDate.addDays(today(), -Math.round(DEFN('kp.dupDays', this.DUP_DAYS)));
+    const since = KpDate.addDays(today(), -Math.round(DefRegistry.num('kp.dupDays', this.DUP_DAYS)));
     try {
-      const found = await api(`/api/history?limit=${this.LIMIT}&q=${encodeURIComponent(key)}`);
+      const found = await Api.request(`/api/history?limit=${this.LIMIT}&q=${encodeURIComponent(key)}`);
       state.items = (found.items || []).filter(
         saved => this._inn(saved.clientInn) === key && (saved.date || '') >= since,
       );
@@ -61,7 +75,7 @@ export class ClientPrev {
     }
     state.key = key;
     state.busy = false;
-    if (STEP === 'client' && state.items.some(saved => saved.id !== S.kpId)) FormView.render();
+    if (Steps.current === 'client' && state.items.some(saved => saved.id !== S.kpId)) FormView.render();
   }
 }
 
@@ -81,8 +95,8 @@ export class ClientStep {
   static html() {
     const has = !!(S.client || S.clientInn);
     const edit = S._clEdit || (has && !S.client.trim());
-    const client = curClient();
-    return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент${UiKit.tip(`<p>Начните вводить название или ИНН: поиск идёт по вашему справочнику клиентов${CLIENTS_ALL ? ` (${CLIENTS_ALL})` : ''}, а по ИНН — в реестре ФНС; реквизиты заполнятся сами.</p><p>Контактное лицо и объект необязательны: контакт выводится на титуле («Вниманию: …»), объект — для каких нужд и куда поставка.</p><p>Ключи Checko и DaData, загрузка клиентов списком ИНН — в меню «⋯» вверху.</p>`)}</h2>
+    const client = ClientStore.current();
+    return `<section class="step" id="st-client"><h2><span class="n">1</span>Клиент${UiKit.tip(`<p>Начните вводить название или ИНН: поиск идёт по вашему справочнику клиентов${ClientStore.total ? ` (${ClientStore.total})` : ''}, а по ИНН — в реестре ФНС; реквизиты заполнятся сами.</p><p>Контактное лицо и объект необязательны: контакт выводится на титуле («Вниманию: …»), объект — для каких нужд и куда поставка.</p><p>Ключи Checko и DaData, загрузка клиентов списком ИНН — в меню «⋯» вверху.</p>`)}</h2>
   ${TenderBlock.html()}
   <div class="csec"><p class="sub">Кому</p>${has ? this._summary(edit) : this._finder()}${(has && edit) || S._clManual ? this._form() : ''}${has ? PartyCheck.line() : ''}${has ? ClientPrev.html() : ''}</div>
   ${has ? DealPick.html() : ''}
@@ -131,7 +145,7 @@ export class ClientStep {
   static _form() {
     const field = (label, path, opts) => UiKit.field(label, path, opts);
     return `<div class="cl-form">
-      <div class="grid inn-row"><label class="f"><span>ИНН</span><input type="text" inputmode="numeric" data-p="clientInn" value="${esc(S.clientInn)}" placeholder="10 или 12 цифр" class="${!S.clientInn || validInn(S.clientInn) ? '' : 'bad'}" maxlength="12"></label>
+      <div class="grid inn-row"><label class="f"><span>ИНН</span><input type="text" inputmode="numeric" data-p="clientInn" value="${esc(S.clientInn)}" placeholder="10 или 12 цифр" class="${!S.clientInn || Inn.valid(S.clientInn) ? '' : 'bad'}" maxlength="12"></label>
         <div style="align-self:end" class="row"><button class="btn" type="button" data-a="partyFind">Заполнить по ИНН</button><span class="muted" id="partyMsg">${S.clientSrc ? `Данные: ${esc(S.clientSrc)}` : ''}</span></div></div>
       <div class="grid g2" style="margin-top:12px">${field('Название в КП', 'client', { req: 1, ph: 'ООО «Компания»' })}${field('Полное наименование', 'clientFull')}</div>
       <div class="grid g3" style="margin-top:12px">${field('КПП', 'clientKpp')}${field('ОГРН', 'clientOgrn')}${field('Руководитель', 'clientDir', { ph: 'ФИО' })}</div>
@@ -140,7 +154,7 @@ export class ClientStep {
 
   static _contact(client) {
     const contacts = (client?.contacts || []).filter(
-      contact => contact.name && norm(contact.name) !== norm(S.contact.name),
+      contact => contact.name && Str.norm(contact.name) !== Str.norm(S.contact.name),
     );
     const chips = contacts
       .slice(0, this.CHIPS)
@@ -157,7 +171,7 @@ export class ClientStep {
 
   static _object(client) {
     const same = place =>
-      norm(place.purpose) === norm(S.object.purpose) && norm(place.address) === norm(S.object.address);
+      Str.norm(place.purpose) === Str.norm(S.object.purpose) && Str.norm(place.address) === Str.norm(S.object.address);
     const objects = (client?.objects || []).filter(place => (place.purpose || place.address) && !same(place));
     const chips = objects
       .slice(0, this.CHIPS)
@@ -171,6 +185,6 @@ export class ClientStep {
     return `<div class="csec"><p class="sub">Объект <span class="muted">необязательно</span></p>
    ${objects.length ? `<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее у клиента:</span>${chips}</div>` : ''}
    <div class="grid g2">${UiKit.field('Назначение', 'object.purpose', { ph: 'Например: резервное электроснабжение котельной', list: 'purposeList' })}${UiKit.field('Адрес объекта', 'object.address', { ph: 'Город, улица, дом' })}</div>
-   <datalist id="purposeList">${PURPOSES.map(purpose => `<option value="${esc(purpose)}">`).join('')}</datalist></div>`;
+   <datalist id="purposeList">${ClientFields.PURPOSES.map(purpose => `<option value="${esc(purpose)}">`).join('')}</datalist></div>`;
   }
 }

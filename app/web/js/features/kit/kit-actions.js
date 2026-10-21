@@ -4,6 +4,23 @@ import { Kit } from './kit.js';
 import { KitCabinet, KitPipe, PartField } from './kit-fields.js';
 import { KitPick } from './kit-pick.js';
 import { StationAuto, StationName } from './station-auto.js';
+import { CbrRates } from '../kp/cbr-rates.js';
+import { Currency } from '../kp/currency.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationSize } from '../station/station-size.js';
+import { PaintView } from './paint-view.js';
+import { DealWin } from '../deal/deal-win.js';
+import { SidePanel } from '../../ui/side-panel.js';
+import { InputNum } from '../deal/input-num.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { ImageFiles } from '../catalog/images.js';
+import { $ } from '../../core/util.js';
+import { KitNeed } from './kit-need.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { KitView } from './kit-view.js';
+import { KitScope } from './kit-scope.js';
+import { KpState, S } from '../../core/state.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,
@@ -63,7 +80,7 @@ export class KitActions {
   static _preset({ item, index, button }) {
     const cat = button.dataset.cat;
     KitPick.open(index, {
-      cats: cat && TYPES.some(type => type.id === cat) ? [cat] : null,
+      cats: cat && EquipTypes.list.some(type => type.id === cat) ? [cat] : null,
       name: button.dataset.n,
       preset: cat ? KitNeed.presetFor(item, cat) : null,
       by: button.dataset.by,
@@ -129,11 +146,11 @@ export class KitActions {
       const file = picker.files[0];
       if (!file) return;
       try {
-        parts[j].photo = await prepGallery(file);
-        renderForm();
-        persist();
+        parts[j].photo = await ImageFiles.gallery(file);
+        FormView.render();
+        KpState.persist();
       } catch {
-        toast('Не удалось открыть изображение');
+        Toast.show('Не удалось открыть изображение');
       }
     };
     picker.click();
@@ -156,8 +173,8 @@ export class KitActions {
     field.classList.toggle('bad', Number.isNaN(cost));
     if (!Number.isNaN(cost)) found.part.cost = cost == null ? 0 : Math.round(cost * this.KOPECKS);
     Kit.sync(found.item);
-    updateLive();
-    persist();
+    SidePanel.updateLive();
+    KpState.persist();
     this._deal();
   }
 
@@ -165,12 +182,12 @@ export class KitActions {
     if (field.dataset.kitcost == null) return;
     const found = PartField.of(field.dataset.kitcost);
     if (found && !Number.isNaN(InputNum.parse(found.part._costText))) delete found.part._costText;
-    renderForm();
+    FormView.render();
     this._deal();
   }
 
   static _deal() {
-    if (typeof DealWin !== 'undefined') DealWin.render();
+    DealWin.render();
   }
 
   static _change(field) {
@@ -196,8 +213,8 @@ export class KitActions {
     StationSize.apply(item);
     StationAuto.fill(item);
     StationName.apply(item);
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 
   static _kindChanges(part, ctype, changes) {
@@ -221,14 +238,14 @@ export class KitActions {
     found.part.costCur = field.value;
     if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     Kit.sync(found.item);
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     this._deal();
   }
 
   static _qty(path) {
     Kit.sync(S.items[+path.split('.')[1]]);
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
   }
 }

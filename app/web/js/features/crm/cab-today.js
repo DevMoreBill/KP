@@ -5,6 +5,17 @@ import { CrmTask } from './crm-task.js';
 import { Cabinet } from './cabinet.js';
 import { CabDeals } from './cab-deals.js';
 import { CabGuide } from './cab-guide.js';
+import { Toast } from '../../core/toast.js';
+import { S } from '../../core/state.js';
+import { Fmt } from '../../core/str.js';
+import { Drafts } from '../kp/drafts.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { KpLoader, Reminders } from '../kp/reminders.js';
+import { FEAT } from '../../core/features.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { KpDate } from '../kp/kp-date.js';
+import { esc, today } from '../../core/util.js';
+import { MyDay } from '../kp/my-day.js';
 
 /** «Сегодня»: показатели (нажимаются), дела по срокам с быстрым добавлением, «Требуют внимания», напоминания, черновики. */
 export class CabToday {
@@ -121,7 +132,7 @@ export class CabToday {
     const doneList = done.length
       ? `<details class="tk-done"><summary>Сделано сегодня (${done.length})</summary>${done.map(task => CrmTask.row(task)).join('')}</details>`
       : '';
-    return `<section class="md-s cab-tasks"><div class="md-h"><p class="sub">Мои дела${tip('<p>Отметьте дело галочкой, когда сделали. «+1 день» — перенести на завтра, ✎ — изменить или отменить.</p><p>Дело по сделке добавляйте из карточки сделки — оно будет видно на доске как «следующий шаг».</p>')}</p></div>${CrmTask.form('', { pick: true })}
+    return `<section class="md-s cab-tasks"><div class="md-h"><p class="sub">Мои дела${UiKit.tip('<p>Отметьте дело галочкой, когда сделали. «+1 день» — перенести на завтра, ✎ — изменить или отменить.</p><p>Дело по сделке добавляйте из карточки сделки — оно будет видно на доске как «следующий шаг».</p>')}</p></div>${CrmTask.form('', { pick: true })}
       <div class="tk-l">${groups.map(group => this._group(group)).join('')}${empty}${doneList}</div></section>`;
   }
 
@@ -153,7 +164,7 @@ export class CabToday {
     const count = new Set(parts.flatMap(([, list]) => list.map(deal => deal.id))).size;
     const body = parts.map(part => this._attn(...part)).join('');
     return MyDay.section(
-      `Требуют внимания${count ? ` <b class="md-c">${count}</b>` : ''}${tip('<p>Сделки, которым нужно действие: новые из Битрикс24, с просроченной точкой исполнения (оплата, готовность, поставка), без запланированного дела и с прошедшей ожидаемой датой.</p><p>«＋ Дело» — запланировать следующий шаг, не открывая сделку.</p>')}`,
+      `Требуют внимания${count ? ` <b class="md-c">${count}</b>` : ''}${UiKit.tip('<p>Сделки, которым нужно действие: новые из Битрикс24, с просроченной точкой исполнения (оплата, готовность, поставка), без запланированного дела и с прошедшей ожидаемой датой.</p><p>«＋ Дело» — запланировать следующий шаг, не открывая сделку.</p>')}`,
       body || '<p class="empty">Всё в порядке: у каждой сделки есть следующий шаг.</p>',
     );
   }
@@ -185,7 +196,7 @@ export class CabToday {
   static _reminders() {
     if (!FEAT.on('reminders') || !CrmData.mine()) return '';
     const items = Reminders.items;
-    const limit = Math.round(DEFN('ui.mdRem', 5));
+    const limit = Math.round(DefRegistry.num('ui.mdRem', 5));
     const rows = items
       .slice(0, limit)
       .map(
@@ -203,7 +214,7 @@ export class CabToday {
   static _drafts() {
     if (!Drafts.enabled() || !CrmData.mine()) return '';
     const drafts = Cabinet.drafts || [];
-    const limit = Math.round(DEFN('ui.mdDrafts', 4));
+    const limit = Math.round(DefRegistry.num('ui.mdDrafts', 4));
     const rows = drafts
       .slice(0, limit)
       .map(
@@ -237,7 +248,9 @@ export class CabToday {
         '[data-mdr]',
         el =>
           this._leave(() =>
-            KpLoader.byId(Reminders.items[+el.dataset.mdr].id).catch(error => toast(`Не открылось: ${error.message}`)),
+            KpLoader.byId(Reminders.items[+el.dataset.mdr].id).catch(error =>
+              Toast.show(`Не открылось: ${error.message}`),
+            ),
           ),
       ],
       ['[data-mdall]', () => this._leave(() => Reminders.open())],

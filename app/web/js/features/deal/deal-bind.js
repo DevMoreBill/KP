@@ -15,6 +15,15 @@ import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { DealXlsx } from './deal-xlsx.js';
 import { InputNum } from './input-num.js';
+import { CbrRates } from '../kp/cbr-rates.js';
+import { Currency } from '../kp/currency.js';
+import { Toast } from '../../core/toast.js';
+import { today } from '../../core/util.js';
+import { FormView } from '../../ui/form-view.js';
+import { ObjPath, Price } from '../../core/str.js';
+import { Mobile } from '../../ui/mobile.js';
+import { SidePanel } from '../../ui/side-panel.js';
+import { KpState, S } from '../../core/state.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
@@ -50,14 +59,14 @@ export class DealBind {
   /** Расчёт изменён: сохранить черновик и правую панель. */
   touch() {
     S.deal.touched = true;
-    persist();
+    KpState.persist();
     SidePanel.render();
   }
 
   // правка цены, закупки, курса или НДС КП: updateLive сама перерисует правую панель и сохранит черновик
   _touchLive() {
     S.deal.touched = true;
-    updateLive();
+    SidePanel.updateLive();
   }
 
   _done() {
@@ -70,7 +79,7 @@ export class DealBind {
     if (!window.ResizeObserver) return;
     const dlg = this.dlg;
     new ResizeObserver(() => {
-      if (!dlg.open || isMob() || dlg.classList.contains('max')) return;
+      if (!dlg.open || Mobile.isPhone() || dlg.classList.contains('max')) return;
       clearTimeout(this.sizeTimer);
       this.sizeTimer = setTimeout(() => this._keepSize(), DealBind.RESIZE_MS);
     }).observe(dlg);
@@ -131,7 +140,7 @@ export class DealBind {
   }
 
   _setField(path, value) {
-    setPath(DealState.deal(), path, value);
+    ObjPath.set(DealState.deal(), path, value);
     DealDefaults.remember(path, value);
   }
 
@@ -152,7 +161,7 @@ export class DealBind {
   // цена в КП поменялась вручную — «цена для расчёта» больше не нужна
   _kpPrice(field) {
     const item = S.items[+field.dataset.kppI];
-    const price = parsePrice(field.value);
+    const price = Price.parse(field.value);
     item._priceText = field.value;
     item.price = Number.isNaN(price) ? 0 : price;
     item.priceManual = true;
@@ -193,14 +202,14 @@ export class DealBind {
     if (field.dataset.costI != null) {
       const item = S.items[+field.dataset.costI];
       if (!Number.isNaN(InputNum.parse(item._costText))) delete item._costText;
-      persist();
+      KpState.persist();
       DealWin.render();
     }
     if (field.dataset.kppI != null) {
       const item = S.items[+field.dataset.kppI];
-      if (!Number.isNaN(parsePrice(item._priceText))) delete item._priceText;
-      persist();
-      renderForm();
+      if (!Number.isNaN(Price.parse(item._priceText))) delete item._priceText;
+      KpState.persist();
+      FormView.render();
       DealWin.render();
     }
   }
@@ -288,27 +297,27 @@ export class DealBind {
   _rowDate(field) {
     const day = DealCal.isoDay(field.value);
     if (day == null || day < 0) {
-      toast('Дата раньше дня 0 — укажите дату не раньше подписания договора');
+      Toast.show('Дата раньше дня 0 — укажите дату не раньше подписания договора');
       DealWin.render();
       return;
     }
-    toast(DealRows.setRowDay(field.dataset.dldate, day));
+    Toast.show(DealRows.setRowDay(field.dataset.dldate, day));
     this._done();
   }
 
   _rowDay(field) {
     const day = InputNum.parse(field.value);
     if (!(Number.isInteger(day) && day >= 0)) {
-      toast('День — целое число от 0');
+      Toast.show('День — целое число от 0');
       DealWin.render();
       return;
     }
-    toast(DealRows.setRowDay(field.dataset.dlday, day));
+    Toast.show(DealRows.setRowDay(field.dataset.dlday, day));
     this._done();
   }
 
   _kpCur(field) {
-    kpSetCur(field.value);
+    Currency.setKp(field.value);
     this.touch();
   }
 
@@ -320,14 +329,14 @@ export class DealBind {
       if (!preset) return;
       deal.cust.tr = JSON.parse(JSON.stringify(preset[1]));
       deal.days = {};
-      toast(`Оплата заказчика: ${preset[0]}`);
+      Toast.show(`Оплата заказчика: ${preset[0]}`);
     } else {
       const preset = DealPresets.SUP[field.value];
       if (!preset) return;
       const sup = deal.sup[+field.dataset.k];
       sup.pay = JSON.parse(JSON.stringify(preset[1]));
       DealSuppliers.save(sup);
-      toast(`Оплата поставщику: ${preset[0]}`);
+      Toast.show(`Оплата поставщику: ${preset[0]}`);
     }
     this._done();
   }
@@ -339,17 +348,17 @@ export class DealBind {
     if (!DealCal.contractDate()) {
       deal.start = today();
       deal.startAuto = true;
-      toast('Дата договора — сегодня. Её можно изменить вверху окна');
+      Toast.show('Дата договора — сегодня. Её можно изменить вверху окна');
     }
     const base = +field.dataset.base || 0;
     const day = DealCal.isoDay(field.value);
     const count = DealBind._daysFrom(field.dataset.kind, base, day);
     if (!(count >= 0)) {
-      toast(`Дата раньше события, от которого считается срок (${DealCal.dayRu(base)}) — выберите дату позже`);
+      Toast.show(`Дата раньше события, от которого считается срок (${DealCal.dayRu(base)}) — выберите дату позже`);
       DealWin.render();
       return;
     }
-    setPath(deal, field.dataset.dldd, String(count));
+    ObjPath.set(deal, field.dataset.dldd, String(count));
     this._saveSupOf(field.dataset.dldd);
     this._done();
   }
@@ -371,13 +380,13 @@ export class DealBind {
 
   _costCur(field) {
     S.items[+field.dataset.costcurI].costCur = field.value;
-    if (field.value !== 'RUB' && !(rateOf(field.value) > 0)) loadCBR(true);
+    if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     this._touchLive();
     DealWin.render();
   }
 
   _kpDone() {
-    renderForm();
+    FormView.render();
   }
 
   _hsPick(field) {
@@ -385,7 +394,7 @@ export class DealBind {
     if (cat) {
       DealHs.set(field.dataset.hspick, { code: cat.code, duty: cat.duty });
       this.touch();
-      toast(`Код ${cat.code || '—'}, пошлина ${cat.duty === '' ? '— уточните' : `${cat.duty} %`} — «${cat.name}»`);
+      Toast.show(`Код ${cat.code || '—'}, пошлина ${cat.duty === '' ? '— уточните' : `${cat.duty} %`} — «${cat.name}»`);
     }
     DealWin.render();
   }
@@ -475,7 +484,7 @@ export class DealClicks {
   }
 
   static _cbr() {
-    loadCBR();
+    CbrRates.load();
   }
 
   static _xlsx() {
@@ -489,7 +498,7 @@ export class DealClicks {
   static _report(message, bind) {
     if (message) {
       bind.touch();
-      toast(message);
+      Toast.show(message);
     }
     DealWin.render();
   }
@@ -526,7 +535,7 @@ export class DealClicks {
   }
 
   static _reset(button, deal) {
-    setPath(deal, button.dataset.path, '');
+    ObjPath.set(deal, button.dataset.path, '');
   }
 
   static _resetDays(button, deal) {

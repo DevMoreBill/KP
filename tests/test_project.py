@@ -43,7 +43,7 @@ class ProjectRules(unittest.TestCase):
     def test_version_everywhere(self):
         v = re.search(r"VERSION = '([\d.]+)'", self.read('app', 'version.py')).group(1)
         help_js = self.read('app', 'web', 'js', 'features', 'help.js')
-        self.assertIn("let APP_VERSION = '%s'" % v, help_js, 'APP_VERSION в help.js — как в app/version.py')
+        self.assertIn("const APP_VERSION = '%s'" % v, help_js, 'APP_VERSION в help.js — как в app/version.py')
         first = re.search(r"const APP_VERSIONS = \[\s*\['([\d.]+)'", help_js)
         self.assertEqual(first and first.group(1), v, 'первая запись журнала изменений (APP_VERSIONS) — текущая версия')
 
@@ -57,7 +57,7 @@ class ProjectRules(unittest.TestCase):
             if not os.path.isfile(f):
                 continue
             with open(f, encoding='utf-8') as fh:
-                for dep in re.findall(r"^import [^;]*? from '(\./[^']+)';", fh.read(), re.M):
+                for dep in re.findall(r"^import (?:[^;']*? from )?'(\.\.?/[^']+)';", fh.read(), re.M):
                     rel = os.path.relpath(os.path.normpath(os.path.join(os.path.dirname(f), dep)), os.path.join(APP, 'web')).replace(os.sep, '/')
                     if rel not in linked:
                         linked.add(rel)
@@ -75,7 +75,7 @@ class ProjectRules(unittest.TestCase):
         if not node:
             self.skipTest('нет Node.js')
         f = os.path.join(APP, 'web', 'js', 'features', 'help.js')
-        r = subprocess.run([node, '-e', "new Function(require('fs').readFileSync(process.argv[1],'utf8'))", f], capture_output=True, text=True)
+        r = subprocess.run([node, '-e', "const m = require(process.argv[1]); if (!m.APP_VERSIONS.length || !m.HELP_SECTIONS.length) process.exit(1)", f], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr[-1500:])
 
     def test_no_databases_or_keys(self):

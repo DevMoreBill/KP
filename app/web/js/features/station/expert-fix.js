@@ -1,3 +1,29 @@
+import { Toast } from '../../core/toast.js';
+import { StationImages } from './station-images.js';
+import { S } from '../../core/state.js';
+import { esc } from '../../core/util.js';
+import { StationSize } from './station-size.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { StationSup } from '../tz/station-sup.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { ReceiverPlan } from '../layout/receiver-plan.js';
+import { AirChain } from '../layout/air-chain.js';
+import { ExpertLog } from '../req/expert-log.js';
+import { KitView } from '../kit/kit-view.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { StationUi } from './station-ui.js';
+import { StationCalc } from '../calc/station-calc.js';
+import { StationRules } from '../rules/station-rules.js';
+import { KitNeed } from '../kit/kit-need.js';
+import { ReceiverSync } from '../req/receiver-sync.js';
+import { ReqNum } from '../req/req-num.js';
+import { Kit } from '../kit/kit.js';
+import { StationReq } from '../req/station-req.js';
+import { StationMatrix } from '../layout/station-matrix.js';
+import { Mm } from '../layout/mm.js';
 /** Замечания одной станции без повторов; решение раздела — только к замечанию о нехватке. */
 class FixList {
   constructor() {
@@ -294,7 +320,7 @@ export class ExpertFix {
 
   /** расчёт станции (ошибки ввода — выше) и вопросы заказчику */
   static _calc(item, list) {
-    const calc = StationRules.ok() && typeof StationCalc !== 'undefined' ? StationCalc.run(item) : null;
+    const calc = StationRules.ok() ? StationCalc.run(item) : null;
     if (!calc) return;
     for (const issue of calc.issues.filter(row => row.level !== 'info' && !/^Требования: «/.test(row.text))) {
       const sec = /топлив|бак/i.test(issue.text) ? 'fuel' : this.CALC[issue.sec] || this.secOf(issue.text);
@@ -546,7 +572,7 @@ export class ExpertFix {
 
   static _mainBest(item) {
     const preset = KitNeed.mainPreset(item);
-    const card = preset && preset.best ? catCache.find(row => row.id === preset.best.id) : null;
+    const card = preset && preset.best ? Catalog.cache.find(row => row.id === preset.best.id) : null;
     return card ? { c: card, n: preset.best.n } : null;
   }
 
@@ -709,7 +735,7 @@ export class ExpertFix {
     const text = await this.fix(item, id);
     KitNeed.done(item);
     StationImages.soon(item);
-    toast(text ? `Сделано: ${text}` : 'Автоматически не решается — смотрите «Как решить»');
+    Toast.show(text ? `Сделано: ${text}` : 'Автоматически не решается — смотрите «Как решить»');
   }
 
   static async _actAll(item, sections) {
@@ -717,7 +743,7 @@ export class ExpertFix {
     KitNeed.done(item);
     StationImages.soon(item);
     const left = this.list(item).filter(row => row.bad).length;
-    toast(
+    Toast.show(
       (done.length ? `Сделано: ${done.join('; ')}` : 'Автоматически решить нечего') +
         (left ? `. Осталось ошибок: ${left} — смотрите «Как решить»` : ''),
     );

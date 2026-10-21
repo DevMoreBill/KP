@@ -2,6 +2,8 @@ import { LayoutDigest } from '../layout/layout-digest.js';
 import { LayoutEditor } from './layout-editor.js';
 import { LayoutParams } from '../layout/layout-params.js';
 import { StationMatrix } from '../layout/station-matrix.js';
+import { esc } from '../../core/util.js';
+import { StationEquip } from '../layout/station-equip.js';
 
 /** Разметка формы «Правила компоновки станций»: разделы чисел, таблицы матрицы, готовые наборы. */
 export class LayoutForm {

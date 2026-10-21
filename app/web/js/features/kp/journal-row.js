@@ -1,6 +1,10 @@
 import { ClientCard } from './client-card.js';
 import { Currency } from './currency.js';
 import { KpTrack } from './kp-track.js';
+import { Srv } from '../../core/net.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 
 /** «Иванов И. П.» из полного ФИО. */
 export class ShortName {
@@ -46,12 +50,15 @@ export class JournalEcon {
 
   static _sums(row, econ, cur) {
     const own = (econ ? econ.sum : row.sum) || 0;
-    return { sum: `${money(own)} ${Currency.short(cur)}`, sumRub: cur === 'RUB' ? own : (econ && econ.sumRub) || null };
+    return {
+      sum: `${KPGen.money(own)} ${Currency.short(cur)}`,
+      sumRub: cur === 'RUB' ? own : (econ && econ.sumRub) || null,
+    };
   }
 
   static _locked(row, cur) {
     return {
-      sum: `${money(row.sum || 0)} ${Currency.short(cur)}`,
+      sum: `${KPGen.money(row.sum || 0)} ${Currency.short(cur)}`,
       line: '<span class="muted">экономика — у автора КП</span>',
       sumRub: cur === 'RUB' ? row.sum || 0 : null,
       profitRub: null,
@@ -62,13 +69,13 @@ export class JournalEcon {
   static _deal(deal) {
     if (!deal.confirmed) {
       return {
-        line: `прибыль от ${money(deal.lo * this.KOPECKS)} до ${money(deal.hi * this.KOPECKS)} руб. <span class="muted">— нужен ввозной НДС</span>`,
+        line: `прибыль от ${KPGen.money(deal.lo * this.KOPECKS)} до ${KPGen.money(deal.hi * this.KOPECKS)} руб. <span class="muted">— нужен ввозной НДС</span>`,
         profitRub: null,
       };
     }
     const profit = Math.round(deal.profit * this.KOPECKS);
     return {
-      line: `<span class="${deal.profit < 0 ? 'bad-t' : 'ok-t'}">прибыль ${money(profit)} руб.</span> · маржа ${this._pct(deal.margin)} <span class="muted">по расчёту сделки</span>`,
+      line: `<span class="${deal.profit < 0 ? 'bad-t' : 'ok-t'}">прибыль ${KPGen.money(profit)} руб.</span> · маржа ${this._pct(deal.margin)} <span class="muted">по расчёту сделки</span>`,
       profitRub: profit,
     };
   }
@@ -79,7 +86,7 @@ export class JournalEcon {
     const part =
       econ.withCost < econ.positions ? ` <span class="muted">(${econ.withCost} из ${econ.positions} поз.)</span>` : '';
     return {
-      line: `<span class="${econ.profit < 0 ? 'bad-t' : 'ok-t'}">прибыль ${money(econ.profit)} ${Currency.short(cur)}</span> · маржа ${this._pct(econ.margin)}${part}${econ.discount ? ` · скидка ${money(econ.discount)}` : ''}`,
+      line: `<span class="${econ.profit < 0 ? 'bad-t' : 'ok-t'}">прибыль ${KPGen.money(econ.profit)} ${Currency.short(cur)}</span> · маржа ${this._pct(econ.margin)}${part}${econ.discount ? ` · скидка ${KPGen.money(econ.discount)}` : ''}`,
       profitRub: this._profitRub(econ, cur),
     };
   }
@@ -161,7 +168,7 @@ export class JournalRow {
         'Повторить КП',
         'Новое КП тому же клиенту: позиции те же, дата — сегодня, цены — как сейчас в каталоге',
       ),
-      SRV.info && SRV.info.local === false
+      Srv.info && Srv.info.local === false
         ? item(`data-a="openDoc" data-id="${id}"`, 'Скачать файл КП (Word)')
         : item(`data-a="openDoc" data-id="${id}"`, 'Открыть файл КП в Word'),
       row.file && FEAT.on('mail') ? item(`data-jm="${id}"`, 'Отправить клиенту…', 'Письмо клиенту с файлом КП') : '',

@@ -7,6 +7,11 @@ import { DealSteps } from './deal-steps.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { InputNum } from './input-num.js';
+import { Currency } from '../kp/currency.js';
+import { Fmt } from '../../core/str.js';
+import { S } from '../../core/state.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Вкладка «Закупка»: сборка станции у производителя контейнера, карточки поставщиков — где покупаем, позиции с ценой
@@ -218,7 +223,7 @@ export class DealSupplierCard {
 
   _lineSum(line) {
     if (!line.cost) return 0;
-    const rate = rateOf(line.costCur || 'RUB');
+    const rate = Currency.rate(line.costCur || 'RUB');
     const vatK = this.cs.noVat ? 1 + this.calc.v / DealPurchase.PCT : 1;
     return (line.cost / DealPurchase.KOPECKS) * (+line.qty || 0) * (rate || 0) * vatK;
   }

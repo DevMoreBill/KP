@@ -1,4 +1,12 @@
 import { KpDate } from './kp-date.js';
+import { Api } from '../../core/net.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Reminders } from './reminders.js';
+import { Toast } from '../../core/toast.js';
+import { Fmt } from '../../core/str.js';
+import { Modal } from '../../core/modal.js';
+import { esc, today } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 
 /**
  * Ход сделки по КП (сервер: app/kp_track.py): статус (подготовлено → отправлено → в работе → выиграно / проиграно),
@@ -124,7 +132,7 @@ export class KpTrack {
   static _quickLabel(days) {
     if (days === 1) return 'Завтра';
     if (days === this.WEEK) return 'Через неделю';
-    return `Через ${days} ${plural(days, 'день', 'дня', 'дней')}`;
+    return `Через ${days} ${KPGen.plural(days, 'день', 'дня', 'дней')}`;
   }
 
   static _remindBox(followUp) {
@@ -174,10 +182,10 @@ export class KpTrack {
     try {
       const answer = await this.put(row.id, { followUp: { done: true } });
       if (onSave) onSave(answer.track);
-      toast('Напоминание выполнено');
+      Toast.show('Напоминание выполнено');
       modal.close();
     } catch (error) {
-      toast(`Не сохранено: ${error.message}`);
+      Toast.show(`Не сохранено: ${error.message}`);
     }
   }
 
@@ -190,11 +198,11 @@ export class KpTrack {
     try {
       const answer = await this.put(row.id, body);
       if (onSave) onSave(answer.track);
-      toast(`КП № ${row.number}: ${this.STATUS[status].toLowerCase()}`);
+      Toast.show(`КП № ${row.number}: ${this.STATUS[status].toLowerCase()}`);
       modal.close();
       Reminders.load();
     } catch (error) {
-      toast(`Не сохранено: ${error.message}`);
+      Toast.show(`Не сохранено: ${error.message}`);
     }
   }
 
@@ -203,7 +211,7 @@ export class KpTrack {
    * @returns {number[]}
    */
   static quick() {
-    const days = String(DEF('kp.remQuick') || '')
+    const days = String(DefRegistry.value('kp.remQuick') || '')
       .split(/[,;\s]+/)
       .map(value => Math.round(+value))
       .filter(value => value >= 1 && value <= this.DAYS_MAX);
@@ -217,7 +225,7 @@ export class KpTrack {
    * @returns {Promise<object>} {track}
    */
   static put(id, body) {
-    return api(`/api/kp/${encodeURIComponent(id)}/track`, {
+    return Api.request(`/api/kp/${encodeURIComponent(id)}/track`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify(body),

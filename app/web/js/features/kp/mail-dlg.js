@@ -1,6 +1,11 @@
 import { KpDate } from './kp-date.js';
 import { MyPrefs } from './my-prefs.js';
 import { Reminders } from './reminders.js';
+import { esc } from '../../core/util.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { Fmt } from '../../core/str.js';
 
 /** Письмо клиенту с файлом КП (сервер отправляет через почту из «Настройки → Почта»). */
 export class MailDlg {
@@ -35,17 +40,17 @@ export class MailDlg {
   static async open(id, number, onSent) {
     let form;
     try {
-      form = await api(`/api/kp/${encodeURIComponent(id)}/mailform`);
+      form = await Api.request(`/api/kp/${encodeURIComponent(id)}/mailform`);
     } catch (error) {
-      toast(`Не удалось подготовить письмо: ${error.message}`);
+      Toast.show(`Не удалось подготовить письмо: ${error.message}`);
       return;
     }
     if (!form.on) {
-      toast('Почта не настроена — администратор: «Настройки → Почта»');
+      Toast.show('Почта не настроена — администратор: «Настройки → Почта»');
       return;
     }
     if (!form.word) {
-      toast('Файл КП не найден — сохраните КП');
+      Toast.show('Файл КП не найден — сохраните КП');
       return;
     }
     form = MyPrefs.mail(form); // подпись и копия себе — из «Моих настроек»
@@ -92,12 +97,12 @@ export class MailDlg {
     button.textContent = 'Отправляю…';
     msg.hidden = true;
     try {
-      const answer = await api(`/api/kp/${encodeURIComponent(id)}/send`, {
+      const answer = await Api.request(`/api/kp/${encodeURIComponent(id)}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(this._body(modal)),
       });
-      toast(`КП № ${number} отправлено: ${modal.$('#mlTo').value}`);
+      Toast.show(`КП № ${number} отправлено: ${modal.$('#mlTo').value}`);
       if (onSent) onSent(answer.track);
       modal.close();
       Reminders.load();

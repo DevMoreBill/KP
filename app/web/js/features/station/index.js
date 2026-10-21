@@ -27,9 +27,6 @@ export const STATION = {
   StationUi,
 };
 
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, STATION);
-
 Spoiler.listen();
 StationQuick.listen();
 StationBrief.listen();

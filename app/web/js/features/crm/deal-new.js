@@ -4,6 +4,11 @@ import { CrmTask } from './crm-task.js';
 import { DealCard } from './deal-card.js';
 import { Cabinet } from './cabinet.js';
 import { ClientSuggest } from './client-suggest.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { Str } from '../../core/str.js';
+import { ClientStore } from '../kp/client-store.js';
+import { Modal } from '../../core/modal.js';
 
 /**
  * «Новая сделка» без КП: клиент с подсказкой из справочника, задача, сумма, ожидаемая дата чипом, воронка и сразу первое
@@ -56,7 +61,9 @@ export class DealNew {
 
   static _client(text) {
     const digits = text.replace(/\D/g, '');
-    return (CLIENTS || []).find(row => norm(row.name) === norm(text) || (row.inn && row.inn === digits));
+    return (ClientStore.list || []).find(
+      row => Str.norm(row.name) === Str.norm(text) || (row.inn && row.inn === digits),
+    );
   }
 
   static _found(modal) {
@@ -93,14 +100,14 @@ export class DealNew {
   static async _create(form, modal) {
     const fields = form.elements;
     if (!fields.client.value.trim() && !fields.title.value.trim()) {
-      toast('Укажите клиента');
+      Toast.show('Укажите клиента');
       fields.client.focus();
       return;
     }
     if (form.dataset.busy) return;
     form.dataset.busy = '1';
     try {
-      const deal = await api('/api/crm/deal', {
+      const deal = await Api.request('/api/crm/deal', {
         method: 'POST',
         headers: this.HEAD,
         body: JSON.stringify(this._body(fields)),
@@ -110,7 +117,7 @@ export class DealNew {
       if (document.getElementById('cabWin')?.open) await Cabinet.reload();
       DealCard.open(deal.id);
     } catch (error) {
-      toast(`Сделка не создана: ${error.message}`);
+      Toast.show(`Сделка не создана: ${error.message}`);
     } finally {
       delete form.dataset.busy;
     }
@@ -128,9 +135,9 @@ export class DealNew {
     };
     if (deal.managerId) body.managerId = deal.managerId;
     try {
-      await api('/api/crm/task', { method: 'POST', headers: this.HEAD, body: JSON.stringify(body) });
+      await Api.request('/api/crm/task', { method: 'POST', headers: this.HEAD, body: JSON.stringify(body) });
     } catch (error) {
-      toast(`Сделка создана, дело — нет: ${error.message}`);
+      Toast.show(`Сделка создана, дело — нет: ${error.message}`);
     }
   }
 }

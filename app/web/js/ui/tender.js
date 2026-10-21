@@ -1,4 +1,8 @@
 import { UiKit } from './ui-kit.js';
+import { KpFile } from '../features/doc/kp-file.js';
+import { esc } from '../core/util.js';
+import { S } from '../core/state.js';
+import { FEAT } from '../core/features.js';
 
 /** Вид КП «для тендера»: номер и ссылка на закупку — в КП, журнале и имени файла «<номер> КП …». */
 export class Tender {

@@ -1,5 +1,10 @@
 import { Mm } from '../layout/mm.js';
 import { RalColor } from '../layout/ral-color.js';
+import { ImageFiles } from '../catalog/images.js';
+import { StOutfit } from './st-outfit.js';
+import { S } from '../../core/state.js';
+import { Templates } from '../doc/templates.js';
+import { Logos } from '../catalog/image-slots.js';
 
 const FONT = '"Arial Black", "Segoe UI Black", "Helvetica Neue", Arial, sans-serif';
 const RED = '#c8102e';
@@ -45,9 +50,9 @@ export class StDecal {
   /** Производитель без поля «Производитель» — по названию (есть в каталоге логотипов), пропорции табличек, логотип организации. */
   static async meta(plan, meta) {
     let all = {};
-    if (typeof loadLogos === 'function') {
+    {
       try {
-        all = (await loadLogos()) || {};
+        all = (await Logos.load()) || {};
       } catch {
         all = {};
       }
@@ -81,14 +86,14 @@ export class StDecal {
 
   /** Пропорции таблички логотипа производителя (по картинке логотипа). */
   static logoShape(logos, maker) {
-    const logo = maker && typeof logoFor === 'function' ? logoFor(maker) : null;
+    const logo = maker ? Logos.of(maker) : null;
     if (logo && logo.w > 0 && logo.h > 0)
       logos[maker.toLowerCase()] = Math.max(1.2, Math.min(8, (logo.w / logo.h + 0.36) / 1.36));
   }
 
   /** Логотип организации: части надписи с цветами из шаблона КП; «ПНЕВМОТЕХ» — фирменные синие всегда. */
   static brandParts() {
-    const pack = typeof Templates !== 'undefined' && typeof S !== 'undefined' ? Templates.cache[S.template] : null;
+    const pack = Templates.cache[S.template] || null;
     const settings = (pack && pack.settings) || {};
     const col = settings.colors || {};
     const parts = (settings.brandParts || [])
@@ -106,7 +111,7 @@ export class StDecal {
       const src = StDecal.srcOf(decal);
       if (!src || StDecal.imgs.has(src)) continue;
       try {
-        StDecal.imgs.set(src, await readImg(src));
+        StDecal.imgs.set(src, await ImageFiles.read(src));
       } catch {
         StDecal.imgs.set(src, null);
       }
@@ -116,7 +121,7 @@ export class StDecal {
   /** Адрес картинки наклейки. */
   static srcOf(decal) {
     if (decal.type === 'art') return decal.src;
-    return decal.type === 'logo' && typeof logoFor === 'function' ? (logoFor(decal.maker) || {}).src : null;
+    return decal.type === 'logo' ? (Logos.of(decal.maker) || {}).src : null;
   }
 
   /** Холст наклейки: ширина до 1024 точек, высота — по пропорции. */
@@ -278,7 +283,7 @@ export class StDecal {
 
   /** Логотип производителя: картинка на светлой табличке или название цветом, контрастным корпусу. */
   static logo(ctx, width, height, decal) {
-    const logo = typeof logoFor === 'function' ? logoFor(decal.maker) : null;
+    const logo = Logos.of(decal.maker);
     const image = logo && StDecal.imgs.get(logo.src);
     if (image) {
       ctx.fillStyle = '#ffffff';

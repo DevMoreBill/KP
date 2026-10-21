@@ -1,4 +1,6 @@
 import { Api } from './net.js';
+import { Attrs } from './item-attrs.js';
+import { Uid, esc } from './util.js';
 
 /**
  * Типы оборудования (категории): справочник TYPES (встроенные из app/equipment_types.json + свои отдела, с сервера),
@@ -6,6 +8,10 @@ import { Api } from './net.js';
  * заменяет массив целиком (окна, которые помнят разбор по TYPES, видят, что справочник сменился).
  */
 export class EquipTypes {
+  // встроенный справочник для сравнения
+  static builtin = null;
+  // типы оборудования: встроенные и свои отдела; загрузка заменяет массив целиком
+  static list = [];
   static LEGACY = { ДГУ: 'dgu', 'Осветительная мачта': 'light', 'Шкаф АВР': 'ats', Прочее: 'other', Опция: 'ats' };
   static DEFAULT_OPTIONS = [
     ['Доставка до объекта', 'доставка', 'усл.'],
@@ -17,8 +23,10 @@ export class EquipTypes {
    * @returns {object[]}
    */
   static user() {
-    const base = new Map(((TYPES_BUILTIN && TYPES_BUILTIN.types) || []).map(type => [type.id, JSON.stringify(type)]));
-    return TYPES.filter(type => base.get(type.id) !== JSON.stringify(type));
+    const base = new Map(
+      ((EquipTypes.builtin && EquipTypes.builtin.types) || []).map(type => [type.id, JSON.stringify(type)]),
+    );
+    return EquipTypes.list.filter(type => base.get(type.id) !== JSON.stringify(type));
   }
 
   /**
@@ -27,7 +35,9 @@ export class EquipTypes {
    * @returns {object}
    */
   static byId(id) {
-    return TYPES.find(type => type.id === id) || TYPES.find(type => type.id === 'other') || this._other();
+    return (
+      EquipTypes.list.find(type => type.id === id) || EquipTypes.list.find(type => type.id === 'other') || this._other()
+    );
   }
 
   // справочник ещё не загружен: каждый раз новый объект — его могут дополнить на месте
@@ -64,7 +74,7 @@ export class EquipTypes {
   // категория задана в позиции: своя, опция, прежнее название типа
   static _own(item) {
     const attrs = (item && item.attrs) || null;
-    if (attrs && attrs.cat && TYPES.some(type => type.id === attrs.cat)) return attrs.cat;
+    if (attrs && attrs.cat && EquipTypes.list.some(type => type.id === attrs.cat)) return attrs.cat;
     if (item && item.kind === 'option') return 'ats';
     return attrs && this.LEGACY[attrs.type] ? this.LEGACY[attrs.type] : '';
   }
@@ -75,9 +85,9 @@ export class EquipTypes {
   }
 
   static _byText(text) {
-    const hit = TYPES.find(type => type.id !== 'dgu' && type.match && this._test(type.match, text));
+    const hit = EquipTypes.list.find(type => type.id !== 'dgu' && type.match && this._test(type.match, text));
     if (hit) return hit.id;
-    const dgu = TYPES.find(type => type.id === 'dgu');
+    const dgu = EquipTypes.list.find(type => type.id === 'dgu');
     return dgu && this._test(dgu.match, text) ? 'dgu' : '';
   }
 
@@ -94,12 +104,12 @@ export class EquipTypes {
   static async load() {
     try {
       const reply = await Api.request('/api/types');
-      if (reply && Array.isArray(reply.types)) TYPES = reply.types;
+      if (reply && Array.isArray(reply.types)) EquipTypes.list = reply.types;
     } catch {
       // сервер недоступен — прежний справочник
     }
     try {
-      if (!TYPES_BUILTIN) TYPES_BUILTIN = await Api.request('/api/types?builtin=1');
+      if (!EquipTypes.builtin) EquipTypes.builtin = await Api.request('/api/types?builtin=1');
     } catch {
       // без встроенного — все типы считаются своими
     }
@@ -111,10 +121,11 @@ export class EquipTypes {
    * @returns {string}
    */
   static optionsHtml(selected) {
-    const groups = [...new Set(TYPES.map(type => type.group || 'Прочее'))];
+    const groups = [...new Set(EquipTypes.list.map(type => type.group || 'Прочее'))];
     return groups
       .map(group => {
-        const options = TYPES.filter(type => (type.group || 'Прочее') === group)
+        const options = EquipTypes.list
+          .filter(type => (type.group || 'Прочее') === group)
           .map(
             type =>
               `<option value="${esc(type.id)}"${type.id === selected ? ' selected' : ''}>${esc(type.name)}</option>`,
@@ -140,7 +151,7 @@ export class EquipTypes {
    * @returns {object[]}
    */
   static allPresets() {
-    return TYPES.flatMap(type => (type.options || []).map(option => this.option(option)));
+    return EquipTypes.list.flatMap(type => (type.options || []).map(option => this.option(option)));
   }
 
   /**
@@ -149,7 +160,7 @@ export class EquipTypes {
    * @returns {object[]}
    */
   static presetsFor(item) {
-    const type = this.byId(attrsOf(item).cat);
+    const type = this.byId(Attrs.of(item).cat);
     const list = type.options && type.options.length ? type.options : this.DEFAULT_OPTIONS;
     return list.map(option => this.option(option));
   }
@@ -163,7 +174,7 @@ export class EquipTypes {
   static newOpt(item, preset) {
     const from = preset || {};
     return {
-      id: uid(),
+      id: Uid.next(),
       name: from.name || '',
       short: from.short || '',
       unit: from.unit || 'шт.',

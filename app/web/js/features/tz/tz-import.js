@@ -1,6 +1,26 @@
 import { StationGeo } from '../layout/station-geo.js';
 import { TzPick } from './tz-pick.js';
 import { TzQuestions } from './tz-questions.js';
+import { StationAuto, StationName } from '../kit/station-auto.js';
+import { StationSize } from '../station/station-size.js';
+import { StationDefaults } from '../kit/station-defaults.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { StationImages } from '../station/station-images.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { FormView } from '../../ui/form-view.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { Spoiler } from '../station/spoiler.js';
+import { AiDirect } from '../catalog/ai-chat.js';
+import { AirChain } from '../layout/air-chain.js';
+import { StationUi } from '../station/station-ui.js';
+import { Kit } from '../kit/kit.js';
+import { StationReq } from '../req/station-req.js';
+import { KpState, S } from '../../core/state.js';
+import { Api } from '../../core/net.js';
+import { $, esc } from '../../core/util.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -113,11 +133,11 @@ export class TzImport {
   static _pasted(modal, i) {
     const text = String(modal.$('[data-tzt]').value || '').trim();
     if (text.length < this.LIMIT.text) {
-      toast('Вставьте текст ТЗ — хотя бы пару строк с требованиями');
+      Toast.show('Вставьте текст ТЗ — хотя бы пару строк с требованиями');
       return;
     }
     modal.close();
-    toast('Читаю ТЗ…');
+    Toast.show('Читаю ТЗ…');
     this.parse(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'ТЗ (текст из окна).txt', i);
   }
 
@@ -132,10 +152,10 @@ export class TzImport {
       picker.accept = '';
       if (!file) return;
       if (file.size > this.LIMIT.fileMb * 1024 * 1024) {
-        toast(`Файл больше ${this.LIMIT.fileMb} МБ`);
+        Toast.show(`Файл больше ${this.LIMIT.fileMb} МБ`);
         return;
       }
-      toast(/\.(png|jpe?g|tiff?|bmp)$/i.test(file.name) ? 'Распознаю скан ТЗ…' : 'Читаю ТЗ…');
+      Toast.show(/\.(png|jpe?g|tiff?|bmp)$/i.test(file.name) ? 'Распознаю скан ТЗ…' : 'Читаю ТЗ…');
       this.parse(file, file.name, i);
     };
     picker.click();
@@ -145,13 +165,13 @@ export class TzImport {
   static async parse(body, name, i) {
     let parsed;
     try {
-      parsed = await api(`/api/tz/parse?name=${encodeURIComponent(name)}`, {
+      parsed = await Api.request(`/api/tz/parse?name=${encodeURIComponent(name)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body,
       });
     } catch (err) {
-      toast(String(err?.message || err));
+      Toast.show(String(err?.message || err));
       return;
     }
     this.open(parsed, name, i);
@@ -259,14 +279,15 @@ export class TzImport {
   static _sum(fields, found) {
     if (fields.length) {
       const count = status => fields.filter(field => field.status === status).length;
-      return `Из ТЗ взято ${count('found')} ${plural(count('found'), 'параметр', 'параметра', 'параметров')}${count('default') + count('missing') ? `; остальное — по умолчанию, с запасом в пользу заказчика` : ''}${count('conflict') ? `; разные значения в ТЗ (${count('conflict')}) — принято более требовательное` : ''}.`;
+      return `Из ТЗ взято ${count('found')} ${KPGen.plural(count('found'), 'параметр', 'параметра', 'параметров')}${count('default') + count('missing') ? `; остальное — по умолчанию, с запасом в пользу заказчика` : ''}${count('conflict') ? `; разные значения в ТЗ (${count('conflict')}) — принято более требовательное` : ''}.`;
     }
-    if (found.length) return `Из ТЗ взято ${found.length} ${plural(found.length, 'значение', 'значения', 'значений')}.`;
+    if (found.length)
+      return `Из ТЗ взято ${found.length} ${KPGen.plural(found.length, 'значение', 'значения', 'значений')}.`;
     return 'В тексте не нашлось числовых требований — впишите главное сами.';
   }
 
   static _aiOn() {
-    return typeof AI_DIRECT !== 'undefined' && AI_DIRECT.enabled;
+    return AiDirect.state.enabled;
   }
 
   static _qButtons() {
@@ -468,9 +489,9 @@ export class TzImport {
       .join('\n');
     try {
       await navigator.clipboard.writeText(text);
-      toast('Вопросы скопированы');
+      Toast.show('Вопросы скопированы');
     } catch {
-      toast('Не удалось скопировать — выделите текст вручную');
+      Toast.show('Не удалось скопировать — выделите текст вручную');
     }
   }
 
@@ -483,7 +504,7 @@ export class TzImport {
     } catch (err) {
       ok.disabled = false;
       ok.textContent = 'Повторить';
-      toast(`Не получилось: ${err?.message || err}`);
+      Toast.show(`Не получилось: ${err?.message || err}`);
     }
   }
 
@@ -500,7 +521,7 @@ export class TzImport {
   static async _aiAsk(prompt) {
     try {
       return JSON.parse(
-        String(await aiDirect(prompt))
+        String(await AiDirect.ask(prompt))
           .replace(/^[^{]*/, '')
           .replace(/[^}]*$/, ''),
       );
@@ -513,10 +534,10 @@ export class TzImport {
   static async askAi() {
     const need = this.read();
     const text = String(this.cur.r.text || '').slice(0, this.LIMIT.ai);
-    toast('Спрашиваю ИИ…');
+    Toast.show('Спрашиваю ИИ…');
     const answer = await this._aiAsk(this._aiPrompt(text));
     if (!answer) {
-      toast('ИИ не ответил понятно — поля оставлены как есть');
+      Toast.show('ИИ не ответил понятно — поля оставлены как есть');
       return;
     }
     const ctx = {
@@ -529,7 +550,7 @@ export class TzImport {
     this.cur.ai = ctx.diff;
     this.redraw();
     const bad = ctx.diff.filter(diff => !diff.same && diff.rule != null).length;
-    toast(
+    Toast.show(
       (count ? `ИИ дополнил полей: ${count}` : 'ИИ не нашёл ничего сверх найденного') +
         (bad ? `; расхождений с правилами: ${bad} — смотрите «Сравнение с ИИ»` : ''),
     );
@@ -594,12 +615,12 @@ export class TzImport {
     const req = this._req(station, need, cur);
     if (cur.pick) req.pick = (await TzPick.assemble(station, this._pickQ(need))).slice(0, this.LIMIT.pick);
     else this._fill(station, need, req);
-    persist();
+    KpState.persist();
     this.m.close();
-    renderForm();
-    openEditor(i, 'kit');
+    FormView.render();
+    ItemEditor.open(i, 'kit');
     StationImages.soon(station);
-    toast(
+    Toast.show(
       cur.pick
         ? 'Станция подобрана и скомпонована по ТЗ — итог в «Подборе станции»'
         : 'Требования из ТЗ записаны в станцию',
@@ -609,8 +630,8 @@ export class TzImport {
   /** Станция из окна; нет — новая станция в КП. */
   static _station(cur, need) {
     if (cur.i != null && S.items[cur.i]) return { x: S.items[cur.i], i: cur.i };
-    const type = typeById((this.KINDS.find(z => z[0] === need.kind) || this.KINDS[0])[2]);
-    const station = newItem();
+    const type = EquipTypes.byId((this.KINDS.find(z => z[0] === need.kind) || this.KINDS[0])[2]);
+    const station = KpState.newItem();
     station.attrs = { cat: type.id };
     station.page = true;
     station.features = [];

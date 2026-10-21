@@ -3,6 +3,7 @@ import { StationMatrix } from '../layout/station-matrix.js';
 import { AirDemand } from './air-demand.js';
 import { CalcInput } from './calc-input.js';
 import { CalcNote } from './calc-note.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /** ДГУ: мощность PRP/ESP против нагрузки, средняя и малая нагрузка, высота и жара, пуск двигателя, топливо. */
 export class GensetSizing {

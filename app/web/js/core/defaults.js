@@ -1,7 +1,10 @@
+import { ContainerKind } from '../features/kit/container-kind.js';
+import { DealPresets } from '../features/deal/deal-presets.js';
+import { KpConditions } from './conditions.js';
+
 // Значения по умолчанию программы («Настройки → Значения программы»; сервер: app/defaults.py, kv settings.defaults =
-// {ключ: {on, v}}). Обычный скрипт: разделы регистрируют свои значения при загрузке страницы, новое КП (core/state.js)
-// читает их до ES-модулей. Последние значения с сервера хранятся в браузере — новое КП получает их и до ответа сервера.
-'use strict';
+// {ключ: {on, v}}). Разделы регистрируют свои значения при загрузке, новое КП (core/state.js) читает их сразу. Последние
+// значения с сервера хранятся в браузере — новое КП получает их и до ответа сервера.
 
 /**
  * Реестр значений программы. Раздел добавляет свои значения из своего файла — DefRegistry.add(группы, значения);
@@ -9,7 +12,7 @@
  * bool), встроенное значение, доп.]; доп.: unit, hint (что это и на что влияет), opts (для select — [[значение, подпись]]
  * или функция), min / max (для num), req (всегда действует — переключателя нет), off (выключено, если не задано).
  */
-class DefRegistry {
+export class DefRegistry {
   // разделы админки: [id, название, пояснение]
   static SECTIONS = [
     [
@@ -35,6 +38,10 @@ class DefRegistry {
   // группа → раздел
   static GSEC = { kp: 'kp', cond: 'kp', mgr: 'kp', deal: 'deal', st: 'st', img: 'cat', ai: 'cat' };
   static STORE = 'kp.defaults';
+  // личное значение менеджера («Мои настройки»): подключает раздел КП (MyPrefs.def)
+  static personal = null;
+  // значения администратора с сервера: {ключ: {on, v}} (переписывает и «Настройки → Значения программы»)
+  static srv = this.stored();
 
   /**
    * Добавить группы и значения (повторный ключ не добавляется).
@@ -89,13 +96,18 @@ class DefRegistry {
   static value(key) {
     const schema = DEF_BY[key];
     if (!schema) return null;
-    const mine = typeof MyPrefs !== 'undefined' ? MyPrefs.def(key) : null;
-    if (mine != null) return mine;
-    const [, , , type, builtin, opts = {}] = schema;
-    const srv = DEFS_SRV[key];
-    const enabled = srv && typeof srv === 'object' && 'on' in srv ? !!srv.on || !!opts.req : !opts.off;
-    if (type === 'bool') return srv && 'on' in srv ? !!srv.on : !!builtin;
-    if (!enabled) return null;
+    const mine = this.personal ? this.personal(key) : null;
+    return mine != null ? mine : this._admin(schema, this.srv[key]);
+  }
+
+  static _admin([, , , type, builtin, opts = {}], srv) {
+    const set = Boolean(srv) && typeof srv === 'object' && 'on' in srv;
+    if (type === 'bool') return set ? !!srv.on : !!builtin;
+    const enabled = set ? !!srv.on || !!opts.req : !opts.off;
+    return enabled ? this._text(srv, builtin) : null;
+  }
+
+  static _text(srv, builtin) {
     const value = srv && srv.v != null && String(srv.v).trim() !== '' ? srv.v : builtin;
     return value == null ? null : String(value);
   }
@@ -124,26 +136,21 @@ class DefRegistry {
     }
   }
 
-  /** Значения администратора с сервера (сервер недоступен — остаются значения из браузера). */
-  static async load() {
+  /**
+   * Значения администратора с сервера (/api/defaults) — запомнить и в браузере.
+   * @param {object} reply
+   */
+  static use(reply) {
+    this.srv = reply && typeof reply === 'object' ? reply : {};
     try {
-      const reply = await api('/api/defaults');
-      DEFS_SRV = reply && typeof reply === 'object' ? reply : {};
-      try {
-        localStorage.setItem(this.STORE, JSON.stringify(DEFS_SRV));
-      } catch {
-        // без хранилища браузера
-      }
+      localStorage.setItem(this.STORE, JSON.stringify(this.srv));
     } catch {
-      // сервер недоступен — значения из браузера
+      // без хранилища браузера
     }
   }
 }
 
-// значения администратора: {ключ: {on, v}} (переписывает и «Настройки → Значения программы»)
-let DEFS_SRV = DefRegistry.stored();
-
-const DEF_GROUPS = [
+export const DEF_GROUPS = [
   ['kp', 'Новое КП'],
   ['cond', 'Условия КП'],
   ['mgr', 'Контакты компании (новый менеджер)'],
@@ -152,7 +159,7 @@ const DEF_GROUPS = [
   ['img', 'Фото со страницы товара'],
   ['ai', 'Автозаполнение'],
 ];
-const DEF_SCHEMA = [
+export const DEF_SCHEMA = [
   ['kp.city', 'kp', 'Город в КП', 'text', 'Москва'],
   [
     'kp.vat',
@@ -203,7 +210,7 @@ const DEF_SCHEMA = [
       '',
       {
         off: true,
-        list: () => (typeof COND !== 'undefined' ? (COND.find(cond => cond[0] === label) || [])[1] || [] : []),
+        list: () => (KpConditions.LIST.find(cond => cond[0] === label) || [])[1] || [],
       },
     ],
   ),
@@ -224,22 +231,8 @@ const DEF_SCHEMA = [
   ['deal.startToday', 'deal', 'Дата договора — сегодня (с напоминанием «уточните»)', 'bool', true],
   ['deal.prod', 'deal', 'Срок изготовления у поставщика', 'num', '40', { unit: 'дн.' }],
   ['deal.ship', 'deal', 'Срок доставки до заказчика', 'num', '40', { unit: 'дн.' }],
-  [
-    'deal.supPay',
-    'deal',
-    'Оплата поставщику',
-    'select',
-    'a20',
-    { opts: () => (typeof DealPresets !== 'undefined' ? DealPresets.options(DealPresets.SUP) : []) },
-  ],
-  [
-    'deal.custPay',
-    'deal',
-    'Оплата заказчика',
-    'select',
-    'post',
-    { opts: () => (typeof DealPresets !== 'undefined' ? DealPresets.options(DealPresets.CUST) : []) },
-  ],
+  ['deal.supPay', 'deal', 'Оплата поставщику', 'select', 'a20', { opts: () => DealPresets.options(DealPresets.SUP) }],
+  ['deal.custPay', 'deal', 'Оплата заказчика', 'select', 'post', { opts: () => DealPresets.options(DealPresets.CUST) }],
   ['deal.spread', 'deal', 'Стоимость денег: ключевая ставка ЦБ плюс', 'num', '3', { unit: 'п.п. годовых', req: true }],
   ['deal.tax', 'deal', 'Налог на прибыль', 'num', '25', { unit: '%', req: true }],
   ['deal.bgRate', 'deal', 'Ставка банковской гарантии', 'num', '3', { unit: '% годовых', req: true }],
@@ -273,7 +266,7 @@ const DEF_SCHEMA = [
     'select',
     '100 мм',
     {
-      opts: () => (typeof ContainerKind !== 'undefined' ? ContainerKind.INSULATION.map(value => [value, value]) : []),
+      opts: () => ContainerKind.INSULATION.map(value => [value, value]),
     },
   ],
   [
@@ -294,10 +287,7 @@ const DEF_SCHEMA = [
     'select',
     'УХЛ1',
     {
-      opts: () =>
-        typeof ContainerKind !== 'undefined'
-          ? ContainerKind.CLIMATES.map(climate => [climate[0], `${climate[0]} — ${climate[1]}`])
-          : [],
+      opts: () => ContainerKind.CLIMATES.map(climate => [climate[0], `${climate[0]} — ${climate[1]}`]),
     },
   ],
   ['img.mainOnly', 'img', 'Отмечать только главное фото (остальные — по выбору)', 'bool', true],
@@ -321,14 +311,9 @@ const DEF_SCHEMA = [
     { hint: 'Галочка в шаге «Проверьте и заполните»: ИИ дописывает только пустые поля.' },
   ],
 ];
-const DEF_GROUP_HINTS = {
+export const DEF_GROUP_HINTS = {
   cond: 'Текст условия в новом КП. Срок поставки, условия оплаты и монтаж подставляются и из «Экономики сделки», пока поле не правили вручную.',
   mgr: 'Подставляются в контакты нового менеджера (раздел «Менеджер»).',
   img: 'Для «Загрузить со страницы» в автозаполнении и кнопки «Фото с сайта поставщика».',
 };
-const DEF_BY = Object.fromEntries(DEF_SCHEMA.map(row => [row[0], row]));
-
-// прежние имена — их вызывают все разделы
-const DEF = key => DefRegistry.value(key);
-const DEFN = (key, fallback) => DefRegistry.num(key, fallback);
-const defaultsLoad = () => DefRegistry.load();
+export const DEF_BY = Object.fromEntries(DEF_SCHEMA.map(row => [row[0], row]));

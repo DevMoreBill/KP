@@ -1,4 +1,8 @@
 import { ClientStore, Inn, PartyFind } from './client-store.js';
+import { S } from '../../core/state.js';
+import { $, esc } from '../../core/util.js';
+import { Str } from '../../core/str.js';
+import { Debounce } from '../../core/debounce.js';
 
 /** «Найден по контакту»: кто и чем совпал (телефон, e-mail, ФИО) — сервер отмечает в ответе поиска клиентов. */
 export class ClientMatchText {
@@ -32,7 +36,7 @@ export class ClientFind {
    */
   static async run(input) {
     const raw = input.value.trim();
-    const query = norm(raw);
+    const query = Str.norm(raw);
     const list = $('#clList');
     const seq = ++this.seq;
     const found = query ? await ClientStore.find(raw) : [];
@@ -107,7 +111,7 @@ export class ClientFind {
     document.addEventListener('click', event => {
       const button = event.target.closest('[data-clid]');
       if (!button) return;
-      const client = CLIENTS.find(row => row.id === button.dataset.clid);
+      const client = ClientStore.list.find(row => row.id === button.dataset.clid);
       if (client) ClientStore.apply(client);
     });
   }

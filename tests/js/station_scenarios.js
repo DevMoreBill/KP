@@ -9,17 +9,16 @@ const vm=require('vm'), fs=require('fs'), path=require('path');
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 
 global.document={ addEventListener(){} };
-global.uid=(()=>{ let n=0; return ()=>'p'+(++n); })();
-global.attrsOf=d=>Object.assign({}, d.attrs||{});
 const TYPES={ st_comp:{ station:{ main:['comp_screw', 'comp_piston'] } }, st_pump:{ station:{ main:['pump'] } }, st_dgu:{ station:{ main:['dgu'] } } };
-global.typeById=id=>TYPES[id]||{};
-global.DEF=()=>null; global.FEAT={ on:()=>true };
-global.esc=s=>String(s??'');
-Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js')));   // Money — показ сумм (ES-модуль)
 for (const f of ['deal/index.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'req/index.js', 'station/index.js', 'eskd/index.js', 'view/index.js', 'draw/index.js', 'tz/index.js', 'tz-out/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
-global.S={};
+// окружение: номера позиций по порядку, разбор — только поля карточки, свои типы оборудования, без «Значений программы»
+{ let n=0; Uid.next=()=>'p'+(++n); }
+Attrs.of=d=>Object.assign({}, d.attrs||{});
+EquipTypes.byId=id=>TYPES[id]||{};
+DefRegistry.value=()=>null; FEAT.on=()=>true;
+KpState.replace({});
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
 if (GOLDEN) process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN));
 
@@ -78,8 +77,8 @@ class Scenario {
 }
 
 (async ()=>{
-  global.catCache=Catalog.list();
-  global.api=async u=>{ const c=global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
+  global.Catalog.cache=Catalog.list();   // каталог программы (Catalog здесь — вымышленный каталог проверки)
+  Api.request=async u=>{ const c=global.Catalog.cache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
   const S=JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), out=[];
   for (const sc of S) out.push(await Scenario.run(sc));
   process.stdout.write(JSON.stringify(out));

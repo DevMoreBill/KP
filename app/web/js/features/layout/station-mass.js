@@ -1,6 +1,7 @@
 import { Mm } from './mm.js';
 import { StationGeo } from './station-geo.js';
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Масса при подъёме и центр тяжести (от наружного угла у входа): контейнер (морской — тара ISO 668 и утепление; блок —

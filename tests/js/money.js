@@ -34,13 +34,13 @@ check('коротко для кабинета', ()=>{
   assert.strictEqual(Money.short(-2500000), `−2,5${NB}млн${NB}₽`);
   assert.strictEqual(Money.short(999500), `1${NB}млн${NB}₽`, 'граница — по округлённому'); assert.strictEqual(Money.short(999.6), `1${NB}тыс.${NB}₽`);
 });
-check('прежние имена выводят то же', ()=>{
-  const fmt=JS('core/str.js'), legacy=JS('core/legacy.js'), cab=JS('features/crm/crm-fmt.js'), lg=JS('features/deal/lg-fmt.js'), deal=JS('features/deal/deal-fmt.js'), dc=JS('features/deal/deal-values.js');
+check('рубли во всех разделах — через Money', ()=>{
+  const fmt=JS('core/str.js'), cab=JS('features/crm/crm-fmt.js'), lg=JS('features/deal/lg-fmt.js'), deal=JS('features/deal/deal-fmt.js'), dc=JS('features/deal/deal-values.js');
   assert.ok(/static rub\(value\) \{\s*return Money\.rub\(value\);/.test(fmt), 'Fmt.rub');
   assert.ok(/static rub\(kop\) \{\s*return Money\.rub\(\(\+kop \|\| 0\) \/ this\.KOPECKS\);/.test(cab) && /static KOPECKS = 100;/.test(cab) && /static short\(kop\) \{\s*return Money\.short/.test(cab), 'CrmFmt — копейки сделки');
   assert.ok(/static rub\(value\) \{\s*return Money\.rub\(value\);/.test(lg), 'LgFmt.rub'); assert.ok(/static rub\(value\) \{\s*return Money\.rub2\(value\);/.test(deal), 'DealFmt.rub');
   assert.ok(/static rub\(value\) \{\s*return Money\.int\(value\);/.test(dc), 'DealValues.rub');
-  const own=[fmt, legacy, cab, lg, deal, dc].join('\n').match(/Math\.round\([^)]*\)\.toLocaleString\('ru-RU'\)\+' ?(₽|руб\.)'/g);
+  const own=[fmt, cab, lg, deal, dc].join('\n').match(/Math\.round\([^)]*\)\.toLocaleString\('ru-RU'\)\+' ?(₽|руб\.)'/g);
   assert.ok(!own, 'свой показ рублей мимо Money: '+own);
 });
 

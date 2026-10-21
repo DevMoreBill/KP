@@ -1,6 +1,13 @@
 import { Catalog } from './catalog-store.js';
 import { CatalogWindow } from './catalog-window.js';
 import { ModerationDiff } from './moderation-diff.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { AdminApi, AuditLabels } from '../admin/admin-core.js';
+import { AdminSession, Api } from '../../core/net.js';
 
 /**
  * Правка на модерации «было → стало» с выделением изменённого, приём целиком или по отмеченным полям, код правки — под
@@ -22,7 +29,7 @@ export class ModerationView {
    */
   static url(id, act) {
     const tail = act ? `/${act}` : '';
-    return ADMIN.on ? `pending/${id}${tail}` : `/api/catalog/moderation/${id}${tail}`;
+    return AdminSession.on ? `pending/${id}${tail}` : `/api/catalog/moderation/${id}${tail}`;
   }
 
   /**
@@ -31,7 +38,7 @@ export class ModerationView {
    * @returns {Promise<object>}
    */
   static get(id) {
-    return ADMIN.on ? aapi(this.url(id)) : api(this.url(id));
+    return AdminSession.on ? AdminApi.get(this.url(id)) : Api.request(this.url(id));
   }
 
   /**
@@ -42,8 +49,8 @@ export class ModerationView {
    * @returns {Promise<object>}
    */
   static post(id, act, body) {
-    if (ADMIN.on) return ajson(this.url(id, act), body);
-    return api(this.url(id, act), {
+    if (AdminSession.on) return AdminApi.post(this.url(id, act), body);
+    return Api.request(this.url(id, act), {
       method: 'POST',
       headers: { 'Content-Type': this.JSON_TYPE },
       body: JSON.stringify(body),
@@ -69,7 +76,7 @@ export class ModerationView {
       changes
         .map(
           change =>
-            `<tr><td>${esc(change.key)}</td><td>${stVal(change.before)}</td><td>${stVal(change.after)}</td></tr>`,
+            `<tr><td>${esc(change.key)}</td><td>${AuditLabels.value(change.before)}</td><td>${AuditLabels.value(change.after)}</td></tr>`,
         )
         .join('') || '<tr><td colspan="3">Отличий нет</td></tr>';
     return `<table class="st-diff"><tr><th>Поле</th><th>Было</th><th>Стало</th></tr>${rows}</table>`;
@@ -96,7 +103,7 @@ export class ModerationView {
     const { isNew, cat } = ctx;
     const gone = edit.current || isNew ? '' : ' · <span class="bad-t">товара сейчас нет в каталоге</span>';
     return `<div class="mv-h"><h3>${isNew ? 'Новый товар на модерации' : 'Правка товара'}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <p class="muted mv-who"><b>${esc((edit.afterDoc || {}).name || edit.productId)}</b> · ${esc(typeById(cat).name)} · ${esc(edit.userName || '—')} · ${esc(Fmt.dateTime(edit.created))}${gone}</p>
+      <p class="muted mv-who"><b>${esc((edit.afterDoc || {}).name || edit.productId)}</b> · ${esc(EquipTypes.byId(cat).name)} · ${esc(edit.userName || '—')} · ${esc(Fmt.dateTime(edit.created))}${gone}</p>
       ${edit.stale ? '<p class="msg warn mv-stale">Товар изменили после отправки правки. Принятые поля лягут на текущую карточку, остальные её поля не изменятся.</p>' : ''}
       ${this._body(edit, ctx)}
       <details class="mv-adv"><summary>Расширенное: код правки (JSON)</summary>${this._code(edit.diff || [])}</details>
@@ -130,7 +137,7 @@ export class ModerationView {
     const act = button.dataset.mv;
     if (act === 'reject' && !reason) {
       modal.$('#mvReason').focus();
-      toast('Укажите причину отклонения');
+      Toast.show('Укажите причину отклонения');
       return;
     }
     const body = { reason };
@@ -143,12 +150,12 @@ export class ModerationView {
       if (done) done();
     } catch (error) {
       button.disabled = false;
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
     }
   }
 
   static _done(answer, act) {
-    toast(answer && answer.ok === false ? answer.message || 'Правка уже рассмотрена' : this.DONE[act]);
+    Toast.show(answer && answer.ok === false ? answer.message || 'Правка уже рассмотрена' : this.DONE[act]);
   }
 
   static _cat(edit) {
@@ -167,7 +174,7 @@ export class ModerationView {
     try {
       edit = await this.get(id);
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       return;
     }
     const ctx = { cat: this._cat(edit), isNew: edit.kind === 'create', pend: edit.status === 'pending' };
@@ -220,7 +227,7 @@ export class ModerationList {
       .map(
         edit => `<div class="st-row mv-item"><div><b>${esc(edit.name)}</b>
         <span class="mv-tags">${this._tags(edit)}</span>
-        <span class="muted">${edit.cat ? `${esc(typeById(edit.cat).name)} · ` : ''}${esc(edit.userName || '—')} · ${esc(Fmt.dateTime(edit.created))}${edit.stale ? ' · <span class="bad-t">товар изменили после отправки</span>' : ''}</span></div>
+        <span class="muted">${edit.cat ? `${esc(EquipTypes.byId(edit.cat).name)} · ` : ''}${esc(edit.userName || '—')} · ${esc(Fmt.dateTime(edit.created))}${edit.stale ? ' · <span class="bad-t">товар изменили после отправки</span>' : ''}</span></div>
         <div class="acts"><button class="btn" type="button" data-pend="${edit.id}">Посмотреть</button></div></div>`,
       )
       .join('');
@@ -230,9 +237,9 @@ export class ModerationList {
   static async open() {
     let answer;
     try {
-      answer = await api('/api/catalog/moderation');
+      answer = await Api.request('/api/catalog/moderation');
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       return;
     }
     const modal = new Modal(

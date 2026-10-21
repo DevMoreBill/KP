@@ -3,6 +3,7 @@ import { StationLayout } from '../layout/station-layout.js';
 import { IconAir } from './icon-air.js';
 import { IconParts } from './icon-parts.js';
 import { IconUnits } from './icon-units.js';
+import { DrawPic } from '../kit/draw-pic.js';
 
 /** Оборудование на габаритном чертеже — упрощённые рисунки, схематически сходные с изделием, в его пропорциях. */
 export class EquipIcon {
@@ -59,7 +60,7 @@ export class EquipIcon {
   static src(src) {
     const text = String(src || '');
     if (text.startsWith('data:image/')) return text;
-    return typeof DrawPic !== 'undefined' ? DrawPic.data(text) : '';
+    return DrawPic.data(text);
   }
 
   /** Вид сверху (разрез Б–Б): лицевая сторона — к проходу (вниз), к задней стене (вверх) или вдоль торца. */

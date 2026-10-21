@@ -1,3 +1,9 @@
+import { Str } from '../../core/str.js';
+import { Kit } from '../kit/kit.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { S } from '../../core/state.js';
+import { CoverHint, ItemSpec } from '../../core/item-spec.js';
 /**
  * Модели КП для титула: позиции одной модели — одной строкой (количество суммируется), комплектующие не считаются;
  * станция в контейнере — по основному оборудованию и с типом контейнера; kind — вид оборудования (для сводки на титуле).
@@ -26,7 +32,7 @@ export class KpModels {
   }
 
   static _power(item, attrs) {
-    if (attrs.cat !== 'dgu') return mainLine(item, this.MAIN_LINE);
+    if (attrs.cat !== 'dgu') return ItemSpec.mainLine(item, this.MAIN_LINE);
     const row = (item.groups || []).flatMap(group => group.rows || []).find(entry => this.POWER_ROW.test(entry.k));
     if (row) return row.v;
     if (attrs.kva && attrs.kw) return `${attrs.kva} кВА / ${attrs.kw} кВт`;
@@ -40,8 +46,8 @@ export class KpModels {
   static list() {
     const map = new Map();
     for (const item of S.items) {
-      const attrs = attrsOf(item);
-      const type = typeById(attrs.cat);
+      const attrs = Attrs.of(item);
+      const type = EquipTypes.byId(attrs.cat);
       if (type.role !== 'accessory') this._add(map, item, attrs, type);
     }
     return [...map.values()];
@@ -50,7 +56,7 @@ export class KpModels {
   static _add(map, item, attrs, type) {
     const station = !!Kit.station(item);
     const model = this._model(item, attrs, station);
-    const key = (station ? 'станция ' : '') + norm(model);
+    const key = (station ? 'станция ' : '') + Str.norm(model);
     const power = this._power(item, attrs);
     const row = map.get(key) || {
       key: `st${map.size}`,
@@ -77,8 +83,8 @@ export class KpModels {
   }
 
   static _short(item) {
-    const attrs = attrsOf(item);
-    const type = typeById(attrs.cat);
+    const attrs = Attrs.of(item);
+    const type = EquipTypes.byId(attrs.cat);
     if (type.role === 'accessory') return null;
     const main = Kit.station(item) ? (Kit.main(item) || {}).attrs || {} : null;
     const model = this._shortModel(item, attrs, main);

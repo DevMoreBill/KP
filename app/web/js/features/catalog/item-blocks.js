@@ -1,11 +1,14 @@
+import { EquipTypes } from '../../core/equip-types.js';
+import { Price, Str } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 /** Опции и услуги позиции: быстрые опции категории кнопками и строки своих опций. */
 export class OptsBlock {
   static _row(path, i, option, j) {
-    const priceText = option._priceText ?? (option.price ? money(option.price) : '');
+    const priceText = option._priceText ?? (option.price ? KPGen.money(option.price) : '');
     return `<div class="opt"><input type="text" data-p="${path}.options.${j}.name" value="${esc(option.name)}" placeholder="Наименование опции или услуги" list="optNames" autocomplete="off" aria-label="Опция">
     <input type="text" inputmode="numeric" data-p="${path}.options.${j}.qty" value="${esc(option.qty)}" class="${+option.qty >= 1 ? '' : 'bad'}" aria-label="Количество" title="Количество, ${esc(option.unit || 'шт.')}">
-    <input type="text" inputmode="decimal" class="num${Number.isNaN(parsePrice(priceText)) ? ' bad' : ''}" data-oprice="${i}.${j}" value="${esc(priceText)}" placeholder="включено" aria-label="Цена за единицу">
-    <span class="s" data-osum="${i}.${j}">${option.price ? money((+option.qty || 0) * option.price) : '—'}</span>
+    <input type="text" inputmode="decimal" class="num${Number.isNaN(Price.parse(priceText)) ? ' bad' : ''}" data-oprice="${i}.${j}" value="${esc(priceText)}" placeholder="включено" aria-label="Цена за единицу">
+    <span class="s" data-osum="${i}.${j}">${option.price ? KPGen.money((+option.qty || 0) * option.price) : '—'}</span>
     <button class="icon" type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Удалить опцию">✕</button></div>`;
   }
 
@@ -19,14 +22,14 @@ export class OptsBlock {
     const path = `items.${i}`;
     const opts = item.options || [];
     const rows = opts.map((option, j) => this._row(path, i, option, j)).join('');
-    const have = new Set(opts.map(option => norm(option.name)));
-    const chips = presetsFor(item)
+    const have = new Set(opts.map(option => Str.norm(option.name)));
+    const chips = EquipTypes.presetsFor(item)
       .map(
         (preset, k) =>
-          `<button class="chip${have.has(norm(preset.name)) ? ' on' : ''}" type="button" data-a="optPreset" data-i="${i}" data-k="${k}" aria-pressed="${have.has(norm(preset.name))}">${esc(preset.short)}</button>`,
+          `<button class="chip${have.has(Str.norm(preset.name)) ? ' on' : ''}" type="button" data-a="optPreset" data-i="${i}" data-k="${k}" aria-pressed="${have.has(Str.norm(preset.name))}">${esc(preset.short)}</button>`,
       )
       .join('');
-    return `<div class="opts"><p class="sub">Дополнительное оборудование и услуги ${opts.length ? `<span class="muted">${opts.length} ${plural(opts.length, 'опция', 'опции', 'опций')}</span>` : ''}</p>
+    return `<div class="opts"><p class="sub">Дополнительное оборудование и услуги ${opts.length ? `<span class="muted">${opts.length} ${KPGen.plural(opts.length, 'опция', 'опции', 'опций')}</span>` : ''}</p>
    <div class="chips">${chips}</div>${rows}
    <div class="row"><button class="btn ghost" type="button" data-a="addOpt" data-i="${i}">+ своя опция</button>
    ${opts.length ? '<span class="muted">Пустая цена — «включено в стоимость».</span>' : ''}</div></div>`;

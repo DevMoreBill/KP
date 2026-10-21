@@ -1,3 +1,8 @@
+import { esc } from '../../core/util.js';
+import { Modal } from '../../core/modal.js';
+import { StationDrawing } from '../draw/station-drawing.js';
+import { StationUi } from './station-ui.js';
+import { S } from '../../core/state.js';
 /**
  * «На чертеже» у замечаний «Компоновки»: что показать на плане по тексту замечания — номера позиций («поз. 3», «поз. 2, 4
  * и 5», «поз. 2–4») и элементы по словам (ворота, двери, жалюзи, проход); окно — лист с планом, найденное — в красной рамке

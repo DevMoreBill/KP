@@ -1,3 +1,7 @@
+import { Toast } from '../core/toast.js';
+import { Api } from '../core/net.js';
+import { LgGeo } from '../features/deal/lg-geo.js';
+import { esc } from '../core/util.js';
 /** Координаты из текста или ссылки карт: «55.751244, 37.618423», 55°45′04″N 37°37′06″E, ссылки Google и Яндекс Карт. */
 export class GeoParse {
   static DIGITS = 6;
@@ -93,9 +97,11 @@ export class GeoParse {
 /**
  * Поле точного адреса с подсказками (атрибут data-geo): DaData (если задан ключ) или OpenStreetMap — сервер /api/geo/*.
  * Выбор — событие «geo:pick» на поле: detail = {value, lat, lon, city, region, exact, src}. Дополнительные пункты
- * (например, склады поставщика) — GEO_EXTRA[имя из data-geo](поле) → [{value, lat, lon, city, sub, tag}].
+ * (например, склады поставщика) — GeoInput.extra[имя из data-geo](поле) → [{value, lat, lon, city, sub, tag}].
  */
 export class GeoInput {
+  // свои подсказки полей адреса (склады поставщиков — раздел сделки)
+  static extra = {};
   static state = { box: null, input: null, items: [], index: -1, timer: 0, seq: 0, msg: '', src: '' };
   static MIN_WIDTH = 280;
   static MAX_HEIGHT = 320;
@@ -170,7 +176,7 @@ export class GeoInput {
   }
 
   static _extra(input, text) {
-    const make = GEO_EXTRA[input.dataset.geo];
+    const make = GeoInput.extra[input.dataset.geo];
     return (make ? make(input) || [] : []).filter(
       item => !text || LgGeo.norm(`${item.value} ${item.sub || ''}`).includes(LgGeo.norm(text)),
     );
@@ -234,7 +240,7 @@ export class GeoInput {
   static async _suggest({ input, text, seq, extra, cities }) {
     const state = this.state;
     try {
-      const found = await api(`/api/geo/suggest?q=${encodeURIComponent(text)}`);
+      const found = await Api.request(`/api/geo/suggest?q=${encodeURIComponent(text)}`);
       if (seq !== state.seq || state.input !== input) return false;
       if (found.error) state.msg = `Подсказки адресов недоступны: ${found.error}`;
       state.src = found.src || '';
@@ -263,7 +269,7 @@ export class GeoInput {
     let item = { ...picked };
     if (picked.short) {
       this._status('Открываю ссылку…');
-      const found = await api(`/api/geo/unshort?u=${encodeURIComponent(picked.value)}`);
+      const found = await Api.request(`/api/geo/unshort?u=${encodeURIComponent(picked.value)}`);
       if (found.error) throw new Error(found.error);
       const point = GeoParse.point(found.url);
       if (!point) throw new Error('в ссылке нет координат точки — откройте точку на карте и скопируйте координаты');
@@ -271,7 +277,7 @@ export class GeoInput {
     }
     if (item.coords) return this._reverse(item);
     if (item.lat == null && !item.cityOnly) {
-      const found = await api(`/api/geo/locate?q=${encodeURIComponent(item.value)}`);
+      const found = await Api.request(`/api/geo/locate?q=${encodeURIComponent(item.value)}`);
       if (!found.error) item = { ...item, lat: found.lat, lon: found.lon, city: item.city || found.city };
     }
     return item;
@@ -279,7 +285,7 @@ export class GeoInput {
 
   static async _reverse(item) {
     this._status('Определяю адрес по координатам…');
-    const found = await api(`/api/geo/reverse?lat=${item.lat}&lon=${item.lon}`);
+    const found = await Api.request(`/api/geo/reverse?lat=${item.lat}&lon=${item.lon}`);
     if (found.error)
       return { ...item, value: GeoParse.text(item), city: '', exact: true, src: 'координаты', note: found.error };
     return { ...found, lat: item.lat, lon: item.lon, exact: true, src: `${found.src || ''} по координатам` };
@@ -313,7 +319,7 @@ export class GeoInput {
     this.close();
     input.value = clean.value;
     input.dispatchEvent(new CustomEvent('geo:pick', { bubbles: true, detail: clean }));
-    if (item.note) toast(`Адрес по координатам не определён: ${item.note}`);
+    if (item.note) Toast.show(`Адрес по координатам не определён: ${item.note}`);
   }
 
   static _field(target) {
@@ -330,7 +336,7 @@ export class GeoInput {
   static _focus(input) {
     if (!this._field(input)) return;
     this._take(input);
-    const make = GEO_EXTRA[input.dataset.geo];
+    const make = GeoInput.extra[input.dataset.geo];
     if (make && (make(input) || []).length) this.query(input);
   }
 

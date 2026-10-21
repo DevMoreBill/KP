@@ -1,4 +1,9 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
+import { Toast } from '../../core/toast.js';
+import { Debounce } from '../../core/debounce.js';
+import { DealLogistics } from '../deal/deal-logistics.js';
+import { DEF_BY, DEF_GROUPS, DEF_GROUP_HINTS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
+import { $, esc } from '../../core/util.js';
 
 /** «Значения программы»: всё, что программа подставляет и с чем считает, — по разделам, с поиском и пояснениями. */
 export class DefaultsTab {
@@ -293,7 +298,7 @@ export class DefaultsTab {
       out[row.dataset.dk] = this._rowValue(row);
     });
     if (main.querySelector('.df-row.bad')) {
-      toast('Проверьте значения — отмечены красным');
+      Toast.show('Проверьте значения — отмечены красным');
       return;
     }
     this.save(main, out, 'Значения сохранены — действуют для новых КП и расчётов');
@@ -333,16 +338,16 @@ export class DefaultsTab {
   static async save(main, values, msg) {
     try {
       const reply = await AdminApi.post('defaults', { values });
-      DEFS_SRV = reply.values || {};
+      DefRegistry.srv = reply.values || {};
       try {
-        localStorage.setItem(this.STORE, JSON.stringify(DEFS_SRV));
+        localStorage.setItem(this.STORE, JSON.stringify(DefRegistry.srv));
       } catch {
         // без хранилища браузера
       }
-      toast(msg);
+      Toast.show(msg);
       this.render(main);
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
     }
   }
 }

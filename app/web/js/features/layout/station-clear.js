@@ -1,4 +1,5 @@
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Отступы вокруг оборудования: [рекомендуется, не менее], мм — по виду (правило clear.kind) и проход обслуживания

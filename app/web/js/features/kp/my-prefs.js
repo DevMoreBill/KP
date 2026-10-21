@@ -1,6 +1,15 @@
 import { Journal } from './journal.js';
 import { Managers } from './managers.js';
 import { MyDay } from './my-day.js';
+import { Templates } from '../doc/templates.js';
+import { DEF_BY, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
+import { esc } from '../../core/util.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { Theme } from '../../core/theme.js';
+import { Api } from '../../core/net.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { Catalog } from '../catalog/catalog-store.js';
 
 /**
  * «⋯ → Мои настройки» — личные настройки менеджера (сервер: app/user_prefs.py), действуют на любом компьютере: тема,
@@ -39,7 +48,7 @@ export class MyPrefs {
       return true;
     },
     catalog: () => {
-      if (catCache.length) openCatalog({});
+      if (Catalog.cache.length) CatalogWindow.open({});
       return true;
     },
   };
@@ -50,7 +59,7 @@ export class MyPrefs {
    */
   static async load() {
     try {
-      const answer = await api('/api/me/prefs');
+      const answer = await Api.request('/api/me/prefs');
       this.uid = answer.id || '';
       this.prefs = answer.prefs || {};
     } catch {
@@ -124,7 +133,7 @@ export class MyPrefs {
    * @returns {Promise<object>}
    */
   static async save(prefs) {
-    const answer = await api('/api/me/prefs', {
+    const answer = await Api.request('/api/me/prefs', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify(prefs),
@@ -137,10 +146,10 @@ export class MyPrefs {
   /** Окно «Мои настройки». */
   static open() {
     if (!Managers.meId()) {
-      toast('Сначала выберите себя в разделе «Менеджер» — настройки сохраняются для менеджера');
+      Toast.show('Сначала выберите себя в разделе «Менеджер» — настройки сохраняются для менеджера');
       return;
     }
-    const mine = MGRS.find(row => row.id === Managers.meId());
+    const mine = Managers.list.find(row => row.id === Managers.meId());
     const modal = new Modal(
       `<div class="dlg-h"><h3>Мои настройки<small>${esc(mine ? mine.name : '')}</small></h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted" style="margin-top:0">Только для вас и на любом компьютере, где вы работаете. Общие правила отдела задаёт администратор («Настройки → Умолчания»); пустое поле — как у отдела.</p>
@@ -169,7 +178,7 @@ export class MyPrefs {
   static _company(key) {
     const schema = DEF_BY[key];
     if (!schema) return '';
-    const server = DEFS_SRV[key];
+    const server = DefRegistry.srv[key];
     return server && server.v != null && String(server.v) !== '' ? String(server.v) : String(schema[4] ?? '');
   }
 
@@ -237,9 +246,9 @@ export class MyPrefs {
       if (!modal.$('#mpTpl').value) this._forgetTemplate();
       this.apply();
       modal.close();
-      toast('Мои настройки сохранены — для новых КП и писем');
+      Toast.show('Мои настройки сохранены — для новых КП и писем');
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
     }
   }
 

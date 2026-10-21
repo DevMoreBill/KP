@@ -1,5 +1,8 @@
 import { AdminApi } from './admin-core.js';
 import { FeedFmt, FeedState } from './feed-state.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Fmt } from '../../core/str.js';
+import { $, esc } from '../../core/util.js';
 
 /** Ход загрузки или проверки фида. */
 export class FeedJob {
@@ -62,11 +65,11 @@ export class FeedPreview {
       feed && feed.priceOnly
         ? ' (загружаются как отдельные позиции, разделы «Прайс / …»)'
         : ' (не загружаются — есть настройка «Добавлять и позиции, которых нет в парсе»)';
-    return `<p class="muted fd-match">Сопоставление с прайсом: строка прайса нашлась у ${Fmt.num(match.matched)} ${plural(match.matched, 'позиции', 'позиций', 'позиций')} парса${ways}; строк прайса без страницы на сайте — ${Fmt.num(match.priceOnly)}${priceOnly}. Позиции без строки прайса или с пустой ценой («по запросу») загружаются без цены.</p>`;
+    return `<p class="muted fd-match">Сопоставление с прайсом: строка прайса нашлась у ${Fmt.num(match.matched)} ${KPGen.plural(match.matched, 'позиции', 'позиций', 'позиций')} парса${ways}; строк прайса без страницы на сайте — ${Fmt.num(match.priceOnly)}${priceOnly}. Позиции без строки прайса или с пустой ценой («по запросу») загружаются без цены.</p>`;
   }
 
   static _extra(extra) {
-    return `<p class="muted fd-match">Файл описаний: описание из файла получили ${Fmt.num(extra.applied)} ${plural(extra.applied, 'позиция', 'позиции', 'позиций')} фида (серий в файле — ${Fmt.num(extra.series)}, позиций — ${Fmt.num(extra.items)}).</p>`;
+    return `<p class="muted fd-match">Файл описаний: описание из файла получили ${Fmt.num(extra.applied)} ${KPGen.plural(extra.applied, 'позиция', 'позиции', 'позиций')} фида (серий в файле — ${Fmt.num(extra.series)}, позиций — ${Fmt.num(extra.items)}).</p>`;
   }
 
   static _qty(offer) {
@@ -75,7 +78,7 @@ export class FeedPreview {
   }
 
   static _sample(offer, files) {
-    return `<tr><td>${esc(offer.name)}</td><td>${esc([offer.maker, offer.model].filter(Boolean).join(' '))}</td><td>${esc(offer.sku || '')}</td><td class="muted">${esc(FeedFmt.typeName(offer.cat))}</td><td class="num">${offer.price != null ? `${money(Math.round(offer.price * this.KOP))} ${esc(offer.cur || '')}` : '—'}</td>
+    return `<tr><td>${esc(offer.name)}</td><td>${esc([offer.maker, offer.model].filter(Boolean).join(' '))}</td><td>${esc(offer.sku || '')}</td><td class="muted">${esc(FeedFmt.typeName(offer.cat))}</td><td class="num">${offer.price != null ? `${KPGen.money(Math.round(offer.price * this.KOP))} ${esc(offer.cur || '')}` : '—'}</td>
         ${files ? '' : `<td>${this._qty(offer)}</td>`}<td class="num">${offer.pics} / ${offer.params}</td></tr>`;
   }
 
@@ -94,7 +97,7 @@ export class FeedPreview {
       )
       .join('');
     return `${this._head(preview, feed, files)}
-    <div class="sub">Категории ${files ? 'парса' : 'фида'} → категории программы ${tip('По умолчанию категория определяется по названию каждой позиции: разделы фида часто — подборки («200 л/мин», «С ресивером»), где вперемешку винтовые и поршневые. Выберите категорию, только если весь раздел — одно и то же, или «не загружать».')}</div>
+    <div class="sub">Категории ${files ? 'парса' : 'фида'} → категории программы ${UiKit.tip('По умолчанию категория определяется по названию каждой позиции: разделы фида часто — подборки («200 л/мин», «С ресивером»), где вперемешку винтовые и поршневые. Выберите категорию, только если весь раздел — одно и то же, или «не загружать».')}</div>
     <div class="fd-tw"><table class="fd-t"><thead><tr><th>Категория ${files ? 'в парсе' : 'в фиде'}</th><th class="num">Товаров</th><th class="num">В каталоге</th><th>По названию</th><th>Категория программы</th></tr></thead>
       <tbody>${cats}</tbody></table></div>
     <p class="muted fd-cnt" id="fdCnt"></p>
@@ -129,7 +132,7 @@ export class FeedPreview {
     const count = preview.cats
       .filter(cat => (FeedState.cats[cat.id] ?? cat.map) !== 'skip')
       .reduce((sum, cat) => sum + cat.count, 0);
-    label.textContent = `Будет загружено: ${count} ${plural(count, 'позиция', 'позиции', 'позиций')}. Новые появятся в каталоге, уже загруженные обновятся (ручные правки сохранятся).`;
+    label.textContent = `Будет загружено: ${count} ${KPGen.plural(count, 'позиция', 'позиции', 'позиций')}. Новые появятся в каталоге, уже загруженные обновятся (ручные правки сохранятся).`;
     const button = main.querySelector('[data-fd=import]');
     if (button) button.textContent = `Загрузить в каталог (${count})`;
   }

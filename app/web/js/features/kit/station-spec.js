@@ -1,5 +1,12 @@
 import { ContainerKind } from './container-kind.js';
 import { Kit } from './kit.js';
+import { StationReq } from '../req/station-req.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { StationParams } from '../station/station-params.js';
+import { StationPower } from '../layout/station-power.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { StationUi } from '../station/station-ui.js';
 
 /**
  * Таблица характеристик станции: вместо «Производитель / Модель», угаданных по названию станции, — строка основного
@@ -15,7 +22,7 @@ export class StationSpec {
    * @returns {object|null}
    */
   static power(item) {
-    if (typeof StationUi === 'undefined' || !Kit.has(item)) return null;
+    if (!Kit.has(item)) return null;
     try {
       const plan = StationUi.plan(item);
       return (plan && plan.level !== 'error' && plan.power) || null;
@@ -31,7 +38,7 @@ export class StationSpec {
    * @returns {object[]}
    */
   static groups(item, groups) {
-    const station = typeById(attrsOf(item).cat).station;
+    const station = EquipTypes.byId(Attrs.of(item).cat).station;
     const out = groups
       .map(group => ({ ...group, rows: group.rows.filter(row => !/^(Производитель|Модель)$/.test(row.k)) }))
       .filter(group => group.rows.length);
@@ -68,7 +75,7 @@ export class StationSpec {
 
   /** свои параметры станции (ручной режим): после автоматических; совпадающая строка заменяется своей */
   static _own(item, out) {
-    const own = typeof StationParams !== 'undefined' ? StationParams.rows(item) : [];
+    const own = StationParams.rows(item);
     if (!own.length) return;
     const names = new Set(own.map(row => row.k.toLowerCase()));
     for (const group of out) group.rows = group.rows.filter(row => !names.has(String(row.k || '').toLowerCase()));
@@ -140,11 +147,11 @@ export class StationPurpose {
   }
 
   static _text(item, rest) {
-    const type = typeById(attrsOf(item).cat);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
     if (!type.station) return '';
     const main = Kit.main(item);
     const mainName = main && this._name(main);
-    const kpi = mainLine(item, this.KPI);
+    const kpi = ItemSpec.mainLine(item, this.KPI);
     const out = [`${type.item || type.name} предназначена для ${this.WHAT[StationReq.kind(item)] || this.OTHER}.`];
     if (mainName) out.push(`Основное оборудование — ${mainName}${this._qty(main)}.`);
     if (kpi) out.push(`Основные параметры: ${kpi}.`);

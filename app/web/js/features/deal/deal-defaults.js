@@ -1,5 +1,11 @@
 import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
+import { Managers } from '../kp/managers.js';
+import { AdminSession } from '../../core/net.js';
+import { Auth } from '../kp/auth.js';
+import { FEAT } from '../../core/features.js';
+import { S } from '../../core/state.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Последние значения менеджера в этом браузере (стоимость денег, налог, цель; заданное администратором в «Значениях
@@ -16,7 +22,7 @@ export class DealDefaults {
    * @returns {number}
    */
   static spread() {
-    return DEFN('deal.spread', DealDefaults.SPREAD);
+    return DefRegistry.num('deal.spread', DealDefaults.SPREAD);
   }
 
   /**
@@ -30,7 +36,7 @@ export class DealDefaults {
     } catch {
       own = {};
     }
-    const set = key => DEFS_SRV[key] && typeof DEFS_SRV[key] === 'object';
+    const set = key => DefRegistry.srv[key] && typeof DefRegistry.srv[key] === 'object';
     if (set('deal.tax')) delete own.tax;
     if (set('deal.spread')) delete own.money;
     if (set('deal.target')) {
@@ -63,9 +69,9 @@ export class DealDefaults {
    * @returns {boolean}
    */
   static allowed(state = S) {
-    if (!FEAT.on('deal') || !can('dealView')) return false;
-    if (ADMIN.on || !state.kpId) return true;
-    const myId = meId();
+    if (!FEAT.on('deal') || !Auth.can('dealView')) return false;
+    if (AdminSession.on || !state.kpId) return true;
+    const myId = Managers.meId();
     if (!myId) return false;
     return state.authorId ? state.authorId === myId : state.managerId === myId;
   }

@@ -1,5 +1,6 @@
 import { AirChain } from '../layout/air-chain.js';
 import { CalcNote } from './calc-note.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Потребность → производительность компрессоров (ISO 1217, FAD). Н. м³ (DIN 1343) или ст. м³ (ГОСТ 2939-63) — в FAD по

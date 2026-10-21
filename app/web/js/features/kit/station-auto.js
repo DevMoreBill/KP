@@ -1,6 +1,13 @@
 import { ContainerKind } from './container-kind.js';
 import { Kit } from './kit.js';
 import { StationSpec } from './station-spec.js';
+import { LgCargo } from '../deal/lg-cargo.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationMods } from '../layout/station-mods.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Str } from '../../core/str.js';
 
 /** Значения, подставляемые в станцию из её оборудования. */
 export class StationAutoVal {
@@ -20,7 +27,7 @@ export class StationAutoVal {
       .replace(/,/g, '.')
       .match(/^(\d+(?:\.\d+)?)[–—-](\d+(?:\.\d+)?)$/);
     if (range) return factor === 1 ? text : `${this.round(range[1] * factor)}–${this.round(range[2] * factor)}`;
-    const number = numOf(text);
+    const number = Str.num(text);
     return number == null || !Number.isFinite(number) ? text : this.round(number * factor);
   }
 
@@ -88,7 +95,7 @@ export class StationAuto {
    * @returns {object}
    */
   static of(item) {
-    const type = typeById(attrsOf(item).cat);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
     if (!type.station) return {};
     const parts = Kit.parts(item);
     const main = Kit.main(item);
@@ -104,7 +111,7 @@ export class StationAuto {
    * @param {object} item
    */
   static fill(item) {
-    const type = typeById(attrsOf(item).cat);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
     if (!type.station) return;
     item.attrs = item.attrs || {};
     const old = item._sa || {};
@@ -126,7 +133,7 @@ export class StationAuto {
   static _spec(item) {
     const container = Kit.container(item);
     const spec = [
-      mainLine(item, this.SPEC_PARAMS),
+      ItemSpec.mainLine(item, this.SPEC_PARAMS),
       container ? ContainerKind.of(container.ctype).name.toLowerCase() : '',
     ]
       .filter(Boolean)
@@ -141,7 +148,7 @@ export class StationAuto {
   static _groups(item) {
     const groups = StationSpec.groups(
       item,
-      groupsFromAttrs(item).filter(group => group.rows.length),
+      ItemSpec.groups(item).filter(group => group.rows.length),
     );
     const was = JSON.stringify(item.groups || []);
     const edited = (item.groups || []).some(group => (group.rows || []).some(row => row.k || row.v));
@@ -162,7 +169,7 @@ export class StationAuto {
     if (climate) out.tmin = climate[2];
     const dims = String((container.rows || []).find(row => /^Габариты/.test(row.k))?.v || '');
     if (/\d{3,}\s*[×xх*]\s*\d{3,}/.test(dims)) out.size = dims.replace(/\s*мм\s*$/, '');
-    const mods = typeof StationMods !== 'undefined' ? StationMods.of(container) : null;
+    const mods = StationMods.of(container);
     const size = mods && StationGeo.parseMm(container.size);
     if (size) out.size = `${size[0] * mods.a} × ${size[1] * mods.b} × ${size[2]}`;
   }
@@ -177,9 +184,9 @@ export class StationAuto {
   }
 
   static _partMass(part) {
-    const own = numOf((part.attrs || {}).mass);
+    const own = Str.num((part.attrs || {}).mass);
     if (own != null) return own;
-    return typeof LgCargo !== 'undefined' ? (LgCargo.of([{ rows: part.rows || [] }]).mass || 0) * this.KG_IN_TONNE : 0;
+    return (LgCargo.of([{ rows: part.rows || [] }]).mass || 0) * this.KG_IN_TONNE;
   }
 
   static _field(field, parts, main, out) {
@@ -201,7 +208,7 @@ export class StationAuto {
 
   static _installed(parts, out) {
     const sum = parts.reduce((total, part) => {
-      const power = numOf((part.attrs || {}).kw);
+      const power = Str.num((part.attrs || {}).kw);
       return power > 0 ? total + power * this._qty(part) : total;
     }, 0);
     if (sum > 0) out.kw = Math.round(sum * this.KW_ROUND) / this.KW_ROUND;
@@ -226,7 +233,7 @@ export class StationName {
    * @returns {string}
    */
   static of(item) {
-    const type = typeById(attrsOf(item).cat);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
     const container = Kit.container(item);
     const main = Kit.main(item);
     const attrs = (main && main.attrs) || {};

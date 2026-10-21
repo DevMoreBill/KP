@@ -4,6 +4,13 @@ import { KpEconomics } from './price-calc.js';
 import { KpLoader } from './reminders.js';
 import { KpReportView } from './kp-report-view.js';
 import { KpTrack } from './kp-track.js';
+import { Str } from '../../core/str.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { Modal } from '../../core/modal.js';
+import { esc, today } from '../../core/util.js';
 
 /**
  * Отчёт по КП за период (журнал → «Отчёт»): по менеджерам, категориям оборудования и клиентам — количество КП, сумма,
@@ -69,7 +76,7 @@ export class KpReport {
     modal.$('[data-rx]').disabled = true;
     const seq = ++ctx.seq;
     try {
-      const answer = await api(
+      const answer = await Api.request(
         `/api/report?from=${modal.$('#rpA').value}&to=${modal.$('#rpB').value}&author=${encodeURIComponent(ctx.filter.author || '')}&kind=${encodeURIComponent(ctx.filter.kind || '')}`,
       );
       if (seq !== ctx.seq) return;
@@ -100,7 +107,7 @@ export class KpReport {
     const open = target.closest('[data-ro]');
     if (open) {
       modal.close();
-      KpLoader.byId(open.dataset.ro).catch(error => toast(`Не удалось открыть: ${error.message}`));
+      KpLoader.byId(open.dataset.ro).catch(error => Toast.show(`Не удалось открыть: ${error.message}`));
       return;
     }
     if (target.closest('[data-rx]')) KpReportView.excel(ctx.data, modal.$('#rpA').value, modal.$('#rpB').value);
@@ -167,7 +174,7 @@ export class KpReport {
       tot: this._total(rows),
       mgr: bySum(byManager),
       cat: bySum(byCategory),
-      cli: bySum(byClient).slice(0, Math.round(DEFN('ui.repClients', 20))),
+      cli: bySum(byClient).slice(0, Math.round(DefRegistry.num('ui.repClients', 20))),
       list,
     };
   }
@@ -187,7 +194,7 @@ export class KpReport {
     const toRub = value => (rate > 0 ? Math.round(value * rate) : 0);
     const groups = new Map();
     for (const item of calc.items || []) {
-      const key = typeById((item.attrs || {}).cat).name;
+      const key = EquipTypes.byId((item.attrs || {}).cat).name;
       (groups.get(key) || groups.set(key, []).get(key)).push(item);
     }
     for (const [key, items] of groups) {
@@ -231,7 +238,7 @@ export class KpDiff {
    * @returns {string}
    */
   static itemKey(item) {
-    return item.id || norm(item.name || '');
+    return item.id || Str.norm(item.name || '');
   }
 
   /**
@@ -264,7 +271,11 @@ export class KpDiff {
     const before = KpEconomics.of(was);
     const after = KpEconomics.of(now);
     const short = code => Currency.short(code || 'RUB');
-    change('Итого с НДС', `${money(before.sum)} ${short(before.cur)}`, `${money(after.sum)} ${short(after.cur)}`);
+    change(
+      'Итого с НДС',
+      `${KPGen.money(before.sum)} ${short(before.cur)}`,
+      `${KPGen.money(after.sum)} ${short(after.cur)}`,
+    );
   }
 
   static _items(out, change, was, now) {
@@ -275,7 +286,7 @@ export class KpDiff {
     for (const [key, item] of after) {
       const old = before.get(key);
       if (!old) {
-        out.push(['Позиция добавлена', '', `${item.name} × ${item.qty} — ${money(item.price || 0)}`]);
+        out.push(['Позиция добавлена', '', `${item.name} × ${item.qty} — ${KPGen.money(item.price || 0)}`]);
         continue;
       }
       this._item(change, old, item);
@@ -284,7 +295,7 @@ export class KpDiff {
 
   static _discount(disc) {
     if (!disc || !(+disc.v > 0)) return '';
-    return disc.type === 'sum' ? `${money(+disc.v)} руб.` : `${disc.v} %`;
+    return disc.type === 'sum' ? `${KPGen.money(+disc.v)} руб.` : `${disc.v} %`;
   }
 
   static _options(options) {
@@ -298,7 +309,7 @@ export class KpDiff {
     const name = item.name || old.name;
     change(`«${name}»: название`, old.name, item.name);
     change(`«${name}»: количество`, old.qty, item.qty);
-    change(`«${name}»: цена за ед.`, money(old.price || 0), money(item.price || 0));
+    change(`«${name}»: цена за ед.`, KPGen.money(old.price || 0), KPGen.money(item.price || 0));
     change(`«${name}»: скидка`, this._discount(old.disc), this._discount(item.disc));
     change(`«${name}»: опции`, this._options(old.options), this._options(item.options));
   }
@@ -314,11 +325,11 @@ export class KpDiff {
     let now;
     try {
       [was, now] = await Promise.all([
-        api(`/api/kp/${encodeURIComponent(id)}/versions/${vid}`),
-        api(`/api/kp/${encodeURIComponent(id)}/state`),
+        Api.request(`/api/kp/${encodeURIComponent(id)}/versions/${vid}`),
+        Api.request(`/api/kp/${encodeURIComponent(id)}/state`),
       ]);
     } catch (error) {
-      toast(`Не удалось сравнить: ${error.message}`);
+      Toast.show(`Не удалось сравнить: ${error.message}`);
       return;
     }
     const rows = this.rows(was, now);

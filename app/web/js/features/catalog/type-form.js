@@ -1,3 +1,6 @@
+import { esc } from '../../core/util.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Translit } from '../doc/translit.js';
 /** Форма категории оборудования: основное, параметры таблицей с галочками, быстрые опции, кнопки фото, JSON. */
 export class TypeForm {
   static OTHER = 'Прочее';
@@ -38,7 +41,7 @@ export class TypeForm {
    * @returns {object|null}
    */
   static builtin(id) {
-    return ((TYPES_BUILTIN && TYPES_BUILTIN.types) || []).find(type => type.id === id) || null;
+    return ((EquipTypes.builtin && EquipTypes.builtin.types) || []).find(type => type.id === id) || null;
   }
 
   // правило распознавания простое (слова и «любое окончание»), если в нём нет групп, якорей и прочих знаков регулярных выражений
@@ -154,7 +157,7 @@ export class TypeForm {
       ${lbl('Заголовок на титуле КП', inp('coverTitle', type.coverTitle, { ph: 'Винтовые компрессоры' }), 'Крупная строка над моделью на первой странице')}
       ${this._match(type)}
       ${this._role(type)}
-    </div>${TYPES.some(known => known.id === type.id) ? `<p class="muted ty-id">Код категории: <code>${esc(type.id)}</code></p>` : ''}</section>`;
+    </div>${EquipTypes.list.some(known => known.id === type.id) ? `<p class="muted ty-id">Код категории: <code>${esc(type.id)}</code></p>` : ''}</section>`;
   }
 
   static _params(type) {
@@ -190,8 +193,10 @@ export class TypeForm {
    * @returns {string}
    */
   static html(type) {
-    const groups = [...new Set(TYPES.map(known => known.group || this.OTHER))];
-    const fieldGroups = [...new Set(TYPES.flatMap(known => known.fields.map(field => field.group).filter(Boolean)))];
+    const groups = [...new Set(EquipTypes.list.map(known => known.group || this.OTHER))];
+    const fieldGroups = [
+      ...new Set(EquipTypes.list.flatMap(known => known.fields.map(field => field.group).filter(Boolean))),
+    ];
     return `<datalist id="tyGroups">${groups.map(group => `<option value="${esc(group)}">`).join('')}</datalist><datalist id="tyFG">${fieldGroups.map(group => `<option value="${esc(group)}">`).join('')}</datalist>
     ${this._main(type)}
     ${this._params(type)}

@@ -1,4 +1,9 @@
 import { CbrRates } from './cbr-rates.js';
+import { Price } from '../../core/str.js';
+import { DealWin } from '../deal/deal-win.js';
+import { FormView } from '../../ui/form-view.js';
+import { Toast } from '../../core/toast.js';
+import { KpState, S } from '../../core/state.js';
 
 /** Валюта КП и курсы: короткое обозначение, курс к рублю, смена валюты с пересчётом цен. */
 export class Currency {
@@ -10,7 +15,7 @@ export class Currency {
    * @returns {string}
    */
   static short(code) {
-    return (CURS[code] || CURS.RUB).sh;
+    return (KPGen.CURS[code] || KPGen.CURS.RUB).sh;
   }
 
   /**
@@ -48,10 +53,10 @@ export class Currency {
     S.pricing.cur = code;
     if (from > 0 && rateTo > 0) {
       this._convert(value => Math.round((value * from) / rateTo));
-      toast(`Цены переведены в ${code} по курсу`);
-    } else toast('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
-    renderForm();
-    persist();
+      Toast.show(`Цены переведены в ${code} по курсу`);
+    } else Toast.show('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
+    FormView.render();
+    KpState.persist();
     DealWin.render();
     if (code !== 'RUB' && !(this.rate(code) > 0)) CbrRates.fillEmpty();
   }
@@ -92,7 +97,7 @@ export class Discount {
    */
   static text(item) {
     if (!item.disc || !(+item.disc.v > 0)) return '';
-    return item.disc.type === 'sum' ? money(item.disc.v) : String(item.disc.v).replace('.', ',');
+    return item.disc.type === 'sum' ? KPGen.money(item.disc.v) : String(item.disc.v).replace('.', ',');
   }
 
   /**
@@ -113,7 +118,7 @@ export class Discount {
   }
 
   static _sum(item, value) {
-    const kopecks = parsePrice(value);
+    const kopecks = Price.parse(value);
     if (Number.isNaN(kopecks) || kopecks < 0 || (item.price && kopecks > item.price)) {
       delete item.disc;
       return false;

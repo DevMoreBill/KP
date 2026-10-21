@@ -1,3 +1,6 @@
+import { esc } from '../core/util.js';
+import { S } from '../core/state.js';
+import { ObjPath } from '../core/str.js';
 /** Общие элементы формы: подсказка «?» и поле ввода, привязанное к пути в данных КП. */
 export class UiKit {
   static AREA_ROWS = 3;
@@ -19,7 +22,7 @@ export class UiKit {
    * @returns {string}
    */
   static field(label, path, opts = {}) {
-    const value = getPath(S, path) ?? '';
+    const value = ObjPath.get(S, path) ?? '';
     const req = opts.req ? ' class="req"' : '';
     return `<label class="f"><span${req}>${esc(label)}</span>${opts.area ? this._area(path, value, opts) : this._input(path, value, opts)}</label>`;
   }

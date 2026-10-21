@@ -8,6 +8,18 @@ import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { InputNum } from './input-num.js';
+import { KpDate } from '../kp/kp-date.js';
+import { Modal } from '../../core/modal.js';
+import { FormView } from '../../ui/form-view.js';
+import { AdminDialog } from '../admin/admin-core.js';
+import { Toast } from '../../core/toast.js';
+import { Currency } from '../kp/currency.js';
+import { today } from '../../core/util.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { KpEconomics, PriceCalc } from '../kp/price-calc.js';
+import { KpState, S } from '../../core/state.js';
 
 /**
  * Данные сделки: входы расчёта из КП, расчёт КП (новый — из «Умолчаний» и справочника поставщиков), цены позиций под цену
@@ -47,7 +59,7 @@ export class DealState {
    * @returns {object}
    */
   static kpInputs(state = S) {
-    const econ = kpEconomics(state);
+    const econ = KpEconomics.of(state);
     const pricing = state.pricing || {};
     const rate = econ.cur === 'RUB' ? 1 : InputNum.parse(pricing.rates && pricing.rates[econ.cur]);
     const start = DealState._start(state);
@@ -75,7 +87,7 @@ export class DealState {
       qty: line.qty,
       cost: (line.cost || 0) / DealState.KOPECKS,
       cur: line.costCur || 'RUB',
-      cat: attrsOf(item).cat,
+      cat: Attrs.of(item).cat,
       maker: line.maker || '',
       catId: item.catId || '',
       kit: !!line.part,
@@ -160,7 +172,7 @@ export class DealState {
    * @param {object} deal
    */
   static startAuto(deal) {
-    if (!deal || (!deal.start && !DEF('deal.startToday'))) return;
+    if (!deal || (!deal.start && !DefRegistry.value('deal.startToday'))) return;
     if (!deal.start) {
       deal.start = today();
       deal.startAuto = true;
@@ -189,8 +201,8 @@ export class DealState {
    * @returns {object|null}
    */
   static plan(sumRub) {
-    const cur = kpCur();
-    const rate = rateOf(cur);
+    const cur = Currency.current();
+    const rate = Currency.rate(cur);
     if (!(rate > 0)) return null;
     const items = S.items.filter(item => String(item.name || '').trim());
     if (!items.length) return null;
@@ -199,7 +211,7 @@ export class DealState {
     const total = weights.reduce((sum, weight) => sum + weight, 0);
     const totalOf = prices => DealState._total(items, prices);
     const pricesOf = sum =>
-      items.map((item, k) => Math.max(0, roundTo(((weights[k] / total) * sum) / (+item.qty || 1))));
+      items.map((item, k) => Math.max(0, PriceCalc.round(((weights[k] / total) * sum) / (+item.qty || 1))));
     const first = totalOf(pricesOf(target));
     const second = totalOf(pricesOf(target * DealState.PROBE));
     const sum =
@@ -210,7 +222,7 @@ export class DealState {
 
   static _weights(items) {
     const rub = item => {
-      const rate = rateOf(item.costCur || 'RUB');
+      const rate = Currency.rate(item.costCur || 'RUB');
       return item.cost > 0 && rate > 0 ? item.cost * rate * (+item.qty || 0) : 0;
     };
     let weights = items.map(rub);
@@ -229,7 +241,7 @@ export class DealState {
         .map(option => ({ qty: +option.qty || 0, price: option.price || 0 }));
       return { qty: +item.qty || 0, price: k >= 0 ? prices[k] : item.price || 0, disc: item.disc, options };
     });
-    return totals(rows, +S.vat || 0).sum;
+    return KPGen.totals(rows, +S.vat || 0).sum;
   }
 
   /**
@@ -239,12 +251,16 @@ export class DealState {
   static async applyPrice(sumRub) {
     const plan = DealState.plan(sumRub);
     if (!plan) {
-      toast(rateOf(kpCur()) > 0 ? 'В КП нет позиций' : 'Нет курса валюты КП — укажите его в разделе «Цены»');
+      Toast.show(
+        Currency.rate(Currency.current()) > 0
+          ? 'В КП нет позиций'
+          : 'Нет курса валюты КП — укажите его в разделе «Цены»',
+      );
       return;
     }
-    const ok = await stConfirm(
+    const ok = await AdminDialog.confirm(
       'Перенести цены в КП?',
-      `Итог КП с НДС: ${money(totalsS().sum)} → ${money(plan.total)} ${curSh(plan.cur)}. Цена распределена по позициям ${plan.basis}; опции и скидки не меняются.`,
+      `Итог КП с НДС: ${KPGen.money(KpState.totals().sum)} → ${KPGen.money(plan.total)} ${Currency.short(plan.cur)}. Цена распределена по позициям ${plan.basis}; опции и скидки не меняются.`,
       'Перенести цены',
     );
     if (!ok) return;
@@ -256,16 +272,16 @@ export class DealState {
     const deal = DealState.ensure();
     deal.over.price = '';
     deal.touched = true;
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     DealWin.render();
-    toast(`Цены позиций перенесены: итог КП ${money(plan.total)} ${curSh(plan.cur)}`);
+    Toast.show(`Цены позиций перенесены: итог КП ${KPGen.money(plan.total)} ${Currency.short(plan.cur)}`);
   }
 
   /** Открыть окно «Экономика сделки»: сразу, содержимое — после загрузки справочников. */
   static async open() {
     if (!DealDefaults.allowed()) {
-      toast('Экономика сделки доступна автору КП и администратору');
+      Toast.show('Экономика сделки доступна автору КП и администратору');
       return;
     }
     DealUi.open = undefined;

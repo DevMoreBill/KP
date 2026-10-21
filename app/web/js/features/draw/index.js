@@ -23,6 +23,3 @@ export const DRAW = {
   StationView3D,
   View3dUnits,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, DRAW);

@@ -4,6 +4,15 @@ import { DefaultsTab } from './defaults-tab.js';
 import { ListsPanel } from './lists-panel.js';
 import { SettingsWindow } from './settings-window.js';
 import { StNav, StRefresh, StVal } from './settings-tools.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { LISTS } from '../../core/lists.js';
+import { FEAT } from '../../core/features.js';
+import { DEF_SCHEMA } from '../../core/defaults.js';
+import { UiTexts } from '../kp/ui-texts.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { Fmt } from '../../core/str.js';
+import { $, esc } from '../../core/util.js';
 
 /** История изменений настроек с откатом (сервер: app/settings_history.py). */
 export class SettingsHistoryPanel {
@@ -75,7 +84,7 @@ export class SettingsHistoryPanel {
       .map(path => StVal.path(path))
       .join('; ');
     return `<div class="st-row sh-r" data-shid="${row.id}"><div><b>${esc(row.title)}</b>
-          <span class="muted">${esc(Fmt.dateTime(row.ts))} · ${esc(row.by || '')} · ${row.count} ${plural(row.count, 'поле', 'поля', 'полей')}${row.rolled ? ` · <b class="ok-t">возвращено ${esc(Fmt.dateTime(row.rolled))}</b>` : ''}</span>
+          <span class="muted">${esc(Fmt.dateTime(row.ts))} · ${esc(row.by || '')} · ${row.count} ${KPGen.plural(row.count, 'поле', 'поля', 'полей')}${row.rolled ? ` · <b class="ok-t">возвращено ${esc(Fmt.dateTime(row.rolled))}</b>` : ''}</span>
           <span class="muted sh-p">${esc(paths)}${row.paths.length > shown ? '…' : ''}</span></div>
           <div class="acts"><button class="btn" type="button" data-shopen="${row.id}">Подробнее</button></div></div>`;
   }
@@ -95,10 +104,10 @@ export class SettingsHistoryPanel {
     if (choice !== 'back') return;
     try {
       await AdminApi.get(`history/${id}/rollback`, { method: 'POST' });
-      toast(`Возвращено как было: ${entry.title}`);
+      Toast.show(`Возвращено как было: ${entry.title}`);
       await StRefresh.all();
     } catch (error) {
-      toast(`Не возвращено: ${error.message || error}`);
+      Toast.show(`Не возвращено: ${error.message || error}`);
     }
     this.open();
   }
@@ -193,7 +202,7 @@ export class ConnectionsPanel {
       try {
         this.reply = await AdminApi.get('connections', { method: 'POST' });
       } catch (error) {
-        toast(`Проверка не выполнена: ${error.message || error}`);
+        Toast.show(`Проверка не выполнена: ${error.message || error}`);
       }
       this.render();
     };
@@ -220,7 +229,7 @@ export class ChangedPanel {
       AdminApi.get('lists'),
       AdminApi.get('maint/mirror').catch(() => null),
     ]);
-    await uitLoad();
+    await UiTexts.load();
     this.vals = defaults.values || {};
     this.feat = features.config || {};
     this.lists = lists.values || {};
@@ -310,7 +319,7 @@ export class ChangedPanel {
    */
   otherRows() {
     const out = [];
-    const texts = Object.keys(UIT.map || {}).length;
+    const texts = Object.keys(UiTexts.state.map || {}).length;
     if (texts)
       out.push({ label: 'Тексты интерфейса', now: `заменено: ${texts}`, was: 'исходные надписи', tab: 'texts' });
     const types = EquipTypes.user();
@@ -370,10 +379,10 @@ export class ChangedPanel {
     const [kind, key] = Object.entries(entry.reset)[0];
     try {
       await AdminApi.post(kind, { values: { [key]: null } });
-      toast(`Возвращено встроенное: ${entry.label}`);
+      Toast.show(`Возвращено встроенное: ${entry.label}`);
       await StRefresh.all();
     } catch (error) {
-      toast(`Не возвращено: ${error.message || error}`);
+      Toast.show(`Не возвращено: ${error.message || error}`);
     }
     this.open();
   }

@@ -2,6 +2,13 @@ import { DocImages } from './doc-images.js';
 import { KpSave } from './kp-save.js';
 import { PdfExport } from './pdf-export.js';
 import { PreviewDocx } from './preview-docx.js';
+import { Toast } from '../../core/toast.js';
+import { Api, RemoteResult } from '../../core/net.js';
+import { FileSave } from '../../core/files.js';
+import { Modal } from '../../core/modal.js';
+import { $, esc } from '../../core/util.js';
+import { S } from '../../core/state.js';
+import { Problems } from '../../ui/side-panel.js';
 
 /** Окно предпросмотра всего КП без скачивания; PDF — с компьютера-сервера, иначе печать «Сохранить как PDF». */
 export class KpPreview {
@@ -21,7 +28,9 @@ export class KpPreview {
   };
 
   static _head() {
-    const blocked = problems().length ? ' disabled title="Сначала заполните обязательные поля — список справа"' : '';
+    const blocked = Problems.list().length
+      ? ' disabled title="Сначала заполните обязательные поля — список справа"'
+      : '';
     return `<div class="pv-hd"><h3>Предпросмотр КП${S.number ? ` № ${esc(S.number)}` : ''}</h3><span class="muted pv-note">${S.kpId ? '' : 'Номер присвоится при сохранении'}</span><span class="sp"></span>
       <div class="pv-zoom"><button class="icon" type="button" data-pz="-1" aria-label="Мельче">−</button><span id="pvZ">100%</span><button class="icon" type="button" data-pz="1" aria-label="Крупнее">+</button></div>
       <button class="btn" type="button" data-pva="pdf"><span class="pv-l">Скачать </span>PDF</button><button class="btn" type="button" data-pva="print" title="Печать или «Сохранить как PDF» средствами браузера">Печать</button>
@@ -120,9 +129,9 @@ export class KpPreview {
   }
 
   static _openPdf(button) {
-    api(`/api/kp/${button.dataset.id}/openpdf`, { method: 'POST' })
-      .then(remoteResult)
-      .catch(error => toast(String(error.message || error)));
+    Api.request(`/api/kp/${button.dataset.id}/openpdf`, { method: 'POST' })
+      .then(reply => RemoteResult.show(reply))
+      .catch(error => Toast.show(String(error.message || error)));
   }
 
   /** Обработчики документа: «Предпросмотр», «Открыть PDF», «Печать → PDF». */

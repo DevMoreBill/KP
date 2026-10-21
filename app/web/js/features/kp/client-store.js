@@ -1,3 +1,9 @@
+import { $ } from '../../core/util.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Api } from '../../core/net.js';
 /** ИНН: контрольные суммы (10 цифр — организация, 12 — ИП). */
 export class Inn {
   static W10 = [2, 4, 10, 3, 5, 9, 4, 6, 8];
@@ -120,6 +126,10 @@ export class ClientFields {
  * на сервере; CLIENTS_ALL — сколько всего в справочнике.
  */
 export class ClientStore {
+  // сколько клиентов в справочнике
+  static total = 0;
+  // последние использованные и найденные клиенты (поиск — на сервере)
+  static list = [];
   static FIRST = 50;
   /** реквизиты КП ← поле записи справочника и ответа реестра */
   static FIELDS = [
@@ -150,11 +160,11 @@ export class ClientStore {
   /** Последние использованные клиенты. */
   static async load() {
     try {
-      const answer = await api(`/api/clients?limit=${this.FIRST}`);
-      CLIENTS = answer.items || [];
-      CLIENTS_ALL = answer.all ?? CLIENTS.length;
+      const answer = await Api.request(`/api/clients?limit=${this.FIRST}`);
+      ClientStore.list = answer.items || [];
+      ClientStore.total = answer.all ?? ClientStore.list.length;
     } catch {
-      CLIENTS = [];
+      ClientStore.list = [];
     }
   }
 
@@ -165,9 +175,9 @@ export class ClientStore {
   static keep(list) {
     for (const client of list || []) {
       if (!client || !client.id) continue;
-      const index = CLIENTS.findIndex(row => row.id === client.id);
-      if (index < 0) CLIENTS.push(client);
-      else CLIENTS[index] = client;
+      const index = ClientStore.list.findIndex(row => row.id === client.id);
+      if (index < 0) ClientStore.list.push(client);
+      else ClientStore.list[index] = client;
     }
   }
 
@@ -178,10 +188,10 @@ export class ClientStore {
    */
   static async byId(id) {
     if (!id) return null;
-    const have = CLIENTS.find(client => client.id === id);
+    const have = ClientStore.list.find(client => client.id === id);
     if (have) return have;
     try {
-      const client = await api(`/api/clients/${encodeURIComponent(id)}`);
+      const client = await Api.request(`/api/clients/${encodeURIComponent(id)}`);
       this.keep([client]);
       return client;
     } catch {
@@ -197,8 +207,8 @@ export class ClientStore {
    */
   static async find(query, limit) {
     try {
-      const answer = await api(
-        `/api/clients?limit=${Math.round(limit || DEFN('kp.clientSuggest', 6))}&q=${encodeURIComponent(query)}`,
+      const answer = await Api.request(
+        `/api/clients?limit=${Math.round(limit || DefRegistry.num('kp.clientSuggest', 6))}&q=${encodeURIComponent(query)}`,
       );
       this.keep(answer.items);
       return answer.items || [];
@@ -220,12 +230,12 @@ export class ClientStore {
   static current() {
     const id = S.clientId || (S.clientInn ? `inn${Inn.digits(S.clientInn)}` : '');
     if (!id) return null;
-    const client = CLIENTS.find(row => row.id === id);
+    const client = ClientStore.list.find(row => row.id === id);
     if (client) return client;
     if (!this.fetched.has(id)) {
       this.fetched.add(id);
       this.byId(id).then(found => {
-        if (found) renderForm();
+        if (found) FormView.render();
       });
     }
     return null;
@@ -252,17 +262,17 @@ export class ClientStore {
     const id = this._idOf();
     S.clientId = id;
     try {
-      const isNew = !CLIENTS.some(row => row.id === id);
-      const saved = await api(`/api/clients/${id}`, {
+      const isNew = !ClientStore.list.some(row => row.id === id);
+      const saved = await Api.request(`/api/clients/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(this._record(id, usedInKp)),
       });
       this.keep([saved]);
-      if (isNew && !this.fetched.has(id)) CLIENTS_ALL++;
+      if (isNew && !this.fetched.has(id)) ClientStore.total++;
       return saved;
     } catch (error) {
-      toast(`Контрагент не сохранён: ${error.message}`);
+      Toast.show(`Контрагент не сохранён: ${error.message}`);
       return null;
     }
   }
@@ -297,9 +307,9 @@ export class ClientStore {
     if (client.contacts && client.contacts[0] && !S.contact.name) S.contact = { ...S.contact, ...client.contacts[0] };
     S._clEdit = false;
     S._clManual = false;
-    renderForm();
-    persist();
-    toast(`Контрагент подставлен: ${client.name || ''}`);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Контрагент подставлен: ${client.name || ''}`);
   }
 }
 
@@ -311,14 +321,14 @@ export class PartyFind {
   static async run() {
     const inn = Inn.digits(S.clientInn);
     if (!Inn.valid(inn)) {
-      toast('Проверьте ИНН: 10 цифр у организации, 12 — у ИП');
+      Toast.show('Проверьте ИНН: 10 цифр у организации, 12 — у ИП');
       return;
     }
     const known = await ClientStore.byId(`inn${inn}`);
     const msg = $('#partyMsg');
     if (msg) msg.textContent = 'Ищу организацию…';
     try {
-      const answer = await api(`/api/party?inn=${inn}`);
+      const answer = await Api.request(`/api/party?inn=${inn}`);
       if (answer.error) {
         this._failed(answer.error, known, msg);
         return;
@@ -346,10 +356,10 @@ export class PartyFind {
     if (contact && !S.contact.name) S.contact = { ...S.contact, ...contact };
     S.clientId = `inn${party.inn || inn}`;
     S._clManual = false;
-    renderForm();
-    persist();
-    toast(`Реквизиты заполнены (${party.source || ''})`);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Реквизиты заполнены (${party.source || ''})`);
     ClientStore.save();
-    if (party.active === false) toast(`Внимание: организация не действует — ${party.status || ''}`);
+    if (party.active === false) Toast.show(`Внимание: организация не действует — ${party.status || ''}`);
   }
 }

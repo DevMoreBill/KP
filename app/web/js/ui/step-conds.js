@@ -1,5 +1,14 @@
 import { FormView } from './form-view.js';
 import { UiKit } from './ui-kit.js';
+import { Toast } from '../core/toast.js';
+import { AdminDialog } from '../features/admin/admin-core.js';
+import { KpFilesPanel } from '../features/kp/kp-files.js';
+import { esc } from '../core/util.js';
+import { DealState } from '../features/deal/deal-state.js';
+import { DealCalculator } from '../features/deal/deal-calculator.js';
+import { DealConds } from '../features/deal/deal-conds.js';
+import { KpState, S } from '../core/state.js';
+import { KpConditions } from '../core/conditions.js';
 
 /** Условия прошлых КП в этом браузере: для «Как в прошлом КП» и свои значения — для списка ▾. */
 export class CondMemory {
@@ -62,7 +71,7 @@ export class CondsStep {
    * @returns {string[]}
    */
   static options(label) {
-    return (COND.find(cond => cond[0] === label) || [])[1] || [];
+    return (KpConditions.LIST.find(cond => cond[0] === label) || [])[1] || [];
   }
 
   /**
@@ -119,13 +128,13 @@ export class CondsStep {
     <div class="grid g2">${rows}</div>
     <div class="f" style="margin-top:14px"><span>Дополнительные условия и оговорки</span><div class="cpick ta">
       <textarea data-p="condExtra" rows="3" placeholder="Например: цена действительна при заказе комплекта целиком">${esc(S.condExtra || '')}</textarea>
-      ${this._picker('data-cxadd', 0, COND_EXTRA, [])}</div></div>
+      ${this._picker('data-cxadd', 0, KpConditions.EXTRA, [])}</div></div>
     ${KpFilesPanel.stepHtml()}</section>`;
   }
 
   static async _clear() {
     if (
-      !(await stConfirm(
+      !(await AdminDialog.confirm(
         'Очистить все условия?',
         'Поля условий и оговорки станут пустыми — в КП условия не попадут.',
         'Очистить',
@@ -170,7 +179,7 @@ export class CondsStep {
       value: (last.conditions.find(old => old.label === cond.label) || {}).value || '',
     }));
     S.condExtra = last.condExtra || '';
-    toast('Условия — как в прошлом КП');
+    Toast.show('Условия — как в прошлом КП');
     return true;
   }
 
@@ -198,7 +207,7 @@ export class CondsStep {
     if (!changed) return;
     event.target.closest('details')?.removeAttribute('open');
     FormView.render();
-    persist();
+    KpState.persist();
   }
 
   /** Обработчик щелчков раздела. */

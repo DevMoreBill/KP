@@ -3,6 +3,15 @@ import { Logos } from './image-slots.js';
 import { ImageDrop } from './item-blocks.js';
 import { ItemLinks } from './item-links.js';
 import { PageImages } from './page-images.js';
+import { DrawPic } from '../kit/draw-pic.js';
+import { StationBrief } from '../station/station-doc.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Str } from '../../core/str.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Kit } from '../kit/kit.js';
+import { StationUi } from '../station/station-ui.js';
+import { esc } from '../../core/util.js';
 
 /** Вкладка «Описание и фото»: главное фото и логотип, блоки описания со своими фото, схемы и другие изображения. */
 export class DescTab {
@@ -43,7 +52,7 @@ export class DescTab {
 
   // станция: главное фото — общий вид изделия (титул и строка КП); можно взять фото любого элемента состава
   static _stationPhoto(item, i) {
-    if (!(typeof Kit !== 'undefined' && Kit.station(item))) return '';
+    if (!Kit.station(item)) return '';
     const parts = Kit.parts(item)
       .map((part, j) => ({ p: part, j }))
       .filter(row => row.p.photo && row.p.photo.src);
@@ -119,7 +128,7 @@ export class DescTab {
   }
 
   static _logoText(item) {
-    const maker = attrsOf(item).maker;
+    const maker = Attrs.of(item).maker;
     if (!maker) return 'Логотип подставится сам, если указать производителя (точное совпадение с каталогом)';
     return Logos.of(maker)
       ? 'Логотип производителя'
@@ -137,23 +146,23 @@ export class DescTab {
     });
     const logo = ImageDrop.html({ img: item.logo, kind: 'logo', i, text: this._logoText(item), small: true });
     return `<div class="ed-sec"><p class="sub">${station ? 'Главное фото станции и логотип' : 'Главное фото и логотип'}</p>${this._stationPhoto(item, i)}
-     <div class="media2"><div>${photo}${this._mainPick(item, i)}${field('Подпись под фото', `${path}.photoCaption`, { ph: 'Исполнение в кожухе' })}</div>
+     <div class="media2"><div>${photo}${this._mainPick(item, i)}${UiKit.field('Подпись под фото', `${path}.photoCaption`, { ph: 'Исполнение в кожухе' })}</div>
        <div>${logo}</div></div></div>`;
   }
 
   static _feats(item, i, { type, station }) {
     const slots = (type.gallerySlots || []).filter(slot => !ImageFiles.WIDE_RX.test(slot));
-    const have = new Set((item.features || []).map(feat => norm(feat.label)));
+    const have = new Set((item.features || []).map(feat => Str.norm(feat.label)));
     const blocks = (item.features || []).map((feat, j) => this._block(item, i, feat, j)).join('');
     const chips = slots
-      .filter(slot => !have.has(norm(slot)))
+      .filter(slot => !have.has(Str.norm(slot)))
       .map(
         slot =>
           `<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="${esc(slot)}">+ ${esc(slot)}</button>`,
       )
       .join('');
     const hint = `У каждого блока — своё фото: в КП текст и фото стоят рядом.${station ? ' Для станции — например, «Контейнер снаружи», «Внутри контейнера»; элементы состава описываются на вкладке «Состав станции».' : ''}`;
-    return `<div class="ed-sec"><div class="sub">${station ? 'Описание станции по узлам' : 'Описание узлов'}${tip(hint)}</div>
+    return `<div class="ed-sec"><div class="sub">${station ? 'Описание станции по узлам' : 'Описание узлов'}${UiKit.tip(hint)}</div>
      ${blocks || '<p class="muted">Добавьте блоки описания — например, «Двигатель», «Альтернатор», «Контроллер».</p>'}
      <div class="chips">${chips}<button class="chip" type="button" data-a="addFeatL" data-i="${i}" data-l="">+ свой блок</button></div></div>`;
   }
@@ -170,7 +179,7 @@ export class DescTab {
       item.feed && item.feed.url
         ? `Все фото со страницы товара: ${esc(item.feed.url)} (Shift+клик — другая ссылка)`
         : 'Все фото со страницы товара на сайте поставщика — по ссылке';
-    return `<div class="ed-sec"><div class="sub">Схемы, чертежи и другие фото${tip('Выводятся после характеристик; можно привязать к группе характеристик. Перетащите файлы или вставьте из буфера (Ctrl+V).')}</div>
+    return `<div class="ed-sec"><div class="sub">Схемы, чертежи и другие фото${UiKit.tip('Выводятся после характеристик; можно привязать к группе характеристик. Перетащите файлы или вставьте из буфера (Ctrl+V).')}</div>
      <div class="gal" data-gal="${i}" tabindex="0">${this._cards(item, i) || '<p class="muted" style="margin:0">Перетащите сюда файлы или картинки с сайта, или вставьте из буфера (Ctrl+V). Схемы и чертежи в PNG сохраняются без потери чёткости.</p>'}</div>
      <div class="chips" style="margin-top:8px">${schemes}<button class="chip" type="button" data-a="galAdd" data-i="${i}" data-slot="">+ изображение</button><button class="chip" type="button" data-imgpaste='[data-gal="${i}"]'>Вставить из буфера</button><button class="chip" type="button" data-a="galPage" data-i="${i}" title="${page}">⤓ Фото с сайта поставщика</button></div></div>`;
   }
@@ -182,12 +191,12 @@ export class DescTab {
    * @returns {string}
    */
   static html(item, i) {
-    const type = typeById(attrsOf(item).cat);
-    const station = typeof Kit !== 'undefined' && !!Kit.station(item);
+    const type = EquipTypes.byId(Attrs.of(item).cat);
+    const station = !!Kit.station(item);
     const feats = this._feats(item, i, { type, station }); // коды блоков описания — до привязки изображений
     const gallery = this._gallery(item, i, type);
     const media = this._media(item, i, station);
-    const brief = station && typeof StationBrief !== 'undefined' ? StationBrief.html(item, i) : '';
+    const brief = station ? StationBrief.html(item, i) : '';
     return `${media}
    ${brief}
    ${feats}

@@ -1,4 +1,5 @@
 import { Kit } from './kit.js';
+import { Attrs } from '../../core/item-attrs.js';
 
 /** Блоки описания позиции каталога, которые уходят в КП: без «Опций по прайсу поставщика» (там закупочные цены). */
 export class CatFeatures {
@@ -26,7 +27,7 @@ export class KitPart {
    * @returns {object} элемент сборки
    */
   static fromCat(doc) {
-    const attrs = { ...attrsOf(doc) };
+    const attrs = { ...Attrs.of(doc) };
     const all = (doc.groups || []).flatMap(group => (group.rows || []).filter(row => row.k && row.v));
     KitPart.dimsOf(attrs, all);
     return Kit.newPart({

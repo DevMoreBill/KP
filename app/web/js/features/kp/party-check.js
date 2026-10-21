@@ -1,4 +1,13 @@
 import { ClientStore, Inn } from './client-store.js';
+import { FormView } from '../../ui/form-view.js';
+import { Toast } from '../../core/toast.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Money } from '../../core/money.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { KpState, S } from '../../core/state.js';
+import { FEAT } from '../../core/features.js';
+import { $, esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
 
 /**
  * Проверка контрагента: Checko — основной сервис, OFData — резерв (тот же формат данных), бухотчётность — бесплатно из
@@ -26,7 +35,7 @@ export class PartyCheck {
    */
   static async load() {
     try {
-      this.quota = await api('/api/check/quota');
+      this.quota = await Api.request('/api/check/quota');
     } catch {
       this.quota = null;
     }
@@ -60,10 +69,10 @@ export class PartyCheck {
     const left = list.reduce((total, row) => total + (row.left || 0), 0);
     const src = list.map(row => row.name || 'Checko').join(' + ');
     if (full > 0) {
-      return `сегодня осталось ${full} ${plural(full, 'полная проверка', 'полные проверки', 'полных проверок')} (${src})`;
+      return `сегодня осталось ${full} ${KPGen.plural(full, 'полная проверка', 'полные проверки', 'полных проверок')} (${src})`;
     }
     if (left > 0)
-      return `сегодня осталось ${left} ${plural(left, 'запрос', 'запроса', 'запросов')} (${src}) — будет краткая проверка`;
+      return `сегодня осталось ${left} ${KPGen.plural(left, 'запрос', 'запроса', 'запросов')} (${src}) — будет краткая проверка`;
     return `лимит ${src} на сегодня исчерпан — будет бесплатная проверка по ФНС, полная — завтра автоматически`;
   }
 
@@ -104,7 +113,7 @@ export class PartyCheck {
         if (box) box.textContent = this.quotaText(quota);
       });
     }
-    return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button><span class="muted" id="chkQ">${esc(this.quotaText())}</span>${tip(this.TIP)}</div>`;
+    return `<div class="chk-line"><button class="btn ghost" type="button" data-a="checkRun">Проверить контрагента</button><span class="muted" id="chkQ">${esc(this.quotaText())}</span>${UiKit.tip(this.TIP)}</div>`;
   }
 
   static _error(check, rusprofile) {
@@ -169,7 +178,7 @@ export class PartyCheck {
 
   static _summary(check) {
     const age = check.checkedAt ? (Date.now() - new Date(check.checkedAt)) / this.DAY_MS : 0;
-    const old = age > DEFN('kp.checkDays', 30); // проверка устарела — предложить обновить
+    const old = age > DefRegistry.num('kp.checkDays', 30); // проверка устарела — предложить обновить
     return `<summary><b>${esc(this._source(check))}: ${esc(this.SCORE[check.score] || '')}</b> <span class="muted">· ${esc(KPGen.ruDate((check.checkedAt || '').slice(0, 10)))} · подробнее</span>${check.queued ? ' <span class="chk-old" title="Выполнится автоматически, когда обновится лимит (после 00:00 по Москве)">полная — в очереди</span>' : ''}${old ? ` <span class="chk-old" title="Данные могли измениться">проверке ${Math.floor(age)} дн. — обновите</span>` : ''}</summary>`;
   }
 
@@ -204,7 +213,7 @@ export class PartyCheck {
   static async _run(force) {
     const inn = Inn.digits(S.clientInn);
     if (!Inn.valid(inn)) {
-      toast('Укажите корректный ИНН');
+      Toast.show('Укажите корректный ИНН');
       return;
     }
     const button = document.querySelector('[data-a="checkRun"]');
@@ -215,7 +224,7 @@ export class PartyCheck {
     const state = S;
     let answer;
     try {
-      answer = await api(`/api/check?inn=${inn}${force}`);
+      answer = await Api.request(`/api/check?inn=${inn}${force}`);
     } catch (error) {
       answer = {
         error: 'net',
@@ -226,13 +235,13 @@ export class PartyCheck {
     }
     if (answer && answer.quotaNow) this.quota = answer.quotaNow;
     if (S !== state || Inn.digits(S.clientInn) !== inn) {
-      toast(`Проверка ИНН ${inn} готова, но клиент уже другой — запустите проверку снова`);
-      renderForm();
+      Toast.show(`Проверка ИНН ${inn} готова, но клиент уже другой — запустите проверку снова`);
+      FormView.render();
       return;
     }
     S.check = answer;
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     if (!S.check.error && S.client) ClientStore.save();
   }
 }

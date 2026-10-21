@@ -7,6 +7,13 @@ import { LgFmt } from './lg-fmt.js';
 import { LgGeo } from './lg-geo.js';
 import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
+import { FEAT } from '../../core/features.js';
+import { Currency } from '../kp/currency.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { SidePanel } from '../../ui/side-panel.js';
+import { KpState } from '../../core/state.js';
+import { Api } from '../../core/net.js';
+import { Fmt } from '../../core/str.js';
 
 /**
  * Предложения перевозчиков (ATI.SU, ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз, ЖелДорЭкспедиция — сервер
@@ -186,13 +193,13 @@ export class LgOffers {
     LgState.tried[key] = true;
     DealWin.render();
     try {
-      const reply = await api('/api/logistics/quote', {
+      const reply = await Api.request('/api/logistics/quote', {
         method: 'POST',
         headers: LgOffers.JSON_HEAD,
         body: JSON.stringify(body),
       });
       sup.lg.quote = { key, res: reply };
-      persist();
+      KpState.persist();
     } catch (error) {
       LgState.err[sup.id] = `Не удалось запросить цены: ${error.message || error}`;
     }
@@ -208,7 +215,9 @@ export class LgOffers {
       .reduce(
         (sum, item) =>
           sum +
-          (item.cost ? (item.cost / LgOffers.KOPECKS) * (+item.qty || 0) * (rateOf(item.costCur || 'RUB') || 0) : 0),
+          (item.cost
+            ? (item.cost / LgOffers.KOPECKS) * (+item.qty || 0) * (Currency.rate(item.costCur || 'RUB') || 0)
+            : 0),
         0,
       );
     const near = point => LgGeo.nearBig(point, LgOffers.NEAR);

@@ -1,5 +1,15 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
 import { BackupTab } from './backup-tab.js';
+import { ClientStore } from '../kp/client-store.js';
+import { Managers } from '../kp/managers.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Toast } from '../../core/toast.js';
+import { FileSave } from '../../core/files.js';
+import { Api } from '../../core/net.js';
+import { Fmt, Str } from '../../core/str.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { esc } from '../../core/util.js';
 
 /** «Проверка базы» (db_health.DbHealth): целостность, позиции без категории, одинаковые названия, КП без файла Word. */
 export class DbHealthCard {
@@ -32,7 +42,7 @@ export class DbHealthCard {
       box.innerHTML = `<p class="sub">Проверка базы</p><p class="muted">${esc(error.message || error)}</p>`;
       return;
     }
-    box.innerHTML = `<div class="row"><p class="sub" style="margin:0">Проверка базы ${tip(this.TIP)}</p><span class="sp"></span>
+    box.innerHTML = `<div class="row"><p class="sub" style="margin:0">Проверка базы ${UiKit.tip(this.TIP)}</p><span class="sp"></span>
         <button class="btn sm" type="button" data-hrun>Проверить сейчас</button></div>
       ${reply && reply.at ? this._table(reply) : '<p class="muted">Проверки ещё не было.</p>'}`;
     box.querySelector('[data-hrun]').onclick = () => this.run(box);
@@ -121,7 +131,7 @@ export class DataTransfer {
       ([value, label]) =>
         `<label class="ck"><input type="checkbox" data-xs="${value}" data-nodirty${value === 'audit' ? '' : ' checked'}> ${label}</label>`,
     ).join('');
-    return `<div id="dtExp" class="bk-form"><div class="sub st-mh">Разделы базы ${tip('<p>Каталог можно выгрузить целиком или выбрать категории, производителей, поставщиков, фиды. Файл любого формата загружается обратно в «Загрузить → Копия или правки»: записи с теми же кодами заменяются, новые добавляются, изображения (из архива .zip) — только недостающие.</p><p>«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>')}</div>
+    return `<div id="dtExp" class="bk-form"><div class="sub st-mh">Разделы базы ${UiKit.tip('<p>Каталог можно выгрузить целиком или выбрать категории, производителей, поставщиков, фиды. Файл любого формата загружается обратно в «Загрузить → Копия или правки»: записи с теми же кодами заменяются, новые добавляются, изображения (из архива .zip) — только недостающие.</p><p>«Настройки программы» — категории, умолчания, списки, функции, тексты интерфейса, тарифы доставки, фиды, почта; пароли, ключи API и учётные записи не выгружаются.</p>')}</div>
       <label class="f"><span>Быстрый выбор</span><select id="dtPre" data-nodirty>${presets}<option value="">Свой выбор</option></select></label>
       <div class="f"><span>Разделы</span><div class="bk-cks">${sections}</div></div>
       <div class="f" id="dtCatBox"><span>Каталог</span><div></div></div>
@@ -138,15 +148,15 @@ export class DataTransfer {
   static async download(url, status) {
     if (status) status.textContent = 'Готовлю файл…';
     try {
-      const reply = await api(`/api/admin/${url}`, { raw: true });
+      const reply = await Api.request(`/api/admin/${url}`, { raw: true });
       const name = decodeURIComponent((reply.headers.get('Content-Disposition') || '').split("''")[1] || 'backup');
       const blob = await reply.blob();
-      saveFileA(name, blob);
+      FileSave.download(name, blob);
       if (status) status.textContent = `Скачано: ${name} (${Fmt.size(blob.size)})`;
       return true;
     } catch (error) {
       if (status) status.textContent = '';
-      toast(`Не выгружено: ${error.message || error}`);
+      Toast.show(`Не выгружено: ${error.message || error}`);
       return false;
     }
   }
@@ -173,7 +183,7 @@ export class DataTransfer {
     form.addEventListener('input', event => {
       const find = event.target.closest('[data-dtq]');
       if (!find) return;
-      const words = norm(find.value);
+      const words = Str.norm(find.value);
       find
         .closest('[data-dtk]')
         .querySelectorAll('[data-dtn]')
@@ -212,7 +222,7 @@ export class DataTransfer {
   static groups(sums) {
     const groups = new Map();
     for (const [cat, count] of sums) {
-      const type = cat ? typeById(cat) : null;
+      const type = cat ? EquipTypes.byId(cat) : null;
       const ok = type && type.id === cat;
       const group = ok ? type.group || 'Прочее' : 'Без категории';
       if (!groups.has(group)) groups.set(group, []);
@@ -222,7 +232,7 @@ export class DataTransfer {
   }
 
   static _chip(attr, value, label, count) {
-    return `<label class="chk-chip" data-dtn="${esc(norm(label))}"><input type="checkbox" ${attr}="${esc(value)}"> ${esc(label)} · ${Fmt.num(count)}</label>`;
+    return `<label class="chk-chip" data-dtn="${esc(Str.norm(label))}"><input type="checkbox" ${attr}="${esc(value)}"> ${esc(label)} · ${Fmt.num(count)}</label>`;
   }
 
   static _block(key, title, body, count, find) {
@@ -326,8 +336,8 @@ export class DataTransfer {
   static _fits(row, sets) {
     return (
       (!sets.cats || sets.cats.has(row.cat)) &&
-      (!sets.makers || sets.makers.has(norm(row.maker))) &&
-      (!sets.sups || sets.sups.has(norm(row.sup))) &&
+      (!sets.makers || sets.makers.has(Str.norm(row.maker))) &&
+      (!sets.sups || sets.sups.has(Str.norm(row.sup))) &&
       (!sets.feeds || sets.feeds.has(row.feed))
     );
   }
@@ -341,8 +351,8 @@ export class DataTransfer {
     const same = value => value;
     const sets = {
       cats: set('cats', same),
-      makers: set('makers', norm),
-      sups: set('sups', norm),
+      makers: set('makers', text => Str.norm(text)),
+      sups: set('sups', text => Str.norm(text)),
       feeds: set('feeds', same),
     };
     main.querySelectorAll('[data-dtc]').forEach(badge => {
@@ -363,14 +373,14 @@ export class DataTransfer {
   static _url(main) {
     const sections = [...main.querySelectorAll('[data-xs]:checked')].map(box => box.dataset.xs);
     if (!sections.length) {
-      toast('Отметьте разделы');
+      Toast.show('Отметьте разделы');
       return '';
     }
     const some = (main.querySelector('[name="dtScope"]:checked') || {}).value === 'some';
     const pick = some ? this._picked(main) : {};
     const catalog = some && sections.includes('catalog');
     if (catalog && !Object.keys(pick).length) {
-      toast('Отметьте категории, производителей, поставщиков или фиды');
+      Toast.show('Отметьте категории, производителей, поставщиков или фиды');
       return '';
     }
     return `export?${new URLSearchParams({ sections: sections.join(','), fmt: BackupTab.fmtOf(main), ...(catalog ? { pick: JSON.stringify(pick) } : {}) })}`;
@@ -409,15 +419,15 @@ export class DataTransfer {
         );
         const msg = this._doneText(reply);
         this.file = null;
-        toast(msg);
+        Toast.show(msg);
         main.querySelector('#impP').innerHTML = `<p class="ok-t">✓ ${esc(msg)}</p>`;
-        refreshCat();
-        loadManagers();
-        loadClients();
+        Catalog.refresh();
+        Managers.load();
+        ClientStore.load();
         if (done) done();
       } catch (error) {
         button.disabled = false;
-        toast(`Не загружено: ${error.message}`);
+        Toast.show(`Не загружено: ${error.message}`);
       }
     });
   }
@@ -490,7 +500,7 @@ export class DataTransfer {
   }
 
   static _mode(edits) {
-    return `<label class="f bk-mode"><span class="st-mh">Что загрузить ${tip('<p><b>Только изменённое в файле</b> — записи, которые правили в файле после выгрузки. Если ту же запись после выгрузки изменили и в программе (вручную или фидом), она пропускается и попадает в список ниже. Цены и остатки позиций каталога при этом не меняются.</p><p><b>Всё как в файле</b> — записи с теми же кодами заменяются, как в файле (восстановить копию).</p>')}</span>
+    return `<label class="f bk-mode"><span class="st-mh">Что загрузить ${UiKit.tip('<p><b>Только изменённое в файле</b> — записи, которые правили в файле после выгрузки. Если ту же запись после выгрузки изменили и в программе (вручную или фидом), она пропускается и попадает в список ниже. Цены и остатки позиций каталога при этом не меняются.</p><p><b>Всё как в файле</b> — записи с теми же кодами заменяются, как в файле (восстановить копию).</p>')}</span>
           <select id="impMode" data-nodirty><option value="edits"${edits ? ' selected' : ''}>Только изменённое в файле</option><option value="all"${edits ? '' : ' selected'}>Всё как в файле (восстановить)</option></select></label>`;
   }
 
@@ -557,7 +567,7 @@ export class SupplierExport {
     select.innerHTML = this.groups
       .map(
         group =>
-          `<option value="${esc(group.name)}"${norm(group.name) === norm(selected) ? ' selected' : ''}>${esc(group.name)} · ${Fmt.num(group.count)}${group.dir || group.name === this.NONE ? '' : ' (фид, не привязан к справочнику)'}</option>`,
+          `<option value="${esc(group.name)}"${Str.norm(group.name) === Str.norm(selected) ? ' selected' : ''}>${esc(group.name)} · ${Fmt.num(group.count)}${group.dir || group.name === this.NONE ? '' : ' (фид, не привязан к справочнику)'}</option>`,
       )
       .join('');
     box.addEventListener('click', event => {
@@ -621,7 +631,7 @@ export class CatFilterPane {
       ([key, label]) =>
         `<label class="ck"><input type="checkbox" data-cfp="${key}" data-nodirty${filter.prices.includes(key) ? ' checked' : ''}> ${label}</label>`,
     ).join('');
-    return `<div class="bk-form" id="cfBox"><div class="sub st-mh">Каталог по фильтру ${tip('<p>Отбор — как в окне каталога: категория, производитель, поставщик, слова поиска (все — в названии, кратком описании, артикуле или характеристиках), «С ценой», «В наличии».</p><p>Цены и остатки — галочками: что не отмечено, в файл не попадёт, а при загрузке файла обратно останется как в программе. Закупку видит только администратор.</p>')}</div>
+    return `<div class="bk-form" id="cfBox"><div class="sub st-mh">Каталог по фильтру ${UiKit.tip('<p>Отбор — как в окне каталога: категория, производитель, поставщик, слова поиска (все — в названии, кратком описании, артикуле или характеристиках), «С ценой», «В наличии».</p><p>Цены и остатки — галочками: что не отмечено, в файл не попадёт, а при загрузке файла обратно останется как в программе. Закупку видит только администратор.</p>')}</div>
       <div class="bk-grid"><label class="f"><span>Категория</span><select data-cf="cat" data-nodirty><option value="">Загружаю…</option></select></label>
         <label class="f"><span>Производитель</span><select data-cf="maker" data-nodirty></select></label>
         <label class="f"><span>Поставщик</span><select data-cf="sup" data-nodirty></select></label>

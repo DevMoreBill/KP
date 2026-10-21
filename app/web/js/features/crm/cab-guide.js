@@ -1,3 +1,5 @@
+import { Modal } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 /** Подсказки кабинета: «?» в шапке — коротко, как пользоваться; совет при первом открытии (скрывается «Понятно»). */
 export class CabGuide {
   static KEY = 'kp.cab.tip';

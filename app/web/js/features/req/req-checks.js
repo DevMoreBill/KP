@@ -1,4 +1,11 @@
 import { StationReq } from './station-req.js';
+import { StationDefaults } from '../kit/station-defaults.js';
+import { StationRules } from '../rules/station-rules.js';
+import { GensetSizing } from '../calc/genset-sizing.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { AirChain } from '../layout/air-chain.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { Kit } from '../kit/kit.js';
 
 /**
  * Что даёт состав станции против требований: производительность, давление, безмасляные компрессоры, шкафы АВР и АСУ ТП,
@@ -144,7 +151,7 @@ export class ReqChecks {
     const fuel = parts
       .filter(part => ['tank', 'dgu'].includes(StationEquip.kindOf(part)))
       .reduce((sum, part) => sum + this._litres(part) * Math.max(1, +part.qty || 1), 0);
-    const plan = hours > 0 && typeof GensetSizing !== 'undefined' && StationRules.ok() ? GensetSizing.plan(item) : null;
+    const plan = hours > 0 && StationRules.ok() ? GensetSizing.plan(item) : null;
     if (plan && plan.c > 0) return this._planned(plan, hours);
     if (hours > 0 && work > 0 && fuel > 0) return this._rough(work, fuel, hours);
     return null;

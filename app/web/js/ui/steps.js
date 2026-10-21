@@ -7,9 +7,16 @@ import { CoverStep } from './step-cover.js';
 import { EquipStep } from './step-equipment.js';
 import { ManagerStep } from './step-manager.js';
 import { PriceStep } from './step-price.js';
+import { esc } from '../core/util.js';
+import { CbrRates } from '../features/kp/cbr-rates.js';
+import { FEAT } from '../core/features.js';
+import { KpModels } from '../features/doc/kp-models.js';
+import { S } from '../core/state.js';
 
 /** Разделы (шаги) КП: список, какие показаны, переход, полоса шагов и кнопки «назад / далее». */
 export class Steps {
+  // открытый раздел формы КП
+  static current = 'client';
   static LIST = [
     { id: 'client', t: 'Клиент', d: 'Кому и когда', f: () => ClientStep.html() },
     { id: 'equip', t: 'Оборудование', d: 'Подбор из каталога, опции, фото', f: () => EquipStep.html() },
@@ -52,14 +59,14 @@ export class Steps {
    * @returns {object[]}
    */
   static visible() {
-    return this.LIST.filter(step => step.id !== 'mgr' || STEP === 'mgr' || !this.mgrLine());
+    return this.LIST.filter(step => step.id !== 'mgr' || Steps.current === 'mgr' || !this.mgrLine());
   }
 
   /** Открыть шаг, запомненный на этом устройстве. */
   static restore() {
     try {
       const saved = localStorage.getItem(this.STORE_KEY);
-      if (this.LIST.some(step => step.id === saved)) STEP = saved;
+      if (this.LIST.some(step => step.id === saved)) Steps.current = saved;
     } catch {
       // хранилище недоступно — шаг по умолчанию
     }
@@ -84,7 +91,7 @@ export class Steps {
    * @param {string} [target]
    */
   static open(id, target) {
-    STEP = id;
+    Steps.current = id;
     try {
       localStorage.setItem(this.STORE_KEY, id);
     } catch {
@@ -92,7 +99,7 @@ export class Steps {
     }
     FormView.render();
     window.scrollTo({ top: 0, behavior: Mobile.isPhone() ? 'auto' : 'smooth' });
-    if (id === 'price') autoRates();
+    if (id === 'price') CbrRates.auto();
     if (target) setTimeout(() => this._focus(target), this.FOCUS_DELAY);
   }
 
@@ -120,14 +127,14 @@ export class Steps {
   }
 
   static _state(id, bad) {
-    if (id === STEP) return 'cur';
+    if (id === Steps.current) return 'cur';
     if (bad.has(id)) return 'bad';
     return this.DONE[id]() ? 'ok' : '';
   }
 
   static _button(step, k, bad) {
     const state = this._state(step.id, bad);
-    return `<button type="button" class="stp ${state}" data-step="${step.id}" title="${esc(step.d)}" aria-current="${step.id === STEP ? 'step' : 'false'}">
+    return `<button type="button" class="stp ${state}" data-step="${step.id}" title="${esc(step.d)}" aria-current="${step.id === Steps.current ? 'step' : 'false'}">
         <span class="num">${state === 'ok' ? '✓' : k + 1}</span><span class="tx"><b>${step.t}</b></span>${state === 'bad' ? '<i class="dot" title="Есть незаполненные поля"></i>' : ''}</button>`;
   }
 
@@ -137,7 +144,7 @@ export class Steps {
    */
   static navHtml() {
     const list = this.visible();
-    const k = list.findIndex(step => step.id === STEP);
+    const k = list.findIndex(step => step.id === Steps.current);
     const prev = list[k - 1];
     const next = list[k + 1];
     const back = prev

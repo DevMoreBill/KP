@@ -1,6 +1,7 @@
 import { AirChain } from './air-chain.js';
 import { Mm } from './mm.js';
 import { StationEquip } from './station-equip.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Нормы станции: шум (СанПиН 1.2.3685-21), климатическое исполнение (ГОСТ 15150-69), отопление и вентиляция, щиты длиннее

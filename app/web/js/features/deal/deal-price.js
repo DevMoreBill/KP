@@ -1,6 +1,10 @@
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
+import { esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
+import { Currency } from '../kp/currency.js';
+import { Fmt, Price } from '../../core/str.js';
 
 /** Вкладка «Цена КП и валюта»: цены позиций, валюта и курсы ЦБ правятся здесь же и сразу меняют КП; прикидка другой цены. */
 export class DealPrice {
@@ -35,7 +39,7 @@ export class DealPrice {
   static html(calc) {
     const deal = DealState.deal();
     const kpData = DealState.inputs();
-    const cur = kpCur();
+    const cur = Currency.current();
     const over = deal.over.price !== '' && deal.over.price != null;
     const guess = DealFmt.field('Цена для расчёта с НДС', 'over.price', {
       calc,
@@ -53,7 +57,7 @@ export class DealPrice {
   }
 
   static _cur(cur) {
-    const options = CUR_LIST.map(
+    const options = Currency.LIST.map(
       code =>
         `<option value="${code}"${code === cur ? ' selected' : ''}>${DealPrice.CUR_NAMES[code] || DealPrice.CUR_OTHER} (${code})</option>`,
     ).join('');
@@ -69,7 +73,7 @@ export class DealPrice {
     const inputs = need
       .map(code => {
         const value = (deal.rates && deal.rates[code]) || pricing.rates[code] || '';
-        return `<span class="dl-in"><i>1 ${code} =</i><input type="text" inputmode="decimal" data-kprate="${code}" value="${esc(value)}" placeholder="0,0000" aria-label="Курс ${code}"${rateOf(code) > 0 ? '' : ' class="bad"'}><i>₽</i></span>`;
+        return `<span class="dl-in"><i>1 ${code} =</i><input type="text" inputmode="decimal" data-kprate="${code}" value="${esc(value)}" placeholder="0,0000" aria-label="Курс ${code}"${Currency.rate(code) > 0 ? '' : ' class="bad"'}><i>₽</i></span>`;
       })
       .join('');
     return `<div class="f dl-f dl-rates"><span>Курс ЦБ РФ${date}</span>
@@ -78,7 +82,7 @@ export class DealPrice {
   }
 
   static _items(cur, kpData) {
-    const short = curSh(cur);
+    const short = Currency.short(cur);
     const rows = S.items
       .filter(item => String(item.name || '').trim())
       .map(item => DealPrice._row(item, short))
@@ -86,15 +90,15 @@ export class DealPrice {
     if (!rows) return '';
     const rub = cur !== 'RUB' && kpData.sumRub ? `<small>≈ ${Fmt.rub(kpData.sumRub)}</small>` : '';
     return `<table class="dl-it dl-kpt"><thead><tr><th>Позиция</th><th>Цена за ед. с НДС, ${short}</th><th class="num">Сумма, ${short}</th></tr></thead><tbody>${rows}</tbody>
-        <tfoot><tr><td><b>Итого КП с НДС</b></td><td></td><td class="num"><b>${money(totalsS().sum)} ${short}</b>${rub}</td></tr></tfoot></table>`;
+        <tfoot><tr><td><b>Итого КП с НДС</b></td><td></td><td class="num"><b>${KPGen.money(KpState.totals().sum)} ${short}</b>${rub}</td></tr></tfoot></table>`;
   }
 
   static _row(item, short) {
     const index = S.items.indexOf(item);
-    const text = item._priceText ?? fmtPrice(item.price);
+    const text = item._priceText ?? Price.text(item.price);
     const disc = KPGen.unitDisc(item);
-    return `<tr><td class="c-nm"><b>${esc(item.name)}</b><small>${esc(item.qty)} шт.${disc ? ` · скидка ${money(disc)} ${short}/ед.` : ''}</small></td>
+    return `<tr><td class="c-nm"><b>${esc(item.name)}</b><small>${esc(item.qty)} шт.${disc ? ` · скидка ${KPGen.money(disc)} ${short}/ед.` : ''}</small></td>
         <td class="c-cost"><input type="text" inputmode="decimal" class="num" data-kpp-i="${index}" value="${esc(text)}" placeholder="0,00" aria-label="Цена за единицу с НДС, ${short}"></td>
-        <td class="num">${money(itemSum(item))}</td></tr>`;
+        <td class="num">${KPGen.money(KpState.itemSum(item))}</td></tr>`;
   }
 }

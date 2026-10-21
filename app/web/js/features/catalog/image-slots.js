@@ -1,5 +1,8 @@
 import { ImageFiles } from './images.js';
 import { ItemLinks } from './item-links.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
 
 /**
  * Все места для картинок устроены одинаково: нажать — выбрать файл; перетащить файл или картинку со страницы сайта;
@@ -33,12 +36,12 @@ export class ImageSlots {
    */
   static async put(slot, files) {
     const images = this._images(files);
-    if (!images.length) return toast('Нужна картинка: JPG, PNG, WEBP или скопированное изображение');
+    if (!images.length) return Toast.show('Нужна картинка: JPG, PNG, WEBP или скопированное изображение');
     const data = slot.dataset;
     if (data.drop) return ImageFiles.load(images[0], data.drop, +data.i);
     if (data.thumb != null) {
       await ImageFiles.load(images[0], 'photo', +data.thumb);
-      return toast('Главное фото добавлено');
+      return Toast.show('Главное фото добавлено');
     }
     if (data.fimg != null) return ItemLinks.addFeatImage(+data.fimg, data.fid, images.slice(0, 1));
     if (data.gal != null) return ImageFiles.addGallery(+data.gal, images, '');
@@ -56,12 +59,12 @@ export class ImageSlots {
     try {
       const answer = url.startsWith('data:image/')
         ? await fetch(url)
-        : await api(`/api/imgfetch?url=${encodeURIComponent(url)}`, { raw: true });
+        : await Api.request(`/api/imgfetch?url=${encodeURIComponent(url)}`, { raw: true });
       if (!answer.ok) throw new Error(await answer.text());
       const blob = await answer.blob();
       return new File([blob], 'image', { type: blob.type || 'image/png' });
     } catch (error) {
-      toast(
+      Toast.show(
         String(error.message || error).slice(0, this.ERR_LEN) ||
           'Картинку по ссылке загрузить не удалось — сохраните её в файл и перетащите файл',
       );
@@ -103,7 +106,7 @@ export class ImageSlots {
       const file = await this.fromUrl(text);
       if (file) return this.put(slot, [file]);
     }
-    return toast('В буфере обмена нет картинки — скопируйте изображение (правый клик → «Копировать изображение»)');
+    return Toast.show('В буфере обмена нет картинки — скопируйте изображение (правый клик → «Копировать изображение»)');
   }
 
   /**
@@ -120,7 +123,7 @@ export class ImageSlots {
       }
     }
     slot.focus();
-    return toast('Нажмите Ctrl+V — картинка из буфера вставится сюда');
+    return Toast.show('Нажмите Ctrl+V — картинка из буфера вставится сюда');
   }
 
   static async _drop(type, event) {
@@ -131,7 +134,7 @@ export class ImageSlots {
     if (type !== 'drop') return;
     const files = await this.filesFrom(event.dataTransfer);
     if (files.length) this.put(slot, files);
-    else toast('Перетащите файл картинки или изображение со страницы сайта');
+    else Toast.show('Перетащите файл картинки или изображение со страницы сайта');
   }
 
   static _pasteSlot() {
@@ -199,7 +202,7 @@ export class Logos {
    */
   static async reload() {
     try {
-      this.map = await api('/api/logos');
+      this.map = await Api.request('/api/logos');
     } catch {
       this.map = this.map || {};
     }
@@ -225,7 +228,7 @@ export class Logos {
    */
   static auto(item) {
     if (!item || (item.logo && item.logo.src)) return false;
-    const logo = this.of(attrsOf(item).maker);
+    const logo = this.of(Attrs.of(item).maker);
     if (!logo) return false;
     item.logo = { src: logo.src, w: logo.w, h: logo.h, auto: logo.maker };
     return true;

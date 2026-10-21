@@ -1,4 +1,9 @@
 import { ImageFiles } from './images.js';
+import { FormView } from '../../ui/form-view.js';
+import { Toast } from '../../core/toast.js';
+import { KpState, S } from '../../core/state.js';
+import { Str } from '../../core/str.js';
+import { Uid } from '../../core/util.js';
 
 /**
  * Изображения позиции и их место в КП: к блоку описания, к группе характеристик или в разделе «Фото и схемы»; порядок
@@ -14,7 +19,7 @@ export class ItemLinks {
    * @returns {string}
    */
   static featId(feat) {
-    if (!feat.id) feat.id = uid();
+    if (!feat.id) feat.id = Uid.next();
     return feat.id;
   }
 
@@ -32,15 +37,15 @@ export class ItemLinks {
 
   // без привязки — по подписи: блок описания с тем же заголовком (если к нему ещё нет фото) или группа характеристик
   static _byCaption(item, pic) {
-    const caption = norm(pic.caption || pic.slot || '');
+    const caption = Str.norm(pic.caption || pic.slot || '');
     if (!caption) return null;
     const feat = (item.features || []).find(
-      one => one.label && (norm(one.label) === caption || caption.startsWith(norm(one.label))),
+      one => one.label && (Str.norm(one.label) === caption || caption.startsWith(Str.norm(one.label))),
     );
     const taken =
       feat && (item.gallery || []).some(other => other !== pic && other.at === this.FEAT + this.featId(feat));
     if (feat && !taken) return { kind: 'feat', f: feat, auto: true };
-    const group = (item.groups || []).find(one => one.name && norm(one.name) === caption);
+    const group = (item.groups || []).find(one => one.name && Str.norm(one.name) === caption);
     return group ? { kind: 'group', name: group.name, auto: true } : null;
   }
 
@@ -128,7 +133,7 @@ export class ItemLinks {
     delete item.photoFrom;
     if (old && old.src) {
       item.gallery[j] = {
-        id: uid(),
+        id: Uid.next(),
         src: old.src,
         w: old.w,
         h: old.h,
@@ -153,7 +158,7 @@ export class ItemLinks {
     const item = S.items[i];
     const file = (files || []).find(one => one.type && one.type.startsWith('image/'));
     if (!file) {
-      toast('Нужен файл изображения');
+      Toast.show('Нужен файл изображения');
       return;
     }
     try {
@@ -161,7 +166,7 @@ export class ItemLinks {
       item.gallery = (item.gallery || []).filter(one => one.at !== this.FEAT + fid);
       const feat = (item.features || []).find(one => one.id === fid);
       item.gallery.push({
-        id: uid(),
+        id: Uid.next(),
         ...pic,
         caption: feat ? feat.label : '',
         slot: '',
@@ -169,11 +174,11 @@ export class ItemLinks {
         on: true,
       });
       item.page = true;
-      renderForm();
-      persist();
-      toast('Фото добавлено к блоку описания');
+      FormView.render();
+      KpState.persist();
+      Toast.show('Фото добавлено к блоку описания');
     } catch {
-      toast('Не удалось открыть изображение');
+      Toast.show('Не удалось открыть изображение');
     }
   }
 }

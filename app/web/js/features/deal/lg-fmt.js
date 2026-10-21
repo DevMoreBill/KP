@@ -1,3 +1,4 @@
+import { Money } from '../../core/money.js';
 /** Логистика: короткие помощники показа — метры, тонны, рубли, число для поля; поставщик в России. */
 export class LgFmt {
   static HUNDRED = 100;

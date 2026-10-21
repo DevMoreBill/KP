@@ -1,5 +1,13 @@
 import { CatalogWindow } from './catalog-window.js';
 import { TypeForm } from './type-form.js';
+import { Translit } from '../doc/translit.js';
+import { FormView } from '../../ui/form-view.js';
+import { Catalog } from './catalog-store.js';
+import { ObjPath } from '../../core/str.js';
+import { Toast } from '../../core/toast.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { $, esc } from '../../core/util.js';
 
 /**
  * Категории оборудования (справочник типов): слева — список по разделам каталога, справа — форма категории. Свои
@@ -36,7 +44,7 @@ export class TypesEditor {
       dialog._tyBound = true;
       this._bind(dialog);
     }
-    this.pick(id || this.state.id || (TYPES[0] || {}).id);
+    this.pick(id || this.state.id || (EquipTypes.list[0] || {}).id);
     if (!dialog.open) dialog.showModal(); // окно — после содержимого: фокус сразу внутри окна
   }
 
@@ -55,7 +63,7 @@ export class TypesEditor {
       this.render();
       return;
     }
-    const type = TYPES.find(known => known.id === id);
+    const type = EquipTypes.list.find(known => known.id === id);
     state.id = id;
     state.cur = type ? TypeForm.clone(type) : null;
     state.dirty = false;
@@ -77,10 +85,10 @@ export class TypesEditor {
 
   static _list(own) {
     const query = this.state.q.trim().toLowerCase();
-    const groups = [...new Set(TYPES.map(type => type.group || this.OTHER))];
+    const groups = [...new Set(EquipTypes.list.map(type => type.group || this.OTHER))];
     return groups
       .map(group => {
-        const types = TYPES.filter(
+        const types = EquipTypes.list.filter(
           type =>
             (type.group || this.OTHER) === group && (!query || `${type.name} ${group}`.toLowerCase().includes(query)),
         );
@@ -94,11 +102,11 @@ export class TypesEditor {
     const { cur, dirty } = this.state;
     if (!cur) return '';
     const del =
-      ADMIN.on && cur.id && TYPES.some(type => type.id === cur.id) && !TypeForm.builtin(cur.id)
+      AdminSession.on && cur.id && EquipTypes.list.some(type => type.id === cur.id) && !TypeForm.builtin(cur.id)
         ? '<button class="btn ghost danger" type="button" data-tyx="del">Удалить категорию</button>'
         : '';
     const factory =
-      ADMIN.on && TypeForm.builtin(cur.id) && own.has(cur.id)
+      AdminSession.on && TypeForm.builtin(cur.id) && own.has(cur.id)
         ? '<button class="btn ghost" type="button" data-tyx="factory">Вернуть стандартную</button>'
         : '';
     return `<div class="ty-foot"><span class="${dirty ? 'warn' : 'muted'}" id="tyState">${dirty ? 'Есть несохранённые изменения' : 'Изменений нет'}</span><span class="sp"></span>
@@ -111,7 +119,7 @@ export class TypesEditor {
   static _html(own) {
     const { cur, q } = this.state;
     const resetAll =
-      ADMIN.on && EquipTypes.user().length
+      AdminSession.on && EquipTypes.user().length
         ? '<button class="btn ghost danger" type="button" data-tyx="resetall">Вернуть все стандартные</button>'
         : '';
     return `<div class="dlg-h"><h3>Категории оборудования</h3><span class="muted ty-sub">Параметры, фильтры каталога, ключевые параметры на титуле, быстрые опции</span><button class="icon" type="button" data-tyx="close" aria-label="Закрыть">✕</button></div>
@@ -173,7 +181,7 @@ export class TypesEditor {
       if (TypeInput.button(button)) return;
       await this.ACTIONS[button.dataset.tyx]?.(dialog);
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
     }
   }
 
@@ -307,7 +315,7 @@ class TypeInput {
       field.classList.add('bad');
       return;
     }
-    setPath(TypesEditor.state.cur, 'match', field.value);
+    ObjPath.set(TypesEditor.state.cur, 'match', field.value);
     TypesEditor.mark();
   }
 
@@ -345,14 +353,14 @@ class TypeInput {
       return;
     }
     const value = this._value(path, field.value);
-    setPath(TypesEditor.state.cur, path, value);
+    ObjPath.set(TypesEditor.state.cur, path, value);
     this._newKey(field, path, value);
     TypesEditor.mark();
   }
 
   static _flag(field) {
     const cur = TypesEditor.state.cur;
-    setPath(cur, field.dataset.tyb, field.checked);
+    ObjPath.set(cur, field.dataset.tyb, field.checked);
     const found = this.FIELD_NUM.exec(field.dataset.tyb);
     if (!found) return;
     const param = cur.fields[+found[1]];
@@ -376,7 +384,7 @@ class TypeInput {
     if (field.dataset.tyb) this._flag(field);
     else if (field.dataset.tyfilter != null) this._filter(field);
     else if (field.dataset.tymain != null) cur.main = field.dataset.tymain;
-    else if (field.tagName === 'SELECT' && field.dataset.ty) setPath(cur, field.dataset.ty, field.value);
+    else if (field.tagName === 'SELECT' && field.dataset.ty) ObjPath.set(cur, field.dataset.ty, field.value);
     else return;
     TypesEditor.mark();
   }
@@ -427,17 +435,17 @@ class TypeInput {
 /** Сохранение справочника категорий. */
 class TypeSave {
   static async _list(list, note) {
-    await api('/api/types', {
+    await Api.request('/api/types', {
       method: 'PUT',
       headers: { 'Content-Type': TypesEditor.JSON_TYPE },
       body: JSON.stringify({ version: 1, types: list }),
     });
-    await loadTypes();
-    catCache.forEach(card => delete card._a);
-    renderForm();
+    await EquipTypes.load();
+    Catalog.cache.forEach(card => delete card._a);
+    FormView.render();
     TypesEditor.state.dirty = false;
     if ($('#catdlg')?.open) CatalogWindow.win.redraw(); // открыт каталог — категории и фильтры обновляются сразу
-    toast(note || 'Справочник категорий сохранён');
+    Toast.show(note || 'Справочник категорий сохранён');
   }
 
   static _id(name) {
@@ -448,7 +456,7 @@ class TypeSave {
         .slice(0, TypesEditor.ID_LEN) || 'type';
     let id = base;
     let count = 1;
-    while (TYPES.some(type => type.id === id)) id = `${base}_${++count}`;
+    while (EquipTypes.list.some(type => type.id === id)) id = `${base}_${++count}`;
     return id;
   }
 
@@ -463,10 +471,10 @@ class TypeSave {
   static async save() {
     const type = TypeForm.out(TypesEditor.state.cur);
     type.name = String(type.name || '').trim();
-    if (!type.name) return toast('Укажите название категории');
-    if (!type.fields.length) return toast('Добавьте хотя бы один параметр');
+    if (!type.name) return Toast.show('Укажите название категории');
+    if (!type.fields.length) return Toast.show('Добавьте хотя бы один параметр');
     this._fill(type);
-    if (!TypesEditor.TYPE_ID.test(type.id)) return toast('Код категории — латиница, цифры и «_»');
+    if (!TypesEditor.TYPE_ID.test(type.id)) return Toast.show('Код категории — латиница, цифры и «_»');
     if (!type.folder) type.folder = type.id.replace(/_/g, '-');
     const list = EquipTypes.user().filter(known => known.id !== type.id);
     list.push(type);
@@ -484,7 +492,7 @@ class TypeSave {
       'Категория удалена',
     );
     TypesEditor.state.id = '';
-    TypesEditor.pick((TYPES[0] || {}).id);
+    TypesEditor.pick((EquipTypes.list[0] || {}).id);
   }
 
   /** Вернуть стандартный вариант категории. */
@@ -502,6 +510,6 @@ class TypeSave {
   static async resetAll() {
     if (!confirm('Удалить все свои категории и изменения и вернуть стандартные?')) return;
     await this._list([], 'Стандартные категории восстановлены');
-    TypesEditor.pick((TYPES[0] || {}).id);
+    TypesEditor.pick((EquipTypes.list[0] || {}).id);
   }
 }

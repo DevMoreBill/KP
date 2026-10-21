@@ -25,6 +25,3 @@ export const CALC = {
   StationCalc,
   VentSizing,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, CALC);

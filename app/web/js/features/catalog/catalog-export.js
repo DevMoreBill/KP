@@ -1,5 +1,15 @@
 import { CatalogIndex } from './catalog-index.js';
 import { Catalog } from './catalog-store.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { AdminDialog } from '../admin/admin-core.js';
+import { FileSave } from '../../core/files.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { Fmt } from '../../core/str.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { Auth } from '../kp/auth.js';
+import { esc } from '../../core/util.js';
+import { EquipTypes } from '../../core/equip-types.js';
 
 /** Выгрузка отобранного в окне каталога: Excel, JSON, XML, YML; цены, остатки, картинки, параметры — галочками. */
 export class CatalogExportDlg {
@@ -67,7 +77,7 @@ export class CatalogExportDlg {
       cats.set(cat, (cats.get(cat) || 0) + 1);
     }
     for (const [cat, count] of cats) {
-      for (const field of typeById(cat).fields) {
+      for (const field of EquipTypes.byId(cat).fields) {
         if (this.BASE.has(field.key)) continue;
         const param = out.get(field.key) || {
           key: field.key,
@@ -125,10 +135,10 @@ export class CatalogExportDlg {
    * @returns {string}
    */
   static html(count, params, saved) {
-    const admin = AUTH.admin || ADMIN.on;
+    const admin = Auth.state.admin || AdminSession.on;
     const cols = saved.cols || this.COLS.filter(col => col[2]).map(col => col[0]);
     const all = !saved.params || saved.params.includes('*');
-    return `<h3>Выгрузить ${Fmt.num(count)} ${plural(count, 'позицию', 'позиции', 'позиций')}</h3>
+    return `<h3>Выгрузить ${Fmt.num(count)} ${KPGen.plural(count, 'позицию', 'позиции', 'позиций')}</h3>
       <p class="muted cx-note">Выгружается то, что сейчас отобрано в каталоге: поиск, фильтры и отметки галочками.</p>
       <div class="cx-g"><span class="cx-l">Формат</span><div class="seg" role="radiogroup">${this._seg(this.FMT, 'fmt', saved.fmt || 'xlsx')}</div></div>
       <div class="cx-g"><span class="cx-l">Цены и наличие</span><div class="cx-row">${this._prices(saved, admin)}</div></div>
@@ -191,7 +201,7 @@ export class CatalogExportDlg {
     } catch (error) {
       button.disabled = false;
       button.textContent = 'Выгрузить';
-      toast(`Не выгружено: ${error.message || error}`);
+      Toast.show(`Не выгружено: ${error.message || error}`);
     }
   }
 
@@ -215,12 +225,12 @@ export class CatalogExportDlg {
    * @param {object[]} docs их карточки (для списка параметров)
    */
   static open(ids, docs) {
-    if (!can('export')) {
-      cannot('export');
+    if (!Auth.can('export')) {
+      Auth.cannot('export');
       return;
     }
     if (!ids.length) {
-      toast('Нет позиций для выгрузки — ослабьте фильтры');
+      Toast.show('Нет позиций для выгрузки — ослабьте фильтры');
       return;
     }
     const params = this.params(docs);
@@ -245,7 +255,7 @@ export class CatalogExportDlg {
    * @param {object} body
    */
   static async download(path, body) {
-    const answer = await api(path, {
+    const answer = await Api.request(path, {
       method: 'POST',
       headers: { 'Content-Type': this.JSON_TYPE },
       body: JSON.stringify(body),
@@ -254,8 +264,8 @@ export class CatalogExportDlg {
     const disposition = answer.headers.get('content-disposition') || '';
     const found = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
     const name = found ? decodeURIComponent(found[1]) : 'выгрузка';
-    saveFileA(name, await answer.blob());
-    toast(`Файл готов: ${name}`);
+    FileSave.download(name, await answer.blob());
+    Toast.show(`Файл готов: ${name}`);
   }
 }
 
@@ -268,28 +278,28 @@ export class CatalogBin {
    * @returns {Promise<boolean>} удалены
    */
   static async put(ids, names) {
-    if (!can('catDelete')) return cannot('catDelete');
+    if (!Auth.can('catDelete')) return Auth.cannot('catDelete');
     const count = ids.length;
     if (!count) return false;
     const what =
-      count === 1 ? `«${names[0] || 'позиция'}»` : `${count} ${plural(count, 'позицию', 'позиции', 'позиций')}`;
-    const ok = await stConfirm(
+      count === 1 ? `«${names[0] || 'позиция'}»` : `${count} ${KPGen.plural(count, 'позицию', 'позиции', 'позиций')}`;
+    const ok = await AdminDialog.confirm(
       `Удалить ${what} в корзину?`,
-      `Позиции исчезнут из каталога. В корзине они хранятся ${DEFN('srv.trashDays', 30)} дн. — восстановить может администратор («Настройки → Сотрудники и система → Корзина»). КП, в которых они есть, не меняются.`,
+      `Позиции исчезнут из каталога. В корзине они хранятся ${DefRegistry.num('srv.trashDays', 30)} дн. — восстановить может администратор («Настройки → Сотрудники и система → Корзина»). КП, в которых они есть, не меняются.`,
       'Удалить в корзину',
     );
     if (!ok) return false;
     try {
-      const answer = await api('/api/catalog/trash', {
+      const answer = await Api.request('/api/catalog/trash', {
         method: 'POST',
         headers: { 'Content-Type': CatalogExportDlg.JSON_TYPE },
         body: JSON.stringify({ ids }),
       });
       await Catalog.refresh();
-      toast(`В корзине: ${answer.deleted} ${plural(answer.deleted, 'позиция', 'позиции', 'позиций')}`);
+      Toast.show(`В корзине: ${answer.deleted} ${KPGen.plural(answer.deleted, 'позиция', 'позиции', 'позиций')}`);
       return true;
     } catch (error) {
-      toast(`Не удалено: ${error.message || error}`);
+      Toast.show(`Не удалено: ${error.message || error}`);
       return false;
     }
   }
@@ -303,13 +313,13 @@ export class ClientsExportDlg {
   /** Пункт меню — только с правом «Выгрузка». */
   static sync() {
     const button = document.querySelector('[data-a="clientsExport"]');
-    if (button) button.hidden = !can('export');
+    if (button) button.hidden = !Auth.can('export');
   }
 
   /** Окно выбора формата и выгрузка. */
   static async open() {
-    if (!can('export')) {
-      cannot('export');
+    if (!Auth.can('export')) {
+      Auth.cannot('export');
       return;
     }
     const fmt =
@@ -319,7 +329,7 @@ export class ClientsExportDlg {
     try {
       await CatalogExportDlg.download('/api/clients/export', { fmt });
     } catch (error) {
-      toast(`Не выгружено: ${error.message || error}`);
+      Toast.show(`Не выгружено: ${error.message || error}`);
     }
   }
 

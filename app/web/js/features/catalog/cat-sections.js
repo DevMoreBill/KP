@@ -1,3 +1,11 @@
+import { EquipWizard } from '../wizard/equip-wizard.js';
+import { CatalogWindow } from './catalog-window.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Catalog } from './catalog-store.js';
 /**
  * Разделы каталога: в разделе «Оборудование» — плитки разделов (группа категории) с пиктограммой, числом позиций и
  * крупнейшими подкатегориями; маленькие разделы (меньше cat.sectionMin позиций) — одной плиткой «Другое оборудование».
@@ -68,8 +76,8 @@ export class CatSections {
 
   static _counts() {
     const counts = new Map();
-    for (const card of catCache) {
-      const cat = attrsOf(card).cat;
+    for (const card of Catalog.cache) {
+      const cat = Attrs.of(card).cat;
       counts.set(cat, (counts.get(cat) || 0) + 1);
     }
     return counts;
@@ -77,7 +85,7 @@ export class CatSections {
 
   static _groups(counts) {
     const groups = new Map();
-    for (const type of TYPES) {
+    for (const type of EquipTypes.list) {
       if (type.station || type.role === 'accessory') continue;
       const group = type.group || 'Прочее';
       if (!groups.has(group)) groups.set(group, []);
@@ -92,7 +100,7 @@ export class CatSections {
 
   // маленькие разделы и «Прочее» — одной плиткой «Другое оборудование»
   static _sections(groups) {
-    const min = catCache.length ? Math.round(DEFN('cat.sectionMin', 20)) : 0;
+    const min = Catalog.cache.length ? Math.round(DefRegistry.num('cat.sectionMin', 20)) : 0;
     const out = [];
     const rest = [];
     for (const [group, types] of groups) {
@@ -110,14 +118,14 @@ export class CatSections {
    */
   static list() {
     const cached = this.cache;
-    if (cached && cached.types === TYPES && cached.cat === catCache) return cached.list;
+    if (cached && cached.types === EquipTypes.list && cached.cat === Catalog.cache) return cached.list;
     const out = this._sections(this._groups(this._counts()));
     for (const section of out) {
       section.types.sort((first, second) => second.n - first.n || first.name.localeCompare(second.name, 'ru'));
     }
     const byCat = new Map();
     for (const section of out) for (const type of section.types) byCat.set(type.id, section.key);
-    this.cache = { types: TYPES, cat: catCache, list: out, byCat };
+    this.cache = { types: EquipTypes.list, cat: Catalog.cache, list: out, byCat };
     return out;
   }
 

@@ -1,4 +1,5 @@
 import { Money } from './money.js';
+import { S } from './state.js';
 
 /** Строки и числа из ввода: число из текста, нормализация для поиска и сравнения, имя файла. */
 export class Str {

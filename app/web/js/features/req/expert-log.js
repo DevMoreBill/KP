@@ -1,4 +1,6 @@
 import { StationReq } from './station-req.js';
+import { esc } from '../../core/util.js';
+import { S } from '../../core/state.js';
 
 /**
  * Значения режима «эксперт» (вентиляция, ворота): у заданного вручную — отметка и сброс к инженерным правилам; каждая

@@ -1,3 +1,8 @@
+import { Currency } from '../kp/currency.js';
+import { Fmt } from '../../core/str.js';
+import { SpecValues } from '../../core/spec-values.js';
+import { esc } from '../../core/util.js';
+import { EquipTypes } from '../../core/equip-types.js';
 /** Правка на модерации «было → стало»: значения полей с выделением изменённого (слова, блоки описания, строки таблиц). */
 export class ModerationDiff {
   static ABSENT = '__absent__';
@@ -16,8 +21,8 @@ export class ModerationDiff {
   static field(change, cat) {
     if (!change.attr) return null;
     return (
-      typeById(cat).fields.find(field => field.key === change.attr) ||
-      TYPES.flatMap(type => type.fields).find(field => field.key === change.attr)
+      EquipTypes.byId(cat).fields.find(field => field.key === change.attr) ||
+      EquipTypes.list.flatMap(type => type.fields).find(field => field.key === change.attr)
     );
   }
 
@@ -167,11 +172,11 @@ export class ModerationDiff {
   }
 
   static _attr(change, { value, other, side, cat }) {
-    if (change.attr === 'cat') return esc(typeById(value).name);
+    if (change.attr === 'cat') return esc(EquipTypes.byId(value).name);
     const field = this.field(change, cat);
-    const text = field ? fmtField(field, value) : String(value);
+    const text = field ? SpecValues.show(field, value) : String(value);
     let theirs = '';
-    if (!this.empty(other) && !this.big(other)) theirs = field ? fmtField(field, other) : String(other);
+    if (!this.empty(other) && !this.big(other)) theirs = field ? SpecValues.show(field, other) : String(other);
     return this._pair(side, text, theirs);
   }
 
@@ -212,19 +217,19 @@ export class ModerationDiff {
    */
   static card(doc) {
     const attrs = doc.attrs || {};
-    const type = typeById(attrs.cat);
+    const type = EquipTypes.byId(attrs.cat);
     const params = [
       ['Категория', type.name],
       ['Производитель', attrs.maker],
       ['Серия', attrs.series],
       ['Модель', attrs.model],
-      ...type.fields.map(field => [field.label, fmtField(field, attrs[field.key])]),
+      ...type.fields.map(field => [field.label, SpecValues.show(field, attrs[field.key])]),
     ].filter(([, value]) => value != null && value !== '');
     const feats = this.blocks(doc.features, doc.features);
     const rows = this.rows(doc.groups, doc.groups);
     return `<div class="mv-card">${this.pics([doc.photo, ...(doc.gallery || [])].filter(Boolean))}
       <h4>${esc(doc.name || 'Без названия')}</h4>${doc.spec ? `<p class="muted">${esc(doc.spec)}</p>` : ''}
-      ${doc.price ? `<p><b>${money(doc.price)} ${curSh(doc.priceCur || 'RUB')}</b></p>` : ''}
+      ${doc.price ? `<p><b>${KPGen.money(doc.price)} ${Currency.short(doc.priceCur || 'RUB')}</b></p>` : ''}
       ${params.length ? `<table class="pv-t">${params.map(([key, value]) => `<tr><td>${esc(key)}</td><td>${esc(value)}</td></tr>`).join('')}</table>` : ''}
       ${feats ? `<p class="pv-cap">Описание</p>${feats}` : ''}
       ${rows ? `<p class="pv-cap">Характеристики</p>${rows}` : ''}</div>`;

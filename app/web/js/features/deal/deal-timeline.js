@@ -1,6 +1,8 @@
 import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealTerms } from './deal-terms.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Лента «Поставщики и сроки» на вкладке «Кратко»: у поставщика — производство и доставка (у сборщика — контейнер, ожидание
@@ -140,7 +142,7 @@ export class DealTimeline {
         return `<span class="dlo-pay${right}" style="left:${this._left(row.day)}" title="${esc(title)}">${DealFmt.inp(row.pct || 0)} %</span>`;
       })
       .join('');
-    return `<div class="dlo-r cust"><div class="dlo-rl"><b>Оплата заказчика</b><small>${pays.length} ${plural(pays.length, 'платёж', 'платежа', 'платежей')}, всего ${Fmt.rub(total)}</small></div>
+    return `<div class="dlo-r cust"><div class="dlo-rl"><b>Оплата заказчика</b><small>${pays.length} ${KPGen.plural(pays.length, 'платёж', 'платежа', 'платежей')}, всего ${Fmt.rub(total)}</small></div>
       <div class="dlo-bar">${marks}</div>
       <button type="button" class="icon dlo-go" data-dlx="step" data-id="cust" aria-label="Изменить оплату заказчика" title="Изменить оплату заказчика">›</button></div>`;
   }

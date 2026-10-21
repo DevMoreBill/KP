@@ -96,12 +96,16 @@
 | `version.py` | `VERSION`, `as_tuple` |
 
 ## 4. Клиент (`app/web`)
-Каркас: `index.html` (все js/css подключаются по порядку, проверяет `test_project`), `js/boot.js` (тема и телефон до отрисовки), `js/main.js` (запуск).
-Ядро `js/core`: `api.js` (`api()`, подпись пользователя, `X-CSRF-Token`, 409 → `conflictAsk`; `SRV`, `ADMIN`, `ImgUpload`), `state.js` (состояние КП `S`,
-`S.items`, `S.deal`, черновик в браузере), `util.js` (`$`, `esc`, `norm`, `toast`, `morph`; `money` — из `KPGen`), `types.js`, `defaults.js` (`DEF()`), `features.js` (`FEAT.on`),
-`lists.js` (`LISTS`), `xlsx.js` (Excel на JSZip). `js/ui`: `form.js` (`STEPS`, `Steps`, `Popups`), `events.js` (кнопки `data-a`), `sidebar.js`
-(`SidePanel`), `datepicker.js` (`DP`, `WCAL`), `geo-input.js` (`GEO`), `mobile.js`. Шаги КП `js/ui/steps`: client (1, `TenderBlock`), equipment (2),
-pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`), manager (6). Окна — класс `Modal` (`kp-track.js`). CSS — `app/web/css/*.css` по разделам;
+Каркас: `index.html` (css, `js/boot.js` — тема и телефон до отрисовки, `docx/kpgen.js` — `KPGen`, затем ES-модули: `core/index.js`
+первым, `ui/index.js`, разделы `features/*/index.js`, `main.js` — `App`, запуск, последним; проверяет `test_project`). С 3.170.0 общих имён
+нет: каждый файл подключает нужное `import`, ESLint `no-undef` ловит забытое. Ядро `js/core`: `state.js` (открытое КП `S` — `export let`,
+меняет `KpState.replace`; `KpState`, `LocalDraft`), `defaults.js` (`DefRegistry.value/num/use`, `.srv`; описания — `defaults-srv.js`,
+`defaults-kp.js`), `conditions.js` (`KpConditions`), `lists.js` (`LISTS`), `net.js` (`Api.request`, `Srv`, `AdminSession`, `ImgUpload`,
+`ServerDefaults`), `util.js` (`$`, `esc`, `today`, `isoDay`, `Uid`), `str.js` (`Str`, `Fmt`, `Price`, `ObjPath`), `money.js`, `toast.js`,
+`modal.js` (`Modal`, `DblClickGuard`), `equip-types.js` (`EquipTypes.list/byId`), `item-attrs.js` (`Attrs.of`), `item-spec.js`, `theme.js`
+(`Theme`), `xlsx.js`. `js/ui`: `steps.js` (`Steps`, `Steps.current`), `form-view.js` (`FormView`, `Popups`), `item-actions.js` (кнопки
+`data-a`), `side-panel.js` (`SidePanel`, `Problems`), `date-picker.js`, `geo-input.js` (`GeoInput`, `GeoInput.extra`), `mobile.js`; шаги —
+`step-*.js`. Данные версий и руководство — `features/help.js` (`APP_VERSIONS`, `HELP_SECTIONS`, `AppVersion`). CSS — `app/web/css/*.css` по разделам;
 `vendor/` — jszip, docx-preview, шрифт Onest; `fonts/` — osifont (чертежи).
 
 `js/features/*` по разделам:
@@ -240,6 +244,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.170.0** (21.10) — без «склеек»: прежние имена (`legacy.js`, ~150) заменены вызовами классов; `util`, `state`, `defaults*`, `lists`, `help.js` — ES-модули; выход разделов в `globalThis` убран — 2 000+ явных `import`; общие переменные — свойства классов-владельцев (`Catalog.cache`, `ItemEditor.current`, `Steps.current`, `EquipTypes.list`, `DefRegistry.srv` …), `S` — `KpState.replace`; `/api/rules/stations.js` — модуль с `import`; проверки в Node — `tests/js/web.js`.
 - **3.155.1** (20.10) — `test_update_fallback.wait_version`: ожидание версии после отката вместо фиксированной паузы.
 - **3.155.0** (20.10) — чистый код, ч. 20: «магические числа» сервера 256 → 0 (Ruff PLR2004 включён), `feed_files.PRESSURE_ALIAS`.
 - **3.154.0** (20.10) — чистый код, ч. 19: без флагов, этап 2 (31 → 0): `Mailer.send_service`, `AiAsk.ask/probe`, `install/reinstall`, `DbCopy.daily/now`, `AutoRates`, `Sides`, `CheckMode`, `CatDetect`, `PdfText`, `data_bundle.Keys`, `feeds.Missing`, `FeedPurge.run_and_block`.

@@ -1,4 +1,7 @@
 import { CrmFmt } from './crm-fmt.js';
+import { Money } from '../../core/money.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { esc, today } from '../../core/util.js';
 
 /**
  * Полоса «Исполнение» в карточке сделки: точки из «Экономики сделки» КП (оплаты заказчика, поставщикам, перевозка,
@@ -18,7 +21,7 @@ export class DealExec {
   static html(deal) {
     const exec = deal.exec;
     if (!exec || (!exec.has && !(deal.kps || []).length)) return '';
-    return `<section class="md-s dk-exec"><div class="md-h"><p class="sub">Исполнение${exec.kp ? ` по КП № ${esc(exec.kp)}` : ''}${tip('<p>Точки после договора — из «Экономики сделки» КП: оплаты заказчика, поставщикам, перевозка, готовность, поставка. План считается от даты подписания договора.</p><p>Сделали — «✓». На ближайшие точки программа сама ставит дела ответственному; сделанное дело отмечает точку.</p>')}</p>${this._progress(exec)}</div>
+    return `<section class="md-s dk-exec"><div class="md-h"><p class="sub">Исполнение${exec.kp ? ` по КП № ${esc(exec.kp)}` : ''}${UiKit.tip('<p>Точки после договора — из «Экономики сделки» КП: оплаты заказчика, поставщикам, перевозка, готовность, поставка. План считается от даты подписания договора.</p><p>Сделали — «✓». На ближайшие точки программа сама ставит дела ответственному; сделанное дело отмечает точку.</p>')}</p>${this._progress(exec)}</div>
       ${this._bar(exec)}${this._missing(deal)}${this._rows(exec)}</section>`;
   }
 

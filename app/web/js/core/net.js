@@ -1,5 +1,11 @@
 import { CopyText, FileSave } from './files.js';
 import { Toast } from './toast.js';
+import { Auth } from '../features/kp/auth.js';
+import { AuthScreen } from '../features/kp/auth-screen.js';
+import { S } from './state.js';
+import { Managers } from '../features/kp/managers.js';
+import { StDirty } from '../features/admin/settings-tools.js';
+import { DefRegistry } from './defaults.js';
 
 /** Сервер программы: отвечает ли (on) и что о себе сообщил (/api/ping). */
 export class Srv {
@@ -69,8 +75,8 @@ export class Api {
 
   // кто работает на этом устройстве (meId), а не менеджер открытого КП
   static _signature() {
-    const userId = meId();
-    const name = userId ? meName() : '';
+    const userId = Managers.meId();
+    const name = userId ? Managers.meName() : '';
     return {
       'X-KP-User-Id': encodeURIComponent(userId || S.managerId || ''),
       'X-KP-User': encodeURIComponent(name || (S.manager && S.manager.name) || ''),
@@ -104,7 +110,7 @@ export class Api {
 
   static _auth(reply, path) {
     if (reply.status === this.FORBIDDEN && reply.headers.get('X-KP-Auth') === 'change-password') AuthScreen.change();
-    if (reply.status === this.UNAUTHORIZED && AUTH.enabled && !/^\/api\/(admin|auth)\//.test(path)) {
+    if (reply.status === this.UNAUTHORIZED && Auth.state.enabled && !/^\/api\/(admin|auth)\//.test(path)) {
       AuthScreen.show('Сессия закончилась — войдите снова.');
     }
   }
@@ -183,5 +189,15 @@ export class RemoteResult {
     frame.src = url;
     document.body.appendChild(frame);
     setTimeout(() => frame.remove(), this.IFRAME_MS);
+  }
+}
+
+/** «Значения программы» администратора с сервера; сервер недоступен — остаются значения из браузера. */
+export class ServerDefaults {
+  /** @returns {Promise<void>} */
+  static load() {
+    return Api.request('/api/defaults')
+      .then(reply => DefRegistry.use(reply))
+      .catch(() => {});
   }
 }

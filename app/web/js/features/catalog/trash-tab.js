@@ -1,6 +1,15 @@
 import { Catalog } from './catalog-store.js';
 import { CatalogIndex } from './catalog-index.js';
 import { CatalogWindow } from './catalog-window.js';
+import { CatalogTool } from '../admin/records-tab.js';
+import { EquipWizard } from '../wizard/equip-wizard.js';
+import { SettingsWindow } from '../admin/settings-window.js';
+import { Managers } from '../kp/managers.js';
+import { Toast } from '../../core/toast.js';
+import { Debounce } from '../../core/debounce.js';
+import { Fmt, Str } from '../../core/str.js';
+import { AdminApi, AdminDialog, AuditLabels } from '../admin/admin-core.js';
+import { esc } from '../../core/util.js';
 
 /** Корзина в «Настройках»: восстановить, удалить навсегда, очистить (всё или один вид). */
 export class TrashTab {
@@ -25,7 +34,7 @@ export class TrashTab {
   }
 
   static _row(entry) {
-    return `<div class="st-row tr-row"><div><b>${esc(entry.title || entry.entityId)}</b><span class="muted">${esc(ENT[entry.entityType] || entry.entityType)} · удалено ${esc(Fmt.dateTime(entry.deletedAt))}${entry.deletedBy ? ` · ${esc(entry.deletedBy)}` : ''}</span></div>
+    return `<div class="st-row tr-row"><div><b>${esc(entry.title || entry.entityId)}</b><span class="muted">${esc(AuditLabels.ENT[entry.entityType] || entry.entityType)} · удалено ${esc(Fmt.dateTime(entry.deletedAt))}${entry.deletedBy ? ` · ${esc(entry.deletedBy)}` : ''}</span></div>
         <div class="acts"><button class="btn" type="button" data-rest="${entry.id}">Восстановить</button><button class="btn ghost danger-t" type="button" data-purge="${entry.id}" title="Удалить навсегда — восстановить будет нельзя">Удалить навсегда</button></div></div>`;
   }
 
@@ -53,11 +62,11 @@ export class TrashTab {
    */
   static async render(box, only) {
     const state = only ? { type: only, q: this.state.q } : this.state;
-    const view = await aapi(`trash${state.type ? `?type=${state.type}` : ''}`);
+    const view = await AdminApi.get(`trash${state.type ? `?type=${state.type}` : ''}`);
     view.total = Object.values(view.counts || {}).reduce((sum, count) => sum + count, 0);
-    const query = norm(state.q || '');
+    const query = Str.norm(state.q || '');
     const list = query
-      ? view.items.filter(entry => norm(`${entry.title || ''} ${entry.entityId}`).includes(query))
+      ? view.items.filter(entry => Str.norm(`${entry.title || ''} ${entry.entityId}`).includes(query))
       : view.items;
     box.innerHTML = this._html(view, { state, only, list });
     const ctx = { box, only, state, view };
@@ -82,36 +91,36 @@ export class TrashTab {
 
   static async _purge(button, view) {
     const entry = view.items.find(one => String(one.id) === button.dataset.purge);
-    const ok = await stConfirm(
+    const ok = await AdminDialog.confirm(
       'Удалить навсегда?',
       `«${(entry && entry.title) || 'запись'}» удалится окончательно — восстановить будет нельзя.`,
       'Удалить навсегда',
     );
     if (!ok) return false;
-    await ajson(`trash/${button.dataset.purge}/purge`);
-    toast('Удалено навсегда');
+    await AdminApi.post(`trash/${button.dataset.purge}/purge`);
+    Toast.show('Удалено навсегда');
     return true;
   }
 
   static async _clear({ state, view }) {
     const label = Object.fromEntries(this.TYPES);
     const count = state.type ? (view.counts || {})[state.type] || 0 : view.total;
-    const ok = await stConfirm(
+    const ok = await AdminDialog.confirm(
       state.type ? `Очистить корзину: ${label[state.type]}?` : 'Очистить корзину?',
-      `${Fmt.num(count)} ${plural(count, 'запись удалится', 'записи удалятся', 'записей удалятся')} окончательно — восстановить будет нельзя.`,
+      `${Fmt.num(count)} ${KPGen.plural(count, 'запись удалится', 'записи удалятся', 'записей удалятся')} окончательно — восстановить будет нельзя.`,
       'Удалить навсегда',
     );
     if (!ok) return false;
-    const answer = await ajson('trash/clear', { type: state.type });
-    toast(`Удалено навсегда: ${Fmt.num(answer.deleted)}`);
+    const answer = await AdminApi.post('trash/clear', { type: state.type });
+    Toast.show(`Удалено навсегда: ${Fmt.num(answer.deleted)}`);
     return true;
   }
 
   static async _restore(button) {
-    await ajson(`trash/${button.dataset.rest}/restore`);
-    toast('Восстановлено');
+    await AdminApi.post(`trash/${button.dataset.rest}/restore`);
+    Toast.show('Восстановлено');
     Catalog.refresh();
-    loadManagers();
+    Managers.load();
     return true;
   }
 
@@ -134,7 +143,7 @@ export class TrashTab {
     try {
       if (!(await this._act(event, ctx))) return;
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
     }
     this.render(ctx.box, ctx.only);
   }
@@ -151,7 +160,7 @@ export class GoodsTab {
     let mod = { pending: [] };
     let trash = { counts: {} };
     try {
-      [mod, trash] = await Promise.all([aapi('moderation'), aapi('trash?type=catalog')]);
+      [mod, trash] = await Promise.all([AdminApi.get('moderation'), AdminApi.get('trash?type=catalog')]);
     } catch {
       // без счётчиков
     }
@@ -165,9 +174,9 @@ export class GoodsTab {
    */
   static async render(box, auto) {
     const { pend, bin } = await this._counts();
-    const count = catCache.length;
-    const cats = new Set(catCache.map(card => CatalogIndex.attrs(card).cat)).size;
-    box.innerHTML = `<div class="st-tiles gd-tiles">${this._tile(count, plural(count, 'позиция', 'позиции', 'позиций'))}${this._tile(cats, 'категорий', 'types')}${this._tile(pend, 'на модерации', 'moderation')}${this._tile(bin, 'в корзине')}</div>
+    const count = Catalog.cache.length;
+    const cats = new Set(Catalog.cache.map(card => CatalogIndex.attrs(card).cat)).size;
+    box.innerHTML = `<div class="st-tiles gd-tiles">${this._tile(count, KPGen.plural(count, 'позиция', 'позиции', 'позиций'))}${this._tile(cats, 'категорий', 'types')}${this._tile(pend, 'на модерации', 'moderation')}${this._tile(bin, 'в корзине')}</div>
       <div class="st-card"><div class="row st-btns"><button class="btn primary" type="button" data-gd="open">Открыть товары</button><button class="btn" type="button" data-gd="new">+ Новая позиция</button>
         <button class="btn" type="button" data-gd="xls">Импорт из Excel…</button><button class="btn" type="button" data-gd="imp">Загрузить файл каталога (.json)…</button><button class="btn" type="button" data-gd="exp">Файл каталога для загрузки (.json)</button></div>
         <p class="muted">«Открыть товары» — окно каталога: поиск, фильтры, сортировка, карточка с фото, «Редактировать». Отметьте позиции галочками — внизу появятся «В корзину», «Выгрузить…» (Excel, JSON, XML, YML — по любому фильтру) и «Перенести в категорию…».</p></div>
@@ -183,10 +192,10 @@ export class GoodsTab {
     const act = button.dataset.gd;
     if (act === 'open') return this.open();
     if (act === 'new') {
-      setDlg().close();
+      SettingsWindow.dialog().close();
       return EquipWizard.open('catalog', '');
     }
-    return stCatalogTool(act);
+    return CatalogTool.run(act);
   }
 
   /**

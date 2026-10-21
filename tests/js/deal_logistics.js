@@ -5,14 +5,11 @@
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..');
-global.GEO_EXTRA={};                                   // подсказки адресов (ui/geo-input.js) — в тесте не нужны
 global.document={ addEventListener(){} };
-Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js')));   // ES-модуль
-{ const p=path.join(ROOT, 'app', 'web', 'js', 'core', 'defaults.js'); vm.runInThisContext(fs.readFileSync(p, 'utf8'), { filename:p }); }
 require('./web.js').load(path.join(ROOT, 'app', 'web', 'js', 'features', 'deal', 'index.js'));
 
 let n=0;
-const check=(name, fn)=>{ try{ DEFS_SRV={}; fn(); n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } };
+const check=(name, fn)=>{ try{ DefRegistry.srv={}; fn(); n++; } catch(e){ console.error('ОШИБКА — '+name+':\n'+(e && e.stack || e)); process.exitCode=1; } };
 const near=(a, b, msg, eps=0.01)=>assert.ok(Math.abs(a-b)<=eps, `${msg}: ${a} ≠ ${b}`);
 
 // простая сделка: поставщик в России, оплата поставщику 100 % перед отгрузкой, заказчик — через 30 дней после поставки
@@ -71,7 +68,7 @@ check('своя сумма доставки в валюте → рубли по 
 
 check('LgMoney: валюта своей суммы', ()=>{
   const s={lg:{}, logRu:{v:'60000'}}; assert.strictEqual(LgMoney.cur(s), 'RUB', 'сумма прежних версий — рубли');
-  DEFS_SRV={'log.manCur':{on:true, v:'EUR'}};
+  DefRegistry.srv={'log.manCur':{on:true, v:'EUR'}};
   assert.strictEqual(LgMoney.cur({lg:{}, logRu:{v:''}}), 'EUR', 'пусто — валюта по умолчанию из «Настроек»');
   const s2={lg:{}, logRu:{v:'5', src:'module'}}; LgMoney.setCur(s2, 'CNY'); assert.deepStrictEqual(s2.logRu, {v:'', cur:'CNY'}); assert.strictEqual(s2.lg.manCur, 'CNY');
   const s3={lg:{}, logRu:{v:'84 200', src:'module'}}; LgMoney.toManual(s3); assert.deepStrictEqual(s3.logRu, {v:'84200', cur:'RUB'}, 'сумма расчёта остаётся в рублях');
@@ -92,23 +89,23 @@ check('ручная перепроверка формул сделки', ()=>{
 check('значения программы меняют расчёт', ()=>{
   // таможенный сбор по шкале: встроенная — ПП РФ № 1637 / 1638
   assert.strictEqual(DealValues.fee(1000000), 4924); assert.strictEqual(DealValues.fee(20000000), 73860); assert.strictEqual(DealValues.fee(200000), 1231);
-  DEFS_SRV={'deal.fee3':{on:true, v:'5000'}, 'deal.feeLim7':{on:true, v:'12000000'}};
+  DefRegistry.srv={'deal.fee3':{on:true, v:'5000'}, 'deal.feeLim7':{on:true, v:'12000000'}};
   assert.strictEqual(DealValues.fee(1000000), 5000, 'свой сбор интервала 3'); assert.strictEqual(DealValues.fee(11000000), 49240, 'своя граница 7'); assert.ok(DealValues.feeOwn());
   assert.ok(/свыше 12 000 000 ₽ — 73 860 ₽/.test(DealValues.feeText().replace(/\s/g, ' ')), DealValues.feeText());
-  DEFS_SRV={'deal.feeLim2':{on:true, v:'100000'}};                // границы не по возрастанию — встроенная шкала
+  DefRegistry.srv={'deal.feeLim2':{on:true, v:'100000'}};                // границы не по возрастанию — встроенная шкала
   assert.strictEqual(DealValues.fee(300000), 2462); assert.ok(!DealValues.feeOwn());
-  DEFS_SRV={'deal.fee1':{on:true, v:'-5'}};                        // вне допустимого — встроенное
+  DefRegistry.srv={'deal.fee1':{on:true, v:'-5'}};                        // вне допустимого — встроенное
   assert.strictEqual(DealValues.fee(100000), 1231);
   // ввоз: сбор входит в таможню
-  DEFS_SRV={'deal.fee3':{on:true, v:'7000'}};
+  DefRegistry.srv={'deal.fee3':{on:true, v:'7000'}};
   const kpI={...KP, items:[{id:'a', name:'Компрессор', qty:1, cost:10000, cur:'USD', duty:5}]};
   const ci=DealCalculator.calc(kpI, deal({sup:{country:'Китай', cusMode:'calc', vatIn:false}}));
   near(ci.sup[0].cv, 925000, 'таможенная стоимость'); assert.strictEqual(ci.sup[0].fee, 7000); near(ci.sup[0].T, 925000*0.05+7000+(925000*1.05)*0.22, 'таможенные платежи');
   // дней в месяце — финансирование
-  DEFS_SRV={'deal.monthDays':{on:true, v:'31'}};
+  DefRegistry.srv={'deal.monthDays':{on:true, v:'31'}};
   near(DealCalculator.calc(KP, deal()).F, 500000*0.02*70/31, 'финансирование при 31 дне');
   // запасная стоимость денег, налог, отсрочка, аванс, гарантии, наличные
-  DEFS_SRV={'deal.moneyFb':{on:true, v:'3'}, 'deal.tax':{on:true, v:'20'}, 'deal.defer':{on:true, v:'45'}, 'deal.supAdv':{on:true, v:'35'}, 'deal.xcCost':{on:true, v:'10'},
+  DefRegistry.srv={'deal.moneyFb':{on:true, v:'3'}, 'deal.tax':{on:true, v:'20'}, 'deal.defer':{on:true, v:'45'}, 'deal.supAdv':{on:true, v:'35'}, 'deal.xcCost':{on:true, v:'10'},
     'deal.bgPct':{on:true, v:'5'}, 'deal.bgWarrDays':{on:true, v:'730'}, 'deal.bgMin':{on:true, v:'1000'}, 'deal.bgAdvPct':{on:true, v:'50'},
     'deal.custPay':{on:false}, 'deal.supPay':{on:false}};   // без готовых этапов оплаты — отсрочка и аванс из своих значений
   const kp2={...KP}; delete kp2.moneyAuto;
@@ -123,7 +120,7 @@ check('значения программы меняют расчёт', ()=>{
 
 check('значения логистики: умолчания и реестр', ()=>{
   assert.strictEqual(LgValues.unload(), 'none', 'по умолчанию разгружает заказчик'); assert.strictEqual(LgValues.mode(), 'auto'); assert.strictEqual(LgValues.manCur(), 'RUB'); assert.strictEqual(LgValues.setDays(), true);
-  DEFS_SRV={'log.unload':{on:true, v:'auto'}, 'log.mode':{on:true, v:'manual'}, 'log.manCur':{on:true, v:'USD'}, 'log.setDays':{on:false}};
+  DefRegistry.srv={'log.unload':{on:true, v:'auto'}, 'log.mode':{on:true, v:'manual'}, 'log.manCur':{on:true, v:'USD'}, 'log.setDays':{on:false}};
   assert.strictEqual(LgValues.unload(), 'auto'); assert.strictEqual(LgValues.mode(), 'manual'); assert.strictEqual(LgValues.manCur(), 'USD'); assert.strictEqual(LgValues.setDays(), false);
   assert.strictEqual(LgMoney.setDays({lg:{}}), false); assert.strictEqual(LgMoney.setDays({lg:{setDays:true}}), true, 'галочка в сделке главнее');
   // ключи раздела — с префиксом, в своих разделах, у чисел — пределы и подробная подсказка; встроенное — в пределах
@@ -141,20 +138,20 @@ check('выброс цены перевозчика не становится м
   const offs=()=>[81034, 74345, 93730, 403840, 222873, 105720, 90773, 108095].map((t, i)=>({src:'п'+i, total:t}));
   const a=LgOutlier.mark(offs()), out=a.filter(o=>o.outlier).map(o=>o.total);
   assert.deepStrictEqual(out, [403840, 222873], 'выбросы при пороге 2 (медиана остальных ≈ 93 тыс.)');
-  DEFS_SRV={'log.outlierK':{on:true, v:'0'}}; assert.ok(!LgOutlier.mark(offs()).some(o=>o.outlier), '0 — без защиты');
-  DEFS_SRV={}; assert.ok(!LgOutlier.mark(offs().slice(0, 2).concat([{src:'x', total:900000}])).slice(0, 2).some(o=>o.outlier));
+  DefRegistry.srv={'log.outlierK':{on:true, v:'0'}}; assert.ok(!LgOutlier.mark(offs()).some(o=>o.outlier), '0 — без защиты');
+  DefRegistry.srv={}; assert.ok(!LgOutlier.mark(offs().slice(0, 2).concat([{src:'x', total:900000}])).slice(0, 2).some(o=>o.outlier));
   assert.ok(!LgOutlier.mark([{total:100}, {total:500}]).some(o=>o.outlier), 'меньше трёх предложений — не размечается');
 });
 
 check('агент-экспедитор — и на разгрузку (решение 17.10), страхование без агентских; выключается в «Значениях программы»', ()=>{
   const T=Freight.tariffs(), inp={from:{addr:'Москва'}, to:{addr:'Казань'}, km:'800', items:[{name:'Компрессор', qty:1, l:2.4, w:1.2, h:1.85, m:2.5}], value:1000000, unload:'auto'};
-  DEFS_SRV={};
+  DefRegistry.srv={};
   const a=Freight.calc(inp, T); assert.ok(a.unload && a.unload.cost>0, 'разгрузка подобрана');
   assert.strictEqual(a.agent, Math.round((a.transport+a.unload.cost)*T.agentPct/100), 'агент на рейс и разгрузку');
-  DEFS_SRV={'log.agentUnload':{on:false}};
+  DefRegistry.srv={'log.agentUnload':{on:false}};
   const b=Freight.calc(inp, T); assert.strictEqual(b.agent, Math.round(b.transport*T.agentPct/100), 'выключено — только на рейс');
   assert.ok(a.total-b.total===a.agent-b.agent, 'разница — только агентские');
-  DEFS_SRV={};
+  DefRegistry.srv={};
 });
 
 check('станция в сборе (решение 17.10) — только открытой машиной, сборный груз ТК не предлагается', ()=>{
@@ -163,11 +160,11 @@ check('станция в сборе (решение 17.10) — только от
   assert.ok(!a.openOnly && a.vehicles.length && !a.vehicles[0].C.open, 'обычный груз — закрытая машина дешевле');
   const b=Freight.calc({from:{addr:'Москва'}, to:{addr:'Краснодар'}, km:'1478', items:[{...it, open:true}], unload:'none'}, T);
   assert.ok(b.openOnly && b.vehicles.length && b.vehicles.every(v=>v.C.open), 'станция — контейнеровоз, площадка или трал');
-  const keep=LG.tar; LG.tar=T;
+  const keep=LgState.tar; LgState.tar=T;
   const Q={res:{offers:[{src:'ПЭК', kind:'ltl', complete:true, price:90000, base:90000}, {src:'ATI.SU', kind:'ftl', complete:true, price:150000, base:150000}]}};
   assert.deepStrictEqual(LgOffers.offers(b, Q).map(o=>o.id), ['model', 'ATI.SU'], 'без сборного груза');
   assert.strictEqual(LgOffers.offers(a, Q).length, 3, 'обычный груз — со сборным');
-  LG.tar=keep;
+  LgState.tar=keep;
 });
 
 // ---------------------------------------------------------------- проверка расчётов 19.10 (решение владельца «выполняй все»)

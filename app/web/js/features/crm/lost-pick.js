@@ -1,4 +1,8 @@
 import { CrmFunnel } from './crm-funnel.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
+import { DealCard } from './deal-card.js';
 
 /**
  * «Проиграно»: у воронки Битрикса — выбор стадии провала («Высокая цена», «Отмена проекта»…) и комментарий; у своей воронки
@@ -48,7 +52,7 @@ export class LostPick {
   static _picked(modal, fails) {
     const radio = modal.d.querySelector('input[name=lpS]:checked');
     if (!radio) {
-      toast('Выберите стадию провала');
+      Toast.show('Выберите стадию провала');
       return null;
     }
     const stage = fails.find(row => row.key === radio.value);

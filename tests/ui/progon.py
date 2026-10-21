@@ -30,6 +30,7 @@ import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(HERE))
 
 
@@ -137,6 +138,7 @@ class UiRun:
         self.ctx = self.br.new_context(accept_downloads=True, **Modes.ALL[self.mode])
         if self.mode == 'phd':
             self.ctx.add_init_script("try{ if(!localStorage.getItem('kp.theme')) localStorage.setItem('kp.theme','dark') }catch(e){}")
+        self.ctx.add_init_script(self.expose_script())
         pg = self.pg = self.ctx.new_page()
         pg.on('pageerror', lambda e: self.errs.append((self.cur, 'pageerror', str(e)[:400])))
         pg.on('console', self._console)
@@ -144,6 +146,33 @@ class UiRun:
               if r.status >= 400 else None)
         pg.on('dialog', self._dialog)
         return pg
+
+    @staticmethod
+    def expose_script():
+        """Классы программы — именами в окне страницы, только для проверок прогона (в программе их нет: модули
+        подключают друг друга import). Живые свойства: S после смены КП — новое. Разделы «по требованию»
+        (tz-out, rules-doc) не подключаются — проверяется их загрузка по первому нажатию; main.js и index.js страница
+        подключает с меткой версии (?v=…) — повторный import запустил бы их второй раз."""
+        root = os.path.join(ROOT, 'app', 'web', 'js')
+        mods = []
+        for d, _, files in os.walk(root):
+            if any(x in d for x in ('tz-out', 'rules-doc', 'docx')):
+                continue
+            for f in sorted(files):
+                if not f.endswith('.js') or f in ('index.js', 'boot.js', 'main.js'):
+                    continue
+                path = os.path.join(d, f)
+                with open(path, encoding='utf-8') as src:
+                    names = re.findall(r'^export (?:class|const|let|function) (\w+)', src.read(), re.M)
+                if names:
+                    mods.append(['/web/js/' + os.path.relpath(path, root).replace(os.sep, '/'), names])
+        return '''addEventListener('DOMContentLoaded', async () => {
+  for (const [path, names] of %s) {
+    const ns = await import(path);
+    for (const name of names) if (!(name in window)) Object.defineProperty(window, name, { get: () => ns[name], configurable: true });
+  }
+  window.__kpExposed = true;
+});''' % json.dumps(mods)
 
     def _console(self, m):
         if m.type in ('error', 'warning') and not any(x in m.text for x in self.IGN_CONSOLE):
@@ -239,7 +268,7 @@ class Scenario(UiRun):
     def go(self, step):
         if self.phone:
             self.pg.locator('#mbar').wait_for()
-        self.ev("goStep('%s')" % step)
+        self.ev("Steps.open('%s')" % step)
         self.wait(500)
         self.ev("window.scrollTo(0,0)")
 
@@ -259,7 +288,7 @@ class Scenario(UiRun):
     def run(self, stages):
         pg = self.pg
         pg.goto(self.base + '/')
-        pg.wait_for_function("typeof catCache!=='undefined' && catCache.length>0", timeout=60000)
+        pg.wait_for_function("window.__kpExposed && Catalog.cache.length>0", timeout=60000)
         self.wait(1500)
         self.stage('first', self.s_first)
         for name in Modes.STAGES:
@@ -299,7 +328,7 @@ class Scenario(UiRun):
         if pg.locator('#form [data-a=openCatalog]').count():
             pg.locator('#form [data-a=openCatalog]').first.click()
         else:
-            self.ev("openCatalog({})")
+            self.ev("CatalogWindow.open({})")
         pg.wait_for_selector('#cwList .cw-row', timeout=20000)
         self.snap('21_cat_open', '#catdlg')
         pg.fill('#cwQ', 'компрессор винтовой')
@@ -350,7 +379,7 @@ class Scenario(UiRun):
         pg.keyboard.press('Escape')
         self.wait(500)
         if not self.ev("!!document.querySelector('#catdlg[open]')"):
-            self.ev("openCatalog({})")
+            self.ev("CatalogWindow.open({})")
             self.wait(1500)
         pr = self.visible('#cwPriced')
         if pr and not pr.is_checked():
@@ -615,10 +644,10 @@ class Scenario(UiRun):
         self.snap('73_mgr_filled', None, full=True, wait=600)
         self.go('client')
         self.fill_empty((('contact.name', 'Петров Пётр'), ('contact.phone', '+7 900 111-22-33')))
-        self.meta()['problems'] = self.ev("problems().map(p=>p[0])")
+        self.meta()['problems'] = self.ev("Problems.list().map(p=>p[0])")
 
     def s_preview(self):
-        self.ev("renderForm()")
+        self.ev("FormView.render()")
         if self.phone:
             self.ev("KpPreview.open()")
         else:
@@ -633,7 +662,7 @@ class Scenario(UiRun):
     def s_save(self):
         """Сохранение КП (Word) двойным щелчком: запрос один, окно итога."""
         meta = self.meta()
-        meta['problems_before_save'] = self.ev("problems().map(p=>p[0])")
+        meta['problems_before_save'] = self.ev("Problems.list().map(p=>p[0])")
         posts = []
         self.pg.on('request', lambda r: posts.append(r.method + ' ' + r.url.replace(self.base, ''))
                    if r.method in ('POST', 'PUT') and '/api/kp' in r.url else None)
@@ -677,7 +706,7 @@ class Scenario(UiRun):
     def s_journal(self):
         pg = self.pg
         if self.phone:
-            self.ev("openJournal()")
+            self.ev("Journal.open()")
         else:
             pg.click('header [data-a=journal]')
         self.wait(2500)
@@ -702,13 +731,13 @@ class Scenario(UiRun):
             cc.click()
             self.snap('a3_client_card_from_journal', self.topdlg(), wait=2000)
         self.closeall()
-        self.ev("openJournal()")
+        self.ev("Journal.open()")
         self.snap('a4_journal_reopen', self.topdlg(), wait=2500)
         self.closeall()
 
     def s_misc(self):
-        for nm, js in (('b0_myday', 'MyDay.open()'), ('b1_myprefs', 'MyPrefs.open()'), ('b2_help', 'openHelp()'),
-                       ('b3_versions', "openHelp('versions')"), ('b4_newkp', 'NewKp.open()'), ('b5_reminders', 'Reminders.open()'),
+        for nm, js in (('b0_myday', 'MyDay.open()'), ('b1_myprefs', 'MyPrefs.open()'), ('b2_help', 'HelpWindow.open()'),
+                       ('b3_versions', "HelpWindow.open('versions')"), ('b4_newkp', 'NewKp.open()'), ('b5_reminders', 'Reminders.open()'),
                        ('b7_find', 'QuickSearch.open()')):
             try:
                 self.closeall()
@@ -734,7 +763,7 @@ class Scenario(UiRun):
         """«Настройки»: вход администратора через форму, все вкладки всех групп и их подразделы."""
         pg = self.pg
         self.closeall()
-        self.ev("openSettings()")
+        self.ev("SettingsWindow.open()")
         self.snap('c0_settings_login', self.topdlg(), wait=1500)
         if pg.locator('#stPw').count():
             if pg.locator('#stLg').count():
@@ -750,7 +779,7 @@ class Scenario(UiRun):
             except Exception as e:
                 self.errs.append(('settings_' + t, 'SCRIPT', str(e)[:1500]))
         self.closeall()
-        self.ev("openSettings()")
+        self.ev("SettingsWindow.open()")
         self.snap('c3_settings_reopen', self.topdlg(), wait=1500)
         self.closeall()
 
@@ -781,7 +810,7 @@ class Scenario(UiRun):
         """«Настройки → Битрикс24»: вход администратора, адрес подставного Битрикса, связь включена."""
         pg = self.pg
         self.closeall()
-        self.ev("openSettings('bx-link')")
+        self.ev("SettingsWindow.open('bx-link')")
         self.wait(1500)
         if pg.locator('#stPw').count():
             if pg.locator('#stLg').count():
@@ -908,10 +937,10 @@ class Scenario(UiRun):
     def _cab_exec(self):
         """Исполнение сделки: план из экономики КП (вписан в описание КП стенда), «Договор подписан», дела сами, отметка «✓»."""
         pg = self.pg
-        did = self.ev("""async plan => { const b = await api('/api/crm/board?manager=all');
+        did = self.ev("""async plan => { const b = await Api.request('/api/crm/board?manager=all');
           const d = b.deals.find(x => (x.kps || []).length && !x.execSum && !['won', 'lost'].includes(x.stage)); if (!d) return '';
-          const kid = d.kps[0].id, m = await api(`/api/kp/${kid}/meta`); m.plan = plan;
-          await api(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'}, body: JSON.stringify(m)});
+          const kid = d.kps[0].id, m = await Api.request(`/api/kp/${kid}/meta`); m.plan = plan;
+          await Api.request(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'}, body: JSON.stringify(m)});
           return d.id; }""", self.PLAN)
         if not did:
             self.errs.append(('cabinet', 'ERR', 'нет сделки с КП для исполнения'))
@@ -942,7 +971,7 @@ class Scenario(UiRun):
             self.snap('f_cab_fab', '#cabWin', wait=200)
             pg.click('#cabWin .cab-fabm [data-cq="deal"]')
         pg.wait_for_selector('dialog.dk-new-dlg[open]', timeout=10000)
-        self.ev("""() => api('/api/clients/innprogon1', {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'},
+        self.ev("""() => Api.request('/api/clients/innprogon1', {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'},
           body: JSON.stringify({id: 'innprogon1', name: 'ООО «Контакт-Прогон»', inn: '', contacts: [{name: 'Смирнова Ольга', phone: '+7 (912) 345-67-89'}]})})""")
         pg.locator('dialog.dk-new-dlg[open] [name=client]').press_sequentially('89123456789', delay=30)
         try:

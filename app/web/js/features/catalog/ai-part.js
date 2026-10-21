@@ -1,5 +1,12 @@
 import { AiChat, AiDirect } from './ai-chat.js';
 import { AiParse } from './ai-parse.js';
+import { Kit } from '../kit/kit.js';
+import { Toast } from '../../core/toast.js';
+import { KpState, S } from '../../core/state.js';
+import { FormView } from '../../ui/form-view.js';
+import { $, esc } from '../../core/util.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
 
 /** Окно «Заполнить с ИИ» для элемента станции: описание и характеристики элемента. */
 export class AiPart {
@@ -11,7 +18,7 @@ export class AiPart {
    */
   static prompt(item, part) {
     return `Ты — инженер, готовишь технико-коммерческое предложение на русском языке.
-Элемент ${typeById(attrsOf(item).cat).item.toLowerCase()}${item.name ? ` «${item.name}»` : ''}: «${part.name || 'элемент'}».
+Элемент ${EquipTypes.byId(Attrs.of(item).cat).item.toLowerCase()}${item.name ? ` «${item.name}»` : ''}: «${part.name || 'элемент'}».
 Составь техническое описание элемента и таблицу его характеристик. Бери ТОЛЬКО факты из исходных данных (и приложенных файлов), ничего не придумывай; нет данных — пустая строка. Значения — с единицами измерения, десятичный разделитель — запятая.
 Ответ — строго один JSON-объект в блоке кода, без пояснений:
 \`\`\`json
@@ -84,9 +91,9 @@ ${String(part._src || '').trim() || '(только наименование — 
     this._fill(part, answer.j);
     delete part._ans;
     dialog.close();
-    renderForm();
-    persist();
-    toast('Элемент заполнен из ответа ИИ');
+    FormView.render();
+    KpState.persist();
+    Toast.show('Элемент заполнен из ответа ИИ');
   }
 
   static _draw(dialog, ctx) {
@@ -132,7 +139,7 @@ ${String(part._src || '').trim() || '(только наименование — 
     const part = Kit.parts(item)[j];
     if (!part) return;
     AiChat.send(this.prompt(item, part), url, ok => {
-      if (ok) toast(url ? 'Запрос скопирован — вставьте его в окне ИИ (Ctrl+V)' : 'Запрос скопирован');
+      if (ok) Toast.show(url ? 'Запрос скопирован — вставьте его в окне ИИ (Ctrl+V)' : 'Запрос скопирован');
     });
   }
 }

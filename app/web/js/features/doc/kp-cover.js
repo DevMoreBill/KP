@@ -1,5 +1,8 @@
 import { DocImages } from './doc-images.js';
 import { KpModels } from './kp-models.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { S } from '../../core/state.js';
+import { FileSave } from '../../core/files.js';
 
 /**
  * Титул КП с несколькими моделями: список моделей со своими фото и, если менеджер не правил титул, — модель, заголовок и
@@ -37,7 +40,7 @@ export class KpCover {
   }
 
   static _count(models) {
-    return `${models.length} ${plural(models.length, ...this.WORDS)}`;
+    return `${models.length} ${KPGen.plural(models.length, ...this.WORDS)}`;
   }
 
   static _model(models) {
@@ -62,7 +65,7 @@ export class KpCover {
     const cats = new Set(models.map(row => row.type));
     const groups = new Set(models.map(row => row.group));
     if (cats.size === 1) {
-      const type = typeById([...cats][0]);
+      const type = EquipTypes.byId([...cats][0]);
       return type.coverTitle || type.name;
     }
     if (groups.size === 1) return [...groups][0];

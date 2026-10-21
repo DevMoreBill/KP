@@ -1,3 +1,10 @@
+import { FormView } from '../../ui/form-view.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { $, Uid, esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { KpState, S } from '../../core/state.js';
 /**
  * Фото со страницы товара (автозаполнение и «Фото с сайта поставщика»): ★ — главное, галочки — какие добавить в изображения.
  * Сервер скачивает их в изображения позиции; уже добавленные (тот же адрес у поставщика) пропускаются.
@@ -31,21 +38,21 @@ export class PageImages {
 
   static async _show(i, url) {
     if (!url || !this.URL_RE.test(url.trim())) return;
-    toast('Ищу фото на странице товара…');
+    Toast.show('Ищу фото на странице товара…');
     let answer;
     try {
-      answer = await api('/api/pagetext', {
+      answer = await Api.request('/api/pagetext', {
         method: 'POST',
         headers: this.JSON_HEAD,
         body: JSON.stringify({ url: url.trim() }),
       });
     } catch (error) {
-      toast(String(error.message || error));
+      Toast.show(String(error.message || error));
       return;
     }
     const imgs = answer.imgs || [];
     if (!imgs.length) {
-      toast('На странице не найдено фото товара — сохраните картинку и перетащите её в карточку');
+      Toast.show('На странице не найдено фото товара — сохраните картинку и перетащите её в карточку');
       return;
     }
     this.dlg = { url: url.trim(), imgs };
@@ -67,7 +74,7 @@ export class PageImages {
   static html(i, imgs, src) {
     const item = S.items[i];
     const hasMain = !!(item.photo && item.photo.src);
-    const only = DEF('img.mainOnly');
+    const only = DefRegistry.value('img.mainOnly');
     const picked = k => !only || (!hasMain && k === 0);
     const list = imgs
       .map(
@@ -99,7 +106,7 @@ export class PageImages {
     const photo = item.photo;
     if (photo && photo.src && photo.src !== pic.src && !item.gallery.some(one => one.src === photo.src)) {
       item.gallery.push({
-        id: uid(),
+        id: Uid.next(),
         src: photo.src,
         w: photo.w,
         h: photo.h,
@@ -127,7 +134,7 @@ export class PageImages {
       if (!pic || have.has(pic.source) || have.has(pic.src)) continue;
       have.add(pic.src);
       item.gallery.push({
-        id: uid(),
+        id: Uid.next(),
         src: pic.src,
         w: pic.w,
         h: pic.h,
@@ -166,13 +173,13 @@ export class PageImages {
 
   static async _fetch(item, url, urls) {
     try {
-      return await api('/api/pagephotos', {
+      return await Api.request('/api/pagephotos', {
         method: 'POST',
         headers: this.JSON_HEAD,
-        body: JSON.stringify({ url, urls, ...imgPlace(item) }),
+        body: JSON.stringify({ url, urls, ...ItemSpec.imgPlace(item) }),
       });
     } catch (error) {
-      toast(String(error.message || error));
+      Toast.show(String(error.message || error));
       return null;
     }
   }
@@ -189,10 +196,10 @@ export class PageImages {
     if (!item) return false;
     const { main, keys } = this._picked(i, box);
     if (!keys.length) {
-      toast('Отметьте хотя бы одно фото');
+      Toast.show('Отметьте хотя бы одно фото');
       return false;
     }
-    toast(`Загружаю фото: ${keys.length}…`);
+    Toast.show(`Загружаю фото: ${keys.length}…`);
     const answer = await this._fetch(
       item,
       url,
@@ -202,9 +209,9 @@ export class PageImages {
     const { added, first } = this._place(item, { answer, main, keys, imgs });
     if (url && !item.pageUrl && !(item.feed && item.feed.url)) item.pageUrl = url;
     item.page = true;
-    renderForm();
-    persist();
-    toast(this._report(added, !!first, (answer.errors || []).length));
+    FormView.render();
+    KpState.persist();
+    Toast.show(this._report(added, !!first, (answer.errors || []).length));
     return true;
   }
 

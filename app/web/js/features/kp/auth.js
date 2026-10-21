@@ -1,3 +1,5 @@
+import { Toast } from '../../core/toast.js';
+import { AdminSession, Api } from '../../core/net.js';
 /**
  * Вход менеджеров по логину и паролю (включает администратор: «Настройки → Менеджеры и доступ»). Выключен — менеджер
  * выбирается на устройстве; права (каталог, чужие КП, экономика) проверяет сервер, здесь — только скрываем лишнее.
@@ -28,7 +30,7 @@ export class Auth {
   /** Состояние входа с сервера. */
   static async load() {
     try {
-      const answer = await api('/api/auth/status');
+      const answer = await Api.request('/api/auth/status');
       Object.assign(this.state, {
         enabled: !!answer.enabled,
         user: answer.user || null,
@@ -52,7 +54,7 @@ export class Auth {
    */
   static can(perm) {
     const state = this.state;
-    if (state.admin || ADMIN.on) return true;
+    if (state.admin || AdminSession.on) return true;
     if (Powers.STRICT.includes(perm)) return Powers.has(perm);
     if (!state.enabled) return true;
     return !!(state.user && state.user.perms && state.user.perms[perm]);
@@ -63,7 +65,7 @@ export class Auth {
    * @param {string} perm
    */
   static cannot(perm) {
-    toast(`Нет права ${this.TEXT[perm] || perm} — обратитесь к администратору`);
+    Toast.show(`Нет права ${this.TEXT[perm] || perm} — обратитесь к администратору`);
   }
 }
 
@@ -81,6 +83,8 @@ export class Powers {
    */
   static has(perm) {
     const state = Auth.state;
-    return state.admin || ADMIN.on || !!(state.enabled && state.user && state.user.perms && state.user.perms[perm]);
+    return (
+      state.admin || AdminSession.on || !!(state.enabled && state.user && state.user.perms && state.user.perms[perm])
+    );
   }
 }

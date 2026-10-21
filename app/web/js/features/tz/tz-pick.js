@@ -11,6 +11,19 @@ import { StationMatrix } from '../layout/station-matrix.js';
 import { StationRules } from '../rules/station-rules.js';
 import { StationSup } from './station-sup.js';
 import { TzFit } from './tz-fit.js';
+import { StationDefaults } from '../kit/station-defaults.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { KitNeed } from '../kit/kit-need.js';
+import { KitPart } from '../kit/kit-part.js';
+import { Api } from '../../core/net.js';
+import { StationAuto, StationName } from '../kit/station-auto.js';
+import { StationSize } from '../station/station-size.js';
+import { StationUi } from '../station/station-ui.js';
+import { StationReq } from '../req/station-req.js';
+import { Kit } from '../kit/kit.js';
+import { CatalogIndex } from '../catalog/catalog-index.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { Attrs } from '../../core/item-attrs.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -74,7 +87,7 @@ export class TzPick {
 
   /** Производительность позиции каталога: компрессоры и осушители — м³/мин, насосы — м³/ч. */
   static flow(item) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     const value = this.num(attrs.flow);
     if (!(value > 0)) return 0;
     return attrs.cat === 'comp_piston' ? value / this.LPM : value;
@@ -134,13 +147,13 @@ export class TzPick {
 
   /** Компрессоры на Q, м³/мин, и B, бар, у потребителя; q — {oilFree, vsd, work, compact, ads}: {o, n} | null. */
   static comps(pool, demand, bar, need) {
-    const vsd = item => AirChain.info({ name: item.name, attrs: attrsOf(item), rows: [] }, 'compressor').vsd;
+    const vsd = item => AirChain.info({ name: item.name, attrs: Attrs.of(item), rows: [] }, 'compressor').vsd;
     const options = pool
       .filter(item => !need.oilFree || this.oilFree(item))
       .map(item => ({
         c: item,
         v: this.flow(item),
-        p: this.num(attrsOf(item).pressure),
+        p: this.num(Attrs.of(item).pressure),
         vsd: vsd(item),
         f: !need.vsd || vsd(item),
         of: !need.oilFree && this.oilFree(item),
@@ -175,7 +188,7 @@ export class TzPick {
 
   /** Штраф за площадь агрегата на полу; габарит неизвестен — как AREA_UNKNOWN. */
   static area(item) {
-    const dims = StationEquip.dims({ name: item.name, attrs: attrsOf(item), rows: [] }, 'compressor');
+    const dims = StationEquip.dims({ name: item.name, attrs: Attrs.of(item), rows: [] }, 'compressor');
     return this.PENALTY.area * (dims.known ? (dims.l * dims.w) / 1e6 : this.AREA_UNKNOWN);
   }
 
@@ -187,23 +200,23 @@ export class TzPick {
     const temps = DryerSizing.temps({ tmax, tin: null });
     const refBar = bar > 0 ? bar : StationRules.raw('dryer.ref').p;
     const category = ads ? 'dryer_ads' : 'dryer_refrig';
-    const dewPoint = item => this.num(String(attrsOf(item).dewPoint ?? '').replace(/[−–]/g, '-'));
+    const dewPoint = item => this.num(String(Attrs.of(item).dewPoint ?? '').replace(/[−–]/g, '-'));
     const fits = item =>
       (pdp == null || dewPoint(item) == null || dewPoint(item) <= pdp + this.DEW_TOL) &&
       this.fitsH(item, 'dryer', height) &&
       this.fitsW(item, 'dryer', width);
-    const options = catCache
-      .filter(item => attrsOf(item).cat === category && fits(item))
+    const options = Catalog.cache
+      .filter(item => Attrs.of(item).cat === category && fits(item))
       .map(item => {
         const factor = DryerSizing.factor(
-          { name: item.name, attrs: attrsOf(item), rows: [] },
+          { name: item.name, attrs: Attrs.of(item), rows: [] },
           refBar,
           temps,
           ads ? 'ads' : 'refrig',
         ).F;
         return { c: item, v: this.flow(item), cap: this.flow(item) * factor };
       })
-      .filter(option => option.v > 0 && this._pressOk(this.num(attrsOf(option.c).pressure), barMin));
+      .filter(option => option.v > 0 && this._pressOk(this.num(Attrs.of(option.c).pressure), barMin));
     return this.many(options, demand);
   }
 
@@ -214,7 +227,7 @@ export class TzPick {
   static filter(rec, demand, bar, barMin) {
     const filterBar = bar > 0 ? bar + StationRules.raw('loss.pipe') : StationRules.raw('dryer.ref').p;
     for (const grade of this.GRADE[rec.key] || [rec.key]) {
-      const options = catCache.filter(item => this._filterOk(item, grade, demand, barMin));
+      const options = Catalog.cache.filter(item => this._filterOk(item, grade, demand, barMin));
       const found =
         demand > 0
           ? this.many(
@@ -228,12 +241,12 @@ export class TzPick {
   }
 
   static _kf(item, bar) {
-    const series = StationRules.series({ name: item.name, attrs: attrsOf(item), rows: [] }, 'filter');
+    const series = StationRules.series({ name: item.name, attrs: Attrs.of(item), rows: [] }, 'filter');
     return series ? StationRules.interp(series.f.p, bar) : AirChain.filterK(bar);
   }
 
   static _filterOk(item, grade, demand, barMin) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     const probe = { name: item.name, attrs, rows: [] };
     if (attrs.cat !== 'filter' || AirChain.grade(probe, attrs.cat, AirChain.text(probe)) !== grade) return false;
     if (demand > 0 && !(this.flow(item) > 0)) return false;
@@ -241,7 +254,7 @@ export class TzPick {
   }
 
   static _smallest(options) {
-    const flow = item => this.num(attrsOf(item).flow) || 0;
+    const flow = item => this.num(Attrs.of(item).flow) || 0;
     const best = StationSup.pick(
       options.map(item => ({ c: item, v: flow(item), score: flow(item) })),
       z => StationSup.same(z.c),
@@ -264,7 +277,7 @@ export class TzPick {
 
   /** Безмасляный: по полю «Безмасляный (класс 0)», не заполнено — по названию и характеристикам. */
   static oilFree(item) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     const field = String(attrs.oilFree ?? '').trim();
     if (/^(да|есть|true)/i.test(field) || /класс\w*\s*0(?![.,\d])/i.test(field)) return true;
     if (/^(нет|false)/i.test(field)) return false; // поле важнее описания серии
@@ -275,7 +288,7 @@ export class TzPick {
 
   /** Передвижной или бензиновый — не для станции в контейнере. */
   static mobile(item) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     return (
       /шасси|передвижн|мобильн|колёсн|колесн/i.test(`${String(attrs.execution || '')} ${item.name}`) ||
       /бензин/i.test(item.name)
@@ -284,7 +297,7 @@ export class TzPick {
 
   /** Насос для стационарной станции: электрический, не погружной, не скважинный, не дренажный, не мотопомпа. */
   static pumpOk(item) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     return (
       !/мотопомп|погружн|скважин|дренаж|фекал/i.test(`${String(attrs.kind || '')} ${item.name}`) &&
       !/дизел|бензин/i.test(String(attrs.drive || ''))
@@ -293,14 +306,14 @@ export class TzPick {
 
   /** ДГУ в кожухе шире — станция уходит в негабарит: штраф к оценке. */
   static dguPen(item) {
-    return /кожух|капот|шумозащит/i.test(`${String(attrsOf(item).execution || '')} ${item.name}`)
+    return /кожух|капот|шумозащит/i.test(`${String(Attrs.of(item).execution || '')} ${item.name}`)
       ? this.PENALTY.dguHood
       : 0;
   }
 
   /** ДГУ для станции 0,4 кВ: трёхфазная 400 В, не однофазная и не высоковольтная; «400 / 230 В» — трёхфазная. */
   static dguOk(item) {
-    const attrs = attrsOf(item);
+    const attrs = Attrs.of(item);
     const text = `${String(attrs.voltage || '')} ${String(attrs.phases || '')} ${item.name}`;
     if (/\d{4,}\s*В(?![а-яё])|\d+(?:[.,]\d+)?\s*кВ(?![а-яёА-ЯЁ])/i.test(text.replace(/(\d)\s+(?=\d{3}\b)/g, '$1')))
       return false;
@@ -310,19 +323,19 @@ export class TzPick {
 
   /** Позиции каталога видов cats, годные для станции в контейнере. */
   static stationPool(cats) {
-    return catCache.filter(item => cats.includes(attrsOf(item).cat) && !this.mobile(item));
+    return Catalog.cache.filter(item => cats.includes(Attrs.of(item).cat) && !this.mobile(item));
   }
 
   /** Только с электроприводом. */
   static electric(pool) {
-    return pool.filter(item => attrsOf(item).cat !== 'comp_diesel');
+    return pool.filter(item => Attrs.of(item).cat !== 'comp_diesel');
   }
 
   static _recvAll() {
-    return catCache
-      .filter(item => attrsOf(item).cat === 'receiver')
+    return Catalog.cache
+      .filter(item => Attrs.of(item).cat === 'receiver')
       .map(item => {
-        const attrs = attrsOf(item);
+        const attrs = Attrs.of(item);
         return {
           c: item,
           v: this.num(attrs.volume) || 0,
@@ -344,7 +357,7 @@ export class TzPick {
       .toLowerCase();
     const pri = option =>
       maker &&
-      String(attrsOf(option.c).maker || '')
+      String(Attrs.of(option.c).maker || '')
         .trim()
         .toLowerCase() === maker
         ? 0
@@ -434,7 +447,7 @@ export class TzPick {
 
   /** В наличии на складе поставщика: 1 / 0. */
   static stock(item) {
-    return typeof CatalogIndex !== 'undefined' && CatalogIndex.inStock(item) ? 1 : 0;
+    return CatalogIndex.inStock(item) ? 1 : 0;
   }
 
   static _roadInner(grade) {
@@ -457,7 +470,7 @@ export class TzPick {
   /** Помещается в плане с проходом (W, мм; 0 — без ограничения): меньшая сторона + отступ «плотно» + проход «не менее». */
   static fitsW(item, kind, width) {
     if (!(width > 0)) return true;
-    const dims = StationEquip.dims({ name: item.name, attrs: attrsOf(item), rows: item.rows || [] }, kind);
+    const dims = StationEquip.dims({ name: item.name, attrs: Attrs.of(item), rows: item.rows || [] }, kind);
     if (!dims.known) return true;
     const side = Math.min(dims.l, dims.w);
     const wall = StationMatrix.wall({ kind, w: side });
@@ -467,7 +480,7 @@ export class TzPick {
   /** Проходит по высоте H, мм (0 — без ограничения); над осушителем — место на подключение. */
   static fitsH(item, kind, height) {
     if (!(height > 0)) return true;
-    const dims = StationEquip.dims({ name: item.name, attrs: attrsOf(item), rows: [] }, kind);
+    const dims = StationEquip.dims({ name: item.name, attrs: Attrs.of(item), rows: [] }, kind);
     return !dims.known || dims.h + (kind === 'dryer' ? StationMatrix.grp('pick').dryerFit : 0) <= height;
   }
 
@@ -496,7 +509,7 @@ export class TzPick {
   static async part(item, qty, role) {
     let doc = item;
     try {
-      doc = await api(`/api/catalog/${encodeURIComponent(item.id)}`);
+      doc = await Api.request(`/api/catalog/${encodeURIComponent(item.id)}`);
     } catch {}
     const part = KitPart.fromCat(doc);
     part.qty = qty;
@@ -538,7 +551,7 @@ export class TzPick {
   static pick(station, need) {
     const kind = need.kind;
     const drop = this.DROP[kind] || this.DROP.dgu;
-    const cats = (typeById(this.TYPE[kind]).station || {}).main || [];
+    const cats = (EquipTypes.byId(this.TYPE[kind]).station || {}).main || [];
     const job = {
       x: station,
       q: need,
@@ -719,7 +732,7 @@ export class TzPick {
     const { q: need } = job;
     const options = job.pool
       .filter(item => this.pumpOk(item))
-      .map(item => ({ c: item, v: this._top(attrsOf(item).flow) || 0, h: this._top(attrsOf(item).head) }))
+      .map(item => ({ c: item, v: this._top(Attrs.of(item).flow) || 0, h: this._top(Attrs.of(item).head) }))
       .filter(option => option.v > 0 && (!(need.head > 0) || option.h >= need.head));
     const chosen = this.units(options, need.q, need.work, option =>
       need.head > 0 && option.h > 0 ? (this.PENALTY.head * (option.h - need.head)) / need.head : 0,
@@ -744,7 +757,7 @@ export class TzPick {
     const { q: need } = job;
     const options = job.pool
       .filter(item => this.dguOk(item))
-      .map(item => ({ c: item, v: GensetSizing.cap(attrsOf(item), need.mode === 'standby') }))
+      .map(item => ({ c: item, v: GensetSizing.cap(Attrs.of(item), need.mode === 'standby') }))
       .filter(option => option.v > 0);
     const pen = option => this.dguPen(option.c);
     const chosen =

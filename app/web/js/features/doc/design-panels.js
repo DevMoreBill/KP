@@ -6,6 +6,8 @@ import { DesignModel } from './design-model.js';
 import { TemplateFields } from './template-fields.js';
 import { TemplateDesigner } from './template-designer.js';
 import { Templates } from './templates.js';
+import { ObjPath } from '../../core/str.js';
+import { $, esc } from '../../core/util.js';
 
 /** Графический редактор шаблона: окно, верхняя панель и левая панель (структура, оформление, шапка, объекты). */
 export class DesignPanels {
@@ -133,7 +135,7 @@ export class DesignPanels {
     const checks = list
       .map(
         field =>
-          `<label class="td-chk"><input type="checkbox" data-tdpath="${esc(field.key)}" ${getPath(work, field.key) ? 'checked' : ''}> ${esc(field.label)}</label>`,
+          `<label class="td-chk"><input type="checkbox" data-tdpath="${esc(field.key)}" ${ObjPath.get(work, field.key) ? 'checked' : ''}> ${esc(field.label)}</label>`,
       )
       .join('');
     return `<div class="td-blk"><b>${esc(group === 'all' ? 'Все страницы' : DesignModel.sectionName(group))}</b>${checks}</div>`;
@@ -185,7 +187,7 @@ export class DesignPanels {
         const buttons = group.list
           .map(field => {
             const key = field.key.slice(7);
-            const style = getPath(work, field.key) || {};
+            const style = ObjPath.get(work, field.key) || {};
             const active = sel && sel.kind === 'style' && sel.key === key ? ' on' : '';
             return `<button type="button" class="td-sty${active}" data-tdstyle="${esc(key)}"><span style="${DesignForm.sample(style, field)}">Аа</span>${esc(field.label)}</button>`;
           })

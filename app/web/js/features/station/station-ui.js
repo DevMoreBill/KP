@@ -1,4 +1,24 @@
 import { LayoutTab } from './layout-tab.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { FormView } from '../../ui/form-view.js';
+import { KitNeed } from '../kit/kit-need.js';
+import { Toast } from '../../core/toast.js';
+import { StationAuto, StationName } from '../kit/station-auto.js';
+import { StationSize } from './station-size.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { Uid, esc } from '../../core/util.js';
+import { Mm } from '../layout/mm.js';
+import { HydroScheme } from '../eskd/hydro-scheme.js';
+import { StationScheme } from '../eskd/station-scheme.js';
+import { StationImages } from './station-images.js';
+import { Templates } from '../doc/templates.js';
+import { ContainerKind } from '../kit/container-kind.js';
+import { KpState, S } from '../../core/state.js';
+import { StationLayout } from '../layout/station-layout.js';
+import { StationGeo } from '../layout/station-geo.js';
+import { StationReq } from '../req/station-req.js';
+import { FEAT } from '../../core/features.js';
+import { Kit } from '../kit/kit.js';
 
 /**
  * Компоновка станции в программе: расстановка (с кэшем), что вставлять в КП, вкладка «Компоновка», метка в разделе
@@ -16,7 +36,7 @@ export class StationUi {
    * @returns {boolean}
    */
   static enabled(item) {
-    return !!item && typeof Kit !== 'undefined' && !!Kit.station(item) && FEAT.on('stLayout');
+    return !!item && !!Kit.station(item) && FEAT.on('stLayout');
   }
 
   /**
@@ -25,7 +45,7 @@ export class StationUi {
    * @returns {object}
    */
   static input(item) {
-    const req = typeof StationReq !== 'undefined' ? StationReq : null;
+    const req = StationReq;
     return {
       cont: this._cont(Kit.container(item)),
       parts: Kit.parts(item),
@@ -271,7 +291,7 @@ export class StationUi {
       StationSize.apply(item);
       StationAuto.fill(item);
       StationName.apply(item);
-      toast(
+      Toast.show(
         `Контейнер заменён: ${ContainerKind.of(container.ctype).name}. Проверьте закупку контейнера в составе станции.`,
       );
       return true;
@@ -300,16 +320,16 @@ export class StationUi {
     item.stLayout = { ...this.opts(item), [key]: input.type === 'checkbox' ? input.checked : input.value };
     if (key === 'draw' && input.checked) item.stLayout.skip = [];
     if (key === 'air' || key === 'calc') {
-      persist();
-      renderForm();
+      KpState.persist();
+      FormView.render();
       return;
     }
     if (key === 'photo' && input.checked && item.photo && item.photo.gen !== 'st3d' && !this._takePhoto(item, input))
       return;
     await StationImages.sync(item);
-    persist();
-    renderEditor();
-    renderForm();
+    KpState.persist();
+    ItemEditor.render();
+    FormView.render();
   }
 
   /** главное фото станции → 3D-вид (с согласия): прежнее фото — в изображения позиции (фото элемента — остаётся у него) */
@@ -326,7 +346,7 @@ export class StationUi {
     if (!part) {
       item.gallery = item.gallery || [];
       item.gallery.push({
-        id: uid(),
+        id: Uid.next(),
         src: item.photo.src,
         w: item.photo.w,
         h: item.photo.h,

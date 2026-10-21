@@ -1,16 +1,26 @@
 import { Auth } from './auth.js';
 import { MyPrefs } from './my-prefs.js';
+import { Steps } from '../../ui/steps.js';
+import { $, Uid, esc } from '../../core/util.js';
+import { FormView } from '../../ui/form-view.js';
+import { Str } from '../../core/str.js';
+import { KpState, S } from '../../core/state.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { FEAT } from '../../core/features.js';
+import { Toast } from '../../core/toast.js';
 
 /**
  * Менеджеры: справочник в базе программы (общий для отдела), выбор менеджера в разделе «Менеджер». Выбранный менеджер
  * запоминается на этом устройстве; правки контактов выбранного менеджера сохраняются в базу сами.
  */
 export class Managers {
+  // менеджеры из справочника
+  static list = [];
   static KEYS = ['name', 'position', 'phone', 'ext', 'mobile', 'email', 'site', 'address', 'hours', 'folder'];
   static DUP = { name: 'фамилия и имя', email: 'e-mail', mobile: 'мобильный телефон', ext: 'добавочный номер' };
   static MOBILE_DIGITS = 10;
   static FOCUS_DELAY = 30;
-  static LOUD = { say: text => toast(text), ask: text => confirm(text) };
+  static LOUD = { say: text => Toast.show(text), ask: text => confirm(text) };
   static QUIET = { say: () => {}, ask: () => false };
 
   /**
@@ -66,20 +76,20 @@ export class Managers {
    * @returns {string}
    */
   static meName() {
-    const manager = MGRS.find(row => row.id === this.meId());
+    const manager = Managers.list.find(row => row.id === this.meId());
     return manager ? manager.name : '';
   }
 
   /** Справочник менеджеров и менеджер текущего КП. */
   static async load() {
     try {
-      MGRS = await api('/api/managers');
+      Managers.list = await Api.request('/api/managers');
     } catch {
-      MGRS = [];
+      Managers.list = [];
       return;
     }
     // переход с прежних версий: контакты, которые помнил этот браузер, становятся записью справочника
-    if (!MGRS.length && this._typed()) {
+    if (!Managers.list.length && this._typed()) {
       await this.saveQuiet();
       return;
     }
@@ -99,8 +109,11 @@ export class Managers {
 
   static _current() {
     const typed = this._typed();
-    const byId = S.managerId ? MGRS.find(row => row.id === S.managerId) : null;
-    const byName = !byId && !S.managerId && typed ? MGRS.find(row => norm(row.name) === norm(S.manager.name)) : null;
+    const byId = S.managerId ? Managers.list.find(row => row.id === S.managerId) : null;
+    const byName =
+      !byId && !S.managerId && typed
+        ? Managers.list.find(row => Str.norm(row.name) === Str.norm(S.manager.name))
+        : null;
     return byId || byName || (typed ? null : this._device()) || this._ownNewKp();
   }
 
@@ -113,16 +126,16 @@ export class Managers {
       // без хранилища — не запоминается
     }
     return (
-      MGRS.find(row => row.id === id) ||
-      MGRS.find(row => row.id === this.meId()) ||
-      (MGRS.length === 1 ? MGRS[0] : null)
+      Managers.list.find(row => row.id === id) ||
+      Managers.list.find(row => row.id === this.meId()) ||
+      (Managers.list.length === 1 ? Managers.list[0] : null)
     );
   }
 
   // вошёл по паролю — менеджер нового КП он сам
   static _ownNewKp() {
     if (!Auth.state.enabled || !Auth.state.user || S.kpId) return null;
-    return MGRS.find(row => row.id === Auth.state.user.id) || null;
+    return Managers.list.find(row => row.id === Auth.state.user.id) || null;
   }
 
   /**
@@ -141,23 +154,23 @@ export class Managers {
    */
   static select(id) {
     if (MgrLock.locked()) return;
-    const manager = MGRS.find(row => row.id === id);
+    const manager = Managers.list.find(row => row.id === id);
     if (!manager) return;
     this.use(manager);
     this.setMe(manager.id);
-    renderForm();
-    persist();
-    toast(`Менеджер: ${manager.name}`);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Менеджер: ${manager.name}`);
   }
 
   /** Новый менеджер — пустые контакты. */
   static startNew() {
     if (MgrLock.locked()) return;
     S.managerId = '';
-    S.manager = { ...defManager(), name: '', position: '', ext: '', mobile: '', email: '', folder: '' };
+    S.manager = { ...KpState.defManager(), name: '', position: '', ext: '', mobile: '', email: '', folder: '' };
     this._remember('');
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     setTimeout(() => $('[data-p="manager.name"]')?.focus(), this.FOCUS_DELAY);
   }
 
@@ -184,7 +197,7 @@ export class Managers {
   // дубль: другой менеджер с теми же фамилией и именем, e-mail, мобильным (последние 10 цифр) или добавочным
   static _dup(id, manager) {
     const mine = this._keys(manager);
-    for (const other of MGRS) {
+    for (const other of Managers.list) {
       if (other.id === id) continue;
       const theirs = this._keys(other);
       const field = Object.keys(this.DUP).find(key => mine[key] && mine[key] === theirs[key]);
@@ -214,7 +227,7 @@ export class Managers {
       notify.say('Укажите ФИО менеджера');
       return false;
     }
-    const id = S.managerId || uid() + uid();
+    const id = S.managerId || Uid.next() + Uid.next();
     const dup = this._dup(S.managerId, S.manager);
     const status = $('#mgrStat');
     if (dup) {
@@ -242,22 +255,22 @@ export class Managers {
   }
 
   static async _store(id, notify) {
-    const doc = await api(`/api/managers/${id}`, {
+    const doc = await Api.request(`/api/managers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify(this.fields(S.manager)),
     });
-    const index = MGRS.findIndex(row => row.id === id);
-    if (index >= 0) MGRS[index] = doc;
-    else MGRS.push(doc);
-    MGRS.sort((left, right) => String(left.name).localeCompare(String(right.name), 'ru'));
+    const index = Managers.list.findIndex(row => row.id === id);
+    if (index >= 0) Managers.list[index] = doc;
+    else Managers.list.push(doc);
+    Managers.list.sort((left, right) => String(left.name).localeCompare(String(right.name), 'ru'));
     const wasNew = !S.managerId;
     S.managerId = id;
     this._remember(id);
     if (wasNew) {
       this.setMe(id);
-      persist();
-      if (STEP === 'mgr') renderForm();
+      KpState.persist();
+      if (Steps.current === 'mgr') FormView.render();
     }
     const status = $('#mgrStat');
     if (status) status.textContent = 'Сохранено в справочнике менеджеров';
@@ -276,13 +289,13 @@ export class MgrLock {
    */
   static locked() {
     const state = Auth.state;
-    return !!(state.enabled && state.user && !state.admin && !ADMIN.on);
+    return !!(state.enabled && state.user && !state.admin && !AdminSession.on);
   }
 
   /** КП открыто, создано, взято из черновика или заготовки — менеджером в нём становится вошедший. */
   static apply() {
     if (!this.locked() || S.managerId === Auth.state.user.id) return;
-    const manager = MGRS.find(row => row.id === Auth.state.user.id);
+    const manager = Managers.list.find(row => row.id === Auth.state.user.id);
     if (manager) Managers.use(manager);
   }
 
@@ -291,7 +304,7 @@ export class MgrLock {
    * @returns {string}
    */
   static html() {
-    const manager = MGRS.find(row => row.id === Auth.state.user.id);
+    const manager = Managers.list.find(row => row.id === Auth.state.user.id);
     return `<p id="mgrStat" style="grid-column:1/-1;margin:0">Менеджер в КП — <b>${esc(manager ? manager.name : Auth.state.user.name || '')}</b> (вы вошли по паролю).
       <span class="muted">Правки полей ниже сохраняются в вашей карточке сами.</span></p>`;
   }

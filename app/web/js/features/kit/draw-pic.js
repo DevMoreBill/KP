@@ -1,4 +1,14 @@
 import { Kit } from './kit.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { StationUi } from '../station/station-ui.js';
+import { KpState, S } from '../../core/state.js';
+import { ImageFiles } from '../catalog/images.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { ImgUpload } from '../../core/net.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { $, esc } from '../../core/util.js';
 
 /**
  * Свой рисунок модели для габаритного чертежа: вид спереди и сверху (PNG или JPEG) вписывается в габарит элемента вместо
@@ -29,7 +39,7 @@ export class DrawPic {
           : `<button type="button" class="kit-phb" data-a="drawPick" data-i="${index}" data-j="${j}" data-v="${view}">+ ${label}</button>`;
       return `<div class="kd-pic">${inner}<small>${label}</small></div>`;
     }).join('');
-    return `<div class="kd-draw"><span class="muted">Рисунок модели для габаритного чертежа${tip('Свой рисунок изделия (вид спереди и сверху, PNG или JPEG). На чертеже он вписывается в габарит элемента вместо автоматического. Удобно завести один раз в карточке позиции каталога — тогда он придёт в состав сам.')}</span>
+    return `<div class="kd-draw"><span class="muted">Рисунок модели для габаритного чертежа${UiKit.tip('Свой рисунок изделия (вид спереди и сверху, PNG или JPEG). На чертеже он вписывается в габарит элемента вместо автоматического. Удобно завести один раз в карточке позиции каталога — тогда он придёт в состав сам.')}</span>
       <div class="kd-dv">${views}</div></div>`;
   }
 
@@ -57,7 +67,7 @@ export class DrawPic {
       if (!out[view] || !out[view].src) continue;
       const was = out[view].src;
       const caption = `${name ? `${name} — ` : ''}рисунок для чертежа, ${label}`;
-      out[view] = await ImgUpload.put(out[view], imgPlace(owner, 'gallery', { caption }));
+      out[view] = await ImgUpload.put(out[view], ItemSpec.imgPlace(owner, 'gallery', { caption }));
       if (out[view].src !== was && was.startsWith('data:')) this.cache.set(out[view].src, was); // без повторной загрузки
     }
     return out;
@@ -94,16 +104,16 @@ export class DrawPic {
       input.accept = '';
       if (!file) return;
       try {
-        const image = await prepGallery(file);
+        const image = await ImageFiles.gallery(file);
         const item = S.items[index];
         const target = j >= 0 ? Kit.parts(item)[j] : item;
         if (!target) return;
         target.draw = { ...(target.draw || {}), [view]: image };
         if (j >= 0) StationUi.cache.delete(item.id);
-        renderForm();
-        persist();
+        FormView.render();
+        KpState.persist();
       } catch {
-        toast('Не удалось открыть изображение');
+        Toast.show('Не удалось открыть изображение');
       }
     };
     input.click();

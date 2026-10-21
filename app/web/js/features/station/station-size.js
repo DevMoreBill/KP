@@ -1,3 +1,12 @@
+import { Kit } from '../kit/kit.js';
+import { StationAuto } from '../kit/station-auto.js';
+import { ContainerPart } from '../kit/container-part.js';
+import { StationLayout } from '../layout/station-layout.js';
+import { StationUi } from './station-ui.js';
+import { esc } from '../../core/util.js';
+import { Mm } from '../layout/mm.js';
+import { Toast } from '../../core/toast.js';
+import { StationGeo } from '../layout/station-geo.js';
 /**
  * Размер блок-контейнера «по проекту» по оборудованию: наименьший размер из ряда, при котором всё помещается; длина задана —
  * компоновка пересобирается с нужной плотностью и уведомлением. Размер, вписанный менеджером, не трогается.
@@ -22,10 +31,10 @@ export class StationSize {
     const key = `${length}|${this._density(plan)}`;
     const was = this.dens.get(item.id);
     this.dens.set(item.id, key);
-    if (was === key || typeof toast !== 'function') return;
+    if (was === key) return;
     const message = this._message(plan, length);
     // после перерисовки окна (иначе уведомление пропадает вместе со старым содержимым)
-    if (message) setTimeout(() => toast(message, this.TOAST_MS), 0);
+    if (message) setTimeout(() => Toast.show(message, this.TOAST_MS), 0);
   }
 
   static _density(plan) {

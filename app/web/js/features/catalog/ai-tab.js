@@ -1,6 +1,10 @@
 import { AiChat, AiDirect } from './ai-chat.js';
 import { AiFill } from './ai-fill.js';
 import { PageImages } from './page-images.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { esc } from '../../core/util.js';
 
 /** Вкладка «✨ Заполнить с ИИ»: источник → запрос (нейросеть в программе или ИИ-чат) → ответ и заполнение карточки. */
 export class AiTab {
@@ -98,7 +102,7 @@ export class AiTab {
       <textarea data-p="${path}._ans" data-aians="${i}" rows="5" placeholder="${direct ? 'Здесь появится ответ нейросети (или вставьте ответ чата)' : 'Ctrl+V — ответ ИИ целиком (кнопка «Копировать» под ответом в чате)'}">${esc(item._ans || '')}</textarea>
       <div class="ai-prev" data-aiprev="${i}">${AiFill.summary(item, answer)}</div>
       <div class="row ai-apply"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${ok ? '' : 'disabled'}>Заполнить карточку</button>
-        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${(item._aiKeep ?? DEF('ai.keep')) ? 'checked' : ''} style="width:auto">не менять уже заполненное</label></div></li>`;
+        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${(item._aiKeep ?? DefRegistry.value('ai.keep')) ? 'checked' : ''} style="width:auto">не менять уже заполненное</label></div></li>`;
   }
 
   /**
@@ -109,7 +113,7 @@ export class AiTab {
    */
   static html(item, i) {
     const answer = AiFill.parse(item);
-    const station = typeById(attrsOf(item).cat).station;
+    const station = EquipTypes.byId(Attrs.of(item).cat).station;
     const has = !!String(item._src || '').trim();
     const step = this._step(item, answer, has);
     const ask = AiDirect.state.enabled ? this._direct(item, i, step) : this._chat(item, i, step);

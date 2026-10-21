@@ -1,5 +1,17 @@
 import { KpDate } from './kp-date.js';
 import { ShortName } from './journal-row.js';
+import { AdminDialog } from '../admin/admin-core.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { FormView } from '../../ui/form-view.js';
+import { Steps } from '../../ui/steps.js';
+import { S } from '../../core/state.js';
+import { Api } from '../../core/net.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { FEAT } from '../../core/features.js';
 
 /**
  * Справочные документы к КП (сервер: app/kp_files.py): паспорта, сертификаты, схемы, опросные листы — хранятся вместе
@@ -61,7 +73,7 @@ export class KpFilesPanel {
    * @returns {number}
    */
   static maxMB(kid) {
-    return ((this.data.get(kid) || {}).limits || {}).fileMB || DEFN('kp.fileMB', 25);
+    return ((this.data.get(kid) || {}).limits || {}).fileMB || DefRegistry.num('kp.fileMB', 25);
   }
 
   /**
@@ -72,7 +84,7 @@ export class KpFilesPanel {
   static async load(kid) {
     if (!this.data.get(kid)) this.data.set(kid, null);
     try {
-      this.data.set(kid, await api(this.url(kid)));
+      this.data.set(kid, await Api.request(this.url(kid)));
     } catch (error) {
       this.data.set(kid, { items: [], limits: {}, err: error.message });
     }
@@ -85,7 +97,7 @@ export class KpFilesPanel {
    * @param {string} kid
    */
   static refresh(kid) {
-    if (S.kpId === kid && STEP === 'conds') renderForm();
+    if (S.kpId === kid && Steps.current === 'conds') FormView.render();
     for (const win of this.wins) if (win.kid === kid) win.draw();
   }
 
@@ -94,7 +106,7 @@ export class KpFilesPanel {
    * @returns {string}
    */
   static head() {
-    return `<h3 class="kf-h"><span aria-hidden="true">📎</span> Справочные документы${tip(`<p>${this.ABOUT}</p><p>Прикрепить — кнопкой, перетаскиванием файлов в рамку или вставкой: выделите рамку и нажмите Ctrl+V (скопированный файл или снимок экрана).</p><p>Отправить клиенту — в окне письма галочками. Удалить ошибочный файл может администратор («Настройки → Сохранённые КП»).</p>`)}</h3>`;
+    return `<h3 class="kf-h"><span aria-hidden="true">📎</span> Справочные документы${UiKit.tip(`<p>${this.ABOUT}</p><p>Прикрепить — кнопкой, перетаскиванием файлов в рамку или вставкой: выделите рамку и нажмите Ctrl+V (скопированный файл или снимок экрана).</p><p>Отправить клиенту — в окне письма галочками. Удалить ошибочный файл может администратор («Настройки → Сохранённые КП»).</p>`)}</h3>`;
   }
 
   /**
@@ -267,9 +279,9 @@ export class KpFilesPanel {
         bad.push(why);
         continue;
       }
-      toast(files.length > 1 ? `Прикрепляю ${i + 1} из ${files.length}: ${name}` : `Прикрепляю «${name}»…`);
+      Toast.show(files.length > 1 ? `Прикрепляю ${i + 1} из ${files.length}: ${name}` : `Прикрепляю «${name}»…`);
       try {
-        await api(`${this.url(kid)}?name=${encodeURIComponent(name)}`, {
+        await Api.request(`${this.url(kid)}?name=${encodeURIComponent(name)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/octet-stream' },
           body: file,
@@ -280,8 +292,8 @@ export class KpFilesPanel {
       }
     }
     await this.load(kid);
-    if (bad.length) toast(`${done ? `Прикреплено: ${done}. ` : ''}Не прикреплено: ${bad.join('; ')}`);
-    else if (done) toast(done > 1 ? `Прикреплено документов: ${done}` : 'Документ прикреплён к КП');
+    if (bad.length) Toast.show(`${done ? `Прикреплено: ${done}. ` : ''}Не прикреплено: ${bad.join('; ')}`);
+    else if (done) Toast.show(done > 1 ? `Прикреплено документов: ${done}` : 'Документ прикреплён к КП');
   }
 
   /**
@@ -296,7 +308,7 @@ export class KpFilesPanel {
     }
     const zone = [...document.querySelectorAll('[data-kfdrop]')].find(box => box.dataset.kfdrop === kid);
     if (zone) zone.focus();
-    toast('Нажмите Ctrl+V — скопированные файлы или снимок экрана прикрепятся к КП');
+    Toast.show('Нажмите Ctrl+V — скопированные файлы или снимок экрана прикрепятся к КП');
   }
 
   static async _clipboardImages() {
@@ -326,15 +338,15 @@ export class KpFilesPanel {
     const value = input.value.trim();
     if (!file || value === (file.note || '')) return;
     try {
-      const answer = await api(this.url(kid, fid), {
+      const answer = await Api.request(this.url(kid, fid), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ note: value }),
       });
       file.note = answer.note;
-      toast('Примечание сохранено');
+      Toast.show('Примечание сохранено');
     } catch (error) {
-      toast(`Примечание не сохранено: ${error.message}`);
+      Toast.show(`Примечание не сохранено: ${error.message}`);
     }
   }
 
@@ -359,17 +371,21 @@ export class KpFilesPanel {
   static async _remove(kid, fid, url) {
     const file = this.items(kid).find(row => row.id === fid);
     if (!file) return;
-    const sure = await stConfirm(
+    const sure = await AdminDialog.confirm(
       'Удалить документ?',
       `«${file.name}» удалится с сервера безвозвратно — у КП № ${kid} его больше не будет.`,
       'Удалить',
     );
     if (!sure) return;
     try {
-      await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: '{}' });
-      toast('Документ удалён');
+      await Api.request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: '{}',
+      });
+      Toast.show('Документ удалён');
     } catch (error) {
-      toast(`Не удалено: ${error.message}`);
+      Toast.show(`Не удалено: ${error.message}`);
     }
     this.load(kid);
   }
@@ -426,7 +442,7 @@ export class KpFilesPanel {
     if (kind !== 'drop') return;
     const files = [...((event.dataTransfer && event.dataTransfer.files) || [])];
     if (files.length) this.upload(zone.dataset.kfdrop, files);
-    else toast('Перетащите файл с компьютера (из проводника или с рабочего стола)');
+    else Toast.show('Перетащите файл с компьютера (из проводника или с рабочего стола)');
   }
 
   static _paste(event) {

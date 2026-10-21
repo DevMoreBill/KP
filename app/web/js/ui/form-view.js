@@ -1,6 +1,13 @@
 import { Mobile } from './mobile.js';
 import { SidePanel } from './side-panel.js';
 import { Steps } from './steps.js';
+import { ItemEditor } from '../features/catalog/item-editor.js';
+import { CoverThumb } from '../features/doc/cover-thumb.js';
+import { Morph } from '../core/morph.js';
+import { $ } from '../core/util.js';
+import { MgrLock } from '../features/kp/managers.js';
+import { Templates } from '../features/doc/templates.js';
+import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 
 /** Перерисовка формы КП: полоса шагов, открытый шаг, фокус в поле, боковая панель. */
 export class FormView {
@@ -8,7 +15,7 @@ export class FormView {
 
   /** Перерисовать форму (во время правки позиции каталога — только её карточку). */
   static render() {
-    if (CATED) {
+    if (CatalogEditor.session) {
       this._editor();
       return;
     }
@@ -17,22 +24,22 @@ export class FormView {
     const form = $('#form');
     const active = document.activeElement;
     const focusPath = active?.dataset?.p;
-    const current = Steps.LIST.find(step => step.id === STEP) || Steps.LIST[0];
-    morph($('#nav'), Steps.stepperHtml());
+    const current = Steps.LIST.find(step => step.id === Steps.current) || Steps.LIST[0];
+    Morph.apply($('#nav'), Steps.stepperHtml());
     const number = `<h2><span class="n">${Steps.visible().indexOf(current) + 1}</span>`;
-    morph(form, current.f().replace(this.NUMBER, number) + Steps.navHtml());
+    Morph.apply(form, current.f().replace(this.NUMBER, number) + Steps.navHtml());
     // поле осталось тем же узлом — фокус не трогаем (иначе на телефоне прыгает клавиатура)
     if (focusPath && !active.isConnected && !$('#edlg').open) this._refocus(form, focusPath);
     this._centerStep();
-    document.body.dataset.kpstep = STEP;
+    document.body.dataset.kpstep = Steps.current;
     form.querySelectorAll('textarea.iname').forEach(area => Mobile.fitText(area));
     SidePanel.render();
     this._editor();
-    if (STEP === 'cover') CoverThumb.soon();
+    if (Steps.current === 'cover') CoverThumb.soon();
   }
 
   static _editor() {
-    if (EDIT && $('#edlg').open) renderEditor();
+    if (ItemEditor.current && $('#edlg').open) ItemEditor.render();
   }
 
   static _refocus(form, path) {

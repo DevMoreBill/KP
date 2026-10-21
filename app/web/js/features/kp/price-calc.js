@@ -1,4 +1,6 @@
 import { Currency } from './currency.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { S } from '../../core/state.js';
 
 /** Цена продажи по закупке и марже (подстановка модели из каталога без цены); округление цен КП. */
 export class PriceCalc {
@@ -34,7 +36,7 @@ export class PriceCalc {
     const rateTo = Currency.rate(Currency.current());
     if (!(from > 0 && rateTo > 0)) return NaN;
     const value = (item.cost * from) / rateTo;
-    return S.pricing.costNoVat ? value * (1 + DEFN('deal.supVat', this.SUP_VAT) / this.PERCENT) : value;
+    return S.pricing.costNoVat ? value * (1 + DefRegistry.num('deal.supVat', this.SUP_VAT) / this.PERCENT) : value;
   }
 
   static _price(item) {
@@ -81,7 +83,7 @@ export class KpEconomics {
     const cur = pricing.cur || 'RUB';
     const rate = code => this._rate(pricing, code);
     const items = state.items || [];
-    const total = totals(
+    const total = KPGen.totals(
       items.map(item => this._line(item)),
       +state.vat || 0,
     );
@@ -126,6 +128,6 @@ export class KpEconomics {
   static _unitCost(item, { pricing, rate, cur }) {
     if (!item.cost) return null;
     const value = (item.cost * rate(item.costCur || 'RUB')) / rate(cur);
-    return pricing.costNoVat ? value * (1 + DEFN('deal.supVat', this.SUP_VAT) / this.PERCENT) : value;
+    return pricing.costNoVat ? value * (1 + DefRegistry.num('deal.supVat', this.SUP_VAT) / this.PERCENT) : value;
   }
 }

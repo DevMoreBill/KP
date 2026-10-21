@@ -1,6 +1,9 @@
 import { DealState } from './deal-state.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
+import { esc } from '../../core/util.js';
+import { SidePanel } from '../../ui/side-panel.js';
+import { Api } from '../../core/net.js';
 
 /**
  * Производственный календарь (/api/calendar: '1' — нерабочий день) и дни сделки: день 0 — дата договора, рабочие дни,
@@ -33,7 +36,7 @@ export class DealCal {
     const need = DealCal.years(iso).filter(year => !DealUi.cal[year] && !DealUi.calLoading[year]);
     for (const year of need) {
       DealUi.calLoading[year] = true;
-      api(`/api/calendar?year=${year}`)
+      Api.request(`/api/calendar?year=${year}`)
         .then(res => {
           if (res && res.days) DealUi.cal[year] = res;
         })

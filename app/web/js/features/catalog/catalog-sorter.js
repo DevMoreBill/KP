@@ -1,4 +1,10 @@
 import { CatalogIndex } from './catalog-index.js';
+import { Morph } from '../../core/morph.js';
+import { $, esc } from '../../core/util.js';
+import { Str } from '../../core/str.js';
+import { Api } from '../../core/net.js';
+import { S } from '../../core/state.js';
+import { EquipTypes } from '../../core/equip-types.js';
 
 /** Сортировки окна каталога: поле + направление (↑ / ↓); позиции без значения — всегда в конце; цены — в рублях по курсу ЦБ. */
 export class CatalogSorter {
@@ -75,7 +81,7 @@ export class CatalogSorter {
    */
   fields() {
     const filter = this.win.F;
-    const type = filter.cat ? typeById(filter.cat) : null;
+    const type = filter.cat ? EquipTypes.byId(filter.cat) : null;
     return type ? type.fields.filter(field => field.num) : [];
   }
 
@@ -107,7 +113,7 @@ export class CatalogSorter {
   loadFx() {
     if (this.fx || this.fxLoading) return;
     this.fxLoading = true;
-    api('/api/cbr')
+    Api.request('/api/cbr')
       .then(rates => {
         if (rates && (rates.EUR || rates.USD)) {
           this.fx = rates;
@@ -133,7 +139,7 @@ export class CatalogSorter {
   _getter(sort) {
     if (sort.startsWith(CatalogSorter.FIELD)) {
       const key = sort.slice(CatalogSorter.FIELD.length);
-      return card => numOf(CatalogIndex.attrs(card)[key]);
+      return card => Str.num(CatalogIndex.attrs(card)[key]);
     }
     const getter = CatalogSorter.GETTERS[sort];
     return getter ? card => getter(this, card) : null;
@@ -154,19 +160,19 @@ export class CatalogSorter {
   // рекомендуемые: точные совпадения → в наличии с ценой → с ценой → остальные; внутри — по разделам и основному параметру;
   // ключ позиции считается один раз (сравнений — сотни тысяч на 20 000 позиций)
   _best(filter, dir) {
-    const order = new Map(TYPES.map((type, i) => [type.id, i]));
+    const order = new Map(EquipTypes.list.map((type, i) => [type.id, i]));
     const query = String(filter.q || '').trim();
     const keys = new Map();
     const key = card => {
       let found = keys.get(card.id);
       if (found) return found;
       const attrs = CatalogIndex.attrs(card);
-      const type = typeById(attrs.cat);
+      const type = EquipTypes.byId(attrs.cat);
       found = {
         r: query ? filter.rel(card) : 0,
         t: (card.price || card.cost ? 0 : CatalogSorter.NO_PRICE) + (CatalogIndex.inStock(card) ? 0 : 1),
         o: order.get(attrs.cat) ?? CatalogSorter.NO_ORDER,
-        m: CatalogSorter._value(numOf(attrs[type.main || 'kw'])),
+        m: CatalogSorter._value(Str.num(attrs[type.main || 'kw'])),
       };
       keys.set(card.id, found);
       return found;
@@ -197,7 +203,7 @@ export class CatalogSorter {
           `<option value="f:${esc(field.key)}"${filter.sort === `f:${field.key}` ? ' selected' : ''}>${esc(field.label)}${field.unit ? `, ${esc(field.unit)}` : ''}</option>`,
       )
       .join('');
-    return `${sorts}<optgroup label="Параметры: ${esc(typeById(filter.cat).name)}">${params}</optgroup>`;
+    return `${sorts}<optgroup label="Параметры: ${esc(EquipTypes.byId(filter.cat).name)}">${params}</optgroup>`;
   }
 
   _dirText(rising) {
@@ -218,7 +224,7 @@ export class CatalogSorter {
       filter.sort = 'best';
       filter.dir = 1;
     }
-    morph(select, this._options(fields));
+    Morph.apply(select, this._options(fields));
     select.value = filter.sort;
     const rising = filter.dir > 0;
     dirButton.textContent = this._dirText(rising);

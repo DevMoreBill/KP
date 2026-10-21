@@ -1,4 +1,7 @@
 import { StationReq } from './station-req.js';
+import { Mm } from '../layout/mm.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { Kit } from '../kit/kit.js';
 
 /**
  * Исходные данные ресиверов изменились — число ресиверов в составе приводится к расчёту (ReceiverPlan): у строки ресивера

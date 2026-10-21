@@ -1,6 +1,13 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
 import { FeedState } from './feed-state.js';
 import { FeedsTab } from './feeds-tab.js';
+import { Currency } from '../kp/currency.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { esc } from '../../core/util.js';
+import { Fmt, Str } from '../../core/str.js';
 
 /** Удаление позиций, загруженных фидом: все или одной категории фида — в корзину; «не загружать снова» (feeds.FeedPurge). */
 export class FeedPurgeUi {
@@ -25,7 +32,7 @@ export class FeedPurgeUi {
       <label class="f"><span>Что удалить</span><select data-fp="cat"><option value="">Все позиции фида — ${Fmt.num(first.total)}</option>${cats}</select></label>
       <p class="muted" data-fp="info"></p>
       <p><label class="chk-chip"><input type="checkbox" data-fp="block" checked> Не загружать их снова при следующей загрузке фида</label></p>
-      <p class="muted">Позиции уйдут в корзину («Сотрудники и система → Корзина»), восстановить можно ${DEFN('srv.trashDays', this.TRASH_DAYS)} дн. КП, в которых они уже есть, не меняются.</p>
+      <p class="muted">Позиции уйдут в корзину («Сотрудники и система → Корзина»), восстановить можно ${DefRegistry.num('srv.trashDays', this.TRASH_DAYS)} дн. КП, в которых они уже есть, не меняются.</p>
       <div class="row"><button class="btn danger-bg" type="button" data-fp="go">Удалить в корзину</button><button class="btn ghost" type="button" data-fp="x">Отмена</button></div>`;
   }
 
@@ -37,7 +44,7 @@ export class FeedPurgeUi {
   static async open(feedId, main) {
     const first = await AdminApi.post(`feeds/${feedId}/purge`, { preview: true });
     if (!first.total) {
-      toast('В каталоге нет позиций этого фида');
+      Toast.show('В каталоге нет позиций этого фида');
       return;
     }
     const dialog = new Modal(this._html(first), 'fp-dlg');
@@ -72,12 +79,12 @@ export class FeedPurgeUi {
     try {
       const reply = await AdminApi.post(`feeds/${feedId}/purge`, { cat, block });
       dialog.close();
-      toast(`Удалено в корзину: ${Fmt.num(reply.deleted)}`);
-      refreshCat();
+      Toast.show(`Удалено в корзину: ${Fmt.num(reply.deleted)}`);
+      Catalog.refresh();
       FeedsTab.render(main);
     } catch (error) {
       event.target.disabled = false;
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
     }
   }
 }
@@ -138,9 +145,9 @@ export class FeedRulesUi {
 
   static _brands(rules, plan) {
     const brands = plan ? plan.brands : (rules.brands || []).map(brand => [brand, null]);
-    const picked = new Set((rules.brands || []).map(brand => norm(brand)));
+    const picked = new Set((rules.brands || []).map(brand => Str.norm(brand)));
     const list = brands.length
-      ? `<div class="fr-brands">${brands.map(([brand, count]) => this._check(`data-frb="${esc(brand)}"`, brand + (count != null ? ` · ${count}` : ''), picked.has(norm(brand)))).join('')}</div>`
+      ? `<div class="fr-brands">${brands.map(([brand, count]) => this._check(`data-frb="${esc(brand)}"`, brand + (count != null ? ` · ${count}` : ''), picked.has(Str.norm(brand)))).join('')}</div>`
       : '';
     return `<div class="fr-g"><span class="fr-l">Марки</span><div>${list}
         <p class="muted" style="margin:4px 0 0">${picked.size ? 'Загружаются только отмеченные марки.' : 'Не отмечено ничего — загружаются все марки.'}${plan ? '' : ' Список марок фида — после «Что загрузится…».'}</p></div></div>`;
@@ -199,7 +206,8 @@ export class FeedRulesUi {
   }
 
   static _planRow(row) {
-    const price = row.price != null ? `${Fmt.num(Math.round(row.price))} ${esc(curSh(row.cur || 'RUB'))}` : '—';
+    const price =
+      row.price != null ? `${Fmt.num(Math.round(row.price))} ${esc(Currency.short(row.cur || 'RUB'))}` : '—';
     return `<tr class="${row.status}"><td class="c">${this._pickable(row) ? `<input type="checkbox" data-rpo="${esc(row.oid)}" checked aria-label="Загрузить">` : ''}</td><td>${esc(row.name)}${row.feedCat ? `<br><small class="muted">${esc(row.feedCat)}</small>` : ''}</td><td>${esc(row.maker || '')}</td><td>${esc(row.cat || '')}</td>
           <td class="num">${price}</td><td><span class="fr-st ${row.status}">${this.STATUS[row.status]}</span>${row.changes && row.changes.length ? `<br><small class="muted">${esc(row.changes.join(', '))}</small>` : ''}${row.why ? `<br><small class="muted">${esc(row.why)}</small>` : ''}</td></tr>`;
   }

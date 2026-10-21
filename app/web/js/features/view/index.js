@@ -49,6 +49,3 @@ export const VIEW = {
   StV,
   StationRender,
 };
-
-// мост для файлов интерфейса, ещё не переведённых в ES-модули
-Object.assign(globalThis, VIEW);

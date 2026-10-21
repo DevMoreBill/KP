@@ -4,6 +4,9 @@ import { DealResult } from './deal-result.js';
 import { DealSteps } from './deal-steps.js';
 import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
+import { S } from '../../core/state.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /** Вкладка «Деньги и налог»: стоимость денег (ключевая ставка ЦБ + надбавка), НДС продажи, налог на прибыль, НДС к уплате. */
 export class DealMoney {

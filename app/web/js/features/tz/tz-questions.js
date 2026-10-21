@@ -1,5 +1,10 @@
 import { DocxWriter } from '../doc/docx-writer.js';
 import { TzImport } from './tz-import.js';
+import { S } from '../../core/state.js';
+import { StationUi } from '../station/station-ui.js';
+import { FileSave } from '../../core/files.js';
+import { LazyJs } from '../../core/lazy-js.js';
+import { Toast } from '../../core/toast.js';
 
 /** Вопросы заказчику по ТЗ — документ Word. */
 export class TzQuestions {
@@ -8,15 +13,15 @@ export class TzQuestions {
     const questions = cur.r.questions || [];
     const later = cur.r.later || [];
     if (!questions.length && !later.length) {
-      toast('Вопросов нет — всё нужное найдено в ТЗ');
+      Toast.show('Вопросов нет — всё нужное найдено в ТЗ');
       return;
     }
     try {
-      await LazyJs.load('tz-out/index.js');
+      const { TzOut } = await LazyJs.load('tz-out/index.js');
       const blob = await this.make(cur, questions, cur.r.fields || [], later);
-      saveFileA(`Вопросы по ТЗ — ${TzOut.NAME(cur.name) || 'заказчик'}.docx`, blob);
+      FileSave.download(`Вопросы по ТЗ — ${TzOut.NAME(cur.name) || 'заказчик'}.docx`, blob);
     } catch (err) {
-      toast(`Не удалось подготовить документ: ${err?.message || err}`);
+      Toast.show(`Не удалось подготовить документ: ${err?.message || err}`);
     }
   }
 

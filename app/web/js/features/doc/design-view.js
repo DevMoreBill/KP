@@ -5,6 +5,10 @@ import { DesignModel } from './design-model.js';
 import { DesignPanels } from './design-panels.js';
 import { KpDocx } from './kp-docx.js';
 import { PreviewDocx } from './preview-docx.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
+import { CatalogEditor } from '../catalog/catalog-edit.js';
+import { KpState, S } from '../../core/state.js';
 
 /**
  * Графический редактор шаблона: документ в окне (как в Word), масштаб, выделение, места привязки и координаты на странице.
@@ -43,11 +47,11 @@ export class DesignView {
   static async _build() {
     const demo = await DesignDemo.state();
     const previous = S;
-    const editing = CATED;
+    const editing = CatalogEditor.session;
     const settings = Object.assign(JSON.parse(JSON.stringify(Design.state.work)), { design: true });
     if (demo) {
-      S = demo;
-      CATED = 'designer';
+      KpState.replace(demo);
+      CatalogEditor.session = 'designer';
     }
     try {
       const state = KpDocx.state();
@@ -55,8 +59,8 @@ export class DesignView {
       return await KpDocx.render(state, Design.state.pack, settings);
     } finally {
       if (demo) {
-        S = previous;
-        CATED = editing;
+        KpState.replace(previous);
+        CatalogEditor.session = editing;
       }
     }
   }
@@ -243,7 +247,7 @@ export class DesignView {
     if (!options.scroll || !sel) return;
     const element = sel.kind === 'sec' ? Design.query(`[data-tdsec="${CSS.escape(sel.key)}"]`) : DesignModel.primary();
     if (element) element.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    else if (sel.kind === 'style') toast('Этот стиль сейчас не встречается в документе');
+    else if (sel.kind === 'style') Toast.show('Этот стиль сейчас не встречается в документе');
   }
 
   /**

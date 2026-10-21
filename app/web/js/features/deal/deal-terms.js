@@ -1,6 +1,7 @@
 import { DealValues } from './deal-values.js';
 import { DealPresets } from './deal-presets.js';
 import { InputNum } from './input-num.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Условия и данные сделки без интерфейса: валюты, страны поставщиков и их таможенный режим, события оплаты, виды банковских
@@ -121,8 +122,8 @@ export class DealTerms {
     return [{ name: 'Оплата', ev: 'ready', off: '0' }];
   }
 
-  static _def(key, fallback) {
-    return typeof DEF === 'function' ? DEF(key) : fallback;
+  static _def(key) {
+    return DefRegistry.value(key);
   }
 
   /**

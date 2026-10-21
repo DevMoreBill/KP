@@ -1,3 +1,6 @@
+import { esc, isoDay } from '../core/util.js';
+import { Mobile } from './mobile.js';
+import { Api } from '../core/net.js';
 /**
  * Производственный календарь РФ (/api/calendar: выходные, праздники, переносы, сокращённые дни; сервер обновляет раз в
  * 30 дней). Без загруженного года — выходные по дням недели и праздники ст. 112 ТК РФ.
@@ -32,7 +35,7 @@ export class WorkCalendar {
    */
   static year(year) {
     if (this.years[year] || this.loading[year]) return this.years[year] || null;
-    this.loading[year] = api(`/api/calendar?year=${year}`)
+    this.loading[year] = Api.request(`/api/calendar?year=${year}`)
       .then(result => {
         if (result && result.days) this.years[year] = result;
       })
@@ -136,7 +139,7 @@ export class DatePicker {
   static place() {
     const { box, input } = this.state;
     if (!box || !input) return;
-    if (isMob()) {
+    if (Mobile.isPhone()) {
       box.classList.add('sheet');
       return;
     }

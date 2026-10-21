@@ -1,6 +1,16 @@
 import { AdminState } from './admin-core.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
+import { DealUi } from '../deal/deal-ui.js';
+import { FormView } from '../../ui/form-view.js';
+import { Managers } from '../kp/managers.js';
+import { ClientStore, Inn } from '../kp/client-store.js';
+import { Toast } from '../../core/toast.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { CatFind, Catalog } from '../catalog/catalog-store.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { $, Uid, esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
 
 /** Значение по пути «a.b.0.c» в документе: прочитать, записать (недостающее создаётся — массив, если дальше номер). */
 export class DocPath {
@@ -174,9 +184,9 @@ export class DirEditor {
   }
 
   static async _load(type, id) {
-    if (type === 'manager') return (await api('/api/managers')).find(row => row.id === id);
-    if (type === 'client') return api(`/api/clients/${encodeURIComponent(id)}`);
-    return (await api('/api/suppliers')).find(row => row.id === id);
+    if (type === 'manager') return (await Api.request('/api/managers')).find(row => row.id === id);
+    if (type === 'client') return Api.request(`/api/clients/${encodeURIComponent(id)}`);
+    return (await Api.request('/api/suppliers')).find(row => row.id === id);
   }
 
   static _supplierDefaults(doc) {
@@ -241,18 +251,18 @@ export class DirEditor {
   static _supplier(doc) {
     const houses = doc.warehouses.map((house, i) => this._warehouse(doc, house, i)).join('');
     const contacts = doc.contacts.map((row, i) => this._contact(doc, i)).join('');
-    return `<div class="st-ed-sec"><div class="sub">Склады — адрес отгрузки${tip('Склады подставляются в «Экономике сделки» → «Логистика» → «Откуда — склад поставщика». Выберите адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт — расстояние посчитается по дорогам.')}</div>
+    return `<div class="st-ed-sec"><div class="sub">Склады — адрес отгрузки${UiKit.tip('Склады подставляются в «Экономике сделки» → «Логистика» → «Откуда — склад поставщика». Выберите адрес из подсказок (DaData или OpenStreetMap) или вставьте координаты / ссылку на точку из Google или Яндекс Карт — расстояние посчитается по дорогам.')}</div>
         ${houses || '<p class="muted">Складов нет.</p>'}<button class="btn ghost" type="button" data-edx="add" data-l="warehouses">+ Склад</button></div>
       <div class="st-ed-sec"><p class="sub">Контактные лица</p>${contacts || '<p class="muted">Контактов нет.</p>'}<button class="btn ghost" type="button" data-edx="add" data-l="contacts">+ Контакт</button></div>
       ${this._equipment(doc)}`;
   }
 
   static _equipment(doc) {
-    const makers = [...new Set(catCache.map(card => attrsOf(card).maker).filter(Boolean))].sort((first, second) =>
+    const makers = [...new Set(Catalog.cache.map(card => Attrs.of(card).maker).filter(Boolean))].sort((first, second) =>
       first.localeCompare(second, 'ru'),
     );
-    const byMaker = catCache.filter(card =>
-      doc.makers.some(maker => this.norm(maker) === this.norm(attrsOf(card).maker)),
+    const byMaker = Catalog.cache.filter(card =>
+      doc.makers.some(maker => this.norm(maker) === this.norm(Attrs.of(card).maker)),
     );
     const items = doc.items.map(id => CatFind.id(id) || { id, name: `${id} (нет в каталоге)` });
     const makerChips =
@@ -268,12 +278,12 @@ export class DirEditor {
           `<span class="chip">${esc(card.name)}<button type="button" data-edx="del" data-l="items" data-i="${i}" aria-label="Убрать">✕</button></span>`,
       )
       .join('');
-    return `<div class="st-ed-sec"><div class="sub">Оборудование у этого поставщика${tip('По производителям и позициям «Экономика сделки» сама относит позиции КП к этому поставщику и подставляет его условия и склад.')}</div>
+    return `<div class="st-ed-sec"><div class="sub">Оборудование у этого поставщика${UiKit.tip('По производителям и позициям «Экономика сделки» сама относит позиции КП к этому поставщику и подставляет его условия и склад.')}</div>
         <div class="st-chips">${makerChips}</div>
         <div class="row st-ed-add"><input type="text" id="stEdMk" list="stEdMkL" placeholder="Производитель (бренд)" autocomplete="off"><datalist id="stEdMkL">${makers.map(maker => `<option value="${esc(maker)}">`).join('')}</datalist><button class="btn ghost" type="button" data-edx="mk">Добавить производителя</button></div>
-        ${byMaker.length ? `<p class="muted">В каталоге у этих производителей: ${byMaker.length} ${plural(byMaker.length, 'позиция', 'позиции', 'позиций')}.</p>` : ''}
+        ${byMaker.length ? `<p class="muted">В каталоге у этих производителей: ${byMaker.length} ${KPGen.plural(byMaker.length, 'позиция', 'позиции', 'позиций')}.</p>` : ''}
         <div class="st-chips">${itemChips}</div>
-        <div class="row st-ed-add"><input type="text" id="stEdIt" list="stEdItL" placeholder="Позиция каталога (если покупаете не всё у производителя)" autocomplete="off"><datalist id="stEdItL">${catCache.map(card => `<option value="${esc(card.name)}">`).join('')}</datalist><button class="btn ghost" type="button" data-edx="it">Добавить позицию</button></div></div>`;
+        <div class="row st-ed-add"><input type="text" id="stEdIt" list="stEdItL" placeholder="Позиция каталога (если покупаете не всё у производителя)" autocomplete="off"><datalist id="stEdItL">${Catalog.cache.map(card => `<option value="${esc(card.name)}">`).join('')}</datalist><button class="btn ghost" type="button" data-edx="it">Добавить позицию</button></div></div>`;
   }
 
   /**
@@ -379,9 +389,10 @@ export class DirEditor {
   static _item({ box, doc }) {
     const value = $('#stEdIt').value.trim();
     const card =
-      catCache.find(row => row.name === value) || catCache.find(row => this.norm(row.name) === this.norm(value));
+      Catalog.cache.find(row => row.name === value) ||
+      Catalog.cache.find(row => this.norm(row.name) === this.norm(value));
     if (!card) {
-      toast('Такой позиции нет в каталоге');
+      Toast.show('Такой позиции нет в каталоге');
       return;
     }
     if (!doc.items.includes(card.id)) doc.items.push(card.id);
@@ -392,19 +403,19 @@ export class DirEditor {
   static async _inn({ box, button, doc }) {
     const path = button.dataset.p;
     const inn = String(DocPath.get(doc, path) || '').replace(/\D/g, '');
-    if (!validInn(inn)) {
-      toast('Проверьте ИНН: 10 цифр у организации, 12 — у ИП');
+    if (!Inn.valid(inn)) {
+      Toast.show('Проверьте ИНН: 10 цифр у организации, 12 — у ИП');
       return;
     }
     button.disabled = true;
     button.textContent = 'Ищу…';
     try {
-      const party = await api(`/api/party?inn=${inn}`);
+      const party = await Api.request(`/api/party?inn=${inn}`);
       if (party.error) throw new Error(party.error);
       this._fillParty(doc, path.startsWith('req.') ? 'req.' : '', party);
-      toast(`Реквизиты заполнены: ${party.source || 'реестр'}`);
+      Toast.show(`Реквизиты заполнены: ${party.source || 'реестр'}`);
     } catch (error) {
-      toast(`Не нашли: ${error.message || error}`);
+      Toast.show(`Не нашли: ${error.message || error}`);
     }
     this.draw(box);
   }
@@ -435,7 +446,7 @@ export class DirEditor {
     try {
       await this.save(edit);
       AdminState.editing = null;
-      toast('Сохранено');
+      Toast.show('Сохранено');
       after();
     } catch (error) {
       edit.msg = `Не сохранено: ${error.message || error}`;
@@ -448,7 +459,7 @@ export class DirEditor {
       'Content-Type': 'application/json; charset=utf-8',
       ...(rev != null ? { 'X-KP-Rev': String(rev) } : {}),
     };
-    return api(path, { method: 'PUT', headers, body: JSON.stringify(body) });
+    return Api.request(path, { method: 'PUT', headers, body: JSON.stringify(body) });
   }
 
   /**
@@ -460,13 +471,13 @@ export class DirEditor {
     const rev = doc._rev;
     for (const key of Object.keys(doc)) if (typeof doc[key] === 'string') doc[key] = doc[key].trim();
     if (edit.type === 'manager') {
-      const id = edit.id || uid() + uid();
+      const id = edit.id || Uid.next() + Uid.next();
       await this._put(
         `/api/managers/${encodeURIComponent(id)}`,
         rev,
-        Object.fromEntries(MGR_KEYS.map(key => [key, doc[key] ?? ''])),
+        Object.fromEntries(Managers.KEYS.map(key => [key, doc[key] ?? ''])),
       );
-      loadManagers().then(renderForm);
+      Managers.load().then(() => FormView.render());
       return;
     }
     if (edit.type === 'client') {
@@ -483,7 +494,7 @@ export class DirEditor {
   static async _saveClient(edit, doc, rev) {
     const inn = String(doc.inn || '').replace(/\D/g, '');
     const id = edit.id || (inn ? `inn${inn}` : `c${Date.now().toString(36)}`);
-    if (!edit.id && inn && (await clientById(`inn${inn}`).catch(() => null))) {
+    if (!edit.id && inn && (await ClientStore.byId(`inn${inn}`).catch(() => null))) {
       throw new Error(`клиент с ИНН ${inn} уже есть в справочнике — найдите его поиском`);
     }
     doc.contacts = (doc.contacts || []).filter(row => row && this._filled(row));
@@ -492,12 +503,12 @@ export class DirEditor {
     doc.source = doc.source || 'Настройки';
     doc._replace = true; // удалённый здесь контакт удаляется
     const saved = await this._put(`/api/clients/${encodeURIComponent(id)}`, rev, doc);
-    if (saved) clientsKeep([saved]);
+    if (saved) ClientStore.keep([saved]);
   }
 
   // склад по умолчанию — первый, с координатами — в «Откуда» логистики
   static async _saveSupplier(edit, doc, rev) {
-    const id = edit.id || `sup_${uid()}${uid()}`.slice(0, this.SUPPLIER_ID);
+    const id = edit.id || `sup_${Uid.next()}${Uid.next()}`.slice(0, this.SUPPLIER_ID);
     doc.warehouses = (doc.warehouses || [])
       .filter(house => Object.values(house).some(value => String(value ?? '').trim()))
       .map(house => {

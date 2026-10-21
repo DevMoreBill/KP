@@ -10,6 +10,17 @@ import { KpTrack } from './kp-track.js';
 import { MailDlg } from './mail-dlg.js';
 import { Managers } from './managers.js';
 import { KpEconomics } from './price-calc.js';
+import { Fmt } from '../../core/str.js';
+import { Modal } from '../../core/modal.js';
+import { DealState } from '../deal/deal-state.js';
+import { FormView } from '../../ui/form-view.js';
+import { KpState, S } from '../../core/state.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { Debounce } from '../../core/debounce.js';
+import { FEAT } from '../../core/features.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { $, esc, today } from '../../core/util.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -29,7 +40,7 @@ export class Journal {
       agg: null,
       funnel: null,
       seq: 0,
-      size: Math.round(DEFN('ui.jPage', 50)),
+      size: Math.round(DefRegistry.num('ui.jPage', 50)),
       any: false,
     };
     this._bind(ctx);
@@ -60,7 +71,7 @@ export class Journal {
 
   static _bind(ctx) {
     const search = new Debounce();
-    $('#jQ').oninput = () => search.run(() => this._load(ctx), DEFN('ui.jDelay', 220));
+    $('#jQ').oninput = () => search.run(() => this._load(ctx), DefRegistry.num('ui.jDelay', 220));
     $('#jA').onchange = $('#jK').onchange = $('#jS').onchange = () => this._load(ctx);
     $('#jFun').onclick = event => {
       const button = event.target.closest('[data-jf]');
@@ -78,11 +89,11 @@ export class Journal {
     const myName = (Auth.state.user && Auth.state.user.name) || Managers.meName();
     const author = $('#jA');
     if (!myName) {
-      toast('Выберите себя в разделе «Менеджер» — тогда журнал покажет ваши КП');
+      Toast.show('Выберите себя в разделе «Менеджер» — тогда журнал покажет ваши КП');
       return;
     }
     if (![...author.options].some(option => option.value === myName)) {
-      toast('У вас ещё нет сохранённых КП');
+      Toast.show('У вас ещё нет сохранённых КП');
       return;
     }
     author.value = author.value === myName ? '' : myName;
@@ -114,9 +125,9 @@ export class Journal {
     const agg = ctx.agg || {};
     const profit =
       agg.profitN && FEAT.on('deal')
-        ? ` · прибыль <b>${money(agg.profit)} руб.</b> <span>(по ${agg.profitN} КП с закупкой)</span>`
+        ? ` · прибыль <b>${KPGen.money(agg.profit)} руб.</b> <span>(по ${agg.profitN} КП с закупкой)</span>`
         : '';
-    return `КП: <b>${ctx.total}</b> · на сумму <b>${money(agg.sum || 0)} руб.</b>${profit}`;
+    return `КП: <b>${ctx.total}</b> · на сумму <b>${KPGen.money(agg.sum || 0)} руб.</b>${profit}`;
   }
 
   static _funnel(funnel) {
@@ -128,7 +139,7 @@ export class Journal {
       .filter(([key]) => count(key))
       .map(
         ([key, label]) =>
-          `<button type="button" class="jf st-${key}${$('#jS').value === key ? ' on' : ''}" data-jf="${key}" title="Показать только «${label}»"><b>${count(key)}</b> ${label} <span>${money((funnel[key] || {}).sum || 0)} руб.</span></button>`,
+          `<button type="button" class="jf st-${key}${$('#jS').value === key ? ' on' : ''}" data-jf="${key}" title="Показать только «${label}»"><b>${count(key)}</b> ${label} <span>${KPGen.money((funnel[key] || {}).sum || 0)} руб.</span></button>`,
       )
       .join('');
     const conversion = closed
@@ -156,7 +167,7 @@ export class Journal {
     const query = this._query(ctx, offset);
     let answer;
     try {
-      answer = await api(query.url);
+      answer = await Api.request(query.url);
     } catch {
       if (seq === ctx.seq) $('#jList').innerHTML = '<p class="empty">Журнал недоступен.</p>';
       return;
@@ -192,7 +203,7 @@ export class Journal {
         .filter(row => !row.econ && !row.locked)
         .map(async row => {
           try {
-            const state = await api(`/api/kp/${row.id}/state`);
+            const state = await Api.request(`/api/kp/${row.id}/state`);
             if (seq === ctx.seq) row.econ = KpEconomics.of(state);
           } catch {
             row.econ = { cur: 'RUB', sum: row.sum || 0, withCost: 0, positions: row.positions || 0 };
@@ -274,25 +285,25 @@ export class Journal {
   static async _openKp(ctx, { id, copy, econ }) {
     try {
       if (!(await Drafts.stash())) return;
-      const state = await api(`/api/kp/${id}/state`);
-      S = Object.assign(freshState(), state);
+      const state = await Api.request(`/api/kp/${id}/state`);
+      KpState.replace(Object.assign(KpState.fresh(), state));
       if (copy) this._copy();
       else {
         const row = this._row(ctx, state.kpId);
         if (row && row.file) S._file = row.file;
       }
       this._close(ctx.dialog);
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
       window.scrollTo({ top: 0 });
       if (copy) Drafts.loaded();
       if (econ) {
         DealState.open();
         return;
       }
-      toast(this._opened(copy));
+      Toast.show(this._opened(copy));
     } catch {
-      toast('Не удалось открыть КП');
+      Toast.show('Не удалось открыть КП');
     }
   }
 
@@ -326,9 +337,9 @@ export class KpVersions {
   static async open(id, number, closeJournal) {
     let list = [];
     try {
-      list = await api(`/api/kp/${encodeURIComponent(id)}/versions`);
+      list = await Api.request(`/api/kp/${encodeURIComponent(id)}/versions`);
     } catch {
-      toast('История версий недоступна');
+      Toast.show('История версий недоступна');
       return;
     }
     const rows = list.length
@@ -344,7 +355,7 @@ export class KpVersions {
   }
 
   static _row(version, place) {
-    return `<div class="st-row"><div><b>Версия ${place}</b><span class="muted">до сохранения ${esc(Fmt.dateTime(version.created))}${version.by ? ` (${esc(version.by)})` : ''}${version.sum != null ? ` · ${money(version.sum)} ${esc(Currency.short(version.cur || 'RUB'))}` : ''}${version.client ? ` · ${esc(version.client)}` : ''}</span></div>
+    return `<div class="st-row"><div><b>Версия ${place}</b><span class="muted">до сохранения ${esc(Fmt.dateTime(version.created))}${version.by ? ` (${esc(version.by)})` : ''}${version.sum != null ? ` · ${KPGen.money(version.sum)} ${esc(Currency.short(version.cur || 'RUB'))}` : ''}${version.client ? ` · ${esc(version.client)}` : ''}</span></div>
       <div class="acts"><button class="btn" type="button" data-vc="${version.id}" title="Что изменилось с тех пор">Сравнить с текущей</button><button class="btn" type="button" data-vo="${version.id}">Открыть</button></div></div>`;
   }
 
@@ -365,23 +376,23 @@ export class KpVersions {
   static async _open({ modal, id, closeJournal }, vid) {
     try {
       if (!(await Drafts.stash())) return;
-      const state = await api(`/api/kp/${encodeURIComponent(id)}/versions/${vid}`);
-      S = Object.assign(freshState(), state);
+      const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/versions/${vid}`);
+      KpState.replace(Object.assign(KpState.fresh(), state));
       try {
-        S._rev = (await api(`/api/kp/${encodeURIComponent(id)}/rev`)).rev; // прежняя версия заменит текущую правку КП
+        S._rev = (await Api.request(`/api/kp/${encodeURIComponent(id)}/rev`)).rev; // прежняя версия заменит текущую правку КП
       } catch {
         delete S._rev;
       }
       modal.close();
       if (closeJournal) closeJournal();
-      renderForm();
-      persist();
+      FormView.render();
+      KpState.persist();
       window.scrollTo({ top: 0 });
-      toast(
+      Toast.show(
         `Открыта прежняя версия КП № ${S.number || ''}. Сохраните КП, чтобы она стала текущей (нынешняя останется в истории).`,
       );
     } catch {
-      toast('Не удалось открыть версию');
+      Toast.show('Не удалось открыть версию');
     }
   }
 }

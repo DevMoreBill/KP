@@ -3,6 +3,10 @@ import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { LostPick } from './lost-pick.js';
 import { Cabinet } from './cabinet.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { Mobile } from '../../ui/mobile.js';
+import { esc, today } from '../../core/util.js';
 
 /**
  * «Сделки»: доска по стадиям (перетаскивание мышью) или список (на телефоне — по умолчанию, с отбором стадии чипами).
@@ -50,7 +54,8 @@ export class CabDeals {
 
   static _restore() {
     if (this.sort === null) this.sort = this._stored(this.SORT_KEY, Object.keys(this.SORTS), 'exp');
-    if (this.view === null) this.view = this._stored(this.VIEW_KEY, ['board', 'list'], isMob() ? 'list' : 'board');
+    if (this.view === null)
+      this.view = this._stored(this.VIEW_KEY, ['board', 'list'], Mobile.isPhone() ? 'list' : 'board');
   }
 
   static _stored(key, allowed, fallback) {
@@ -368,14 +373,14 @@ export class CabDeals {
     const body = stage === 'lost' ? await LostPick.ask(deal) : { stage };
     if (!body) return;
     try {
-      await api(`/api/crm/deal/${deal.id}`, {
+      await Api.request(`/api/crm/deal/${deal.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-KP-Rev': String(deal.rev) },
         body: JSON.stringify(body),
       });
-      toast(`«${deal.title || deal.client}» → ${CrmFunnel.anyLabel(body.stage)}`);
+      Toast.show(`«${deal.title || deal.client}» → ${CrmFunnel.anyLabel(body.stage)}`);
     } catch (error) {
-      toast(`Стадия не изменена: ${error.message}`);
+      Toast.show(`Стадия не изменена: ${error.message}`);
     }
     Cabinet.reload();
   }

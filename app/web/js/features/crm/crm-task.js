@@ -1,5 +1,11 @@
 import { CrmData } from './crm-data.js';
 import { CrmFmt, DateChips } from './crm-fmt.js';
+import { Modal } from '../../core/modal.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
+import { KpDate } from '../kp/kp-date.js';
+import { ShortName } from '../kp/journal-row.js';
+import { esc, today } from '../../core/util.js';
 
 /** Дела: строка списка, быстрое добавление (вид, что сделать, дата чипом, время), правка; дела не удаляются — отменяются. */
 export class CrmTask {
@@ -134,7 +140,7 @@ export class CrmTask {
   static async _add(form, after) {
     const fields = form.elements;
     if (!fields.due.value) {
-      toast('Укажите дату дела');
+      Toast.show('Укажите дату дела');
       return;
     }
     if (form.dataset.busy) return;
@@ -149,13 +155,17 @@ export class CrmTask {
     const owner = this._owner(body.deal);
     if (owner) body.managerId = owner;
     try {
-      const task = await api('/api/crm/task', { method: 'POST', headers: this.JSON_HEAD, body: JSON.stringify(body) });
+      const task = await Api.request('/api/crm/task', {
+        method: 'POST',
+        headers: this.JSON_HEAD,
+        body: JSON.stringify(body),
+      });
       fields.title.value = '';
       fields.time.value = '';
-      toast(`Дело добавлено: ${task.title}, ${CrmFmt.rel(task.due)}`);
+      Toast.show(`Дело добавлено: ${task.title}, ${CrmFmt.rel(task.due)}`);
       if (after) after(task);
     } catch (error) {
-      toast(`Дело не добавлено: ${error.message}`);
+      Toast.show(`Дело не добавлено: ${error.message}`);
     } finally {
       delete form.dataset.busy;
     }
@@ -199,16 +209,16 @@ export class CrmTask {
    */
   static async put(id, body, after) {
     try {
-      const task = await api(`/api/crm/task/${id}`, {
+      const task = await Api.request(`/api/crm/task/${id}`, {
         method: 'PUT',
         headers: this.JSON_HEAD,
         body: JSON.stringify(body),
       });
-      if (body.state === 'done') toast(`Сделано: ${task.title}`);
+      if (body.state === 'done') Toast.show(`Сделано: ${task.title}`);
       if (after) after(task);
       return task;
     } catch (error) {
-      toast(`Не сохранено: ${error.message}`);
+      Toast.show(`Не сохранено: ${error.message}`);
       if (after) after(null);
       return null;
     }
@@ -229,7 +239,7 @@ export class CrmTask {
       event.preventDefault();
       const fields = event.target.elements;
       if (!fields.due.value) {
-        toast('Укажите дату дела');
+        Toast.show('Укажите дату дела');
         return;
       }
       modal.close();

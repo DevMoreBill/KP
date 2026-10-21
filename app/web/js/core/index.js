@@ -1,4 +1,7 @@
-// Общие классы программы — первым ES-модулем страницы: остальные модули и обычные скрипты (внутри функций) видят их в globalThis.
+// Общие классы программы — первым ES-модулем страницы. Порядок: «Значения программы» и КП (state.js подключает
+// defaults-srv.js и defaults-kp.js — порядок групп в «Настройках»), затем «Списки и выборы».
+import './state.js';
+import './lists.js';
 import { DimInput } from './dim-input.js';
 import { EquipTypes } from './equip-types.js';
 import { FeatureRegistry, FEAT } from './features.js';
@@ -7,7 +10,6 @@ import { Debounce } from './debounce.js';
 import { Attrs, CatAttrs, ItemAttrs, ItemParse } from './item-attrs.js';
 import { CoverHint, ItemSpec } from './item-spec.js';
 import { ImgMiss, LazyJs } from './lazy-js.js';
-import * as LEGACY from './legacy.js';
 import { DblClickGuard, Modal } from './modal.js';
 import { Money } from './money.js';
 import { Morph } from './morph.js';
@@ -53,8 +55,6 @@ export const CORE = {
   XlsxSheet,
   XlsxStyles,
 };
-
-Object.assign(globalThis, CORE, LEGACY);
 
 DblClickGuard.listen();
 ImgMiss.listen();

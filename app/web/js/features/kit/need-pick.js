@@ -1,3 +1,16 @@
+import { Str } from '../../core/str.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { GensetSizing } from '../calc/genset-sizing.js';
+import { StationUi } from '../station/station-ui.js';
+import { PickFilter } from './kit-pick.js';
+import { AirChain } from '../layout/air-chain.js';
+import { Kit } from './kit.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { StationSup } from '../tz/station-sup.js';
+import { StationReq } from '../req/station-req.js';
+import { KitNeed } from './kit-need.js';
+import { ReqNum } from '../req/req-num.js';
 /**
  * Подбор из каталога по строке «Нужно: …»: рекомендуемая позиция (тот же расчёт, что у автоподбора TzPick), фильтры и
  * подсказка окна каталога; основное оборудование — по требованиям «Подбора станции».
@@ -209,7 +222,7 @@ export class NeedPick {
     const power = ReqNum.loose(req.kw);
     if (!(power > 0)) return null;
     const standby = req.mode === 'standby';
-    const capacity = card => GensetSizing.cap(attrsOf(card), standby);
+    const capacity = card => GensetSizing.cap(Attrs.of(card), standby);
     const options = pool
       .filter(card => TzPick.dguOk(card))
       .map(card => ({ c: card, v: capacity(card) }))
@@ -236,8 +249,8 @@ export class NeedPick {
     const flow = ReqNum.loose(req.q);
     const head = ReqNum.loose(req.head) || 0;
     if (!(flow > 0)) return null;
-    const flowOf = card => this._top(attrsOf(card).flow) || 0;
-    const headOf = card => this._top(attrsOf(card).head);
+    const flowOf = card => this._top(Attrs.of(card).flow) || 0;
+    const headOf = card => this._top(Attrs.of(card).head);
     const options = pool
       .filter(card => TzPick.pumpOk(card))
       .map(card => ({ c: card, v: flowOf(card), h: headOf(card) }))
@@ -263,7 +276,7 @@ export class NeedPick {
    */
   static fits(card, preset) {
     if (!preset) return true;
-    const attrs = attrsOf(card);
+    const attrs = Attrs.of(card);
     if (!this._rangesOk(attrs, preset.r) || !this._minOk(attrs, preset.min) || !this._fieldsOk(attrs, preset.f))
       return false;
     return !preset.test || preset.test(card);
@@ -272,7 +285,7 @@ export class NeedPick {
   static _rangesOk(attrs, ranges) {
     return Object.entries(ranges || {}).every(([key, [low]]) => {
       const limit = PickFilter.num(low);
-      const value = numOf(attrs[key]);
+      const value = Str.num(attrs[key]);
       return limit == null || (value != null && !(value < limit - this.EPS));
     });
   }

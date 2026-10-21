@@ -3,6 +3,11 @@ import { DealState } from './deal-state.js';
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { DealXlsxGraph, DealXlsxResult } from './deal-xlsx-graph.js';
 import { DealXlsxSummary } from './deal-xlsx-summary.js';
+import { XlsxBook } from '../../core/xlsx.js';
+import { Tender } from '../../ui/tender.js';
+import { Toast } from '../../core/toast.js';
+import { FileSave } from '../../core/files.js';
+import { S } from '../../core/state.js';
 
 /**
  * Выгрузка «Экономики сделки» в Excel для согласования: «Сводка» — одна страница для коммерческого директора, «Расчёт» —
@@ -22,8 +27,8 @@ export class DealXlsx {
         .replace(/\s+/g, '_')
         .slice(0, DealXlsx.SAFE_LEN);
     const name = `${tender ? `${safe(tender)}_` : ''}Экономика_КП_${safe(S.number || 'черновик')}${S.client ? `_${safe(S.client)}` : ''}.xlsx`;
-    saveFileA(name, blob);
-    toast('Расчёт выгружен в Excel');
+    FileSave.download(name, blob);
+    Toast.show('Расчёт выгружен в Excel');
   }
 
   /**
@@ -40,7 +45,7 @@ export class DealXlsx {
     const calc = DealCalculator.calc(kpData, deal);
     const res = calc.base || calc.lo;
     const today = new Date().toLocaleDateString('ru-RU');
-    const tender = typeof tenderNo === 'function' ? tenderNo() : '';
+    const tender = Tender.number();
     const kpTitle = `${S.number ? `КП № ${S.number}` : 'КП без номера'}${S.date ? ` от ${KPGen.ruDate(S.date)}` : ''}${tender ? ` · закупка (тендер) № ${tender}` : ''}`;
     const ctx = { calc, deal, kpData, res, unknown: calc.unknown.length > 0, kpTitle };
     const sheet = new DealXlsxCalc(ctx);

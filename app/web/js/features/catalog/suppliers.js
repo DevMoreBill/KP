@@ -1,5 +1,8 @@
 import { CatalogFilter } from './catalog-filter.js';
 import { CatalogIndex } from './catalog-index.js';
+import { Catalog } from './catalog-store.js';
+import { Api } from '../../core/net.js';
+import { Str } from '../../core/str.js';
 
 /** Поставщик позиции: фид-источник (или поставщик, к которому фид привязан), иначе — по производителю из справочника. */
 export class Suppliers {
@@ -20,11 +23,11 @@ export class Suppliers {
   }
 
   static _byMaker(card) {
-    const maker = norm(CatalogIndex.attrs(card).maker);
+    const maker = Str.norm(CatalogIndex.attrs(card).maker);
     if (!maker) return '';
     const found =
-      this.sups.find(sup => norm(sup.name) === maker) ||
-      this.sups.find(sup => (sup.makers || []).some(name => norm(name) === maker));
+      this.sups.find(sup => Str.norm(sup.name) === maker) ||
+      this.sups.find(sup => (sup.makers || []).some(name => Str.norm(name) === maker));
     return found ? found.name : '';
   }
 
@@ -34,8 +37,8 @@ export class Suppliers {
    */
   static async load(docs) {
     const [src, sups] = await Promise.all([
-      api('/api/catalog/sources').catch(() => ({})),
-      api('/api/suppliers').catch(() => []),
+      Api.request('/api/catalog/sources').catch(() => ({})),
+      Api.request('/api/suppliers').catch(() => []),
     ]);
     const sources = src && typeof src === 'object' && !Array.isArray(src) ? src : {};
     const list = Array.isArray(sups) ? sups : [];
@@ -44,7 +47,7 @@ export class Suppliers {
     this.srcKey = key;
     this.src = sources;
     this.sups = list;
-    for (const cards of new Set([docs, catCache])) {
+    for (const cards of new Set([docs, Catalog.cache])) {
       cards.forEach(card => {
         delete card._sup;
         delete card._hay;

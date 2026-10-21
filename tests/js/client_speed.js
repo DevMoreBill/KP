@@ -5,47 +5,41 @@
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
 const ROOT=path.resolve(__dirname, '..', '..'), JS=f=>fs.readFileSync(path.join(ROOT, 'app', 'web', 'js', f), 'utf8');
-// класс из файла целиком (файлы страницы тянут за собой весь интерфейс — берём только нужное)
-const cls=(f, name)=>{ const s=JS(f), m=s.match(new RegExp('\\nclass '+name+' \\{[\\s\\S]*?\\n\\}\\n')); assert.ok(m, name+' в '+f); return m[0]; };
 let ok=0; const t=(name, fn)=>{ fn(); ok++; console.log('ok', name); };
 
-global.document={ addEventListener(){}, querySelector(){ return null; } }; global.window={ addEventListener(){} }; global.KPGen={ CURS:{} };
-vm.runInThisContext(JS('core/util.js'), { filename:'util.js' });
-const CORE=f=>require(path.join(ROOT, 'app', 'web', 'js', 'core', f));   // ES-модули: классы и прежние имена (attrsOf, norm…)
-Object.assign(global, CORE('item-attrs.js'), CORE('legacy.js'));
-global.TYPES=[{ id:'comp_screw', name:'Винтовой компрессор', match:'винтов', main:'kw', fields:[] }, { id:'other', name:'Прочее', fields:[] }];
-global.TYPES_BUILTIN=null;
+const WebScripts=require('./web.js');
+WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'core', 'index.js'));
+EquipTypes.list=[{ id:'comp_screw', name:'Винтовой компрессор', match:'винтов', main:'kw', fields:[] }, { id:'other', name:'Прочее', fields:[] }];
+EquipTypes.builtin=null;
 
 t('карточка каталога: разбор один раз, копия — для правки', ()=>{
   const card={ id:'c1', name:'Компрессор винтовой Пример 15 кВт', attrs:{ maker:'Пример' } }, L=[card];
   CatAttrs.mark(L);
-  const a=attrsOf(card); assert.strictEqual(a.cat, 'comp_screw'); assert.strictEqual(attrsOf(card), a, 'второй раз — тот же разбор');
-  delete card._a; assert.notStrictEqual(attrsOf(card), a, 'окно каталога сбросило разбор — разбирается заново');
-  assert.ok(/const attrs = \{ \.\.\.attrsOf\(doc\) \};/.test(JS('features/kit/kit-part.js')), 'KitPart.fromCat дописывает габариты в копию разбора');
+  const a=Attrs.of(card); assert.strictEqual(a.cat, 'comp_screw'); assert.strictEqual(Attrs.of(card), a, 'второй раз — тот же разбор');
+  delete card._a; assert.notStrictEqual(Attrs.of(card), a, 'окно каталога сбросило разбор — разбирается заново');
+  assert.ok(/const attrs = \{ \.\.\.Attrs\.of\(doc\) \};/.test(JS('features/kit/kit-part.js')), 'KitPart.fromCat дописывает габариты в копию разбора');
 });
 t('позиция КП (не карточка): разбор каждый раз, правка видна сразу', ()=>{
   const it={ name:'Компрессор винтовой', attrs:{ maker:'А' } };
-  const a=attrsOf(it); it.attrs.maker='Б'; assert.notStrictEqual(attrsOf(it), a); assert.strictEqual(attrsOf(it).maker, 'Б'); assert.ok(!('_a' in it));
+  const a=Attrs.of(it); it.attrs.maker='Б'; assert.notStrictEqual(Attrs.of(it), a); assert.strictEqual(Attrs.of(it).maker, 'Б'); assert.ok(!('_a' in it));
 });
 t('служебные поля разбора не уходят на сервер и в выгрузку', ()=>{
   for (const [f, rx] of [['features/catalog/catalog-cache.js', /delete copy\._pq/], ['features/catalog/catalog-actions.js', /CatalogCache\.clean\(card\)/], ['features/catalog/catalog-edit.js', /'_pq'/]])
     assert.ok(rx.test(JS(f)), f);
 });
 
-global.PickFind=require(path.join(ROOT, 'app', 'web', 'js', 'features', 'kit', 'kit-pick.js')).PickFind;   // ES-модуль
 t('окно подбора: строка поиска карточки — один раз, у позиции КП — каждый раз', ()=>{
   const card={ id:'c2', name:'Компрессор винтовой Remeza ВК 15' }; CatAttrs.mark([card]);
-  const a=attrsOf(card), h=PickFind.hay(card, a); assert.ok(h.includes('remeza')); assert.strictEqual(card._pq, h);
+  const a=Attrs.of(card), h=PickFind.hay(card, a); assert.ok(h.includes('remeza')); assert.strictEqual(card._pq, h);
   card.name='другое'; assert.strictEqual(PickFind.hay(card, a), h, 'карточка не меняется на месте — строка из памяти');
-  const it={ name:'Remeza' }; PickFind.hay(it, attrsOf(it)); assert.ok(!('_pq' in it));
-  assert.strictEqual(PickFind.key({ name:'Компрессор винтовой', attrs:{ kw:'15' } }), 15);
+  const it={ name:'Remeza' }; PickFind.hay(it, Attrs.of(it)); assert.ok(!('_pq' in it));
+  assert.strictEqual(PickFind.key({ name:'Изделие', attrs:{ cat:'other', kw:'15' } }), 15, 'не компрессор — по главному параметру'); assert.strictEqual(PickFind.key({ name:'Компрессор винтовой', attrs:{ cat:'comp_screw', flow:'2,5' } }), TzPick.flow({ attrs:{ cat:'comp_screw', flow:'2,5' } }), 'компрессор — по производительности');
 });
 
 // черновик в браузере: localStorage в памяти, счётчик записей
 const store=new Map(); let writes=[];
 global.localStorage={ get length(){ return store.size; }, key:i=>[...store.keys()][i] ?? null, getItem:k=>store.has(k) ? store.get(k) : null,
   setItem:(k, v)=>{ writes.push(k); store.set(k, String(v)); }, removeItem:k=>store.delete(k) };
-vm.runInThisContext(cls('core/state.js', 'LocalDraft')+'\nglobal.LocalDraft=LocalDraft;');
 t('черновик: картинки отдельно и один раз, восстановление, чистка', ()=>{
   const big='data:image/jpeg;base64,'+'A'.repeat(50000), big2='data:image/png;base64,'+'B'.repeat(30000), small='data:image/png;base64,AAAA';
   const st={ items:[{ photo:{ src:big }, gallery:[{ src:big2 }, { src:small }] }], n:1 };

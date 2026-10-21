@@ -8,19 +8,18 @@ const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('
 const ROOT=path.resolve(__dirname, '..', '..'), WebScripts=require('./web.js');
 
 global.document={ addEventListener(){} };
-global.uid=(()=>{ let n=0; return ()=>'p'+(++n); })();
-global.attrsOf=d=>Object.assign({}, d.attrs||{});
 const TYPES={ st_comp:{ item:'Компрессорная станция', station:{ main:['comp_screw'] } }, st_dgu:{ item:'Дизельная электростанция', station:{ main:['dgu'] } } };
-global.mainLine=x=>{ const a=x.attrs||{}; return [a.flow!=null ? a.flow+' м³/мин' : '', a.pressure!=null ? a.pressure+' бар' : ''].filter(Boolean).join(' · '); };
-global.typeById=id=>TYPES[id]||{};
-global.catCache=[]; global.DEF=()=>null; global.FEAT={ on:()=>true };
-global.esc=s=>String(s??'').replace(/[&<>"]/g, c=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-Object.assign(global, require(path.join(ROOT, 'app', 'web', 'js', 'core', 'money.js')));   // Money — показ сумм (ES-модуль)
 for (const f of ['deal/index.js', 'rules/index.js', 'layout/index.js', 'calc/index.js', 'kit/index.js', 'req/index.js', 'tz/index.js', 'station/index.js']){
   WebScripts.load(path.join(ROOT, 'app', 'web', 'js', 'features', f)); }
+// окружение расчёта: номера позиций по порядку, разбор — только поля карточки, свои типы оборудования, без «Значений программы»
+{ let n=0; Uid.next=()=>'p'+(++n); }
+Attrs.of=d=>Object.assign({}, d.attrs||{});
+ItemSpec.mainLine=x=>{ const a=x.attrs||{}; return [a.flow!=null ? a.flow+' м³/мин' : '', a.pressure!=null ? a.pressure+' бар' : ''].filter(Boolean).join(' · '); };
+EquipTypes.byId=id=>TYPES[id]||{};
+Catalog.cache=[]; DefRegistry.value=()=>null; FEAT.on=()=>true;
 StationRules.use(JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')));
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
-if (GOLDEN){ global.Spoiler={ attr:k=>` data-sp="${k}"` };   // заглушка, как при записи слепка (настоящий Spoiler — в station/index.js)
+if (GOLDEN){ Spoiler.attr=k=>` data-sp="${k}"`;   // заглушка, как при записи слепка (настоящий Spoiler — в station/index.js)
   const run0=StationCalc.run; let inHtml=false;   // расчётная записка на экране — по каждому расчёту
   StationCalc.run=function(x, ...rest){ const out=run0.call(this, x, ...rest); if (!inHtml){ inHtml=true;
     try{ GOLDEN.put('StationCalc.html', StationCalc.html(x)); } catch(e){ GOLDEN.put('StationCalc.html', 'ошибка: '+e.message); } finally{ inHtml=false; } } return out; };
@@ -338,12 +337,12 @@ Check.run('ДЭС: мощность, 70 % PRP, топливо, пуск двиг
 });
 
 Check.run('подбор осушителя по ТЗ — с поправками производителя', ()=>{
-  global.catCache=[
+  Catalog.cache=[
     { id:'c1', name:'Компрессор К-130', attrs:{ cat:'comp_screw', maker:'Пример', flow:13, pressure:10, kw:75 } },
     { id:'c2', name:'Осушитель рефрижераторный Dalgakiran DK 1450', attrs:{ cat:'dryer_refrig', maker:'Dalgakiran', model:'DK 1450', flow:24, pressure:16 } },
     { id:'c3', name:'Осушитель рефрижераторный Dalgakiran DK 1000', attrs:{ cat:'dryer_refrig', maker:'Dalgakiran', model:'DK 1000', flow:16.7, pressure:16 } },
   ];
-  global.api=async u=>global.catCache.find(z=>u.endsWith('/'+encodeURIComponent(z.id)));
+  Api.request=async u=>Catalog.cache.find(z=>u.endsWith('/'+encodeURIComponent(z.id)));
   const x=station('st_comp', {}, []);
   return TzPick.run(x, { kind:'comp', flow:12, pressure:7, tmax:'35', air:'', reserve:'0', work:0 }).then(note=>{
     // 13 м³/мин через осушитель; 35 + 5 = 40 °C (0,84), вход 50 °C (0,65), 7 бар (1): DK 1000 — 16,7 · 0,546 = 9,1 мало, DK 1450 — 13,1
@@ -353,7 +352,6 @@ Check.run('подбор осушителя по ТЗ — с поправками
 });
 
 Check.run('характеристики станции: без NaN и дробного «мусора», ручные строки сохраняются', ()=>{
-  global.numOf=v=>{ if (typeof v==='number') return v; const m=String(v??'').replace(/\s/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/); return m ? +m[0] : null; };
   assert.strictEqual(StationAutoVal.of('1,1', 3), 3.3, '1,1 × 3 = 3,3, а не 3,3000000000000003');
   assert.strictEqual(StationAutoVal.of('8–10', 2), '16–20', 'диапазон × 2');
   assert.strictEqual(StationAutoVal.of('8–10'), '8–10', 'диапазон — как есть');
@@ -366,7 +364,7 @@ Check.run('характеристики станции: без NaN и дробн
 });
 
 Check.run('режим «эксперт»: отметка «вручную», сброс к правилам, журнал правок', ()=>{
-  global.S={ manager:{ name:'Иванов И. И.' } };
+  KpState.replace({ manager:{ name:'Иванов И. И.' } });
   const x=station('st_comp', { ventK:'0,8' }, []);
   ExpertLog.note(x); assert.deepStrictEqual(x.req.xlog, undefined, 'первый снимок — без записи в журнал');
   assert.ok(/вручную/.test(ExpertLog.mark(x, 0, 'ventK')) && ExpertLog.mark(x, 0, 'ventTin')==='', 'отметка только у заданного');

@@ -1,5 +1,12 @@
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { CatalogWindow } from './catalog-window.js';
+import { Toast } from '../../core/toast.js';
+import { CoverHint, ItemSpec } from '../../core/item-spec.js';
+import { Currency } from '../kp/currency.js';
+import { FileSave } from '../../core/files.js';
+import { $ } from '../../core/util.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Price, Str } from '../../core/str.js';
 
 /**
  * Код позиции из строки прайса: прежняя схема (её коды уже в каталоге — повторная загрузка обновляет те же позиции), но у
@@ -21,7 +28,7 @@ export class XlsId {
    * @returns {string}
    */
   static base(cat, key) {
-    return `${cat}_${norm(key).replace(/[^a-z0-9а-я]+/g, '')}`
+    return `${cat}_${Str.norm(key).replace(/[^a-z0-9а-я]+/g, '')}`
       .slice(0, this.BASE_LEN)
       .replace(/[^A-Za-z0-9_-]/g, char => `x${char.charCodeAt(0).toString(this.RADIX)}`)
       .slice(0, this.MAX_LEN);
@@ -50,8 +57,8 @@ export class XlsId {
   static of({ cat, key, name }, seen) {
     let id = this.base(cat, key);
     const known = CatFind.id(id);
-    if (seen.has(id) || (known && norm(known.name) !== norm(name))) {
-      id = `${id.slice(0, this.CUT_LEN)}_${this.hash(norm(key))}`;
+    if (seen.has(id) || (known && Str.norm(known.name) !== Str.norm(name))) {
+      id = `${id.slice(0, this.CUT_LEN)}_${this.hash(Str.norm(key))}`;
     }
     seen.add(id);
     return id;
@@ -177,7 +184,7 @@ export class XlsImport {
 
   static _html() {
     return `<div class="dlg-h"><h3>Импорт позиций из Excel</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
-   <div class="dlg-b"><div class="grid g2"><label class="f"><span>Тип оборудования</span><select id="xType">${typeOptionsHtml(this.cur)}</select></label>
+   <div class="dlg-b"><div class="grid g2"><label class="f"><span>Тип оборудования</span><select id="xType">${EquipTypes.optionsHtml(this.cur)}</select></label>
      <div style="align-self:end"><button class="btn" type="button" id="xTpl">Скачать шаблон для Excel</button></div></div>
    <ol class="muted" style="margin:12px 0;padding-left:18px"><li>Скачайте шаблон выбранного типа и откройте его в Excel — в нём все нужные столбцы.</li>
      <li>Заполните строки (одна строка — одна позиция) и сохраните как CSV или просто скопируйте таблицу вместе с заголовками.</li>
@@ -194,7 +201,7 @@ export class XlsImport {
   static open(cat) {
     const dialog = $('#dlg');
     dialog.classList.remove('wide');
-    this.cur = cat || TYPES.find(type => type.role !== 'accessory' && !type.station)?.id || 'other';
+    this.cur = cat || EquipTypes.list.find(type => type.role !== 'accessory' && !type.station)?.id || 'other';
     dialog.innerHTML = this._html();
     dialog.showModal();
     dialog.querySelector('[data-close]').onclick = () => dialog.close();
@@ -207,7 +214,7 @@ export class XlsImport {
   }
 
   static _template() {
-    const type = typeById(this.cur);
+    const type = EquipTypes.byId(this.cur);
     const head = XlsTable.columns(type)
       .map(col => `"${col[1].replace(/"/g, '""')}"`)
       .join(';');
@@ -237,7 +244,7 @@ export class XlsImport {
   }
 
   static _head(text) {
-    return norm(
+    return Str.norm(
       String(text)
         .replace(/,.*$/, '')
         .replace(/\(.*\)/, ''),
@@ -267,18 +274,18 @@ export class XlsImport {
     for (const key of ['maker', 'series', 'model']) if (values[key]) attrs[key] = values[key];
     for (const field of type.fields) {
       if (values[field.key] == null) continue;
-      attrs[field.key] = field.num ? (numOf(values[field.key]) ?? values[field.key]) : values[field.key];
+      attrs[field.key] = field.num ? (Str.num(values[field.key]) ?? values[field.key]) : values[field.key];
     }
     return attrs;
   }
 
   static _money(values) {
     return {
-      price: parsePrice(values.price || '') || 0,
+      price: Price.parse(values.price || '') || 0,
       priceCur: 'RUB',
-      cost: parsePrice(values.cost || '') || 0,
+      cost: Price.parse(values.cost || '') || 0,
       costCur: (values.costCur || 'RUB').toUpperCase().slice(0, 3),
-      margin: values.margin ? numOf(values.margin) : undefined,
+      margin: values.margin ? Str.num(values.margin) : undefined,
     };
   }
 
@@ -299,10 +306,10 @@ export class XlsImport {
       pageTitle: name,
       photoCaption: '',
     };
-    if (!CUR_LIST.includes(card.costCur)) card.costCur = 'RUB';
-    card.groups = groupsFromAttrs(card);
+    if (!Currency.LIST.includes(card.costCur)) card.costCur = 'RUB';
+    card.groups = ItemSpec.groups(card);
     card.hint = CoverHint.of(card);
-    if (!card.spec) card.spec = mainLine(card, this.SPEC_PARAMS);
+    if (!card.spec) card.spec = ItemSpec.mainLine(card, this.SPEC_PARAMS);
     return card;
   }
 
@@ -318,15 +325,15 @@ export class XlsImport {
   }
 
   static async _run(dialog) {
-    const type = typeById(this.cur);
+    const type = EquipTypes.byId(this.cur);
     const rows = XlsTable.parse($('#xText').value);
     if (rows.length < 2) {
-      toast('Нужна строка заголовков и хотя бы одна строка данных');
+      Toast.show('Нужна строка заголовков и хотя бы одна строка данных');
       return;
     }
     const map = this._map(type, rows[0]);
     if (!map.includes('name') && !map.includes('model')) {
-      toast('Не найден столбец «Наименование» или «Модель» — используйте шаблон');
+      Toast.show('Не найден столбец «Наименование» или «Модель» — используйте шаблон');
       return;
     }
     let count = 0;
@@ -345,7 +352,7 @@ export class XlsImport {
     }
     await Catalog.refresh();
     dialog.close();
-    toast(
+    Toast.show(
       `Импортировано позиций: ${count}${skipped.length ? `, пропущено строк без наименования: ${skipped.length}` : ''}`,
     );
     CatalogWindow.open({ cat: type.id });

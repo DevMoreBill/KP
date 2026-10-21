@@ -1,5 +1,11 @@
 import { ChinaRateBook } from './china-rates.js';
 import { StDirty } from './settings-tools.js';
+import { FileSave } from '../../core/files.js';
+import { Toast } from '../../core/toast.js';
+import { Fmt } from '../../core/str.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Api } from '../../core/net.js';
+import { esc } from '../../core/util.js';
 
 /** «Доставка из Китая»: перевозка до места прибытия в ЕАЭС для таможенной стоимости (ТК ЕАЭС ст. 40) по ставкам экспедиторов. */
 export class ChinaFreightTab {
@@ -73,7 +79,7 @@ export class ChinaFreightTab {
    */
   static async render(main) {
     try {
-      this.data = await api(this.URL);
+      this.data = await Api.request(this.URL);
     } catch (error) {
       main.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
       return;
@@ -116,12 +122,12 @@ export class ChinaFreightTab {
           предупреждение при отличии больше ${esc(state.dev)} % («Значения программы → Логистика»). В экономику сделки пока не передаётся.</p>
         <div class="cf-form">
           <label class="f"><span>Откуда (город в Китае)</span><input type="text" id="cfFrom" data-nodirty list="cfFromL" value="${esc(query.from)}" placeholder="например, Шанхай" autocomplete="off"></label>
-          <label class="f"><span>Место прибытия в ЕАЭС${tip('<p>Первый пункт на таможенной границе ЕАЭС, куда приходит груз: до него перевозка входит в таможенную стоимость (ТК ЕАЭС, ст. 40), после — нет.</p><p>Примеры: Забайкальск (авто и ж/д через Маньчжурию), Достык или Хоргос (через Казахстан), Владивосток (море).</p>')}</span><input type="text" id="cfTo" data-nodirty list="cfToL" value="${esc(query.to)}" autocomplete="off"></label>
+          <label class="f"><span>Место прибытия в ЕАЭС${UiKit.tip('<p>Первый пункт на таможенной границе ЕАЭС, куда приходит груз: до него перевозка входит в таможенную стоимость (ТК ЕАЭС, ст. 40), после — нет.</p><p>Примеры: Забайкальск (авто и ж/д через Маньчжурию), Достык или Хоргос (через Казахстан), Владивосток (море).</p>')}</span><input type="text" id="cfTo" data-nodirty list="cfToL" value="${esc(query.to)}" autocomplete="off"></label>
           <label class="f"><span>Пункт назначения в РФ</span><input type="text" id="cfDest" data-nodirty list="cfToL" value="${esc(query.dest)}" placeholder="для сквозных ставок" autocomplete="off"></label>
           <label class="f"><span>Вид перевозки</span><select id="cfKind" data-nodirty>${this.opts(state.kinds, query.kind)}</select></label>
           <label class="f"><span>Вес брутто, кг</span><input type="text" id="cfKg" data-nodirty inputmode="decimal" value="${esc(query.kg)}"></label>
           <label class="f"><span>Объём, м³</span><input type="text" id="cfM3" data-nodirty inputmode="decimal" value="${esc(query.m3)}"></label>
-          <label class="f"><span>Условия поставки${tip('<p>Инкотермс: кто и до какого места оплачивает перевозку. EXW — забираем с завода (вся перевозка наша); FOB — поставщик довёз до порта отгрузки в Китае; CIF — оплачено до порта назначения.</p><p>Чем больше уже оплатил поставщик, тем меньше перевозки добавляется к таможенной стоимости.</p>')}</span><select id="cfTerms" data-nodirty>${this.opts(state.terms, query.terms)}</select></label>
+          <label class="f"><span>Условия поставки${UiKit.tip('<p>Инкотермс: кто и до какого места оплачивает перевозку. EXW — забираем с завода (вся перевозка наша); FOB — поставщик довёз до порта отгрузки в Китае; CIF — оплачено до порта назначения.</p><p>Чем больше уже оплатил поставщик, тем меньше перевозки добавляется к таможенной стоимости.</p>')}</span><select id="cfTerms" data-nodirty>${this.opts(state.terms, query.terms)}</select></label>
           <label class="f"><span>Расходы в Китае (погрузка, экспорт)</span><span class="cf-m"><input type="text" id="cfExV" data-nodirty inputmode="decimal" value="${esc(query.extraV)}" placeholder="0"><select id="cfExC" data-nodirty aria-label="Валюта">${this.curs(query.extraCur)}</select></span></label>
           <label class="f"><span>Страхование груза, если оплачено</span><span class="cf-m"><input type="text" id="cfInV" data-nodirty inputmode="decimal" value="${esc(query.insV)}" placeholder="0"><select id="cfInC" data-nodirty aria-label="Валюта">${this.curs(query.insCur)}</select></span></label>
           <button class="btn primary" type="button" data-cfgo>Рассчитать</button><button class="btn ghost" type="button" data-cfreq title="Текст запроса по полям выше: участки до места прибытия и по РФ — раздельно, валюта, срок действия, что не входит">Запрос экспедитору</button></div>
@@ -144,7 +150,7 @@ export class ChinaFreightTab {
         <p class="muted">Из коммерческих предложений: участок — «до места прибытия» (входит в таможенную стоимость), «сквозная до пункта в РФ» (одной суммой — входит целиком)
           или «по РФ от места прибытия» (откуда — место прибытия). Сборный груз: строки «за кг» и «за м³» одного экспедитора — берётся большее, не меньше минимальной суммы.
           Просроченная ставка помечается. ${saved}</p>
-        <div class="cf-tw"><table class="cf-t"><thead><tr><th>Откуда</th><th>Куда</th><th>Участок${tip('<p>«До места прибытия» — ставка от Китая до границы ЕАЭС (входит в таможенную стоимость); «сквозная до пункта в РФ» — одной суммой до города в России (входит целиком); «по РФ от места прибытия» — от границы до города (не входит, если выделена счётом).</p>')}</th><th>Вид</th><th>Ставка</th><th>Валюта</th><th>За${tip('<p>За что ставка: «рейс» (машина или контейнер целиком), «кг» или «м³» для сборного груза. Пример: 2 $/кг, 250 $/м³, мин. сумма 300 $ — берётся большее из веса и объёма, но не меньше минимальной суммы.</p>')}</th><th>Мин. сумма</th><th>Срок, дн.</th><th>Действует до</th><th>Экспедитор</th><th>Примечание</th><th></th></tr></thead>
+        <div class="cf-tw"><table class="cf-t"><thead><tr><th>Откуда</th><th>Куда</th><th>Участок${UiKit.tip('<p>«До места прибытия» — ставка от Китая до границы ЕАЭС (входит в таможенную стоимость); «сквозная до пункта в РФ» — одной суммой до города в России (входит целиком); «по РФ от места прибытия» — от границы до города (не входит, если выделена счётом).</p>')}</th><th>Вид</th><th>Ставка</th><th>Валюта</th><th>За${UiKit.tip('<p>За что ставка: «рейс» (машина или контейнер целиком), «кг» или «м³» для сборного груза. Пример: 2 $/кг, 250 $/м³, мин. сумма 300 $ — берётся большее из веса и объёма, но не меньше минимальной суммы.</p>')}</th><th>Мин. сумма</th><th>Срок, дн.</th><th>Действует до</th><th>Экспедитор</th><th>Примечание</th><th></th></tr></thead>
           <tbody id="cfRows">${rows.map(row => this.row(row)).join('')}</tbody></table></div>
         <div class="row"><button class="btn ghost" type="button" data-cfadd>+ Строка</button><button class="btn ghost" type="button" data-cftpl title="Лист «Ставки» — текущая таблица (или пример), «Как заполнить», «Запрос экспедитору». Этот же файл экспедитор может заполнить и прислать">Шаблон Excel</button><button class="btn ghost" type="button" data-cfload title="Файл .xlsx или .csv: строки добавятся в таблицу, затем — «Сохранить ставки»">Загрузить из файла</button><input type="file" id="cfFile" accept=".xlsx,.csv" hidden>${ref}<span class="sp"></span><button class="btn primary" type="button" data-cfsave>Сохранить ставки</button></div></div>`;
   }
@@ -269,7 +275,7 @@ export class ChinaFreightTab {
       .querySelector('#cfRows')
       .insertAdjacentHTML('beforeend', add.map(rate => this.row({ ...rate, ref: true, until })).join(''));
     if (add.length) StDirty.set(true);
-    toast(
+    Toast.show(
       add.length
         ? `Добавлено ориентиров: ${add.length}. Проверьте и нажмите «Сохранить ставки»`
         : 'Ориентиры уже в таблице',
@@ -317,9 +323,9 @@ export class ChinaFreightTab {
         : '';
       main.querySelector('#cfRes').innerHTML =
         `<p class="${parsed.bad.length ? 'warn-t' : 'muted'}">Из «${esc(file.name)}» добавлено строк: ${parsed.rows.length}${bad}. Проверьте таблицу и нажмите «Сохранить ставки».</p>`;
-      toast(`Добавлено строк: ${parsed.rows.length}`);
+      Toast.show(`Добавлено строк: ${parsed.rows.length}`);
     } catch (error) {
-      toast(`Файл не прочитан: ${error.message || error}`);
+      Toast.show(`Файл не прочитан: ${error.message || error}`);
     }
   }
 
@@ -350,12 +356,12 @@ export class ChinaFreightTab {
 
   static async _template(main) {
     try {
-      saveFileA(
+      FileSave.download(
         'Ставки_экспедиторов_Китай.xlsx',
         await ChinaRateBook.template(this.tableRows(main), this.form(main), this.data),
       );
     } catch (error) {
-      toast(`Шаблон не создан: ${error.message || error}`);
+      Toast.show(`Шаблон не создан: ${error.message || error}`);
     }
   }
 
@@ -367,7 +373,7 @@ export class ChinaFreightTab {
     const text = ChinaRateBook.request(this.form(main), this.data);
     try {
       await navigator.clipboard.writeText(text);
-      toast('Запрос скопирован — вставьте в письмо экспедитору');
+      Toast.show('Запрос скопирован — вставьте в письмо экспедитору');
     } catch {
       main.querySelector('#cfRes').innerHTML =
         `<p class="muted">Скопируйте запрос:</p><textarea class="cf-req" rows="12" readonly>${esc(text)}</textarea>`;
@@ -382,12 +388,12 @@ export class ChinaFreightTab {
   static async _save(main) {
     const rows = this.tableRows(main);
     try {
-      await api(this.URL, { method: 'PUT', headers: this.JSON_HEAD, body: JSON.stringify({ rows }) });
-      toast('Ставки сохранены');
+      await Api.request(this.URL, { method: 'PUT', headers: this.JSON_HEAD, body: JSON.stringify({ rows }) });
+      Toast.show('Ставки сохранены');
       StDirty.saved();
       this.render(main);
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
     }
   }
 
@@ -415,7 +421,7 @@ export class ChinaFreightTab {
         extra: { v: num(query.extraV), cur: query.extraCur },
         ins: { v: num(query.insV), cur: query.insCur },
       };
-      const reply = await api(`${this.URL}/quote`, {
+      const reply = await Api.request(`${this.URL}/quote`, {
         method: 'POST',
         headers: this.JSON_HEAD,
         body: JSON.stringify(body),

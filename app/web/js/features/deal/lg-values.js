@@ -1,5 +1,6 @@
 import { FreightTariffs } from './freight-tariffs.js';
 import { LgState } from './lg-state.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Значения логистики в «Настройки → Значения программы → Логистика» (реестр — DefRegistry). Ставки машин, страхование,
@@ -23,7 +24,7 @@ export class LgValues {
    * @returns {*}
    */
   static def(key, fallback) {
-    const value = typeof DEF === 'function' ? DEF(key) : null;
+    const value = DefRegistry.value(key);
     return value == null ? fallback : value;
   }
 
@@ -296,7 +297,6 @@ export class LgValues {
 
   /** Значения логистики — в реестр «Значений программы». */
   static register() {
-    if (typeof DefRegistry === 'undefined') return;
     DefRegistry.add(this.GROUPS, this.VALUES);
   }
 }

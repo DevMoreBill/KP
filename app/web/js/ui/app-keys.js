@@ -1,4 +1,12 @@
 import { Problems } from './side-panel.js';
+import { FEAT } from '../core/features.js';
+import { Toast } from '../core/toast.js';
+import { ImageFiles } from '../features/catalog/images.js';
+import { S } from '../core/state.js';
+import { CatalogWindow } from '../features/catalog/catalog-window.js';
+import { Api } from '../core/net.js';
+import { NewKp } from '../features/kp/new-kp.js';
+import { $ } from '../core/util.js';
 
 /** Кнопки шапки «Выход» и «Новое КП». */
 export class TopBar {
@@ -12,7 +20,7 @@ export class TopBar {
   static async exit() {
     if (!confirm('Закрыть программу? Несохранённый черновик останется в браузере.')) return;
     try {
-      await api('/api/shutdown', { method: 'POST' });
+      await Api.request('/api/shutdown', { method: 'POST' });
     } catch {
       // сервер уже остановлен
     }
@@ -27,8 +35,8 @@ export class AppKeys {
   static HOTKEYS = {
     s: () => AppKeys._save(),
     ы: () => AppKeys._save(),
-    k: () => openCatalog({}),
-    л: () => openCatalog({}),
+    k: () => CatalogWindow.open({}),
+    л: () => CatalogWindow.open({}),
   };
 
   static _toggle(event) {
@@ -42,14 +50,14 @@ export class AppKeys {
     const zone = event.target.closest?.('[data-drop]');
     if (zone && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
-      pickImage(zone.dataset.drop, +zone.dataset.i);
+      ImageFiles.pick(zone.dataset.drop, +zone.dataset.i);
     }
   }
 
   static _save() {
     const list = Problems.list();
     if (list.length) {
-      toast(`Сначала заполните: ${list[0][0]}${list.length > 1 ? ` (и ещё ${list.length - 1})` : ''}`);
+      Toast.show(`Сначала заполните: ${list[0][0]}${list.length > 1 ? ` (и ещё ${list.length - 1})` : ''}`);
       return;
     }
     document.querySelector('#side [data-a="download"]')?.click();

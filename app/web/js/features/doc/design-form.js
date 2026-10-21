@@ -1,5 +1,6 @@
 import { Design } from './design.js';
 import { DesignModel } from './design-model.js';
+import { esc } from '../../core/util.js';
 
 /** Графический редактор шаблона: общие кусочки форм панелей — цвета, числа, переключатели, образец стиля. */
 export class DesignForm {

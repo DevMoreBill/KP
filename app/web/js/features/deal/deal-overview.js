@@ -2,6 +2,8 @@ import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealTimeline } from './deal-timeline.js';
 import { DealUi } from './deal-ui.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /** Вкладка «Кратко»: итог простыми словами, чего не хватает, поставщики и сроки на одной ленте, деньги в обороте. */
 export class DealOverview {

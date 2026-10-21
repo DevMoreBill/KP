@@ -1,6 +1,9 @@
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { Cabinet } from './cabinet.js';
+import { esc } from '../../core/util.js';
+import { ClientCard } from '../kp/client-card.js';
+import { Str } from '../../core/str.js';
 
 /** «Клиенты»: клиенты из сделок — в работе, сумма, выиграно, ближайшее дело. */
 export class CabClients {
@@ -11,7 +14,7 @@ export class CabClients {
   static list() {
     const byKey = new Map();
     for (const deal of CrmData.deals()) {
-      const key = deal.clientInn || norm(deal.client || deal.title);
+      const key = deal.clientInn || Str.norm(deal.client || deal.title);
       if (key) this._add(byKey, key, deal);
     }
     return [...byKey.values()].sort(
@@ -55,8 +58,8 @@ export class CabClients {
    * @returns {string}
    */
   static html() {
-    const wanted = norm(Cabinet.query);
-    const list = this.list().filter(client => !wanted || norm(`${client.name} ${client.inn}`).includes(wanted));
+    const wanted = Str.norm(Cabinet.query);
+    const list = this.list().filter(client => !wanted || Str.norm(`${client.name} ${client.inn}`).includes(wanted));
     const empty = Cabinet.query
       ? 'Не найдено.'
       : 'Клиенты появятся вместе со сделками: сохраните КП или нажмите «＋ Сделка».';

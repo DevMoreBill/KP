@@ -1,4 +1,14 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
+import { Managers } from '../kp/managers.js';
+import { FEAT } from '../../core/features.js';
+import { Debounce } from '../../core/debounce.js';
+import { Api } from '../../core/net.js';
+import { Str } from '../../core/str.js';
+import { UiTexts } from '../kp/ui-texts.js';
+import { FormView } from '../../ui/form-view.js';
+import { Toast } from '../../core/toast.js';
+import { $, esc } from '../../core/util.js';
+import { LISTS } from '../../core/lists.js';
 
 /** «Списки выбора»: слева — списки по группам, справа — строки выбранного (добавить, порядок, удалить, вернуть встроенный). */
 export class ListsPanel {
@@ -143,10 +153,10 @@ export class ListsPanel {
       LISTS.cache();
       this.start();
       this.render();
-      toast(msg);
-      renderForm();
+      Toast.show(msg);
+      FormView.render();
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
     }
   }
 
@@ -228,7 +238,7 @@ export class ListsPanel {
     const rows = this.rows.map(row => def.clean(row)).filter(row => Object.keys(row).length);
     const error = def.validate(rows);
     if (error) {
-      toast(error);
+      Toast.show(error);
       return undefined;
     }
     const same = JSON.stringify(rows) === JSON.stringify(def.builtin.map(row => def.clean(row)));
@@ -256,7 +266,7 @@ export class TextsPanel {
 
   /** Загрузить и показать. */
   async open() {
-    await uitLoad();
+    await UiTexts.load();
     this.render();
     this.bind();
   }
@@ -266,9 +276,9 @@ export class TextsPanel {
    * @returns {Array<string[]>}
    */
   entries() {
-    const query = norm(this.q);
-    return Object.entries(UIT.map)
-      .filter(([source, text]) => !query || norm(source).includes(query) || norm(text).includes(query))
+    const query = Str.norm(this.q);
+    return Object.entries(UiTexts.state.map)
+      .filter(([source, text]) => !query || Str.norm(source).includes(query) || Str.norm(text).includes(query))
       .sort((first, second) => first[0].localeCompare(second[0], 'ru'));
   }
 
@@ -281,7 +291,7 @@ export class TextsPanel {
 
   /** Показать. */
   render() {
-    const all = Object.keys(UIT.map).length;
+    const all = Object.keys(UiTexts.state.map).length;
     const list = this.entries();
     const body = list.length
       ? `<div class="tx-l" data-uit-skip>${list.map(entry => this._row(entry)).join('')}</div>`
@@ -301,23 +311,23 @@ export class TextsPanel {
    * @param {string} msg
    */
   async put(map, back, msg) {
-    const old = UIT.map;
-    UIT.map = map;
+    const old = UiTexts.state.map;
+    UiTexts.state.map = map;
     try {
-      await api('/api/uitexts', {
+      await Api.request('/api/uitexts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(map),
       });
     } catch (error) {
-      UIT.map = old;
-      toast(`Не сохранено: ${error.message || error}`);
+      UiTexts.state.map = old;
+      Toast.show(`Не сохранено: ${error.message || error}`);
       return;
     }
-    uitIndex();
-    uitApply(document.body, back);
-    uitApply(document.body);
-    toast(msg);
+    UiTexts.index();
+    UiTexts.apply(document.body, back);
+    UiTexts.apply(document.body);
+    Toast.show(msg);
     this.render();
   }
 
@@ -347,20 +357,20 @@ export class TextsPanel {
   _click(target) {
     if (target.closest('[data-txon]')) {
       $('#setdlg')?.close();
-      return uitToggle(true);
+      return UiTexts.startEdit();
     }
     const row = target.closest('.tx-r');
     if (!row) return undefined;
     const source = row.dataset.txk;
-    const map = { ...UIT.map };
-    const back = { [uitNorm(map[source])]: source };
+    const map = { ...UiTexts.state.map };
+    const back = { [UiTexts.norm(map[source])]: source };
     if (target.closest('[data-txdel]')) {
       delete map[source];
       return this.put(map, back, 'Возвращён исходный текст');
     }
     if (!target.closest('[data-txsave]')) return undefined;
-    const text = uitNorm(row.querySelector('[data-txv]').value);
-    if (!text) return toast('Текст не может быть пустым — «Вернуть исходный»');
+    const text = UiTexts.norm(row.querySelector('[data-txv]').value);
+    if (!text) return Toast.show('Текст не может быть пустым — «Вернуть исходный»');
     if (text === source) delete map[source];
     else map[source] = text;
     return this.put(map, back, 'Текст изменён');
@@ -411,7 +421,7 @@ export class FeaturesPanel {
   whoText(conf) {
     if (conf.who === 'admin') return 'только администратору';
     if (conf.who !== 'users') return 'всем';
-    const names = conf.users.map(id => (MGRS.find(manager => manager.id === id) || {}).name).filter(Boolean);
+    const names = conf.users.map(id => (Managers.list.find(manager => manager.id === id) || {}).name).filter(Boolean);
     return names.length ? `администратору и: ${names.join(', ')}` : 'только администратору (менеджеры не выбраны)';
   }
 
@@ -426,11 +436,13 @@ export class FeaturesPanel {
   }
 
   _users(key, conf) {
-    if (!MGRS.length) return '<span class="muted">Менеджеров нет — добавьте их в разделе «Менеджеры».</span>';
-    return MGRS.map(
-      manager =>
-        `<label class="ft-u"><input type="checkbox" data-ftu="${key}" value="${esc(manager.id)}"${conf.users.includes(manager.id) ? ' checked' : ''}> ${esc(manager.name || manager.id)}</label>`,
-    ).join('');
+    if (!Managers.list.length) return '<span class="muted">Менеджеров нет — добавьте их в разделе «Менеджеры».</span>';
+    return Managers.list
+      .map(
+        manager =>
+          `<label class="ft-u"><input type="checkbox" data-ftu="${key}" value="${esc(manager.id)}"${conf.users.includes(manager.id) ? ' checked' : ''}> ${esc(manager.name || manager.id)}</label>`,
+      )
+      .join('');
   }
 
   _who(key, conf) {
@@ -492,9 +504,9 @@ export class FeaturesPanel {
       this.cfg = reply.config || {};
       await FEAT.refresh();
       this.render();
-      toast(msg);
+      Toast.show(msg);
     } catch (error) {
-      toast(`Не сохранено: ${error.message || error}`);
+      Toast.show(`Не сохранено: ${error.message || error}`);
       this.render();
     }
   }

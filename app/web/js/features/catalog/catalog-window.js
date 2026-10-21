@@ -9,6 +9,15 @@ import { CatalogSorter } from './catalog-sorter.js';
 import { NewTypeDialog } from './new-type.js';
 import { Catalog, CatalogStore } from './catalog-store.js';
 import { Suppliers } from './suppliers.js';
+import { Morph } from '../../core/morph.js';
+import { S } from '../../core/state.js';
+import { FormView } from '../../ui/form-view.js';
+import { Auth } from '../kp/auth.js';
+import { Api } from '../../core/net.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Modal } from '../../core/modal.js';
+import { $, esc } from '../../core/util.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /**
  * Окно каталога: отбор сверху, фильтры и категории слева, список с отметками, карточка-предпросмотр справа.
@@ -27,7 +36,7 @@ export class CatalogWindow {
    * @returns {number}
    */
   static get PAGE() {
-    return Math.round(DEFN('cat.page', 60));
+    return Math.round(DefRegistry.num('cat.page', 60));
   }
 
   /**
@@ -100,7 +109,7 @@ export class CatalogWindow {
    */
   kindOk(card) {
     if (this.optFor == null) return true;
-    const type = typeById(CatalogIndex.attrs(card).cat);
+    const type = EquipTypes.byId(CatalogIndex.attrs(card).cat);
     return type.role === 'accessory' || card.kind === 'option';
   }
 
@@ -148,7 +157,7 @@ export class CatalogWindow {
   /** Режим модерации и товары, правки которых ждут решения администратора. */
   async loadPending() {
     try {
-      const answer = await api('/api/catalog/pending');
+      const answer = await Api.request('/api/catalog/pending');
       this.mod = !!answer.moderation;
       this.pend = new Set(answer.ids || []);
     } catch {
@@ -156,7 +165,7 @@ export class CatalogWindow {
     }
     const button = $('#catdlg .cw-modq');
     if (!button) return;
-    button.hidden = !(this.pend.size && can('catSelfMod') && this.optFor == null);
+    button.hidden = !(this.pend.size && Auth.can('catSelfMod') && this.optFor == null);
     button.textContent = `На модерации · ${this.pend.size}`;
   }
 
@@ -170,7 +179,7 @@ export class CatalogWindow {
     this.sorter.loadFx();
     await this.loadSources();
     if (!$('#catdlg')?.open) {
-      this.docs = catCache;
+      this.docs = Catalog.cache;
       this.warm();
     }
   }
@@ -179,8 +188,8 @@ export class CatalogWindow {
   async reload() {
     await Catalog.refresh();
     await this.loadPending();
-    this.docs = catCache;
-    renderForm();
+    this.docs = Catalog.cache;
+    FormView.render();
   }
 
   /** Левая панель. */
@@ -252,12 +261,12 @@ export class CatalogWindow {
     this.sorter.renderBox();
     this.view = list;
     $('#cwCnt').innerHTML = this.docs.length ? `Найдено: <b>${list.length}</b> из ${this.docs.length}` : '';
-    morph($('#cwChips'), CatalogNav.chips(this));
+    Morph.apply($('#cwChips'), CatalogNav.chips(this));
     CatalogNav.bar(this);
     this._checkAll(list);
     const navOk = $('#cwNavOk');
     if (navOk) navOk.textContent = list.length ? `Показать: ${list.length}` : 'Ничего не найдено';
-    morph($('#cwList'), this._rows(list));
+    Morph.apply($('#cwList'), this._rows(list));
     this.autoMore();
   }
 
@@ -316,8 +325,8 @@ export class CatalogWindow {
     return `<b>Отмечено: ${count}</b>
         <button class="btn primary" type="button" data-bulk="add">${main ? 'Добавить в КП' : 'Добавить опциями'}</button>
         ${main ? '<button class="btn" type="button" data-bulk="move">Перенести в категорию…</button>' : ''}
-        ${main && can('export') ? '<button class="btn" type="button" data-bulk="export">Выгрузить…</button>' : ''}
-        ${main && can('catDelete') ? '<button class="btn danger" type="button" data-bulk="trash">В корзину</button>' : ''}
+        ${main && Auth.can('export') ? '<button class="btn" type="button" data-bulk="export">Выгрузить…</button>' : ''}
+        ${main && Auth.can('catDelete') ? '<button class="btn danger" type="button" data-bulk="trash">В корзину</button>' : ''}
 <span class="sp"></span>
         <button class="btn ghost" type="button" data-bulk="clear">Снять отметки</button>`;
   }
@@ -406,7 +415,7 @@ export class CatalogWindow {
     const full = await Catalog.fullDoc(light);
     if (this.active !== id) return;
     const top = box.querySelector('.pv-scroll')?.scrollTop || 0;
-    morph(box, CatalogCard.html(this, full, { loading: false }));
+    Morph.apply(box, CatalogCard.html(this, full, { loading: false }));
     const scroll = box.querySelector('.pv-scroll');
     if (scroll) scroll.scrollTop = top;
   }
@@ -544,7 +553,7 @@ export class CatalogWindow {
     if (!dialog.open) dialog.showModal();
     CatalogEvents.bind(this, dialog);
     this.panes.layout();
-    this.docs = catCache.length ? catCache : await CatalogStore.list().catch(() => []);
+    this.docs = Catalog.cache.length ? Catalog.cache : await CatalogStore.list().catch(() => []);
     CatalogFilter.dropQueries();
     await Promise.all([this.loadPending(), this.loadSources()]);
     this.warm();

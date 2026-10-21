@@ -1,4 +1,6 @@
 import { KpFile } from './kp-file.js';
+import { S } from '../../core/state.js';
+import { Api } from '../../core/net.js';
 
 /**
  * PDF КП — преобразует компьютер-сервер (Word или LibreOffice, app/pdf_convert.py); запросы — через api() (вход, совместная
@@ -14,7 +16,7 @@ export class PdfExport {
    */
   static async call(path, options) {
     try {
-      return await api(path, options);
+      return await Api.request(path, options);
     } catch (error) {
       error.message = String(error.message || error).replace(/^PDF не создан:\s*/, '');
       throw error;

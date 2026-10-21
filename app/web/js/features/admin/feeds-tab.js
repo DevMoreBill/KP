@@ -7,6 +7,12 @@ import { FeedJob, FeedLog, FeedPreview } from './feed-view.js';
 import { MakerLogoPanel } from './maker-logos.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { $ } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
+import { Toast } from '../../core/toast.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Api } from '../../core/net.js';
 
 /** «Фиды поставщиков»: товарный фид (YML) или фид из файлов (парс сайта + прайс) — загрузка в каталог и сверка цен. */
 export class FeedsTab {
@@ -58,7 +64,7 @@ export class FeedsTab {
   static async render(main) {
     const [reply, sups] = await Promise.all([
       AdminApi.get('feeds'),
-      FeedState.sups ? Promise.resolve(FeedState.sups) : api('/api/suppliers').catch(() => []),
+      FeedState.sups ? Promise.resolve(FeedState.sups) : Api.request('/api/suppliers').catch(() => []),
     ]);
     FeedState.types = reply.types || [];
     FeedState.sups = sups || [];
@@ -75,7 +81,7 @@ export class FeedsTab {
   }
 
   static _html(items, feed) {
-    return `<div class="st-card"><div class="row fd-head"><div class="sub" style="margin:0">Подключённые фиды${tip(this.TIP)}</div>
+    return `<div class="st-card"><div class="row fd-head"><div class="sub" style="margin:0">Подключённые фиды${UiKit.tip(this.TIP)}</div>
       <span class="sp"></span><button class="btn" type="button" data-fd="new">+ Новый фид</button></div>
     ${items.length ? `<div class="st-list">${items.map(entry => FeedPanel.row(entry)).join('')}</div>` : '<p class="muted">Фидов пока нет.</p>'}</div>
     ${FeedState.edit ? FeedForm.html(FeedState.edit, { isNew: true }) : ''}
@@ -145,8 +151,8 @@ export class FeedsTab {
       cur: target.value,
       sheet: target.dataset.sheet || '',
     })
-      .then(() => toast('Валюта прайса сохранена'))
-      .catch(error => toast(error.message || String(error)));
+      .then(() => Toast.show('Валюта прайса сохранена'))
+      .catch(error => Toast.show(error.message || String(error)));
   }
 
   static _kind(main, target) {
@@ -174,15 +180,15 @@ export class FeedsTab {
 
   static _uploaded(kind, file, meta) {
     if (kind === 'pages')
-      return `Парс сайта загружен: ${Fmt.num(meta.rows)} ${plural(meta.rows, 'позиция', 'позиции', 'позиций')}`;
+      return `Парс сайта загружен: ${Fmt.num(meta.rows)} ${KPGen.plural(meta.rows, 'позиция', 'позиции', 'позиций')}`;
     if (kind === 'extra')
-      return `Описания загружены: ${Fmt.num(meta.series)} ${plural(meta.series, 'серия', 'серии', 'серий')}, ${Fmt.num(meta.rows)} ${plural(meta.rows, 'позиция', 'позиции', 'позиций')}. Нажмите «Загрузить в каталог», чтобы обновить описания`;
+      return `Описания загружены: ${Fmt.num(meta.series)} ${KPGen.plural(meta.series, 'серия', 'серии', 'серий')}, ${Fmt.num(meta.rows)} ${KPGen.plural(meta.rows, 'позиция', 'позиции', 'позиций')}. Нажмите «Загрузить в каталог», чтобы обновить описания`;
     if (kind === 'stock')
-      return `Остатки загружены: ${Fmt.num(meta.rows)} ${plural(meta.rows, 'модель', 'модели', 'моделей')}, в наличии ${Fmt.num(meta.inStock)}. Нажмите «… и остатки», чтобы перенести их в каталог`;
+      return `Остатки загружены: ${Fmt.num(meta.rows)} ${KPGen.plural(meta.rows, 'модель', 'модели', 'моделей')}, в наличии ${Fmt.num(meta.inStock)}. Нажмите «… и остатки», чтобы перенести их в каталог`;
     const noCur = (meta.sheetCurs || []).some(sheet => sheet.rows && !sheet.cur)
       ? ' — у части листов не указана валюта, выберите её'
       : '';
-    return `Прайс «${file.name}» загружен: ${Fmt.num(meta.rows)} ${plural(meta.rows, 'строка', 'строки', 'строк')}, с ценой ${Fmt.num(meta.withPrice)}${noCur}`;
+    return `Прайс «${file.name}» загружен: ${Fmt.num(meta.rows)} ${KPGen.plural(meta.rows, 'строка', 'строки', 'строк')}, с ценой ${Fmt.num(meta.withPrice)}${noCur}`;
   }
 
   static async _send(file, kind, slot) {
@@ -219,14 +225,14 @@ export class FeedsTab {
         if (status) status.textContent = `Загружаю «${file.name}» (${Fmt.size(file.size)})…`;
         const meta = await this._send(file, kind, slot);
         done.push(meta);
-        toast(this._uploaded(kind, file, meta));
+        Toast.show(this._uploaded(kind, file, meta));
       }
       FeedState.prev = null;
       this.render(main);
     } catch (error) {
       input.disabled = false;
       if (status) status.textContent = '';
-      toast(`Файл не принят: ${error.message || error}`);
+      Toast.show(`Файл не принят: ${error.message || error}`);
       if (done.length) this.render(main);
     }
   }
@@ -255,7 +261,7 @@ export class FeedsTab {
       this.poll(feedId, main);
       return;
     }
-    if (job && job.state === 'done') refreshCat();
+    if (job && job.state === 'done') Catalog.refresh();
     FeedState.prev = null;
     this.render(main);
   }
@@ -277,7 +283,7 @@ export class FeedsTab {
       const method = this.ACTIONS[action];
       if (method) await this[method]({ action, button, main });
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       this.render(main);
     }
   }
@@ -312,7 +318,7 @@ export class FeedsTab {
     const [title, text, done] = this.DROP[button.dataset.kind] || this.DROP.stock;
     if (!(await AdminDialog.confirm(title, text, 'Убрать'))) return;
     await this.fileSet(main, { kind: button.dataset.kind, slot: button.dataset.slot || '', act: 'drop' });
-    toast(done);
+    Toast.show(done);
   }
 
   static _form(button, main) {
@@ -333,7 +339,7 @@ export class FeedsTab {
     FeedState.edit = null;
     FeedState.sel = feed.id;
     FeedState.prev = null;
-    toast(isNew && feed.kind === 'files' ? 'Фид создан — загрузите файл парса сайта и прайс' : 'Фид сохранён');
+    Toast.show(isNew && feed.kind === 'files' ? 'Фид создан — загрузите файл парса сайта и прайс' : 'Фид сохранён');
     await this.render(main);
   }
 
@@ -349,7 +355,7 @@ export class FeedsTab {
     await AdminApi.post(`feeds/${FeedState.sel}/delete`);
     FeedState.sel = null;
     FeedState.prev = null;
-    toast('Фид удалён');
+    Toast.show('Фид удалён');
     await this.render(main);
   }
 
@@ -368,7 +374,7 @@ export class FeedsTab {
 
   static async _check({ main }) {
     await AdminApi.post(`feeds/${FeedState.sel}/check`);
-    toast('Обновление началось');
+    Toast.show('Обновление началось');
     await this.render(main);
   }
 
@@ -383,7 +389,7 @@ export class FeedsTab {
     const rules = box ? FeedRulesUi.read(box) : { filter: feed.filter, fields: feed.fields };
     if (action === 'rsave') {
       await AdminApi.post('feeds', { ...feed, ...rules, cats: this._cats(feed) });
-      toast('Сохранено: что загружать');
+      Toast.show('Сохранено: что загружать');
       await this.render(main);
       return;
     }
@@ -405,14 +411,14 @@ export class FeedsTab {
     const only = FeedRulesUi.only(main);
     const count = only ? only.length : plan.counts.add + plan.counts.update;
     if (!count) {
-      toast('Ничего не отмечено');
+      Toast.show('Ничего не отмечено');
       return;
     }
     const text = `Добавится ${Fmt.num(plan.counts.add)}, изменится до ${Fmt.num(plan.counts.update)} (только поля из «Обновлять у загруженных»). Пропущенное не загружается.`;
     if (!(await AdminDialog.confirm(`Загрузить в каталог: ${Fmt.num(count)}?`, text, 'Загрузить'))) return;
     await AdminApi.post(`feeds/${FeedState.sel}/import`, only ? { only } : {});
     FeedState.rplan = null;
-    toast('Загрузка началась — можно продолжать работу');
+    Toast.show('Загрузка началась — можно продолжать работу');
     await this.render(main);
   }
 
@@ -424,7 +430,7 @@ export class FeedsTab {
     const text = 'При следующей загрузке фида удалённые позиции снова появятся в каталоге (если они есть в фиде).';
     if (!(await AdminDialog.confirm('Вернуть удалённые позиции в загрузку?', text, 'Вернуть'))) return;
     await AdminApi.post(`feeds/${FeedState.sel}/unblock`);
-    toast('Удалённые позиции снова будут загружаться');
+    Toast.show('Удалённые позиции снова будут загружаться');
     await this.render(main);
   }
 
@@ -443,14 +449,14 @@ export class FeedsTab {
     const text = `Позиции производителя перестроятся по парсу и прайсу (описания, характеристики, фото, цены), дубли уйдут в корзину${trashMissing ? ', позиции, которых нет в парсе, — тоже' : ''}. Ручные правки в этих позициях заменятся. Перед сборкой программа сделает копию базы.`;
     if (!(await AdminDialog.confirm('Сформировать каталог по парсу?', text, 'Сформировать'))) return;
     await AdminApi.post(`feeds/${FeedState.sel}/import`, { trashMissing });
-    toast('Сборка каталога началась — можно продолжать работу');
+    Toast.show('Сборка каталога началась — можно продолжать работу');
     FeedState.prev = null;
     await this.render(main);
   }
 
   static async _addNew({ main }) {
     await AdminApi.post(`feeds/${FeedState.sel}/import`, {});
-    toast('Добавляю новые позиции из парса');
+    Toast.show('Добавляю новые позиции из парса');
     await this.render(main);
   }
 
@@ -459,7 +465,7 @@ export class FeedsTab {
       'Позиции производителя снова перестроятся по парсу — ручные правки описаний, фото и характеристик в них заменятся. Обычно это не нужно: новые позиции добавляет «Добавить новые из парса».';
     if (!(await AdminDialog.confirm('Сформировать каталог заново?', text, 'Разрешить пересборку'))) return;
     await AdminApi.post(`feeds/${FeedState.sel}/rebuild`);
-    toast('Теперь можно сформировать каталог заново');
+    Toast.show('Теперь можно сформировать каталог заново');
     await this.render(main);
   }
 }

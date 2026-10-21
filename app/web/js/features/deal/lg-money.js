@@ -1,6 +1,9 @@
 import { DealTerms } from './deal-terms.js';
 import { InputNum } from './input-num.js';
 import { LgValues } from './lg-values.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { S } from '../../core/state.js';
 
 /**
  * «Своя сумма» доставки по России — в рублях или валюте: sup.logRu = {v, cur}; в рубли переводит расчёт сделки по курсу ЦБ

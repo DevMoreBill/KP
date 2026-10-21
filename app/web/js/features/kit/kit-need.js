@@ -3,6 +3,24 @@ import { KitPick } from './kit-pick.js';
 import { NeedPick } from './need-pick.js';
 import { StationAuto, StationName } from './station-auto.js';
 import { StationDefaults } from './station-defaults.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { ItemEditor } from '../catalog/item-editor.js';
+import { StationSize } from '../station/station-size.js';
+import { KpState, S } from '../../core/state.js';
+import { esc } from '../../core/util.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { StationLayout } from '../layout/station-layout.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Mm } from '../layout/mm.js';
+import { GensetSizing } from '../calc/genset-sizing.js';
+import { TzPick } from '../tz/tz-pick.js';
+import { ReqNum } from '../req/req-num.js';
+import { StationUi } from '../station/station-ui.js';
+import { AirChain } from '../layout/air-chain.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { StationReq } from '../req/station-req.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -228,7 +246,7 @@ export class KitNeed {
     const old = Kit.parts(item)
       .filter(
         part =>
-          attrsOf(part).cat === rec.cat ||
+          Attrs.of(part).cat === rec.cat ||
           (StationEquip.kindOf(part) === 'dryer' && AirChain.info(part, 'dryer').type === type),
       )
       .map(part => part.id);
@@ -381,7 +399,7 @@ export class KitNeed {
       StationLayout.hash(input),
       input.air,
       JSON.stringify(item.req || {}),
-      catCache.length,
+      Catalog.cache.length,
       JSON.stringify([rec.key, rec.main, rec.cat, rec.f, rec.r, rec.qty, rec.role, rec.replace]),
     ].join('|');
     if (!this.memo) {
@@ -491,9 +509,9 @@ export class KitNeed {
     StationAuto.fill(item);
     StationName.apply(item);
     item.page = true;
-    persist();
-    renderEditor();
-    renderForm();
+    KpState.persist();
+    ItemEditor.render();
+    FormView.render();
   }
 
   /**
@@ -518,7 +536,7 @@ export class KitNeed {
     this.done(item);
     const got = report.got.length ? `Добавлено: ${report.got.join('; ')}` : 'Ничего не добавлено';
     const none = report.none.length ? `. В каталоге нет: ${report.none.join('; ')} — добавьте вручную` : '';
-    toast(got + none);
+    Toast.show(got + none);
   }
 
   static async _fillOne(item, rec, report) {
@@ -560,7 +578,7 @@ export class KitNeed {
     if (rec.act) {
       const text = this.apply(item, rec);
       this.done(item);
-      if (text) toast(`В составе: ${text}`);
+      if (text) Toast.show(`В составе: ${text}`);
       return 'async';
     }
     this.open(index, rec);
@@ -609,7 +627,7 @@ export class KitNeed {
       return;
     }
     const cat = (part.attrs || {}).cat;
-    const cats = cat && TYPES.some(type => type.id === cat) ? [cat] : null;
+    const cats = cat && EquipTypes.list.some(type => type.id === cat) ? [cat] : null;
     const preset = this._swapRowPreset(item, part, cats);
     preset.need = tag + this._swapNeed(preset.need);
     KitPick.open(index, { cats, role: part.role || null, name: cats ? '' : name, preset, by: part.by });

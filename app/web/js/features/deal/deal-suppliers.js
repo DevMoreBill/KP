@@ -3,6 +3,13 @@ import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
+import { Str } from '../../core/str.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { KpState, S } from '../../core/state.js';
+import { Uid } from '../../core/util.js';
+import { Toast } from '../../core/toast.js';
+import { Auth } from '../kp/auth.js';
+import { Api } from '../../core/net.js';
 
 /**
  * Поставщики сделки: справочники отдела (поставщики, коды ТН ВЭД, ключевая ставка ЦБ), условия из справочника, страна →
@@ -37,7 +44,7 @@ export class DealSuppliers {
     const jobs = [];
     if (!DealUi.sups) {
       jobs.push(
-        api('/api/suppliers')
+        Api.request('/api/suppliers')
           .then(res => {
             DealUi.sups = Array.isArray(res) ? res : [];
           })
@@ -48,7 +55,7 @@ export class DealSuppliers {
     }
     if (!DealUi.cus) {
       jobs.push(
-        api('/api/customs')
+        Api.request('/api/customs')
           .then(res => {
             DealUi.cus = res || {};
           })
@@ -62,7 +69,7 @@ export class DealSuppliers {
   }
 
   static _keyRate() {
-    api('/api/cbr/keyrate')
+    Api.request('/api/cbr/keyrate')
       .then(res => {
         if (res && res.rate > 0) DealUi.key = res;
         else DealUi.keyErr = (res && res.error) || 'нет данных';
@@ -147,10 +154,10 @@ export class DealSuppliers {
    */
   static save(sup) {
     if (!String(sup.name || '').trim()) return;
-    if (!can('catSelfMod')) {
+    if (!Auth.can('catSelfMod')) {
       if (!DealUi.supNote) {
         DealUi.supNote = true;
-        toast('Поставщик сохранится в этом КП. В общий справочник его вносит администратор');
+        Toast.show('Поставщик сохранится в этом КП. В общий справочник его вносит администратор');
       }
       return;
     }
@@ -161,7 +168,7 @@ export class DealSuppliers {
   // поля справочника, которых нет в расчёте (реквизиты, склады, контакты, оборудование), — не трогаем; номер правки — чтобы
   // не затереть изменения коллеги
   static async _put(sup) {
-    const id = sup.dirId || `sup_${uid()}${uid()}`.slice(0, DealSuppliers.ID_LEN);
+    const id = sup.dirId || `sup_${Uid.next()}${Uid.next()}`.slice(0, DealSuppliers.ID_LEN);
     const kpData = DealState.kpInputs();
     const makers = [
       ...new Set(
@@ -183,10 +190,14 @@ export class DealSuppliers {
     delete doc.updatedAt;
     try {
       const body = JSON.stringify(doc);
-      const saved = await api(`/api/suppliers/${id}`, { method: 'PUT', headers: DealSuppliers.JSON_HEAD, body });
+      const saved = await Api.request(`/api/suppliers/${id}`, {
+        method: 'PUT',
+        headers: DealSuppliers.JSON_HEAD,
+        body,
+      });
       sup.dirId = id;
       DealUi.sups = (DealUi.sups || []).filter(dir => dir.id !== id).concat(saved);
-      persist();
+      KpState.persist();
     } catch {
       // не сохранилось в справочник — поставщик остаётся в КП
     }
@@ -217,7 +228,7 @@ export class DealSuppliers {
       const maker = String(line.maker || '').trim();
       if (!maker) continue;
       const sup =
-        deal.sup.find(item => norm(item.name) === norm(maker)) ||
+        deal.sup.find(item => Str.norm(item.name) === Str.norm(maker)) ||
         (line.part ? DealSuppliers._newFor(deal, maker, def) : null);
       if (sup) deal.map[line.id] = sup.id;
     }
@@ -265,6 +276,6 @@ export class DealSuppliers {
     }
     if (DealSuppliers.norm(sup.name) === sup._dir) return;
     const dir = DealSuppliers.dir(sup.name);
-    if (dir && DealSuppliers.applyDir(sup, dir)) toast('Поставщик из справочника: условия подставлены');
+    if (dir && DealSuppliers.applyDir(sup, dir)) Toast.show('Поставщик из справочника: условия подставлены');
   }
 }

@@ -10,6 +10,18 @@ import { DealSummary } from './deal-summary.js';
 import { DealExec } from './deal-exec.js';
 import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
+import { KpTrack } from '../kp/kp-track.js';
+import { FEAT } from '../../core/features.js';
+import { ClientStore } from '../kp/client-store.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { Fmt, Str } from '../../core/str.js';
+import { esc } from '../../core/util.js';
+import { ClientCard } from '../kp/client-card.js';
+import { KpDate } from '../kp/kp-date.js';
+import { Morph } from '../../core/morph.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { Modal } from '../../core/modal.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,
@@ -44,9 +56,9 @@ export class DealCard {
 
   static async _fetch(id) {
     try {
-      return this._keep(await api(`/api/crm/deal/${encodeURIComponent(id)}`));
+      return this._keep(await Api.request(`/api/crm/deal/${encodeURIComponent(id)}`));
     } catch (error) {
-      toast(`Сделка не открылась: ${error.message}`);
+      Toast.show(`Сделка не открылась: ${error.message}`);
       return null;
     }
   }
@@ -94,9 +106,9 @@ export class DealCard {
   /** Обновить сделку с сервера (после изменения дела). */
   static async reload() {
     try {
-      this.deal = this._keep(await api(`/api/crm/deal/${this.deal.id}`));
+      this.deal = this._keep(await Api.request(`/api/crm/deal/${this.deal.id}`));
     } catch (error) {
-      toast(`Не обновилось: ${error.message}`);
+      Toast.show(`Не обновилось: ${error.message}`);
       return;
     }
     this.changed = true;
@@ -109,7 +121,7 @@ export class DealCard {
     const active = document.activeElement;
     const field = active && this.modal.d.contains(active) && active.matches('input,textarea') ? active : null;
     const typed = field ? field.value : null;
-    morph(this.modal.d, this.html());
+    Morph.apply(this.modal.d, this.html());
     if (field && field.isConnected && field.value !== typed) field.value = typed;
   }
 
@@ -209,14 +221,14 @@ export class DealCard {
       ? `${Math.round((auto.sum || 0) / this.KOPECKS).toLocaleString('ru-RU')} — по КП № ${auto.number}`
       : 'по последнему КП';
     const own = deal.sumOwn ? esc(String(Math.round((deal.sum || 0) / this.KOPECKS))) : '';
-    const sumTip = tip(
+    const sumTip = UiKit.tip(
       '<p>Пусто — сумма сделки берётся из последнего КП (без проигранных) и меняется вместе с ним.</p><p>Впишите свою сумму, если сделка без КП или договорились о другой цене. Сотрите — снова по КП.</p>',
     );
     return `<label class="f"><span>Сумма, ₽ <em class="muted">${deal.sumOwn ? 'своя' : 'по КП'}</em>${sumTip}</span><input type="text" inputmode="decimal" data-dkf="sum" value="${own}" placeholder="${esc(autoText)}"></label>`;
   }
 
   static _about(deal) {
-    const clients = (CLIENTS || [])
+    const clients = (ClientStore.list || [])
       .slice(0, this.CLIENTS_SHOWN)
       .map(client => `<option value="${esc(client.name)}">`)
       .join('');
@@ -245,7 +257,7 @@ export class DealCard {
           `<option value="${esc(funnel.id)}"${funnel.id === (deal.funnel || CrmFunnel.MAIN) ? ' selected' : ''}>${esc(funnel.name)}</option>`,
       )
       .join('');
-    return `<label class="f"><span>Воронка${tip('<p>Воронка — набор стадий сделки (своя программы или повторённая из Битрикс24). При переносе в другую воронку сделка встаёт на её первую стадию.</p>')}</span><select ${attr}>${options}</select></label>`;
+    return `<label class="f"><span>Воронка${UiKit.tip('<p>Воронка — набор стадий сделки (своя программы или повторённая из Битрикс24). При переносе в другую воронку сделка встаёт на её первую стадию.</p>')}</span><select ${attr}>${options}</select></label>`;
   }
 
   static _managerSelect(deal) {
@@ -348,7 +360,7 @@ export class DealCard {
     if (!this.deal) return false;
     try {
       this.deal = this._keep(
-        await api(`/api/crm/deal/${this.deal.id}`, {
+        await Api.request(`/api/crm/deal/${this.deal.id}`, {
           method: 'PUT',
           headers: { ...this.HEAD, 'X-KP-Rev': String(this.deal.rev) },
           body: JSON.stringify(body),
@@ -357,8 +369,8 @@ export class DealCard {
       this.changed = true;
       return true;
     } catch (error) {
-      toast(`Не сохранено: ${error.message}`);
-      this.deal = (await api(`/api/crm/deal/${this.deal.id}`).catch(() => null)) || this.deal;
+      Toast.show(`Не сохранено: ${error.message}`);
+      this.deal = (await Api.request(`/api/crm/deal/${this.deal.id}`).catch(() => null)) || this.deal;
       return false;
     } finally {
       this.render();
@@ -402,7 +414,7 @@ export class DealCard {
   static async _mark(body) {
     try {
       this.deal = this._keep(
-        await api(`/api/crm/deal/${this.deal.id}/exec`, {
+        await Api.request(`/api/crm/deal/${this.deal.id}/exec`, {
           method: 'PUT',
           headers: this.HEAD,
           body: JSON.stringify(body),
@@ -413,7 +425,7 @@ export class DealCard {
       this._flash();
       return true;
     } catch (error) {
-      toast(`Не отмечено: ${error.message}`);
+      Toast.show(`Не отмечено: ${error.message}`);
       return false;
     }
   }
@@ -439,12 +451,12 @@ export class DealCard {
   static _body(key, value) {
     if (key === 'stage' && !value) return null;
     if (key === 'title' && !value.trim()) {
-      toast('Название сделки не может быть пустым');
+      Toast.show('Название сделки не может быть пустым');
       return null;
     }
     const body = { [key]: key === 'sum' ? value.replace(/\s/g, '') : value };
     if (key === 'client') {
-      const client = (CLIENTS || []).find(row => norm(row.name) === norm(value));
+      const client = (ClientStore.list || []).find(row => Str.norm(row.name) === Str.norm(value));
       body.clientInn = client ? client.inn || '' : '';
       body.clientId = client ? client.id : '';
     }

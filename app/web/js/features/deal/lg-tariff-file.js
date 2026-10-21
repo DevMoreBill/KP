@@ -3,6 +3,10 @@ import { FreightSettings } from './freight-settings.js';
 import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /**
  * Тарифы доставки файлом: шаблон (CSV для Excel), чтение первого листа .xlsx (JSZip уже есть в программе), разбор таблиц
@@ -341,11 +345,15 @@ export class LgTariffFile {
       fileSrc: src,
     };
     try {
-      await api('/api/logistics', { method: 'PUT', headers: LgTariffFile.JSON_HEAD, body: JSON.stringify(out) });
-      toast('Тарифы из файла сохранены');
+      await Api.request('/api/logistics', {
+        method: 'PUT',
+        headers: LgTariffFile.JSON_HEAD,
+        body: JSON.stringify(out),
+      });
+      Toast.show('Тарифы из файла сохранены');
       FreightSettings.open(box);
     } catch (err) {
-      toast(`Не сохранено: ${err.message || err}`);
+      Toast.show(`Не сохранено: ${err.message || err}`);
     }
   }
 }

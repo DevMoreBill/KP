@@ -2,6 +2,7 @@ import { StCam } from './st-cam.js';
 import { StDecal } from './st-decal.js';
 import { StGl } from './st-gl.js';
 import { StScene } from './st-scene.js';
+import { StationRules } from '../rules/station-rules.js';
 
 export class StationRender {
   static PASSES = 64; // проходов накопления

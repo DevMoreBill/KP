@@ -120,12 +120,13 @@ class RulesFileTest(unittest.TestCase):
         if not node:
             self.skipTest('нет Node.js')
         js = os.path.join(APP, 'web', 'js', 'features', 'layout', 'index.js')
-        code = ("global.StationRules={ok:()=>false};require(process.argv[1]);const o={},d=[];"
+        web = os.path.join(REPO, 'tests', 'js', 'web.js')
+        code = ("require(process.argv[2]).load(process.argv[1]);StationRules.ok=()=>false;const o={},d=[];"
                 "for(const [k,f] of LayoutParams.all())o[k]=[f.lo,f.hi];"
                 "const D=StationMatrix.DEF;for(const g of Object.keys(D))for(const k of Object.keys(D[g]))"
                 "if(typeof D[g][k]==='number'&&!LayoutParams.field(g,k))d.push(g+'.'+k);"
                 "console.log(JSON.stringify({o,d,def:D}))")
-        r = subprocess.run([node, '-e', code, js], capture_output=True, text=True, encoding='utf-8')
+        r = subprocess.run([node, '-e', code, js, web], capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)
         from station_rules import LayoutValues
@@ -155,7 +156,7 @@ class RulesRouteTest(unittest.TestCase):
         st, b, hd = http.req('GET', '/api/rules/stations.js', headers=self.H)
         self.assertEqual(st, 200)
         self.assertIn('javascript', hd.get('Content-Type', ''))
-        self.assertTrue(b.startswith('StationRules.use({'), b[:60])
+        self.assertTrue(b.startswith(StationRules.JS_IMPORT + '\nStationRules.use({'), b[:120])
         self.assertNotIn('</', b, 'закрывающий тег не ломает страницу')
         st, b, _ = http.req('GET', '/api/rules/stations', headers=self.H)
         r = http.js(b)

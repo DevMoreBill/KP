@@ -2,6 +2,13 @@ import { ReqChecks } from './req-checks.js';
 import { ReqForm } from './req-form.js';
 import { ReqLine } from './req-line.js';
 import { ReqNum } from './req-num.js';
+import { AirDemand } from '../calc/air-demand.js';
+import { ReceiverPlan } from '../layout/receiver-plan.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { StationDefaults } from '../kit/station-defaults.js';
+import { Kit } from '../kit/kit.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /** Требования к станции (из ТЗ заказчика или вручную): вид станции, значения для подбора, расчёта и чертежа. */
 export class StationReq {
@@ -158,7 +165,7 @@ export class StationReq {
    * @returns {string}
    */
   static kind(item) {
-    const cat = String(attrsOf(item).cat || '');
+    const cat = String(Attrs.of(item).cat || '');
     const found = this.KINDS.find(([, pattern]) => pattern.test(cat));
     return found ? found[0] : '';
   }
@@ -364,7 +371,7 @@ export class StationReq {
   static need(req, flow) {
     const why = [];
     let value = flow;
-    if (typeof AirDemand !== 'undefined' && AirDemand.REF[req.basis]) {
+    if (AirDemand.REF[req.basis]) {
       value = this._fad(req, flow);
       why.push(`${AirDemand.unit(req.basis)} → FAD`);
     }

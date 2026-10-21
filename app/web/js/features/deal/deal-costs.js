@@ -3,6 +3,8 @@ import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { DealTerms } from './deal-terms.js';
 import { DealValues } from './deal-values.js';
+import { esc } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /**
  * Вкладка «Расходы»: монтаж и ПНР, документация, прочее, резерв и бонусы; банковские гарантии; прочие расходы наличными

@@ -1,6 +1,13 @@
 import { Auth } from './auth.js';
 import { HelpWindow } from './help-window.js';
 import { LoginForm } from './login-form.js';
+import { Toast } from '../../core/toast.js';
+import { Modal } from '../../core/modal.js';
+import { AdminSession, Api } from '../../core/net.js';
+import { SettingsWindow } from '../admin/settings-window.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { AppVersion } from '../help.js';
+import { $, esc } from '../../core/util.js';
 
 /** Экран входа менеджера (вход по паролю включён, сессии нет). */
 export class AuthScreen {
@@ -32,7 +39,7 @@ export class AuthScreen {
     };
     HelpWindow.loadVersion().then(() => {
       const version = $('#authVer');
-      if (version && APP_VERSION) version.textContent = `версия ${APP_VERSION}`;
+      if (version && AppVersion.current) version.textContent = `версия ${AppVersion.current}`;
     });
     setTimeout(() => {
       const login = $('#authLogin');
@@ -54,7 +61,7 @@ export class AuthScreen {
       ${LoginForm.login('authLogin', 'Логин', this._last())}
       ${LoginForm.password('authPw', 'Пароль', 'current-password', 'name="password"')}
       <div class="auth-rem"><label><input type="checkbox" id="authRem"${this._remember() ? ' checked' : ''}> Запомнить меня на этом устройстве</label>
-        ${tip(`<p>С галочкой вход действует ${days} дн. — пароль не нужно вводить каждый день.</p><p>На чужом или общем компьютере снимите её: вход закроется, когда закроете браузер (и не позже чем через ${hours} ч).</p>`)}</div>
+        ${UiKit.tip(`<p>С галочкой вход действует ${days} дн. — пароль не нужно вводить каждый день.</p><p>На чужом или общем компьютере снимите её: вход закроется, когда закроете браузер (и не позже чем через ${hours} ч).</p>`)}</div>
       <p class="auth-err" id="authErr" role="alert" aria-live="assertive" hidden></p>
       <button class="btn primary auth-go" type="submit">Войти</button>
       <div class="auth-foot"><button type="button" class="auth-lnk" id="authForgot" aria-expanded="false" aria-controls="authHelp">Забыли пароль?</button>
@@ -131,13 +138,13 @@ export class AuthScreen {
 
   // «Вход администратора»: «Настройки» поверх экрана входа; закрыли — вошёл администратор: программа открывается
   static _admin() {
-    openSettings();
+    SettingsWindow.open();
     const dialog = $('#setdlg');
     if (!dialog) return;
     dialog.addEventListener(
       'close',
       () => {
-        if (ADMIN.on) location.reload();
+        if (AdminSession.on) location.reload();
         else $('#authLogin')?.focus();
       },
       { once: true },
@@ -208,7 +215,7 @@ export class AuthMenu {
   /** Выйти на этом устройстве. */
   static async leave() {
     try {
-      await api('/api/auth/logout', { method: 'POST' });
+      await Api.request('/api/auth/logout', { method: 'POST' });
     } catch {
       // всё равно на экран входа
     }
@@ -225,9 +232,9 @@ export class AuthMenu {
 
   static async _all() {
     try {
-      await api('/api/auth/logout-all', { method: 'POST' });
+      await Api.request('/api/auth/logout-all', { method: 'POST' });
     } catch (error) {
-      toast(error.message || String(error));
+      Toast.show(error.message || String(error));
       return;
     }
     location.reload();
@@ -262,6 +269,6 @@ export class AuthMenu {
     const [value, again] = LoginForm.newPw(form, 'pwNew1', 'pwNew2');
     const answer = await LoginForm.post('/api/auth/password', { old, new: value, new2: again });
     modal.close();
-    toast(`Пароль изменён${answer.closed ? ' — на других устройствах вход закрыт' : ''}`);
+    Toast.show(`Пароль изменён${answer.closed ? ' — на других устройствах вход закрыт' : ''}`);
   }
 }

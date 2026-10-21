@@ -4,6 +4,12 @@ import { KpTrack } from './kp-track.js';
 import { NewKp } from './new-kp.js';
 import { Presets } from './presets.js';
 import { Reminders } from './reminders.js';
+import { Toast } from '../../core/toast.js';
+import { FEAT } from '../../core/features.js';
+import { Modal } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
+import { Api, Srv } from '../../core/net.js';
 
 /** Окно «КП сохранено»: следующие шаги в одном месте — файл, письмо клиенту, ход сделки, заготовка, новое КП. */
 export class KpSaved {
@@ -13,7 +19,7 @@ export class KpSaved {
    */
   static async row() {
     try {
-      const rows = (await api(`/api/history?limit=5&offset=0&q=${encodeURIComponent(S.number)}`)).items || [];
+      const rows = (await Api.request(`/api/history?limit=5&offset=0&q=${encodeURIComponent(S.number)}`)).items || [];
       return rows.find(row => row.id === S.kpId) || null;
     } catch {
       return null;
@@ -29,10 +35,10 @@ export class KpSaved {
    * @param {{pdfOk: boolean, pdfErr: string, isNew: boolean}} result
    */
   static open(result) {
-    const totals = totalsS();
+    const totals = KpState.totals();
     const modal = new Modal(
       `<div class="dlg-h"><h3><span class="ks-ok" aria-hidden="true">✓</span> КП № ${esc(S.number)} ${result.isNew ? 'сохранено' : '— изменения сохранены'}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <p class="muted" style="margin:0 0 4px">${esc(S.client || '')} · ${money(totals.sum)} ${esc(Currency.short(Currency.current()))} · ${S.items.length} поз.${result.pdfOk ? ' · DOCX и PDF' : ''}</p>
+      <p class="muted" style="margin:0 0 4px">${esc(S.client || '')} · ${KPGen.money(totals.sum)} ${esc(Currency.short(Currency.current()))} · ${S.items.length} поз.${result.pdfOk ? ' · DOCX и PDF' : ''}</p>
       ${result.pdfErr ? `<div class="msg err">PDF не создан: ${esc(result.pdfErr)} ${this._btn('data-a="printPdf"', 'Печать → «Сохранить как PDF»', 'sm')}</div>` : ''}
       <div class="ks-g">
         ${this._file(result)}
@@ -45,14 +51,14 @@ export class KpSaved {
   }
 
   static _file(result) {
-    const remote = SRV.info && SRV.info.local === false;
+    const remote = Srv.info && Srv.info.local === false;
     const id = esc(S.kpId);
     const count = KpFilesPanel.count(S.kpId);
     const files = KpFilesPanel.enabled()
       ? this._btn('data-ks="files"', `📎 Справочные документы${count ? ` (${count})` : ''}`, '', KpFilesPanel.ABOUT)
       : '';
     return `<section><p class="sub">Файл</p><div class="ks-b">${this._btn(`data-a="openDoc" data-id="${id}"`, remote ? 'Скачать .docx' : 'Открыть в Word')}${result.pdfOk ? this._btn(`data-a="openPdf" data-id="${id}"`, remote ? 'Скачать PDF' : 'Открыть PDF') : ''}
-          ${remote && !SRV.info.docsShare ? '' : this._btn(`data-a="showDoc" data-id="${id}"`, remote ? 'Путь к файлу' : 'Показать в папке')}
+          ${remote && !Srv.info.docsShare ? '' : this._btn(`data-a="showDoc" data-id="${id}"`, remote ? 'Путь к файлу' : 'Показать в папке')}
           ${files}</div></section>`;
   }
 
@@ -118,9 +124,9 @@ export class KpSaved {
       button.disabled = true;
       button.textContent = '✓ Отправлено';
       Reminders.load();
-      toast(`КП № ${S.number}: отправлено`);
+      Toast.show(`КП № ${S.number}: отправлено`);
     } catch (error) {
-      toast(`Не получилось: ${error.message}`);
+      Toast.show(`Не получилось: ${error.message}`);
     }
   }
 

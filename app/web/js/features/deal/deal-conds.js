@@ -1,6 +1,7 @@
 import { DealCal } from './deal-cal.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
+import { S } from '../../core/state.js';
 
 /**
  * Условия КП из экономики сделки: срок поставки, этапы оплаты, монтаж и ПНР, документация — человеческим текстом.

@@ -1,6 +1,15 @@
 import { AdminApi, AdminDialog, AdminState, AuditLabels } from './admin-core.js';
 import { AdminSystem } from './admin-system.js';
 import { SettingsWindow } from './settings-window.js';
+import { Debounce } from '../../core/debounce.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { Toast } from '../../core/toast.js';
+import { ModerationList, ModerationView } from '../catalog/moderation.js';
+import { Journal } from '../kp/journal.js';
+import { KpReport } from '../kp/kp-report.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { Fmt } from '../../core/str.js';
+import { esc } from '../../core/util.js';
 
 /** Сводка «Обзора»: плитки, график КП по периодам, менеджеры, товары, модерация, база. */
 export class StatsTab {
@@ -78,7 +87,7 @@ export class StatsTab {
     const moderation = stats.moderation;
     const tile = (value, label) => this._tile(value, label);
     return `${tile(Fmt.num(counts.total), 'КП всего')}${tile(Fmt.num(counts.today), 'за сегодня')}${tile(Fmt.num(counts.week), 'за неделю')}${tile(Fmt.num(counts.month), 'за месяц')}
-      ${tile(Fmt.num(Math.round((counts.sumMonth || 0) / this.KOPECKS)), 'сумма КП за месяц, руб.')}${tile(Fmt.num(stats.activeUsers), `активных за ${stats.activeDays || DEFN('srv.statActiveDays', this.ACTIVE_DAYS)} дн.`)}
+      ${tile(Fmt.num(Math.round((counts.sumMonth || 0) / this.KOPECKS)), 'сумма КП за месяц, руб.')}${tile(Fmt.num(stats.activeUsers), `активных за ${stats.activeDays || DefRegistry.num('srv.statActiveDays', this.ACTIVE_DAYS)} дн.`)}
       ${tile(Fmt.num(moderation.pending), 'правок на модерации')}${tile(this._percent(moderation.conversion), 'правок одобрено')}
       ${tile(Fmt.num(stats.deletions.month), 'удалений за месяц')}${tile(Fmt.size(stats.db.bytes), 'размер базы')}`;
   }
@@ -149,7 +158,7 @@ export class StatsTab {
     if (!quick) return;
     SettingsWindow.dialog().close();
     if (quick.dataset.q === 'report') KpReport.open({});
-    else openJournal();
+    else Journal.open();
   }
 }
 
@@ -206,7 +215,7 @@ export class ModerationTab {
     const body = await this._toggleBody(enabled, pending);
     if (!body) return;
     await AdminApi.post('moderation', body);
-    toast(body.enabled ? 'Модерация включена' : 'Модерация выключена');
+    Toast.show(body.enabled ? 'Модерация включена' : 'Модерация выключена');
     this.render(main);
   }
 
@@ -220,8 +229,8 @@ export class ModerationTab {
     )
       return;
     await AdminApi.post('pending/approve-all');
-    toast('Правки приняты');
-    refreshCat();
+    Toast.show('Правки приняты');
+    Catalog.refresh();
     this.render(main);
   }
 
@@ -230,7 +239,7 @@ export class ModerationTab {
     const body = { enabled: !enabled };
     if (enabled && pending.length) {
       const how = await AdminDialog.choose(
-        `Выключить модерацию? На модерации ${pending.length} ${plural(pending.length, 'правка', 'правки', 'правок')}.`,
+        `Выключить модерацию? На модерации ${pending.length} ${KPGen.plural(pending.length, 'правка', 'правки', 'правок')}.`,
         [
           ['apply', 'Принять все'],
           ['reject', 'Отклонить все'],
@@ -358,12 +367,12 @@ export class AuditTab {
       return;
     try {
       await AdminApi.post(`audit/${rollback.dataset.rb}/rollback`);
-      toast('Правка откачена');
-      refreshCat();
+      Toast.show('Правка откачена');
+      Catalog.refresh();
       state.fl = null;
       this.render(main);
     } catch (error) {
-      toast(error.message);
+      Toast.show(error.message);
     }
   }
 }

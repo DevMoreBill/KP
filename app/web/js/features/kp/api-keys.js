@@ -1,6 +1,10 @@
 import { CarrierApis } from './carrier-apis.js';
 import { KeyBackup } from './key-backup.js';
 import { PartyCheck } from './party-check.js';
+import { LgState } from '../deal/lg-state.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
+import { esc } from '../../core/util.js';
 
 /** Ключи API — форма прямо в «Настройки → Ключи API». Ключи на сервере; в браузер приходит только маска. */
 export class ApiKeys {
@@ -167,7 +171,7 @@ export class ApiKeys {
   static async form(host) {
     let keys = {};
     try {
-      keys = await api('/api/integrations');
+      keys = await Api.request('/api/integrations');
     } catch {
       // без ответа — пустая форма
     }
@@ -204,17 +208,17 @@ export class ApiKeys {
 
   static async _put(host, body) {
     try {
-      await api('/api/integrations', {
+      await Api.request('/api/integrations', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(body),
       });
-      toast('Сохранено');
+      Toast.show('Сохранено');
       LgState.status = null;
       PartyCheck.quota = null;
       this.form(host);
     } catch (error) {
-      toast(`Не сохранилось: ${error.message || error}`);
+      Toast.show(`Не сохранилось: ${error.message || error}`);
     }
   }
 
@@ -228,7 +232,7 @@ export class ApiKeys {
         throw new Error('это не копия ключей программы');
       KeyBackup.file = { name: file.name, at: json.at, keys: json.keys || null, enc: json.enc || null, err: '' };
     } catch (error) {
-      toast(`Файл не подходит: ${error.message || error}`);
+      Toast.show(`Файл не подходит: ${error.message || error}`);
       return;
     }
     host.querySelector('#kImp').innerHTML = this._importHtml(keys);
@@ -264,22 +268,22 @@ export class ApiKeys {
 
   static async _export(host) {
     try {
-      const json = await api('/api/integrations/export');
+      const json = await Api.request('/api/integrations/export');
       const password = (host.querySelector('[data-kpw]') || {}).value || '';
       const out = password
         ? { kind: 'kp-keys', v: 1, at: json.at, enc: await KeyBackup.encrypt(JSON.stringify(json.keys), password) }
         : json;
       const count = Object.keys(json.keys || {}).filter(name => !this.DAILY[name]).length;
       if (!count) {
-        toast('Ключей пока нет — нечего сохранять');
+        Toast.show('Ключей пока нет — нечего сохранять');
         return;
       }
       this._download(out, `ключи-API-${(json.at || '').slice(0, 10)}${password ? '-зашифровано' : ''}.json`);
-      toast(
-        `Копия сохранена: ${count} ${plural(count, 'ключ', 'ключа', 'ключей')}${password ? ', зашифровано паролем' : ''}`,
+      Toast.show(
+        `Копия сохранена: ${count} ${KPGen.plural(count, 'ключ', 'ключа', 'ключей')}${password ? ', зашифровано паролем' : ''}`,
       );
     } catch (error) {
-      toast(`Не получилось: ${error.message || error}`);
+      Toast.show(`Не получилось: ${error.message || error}`);
     }
   }
 
@@ -310,7 +314,7 @@ export class ApiKeys {
       body[box.dataset.kik] = KeyBackup.file.keys[box.dataset.kik];
     });
     if (!Object.keys(body).length) {
-      toast('Не выбрано, что восстановить');
+      Toast.show('Не выбрано, что восстановить');
       return;
     }
     KeyBackup.file = null;
@@ -329,7 +333,7 @@ export class ApiKeys {
       if (limit > 0 && limit !== (keys[id] || this.FREE_DAILY)) body[id] = limit;
     });
     if (!Object.keys(body).length) {
-      toast('Нечего сохранять — введите ключ');
+      Toast.show('Нечего сохранять — введите ключ');
       return;
     }
     this._put(host, body);

@@ -4,6 +4,8 @@ import { DesignModel } from './design-model.js';
 import { DesignObjects } from './design-objects.js';
 import { DesignPanels } from './design-panels.js';
 import { TemplateDesigner } from './template-designer.js';
+import { $ } from '../../core/util.js';
+import { ObjPath } from '../../core/str.js';
 
 /** Графический редактор шаблона: поля ввода, списки, галочки, загрузка картинок и клавиши. */
 export class DesignInputs {
@@ -63,7 +65,10 @@ export class DesignInputs {
 
   static _ownColor(field) {
     const path = field.dataset.tdcolorown;
-    DesignHistory.change(work => setPath(work, path, this._hex(field.value)), { merge: `own${path}`, panels: false });
+    DesignHistory.change(work => ObjPath.set(work, path, this._hex(field.value)), {
+      merge: `own${path}`,
+      panels: false,
+    });
   }
 
   static _brandText(field) {
@@ -78,7 +83,7 @@ export class DesignInputs {
   static _text(field) {
     const path = field.dataset.tdpath;
     if (field.tagName !== 'TEXTAREA' && field.type !== 'text') return;
-    DesignHistory.change(work => setPath(work, path, field.value), { merge: path, panels: false });
+    DesignHistory.change(work => ObjPath.set(work, path, field.value), { merge: path, panels: false });
   }
 
   static _page(field) {
@@ -120,7 +125,7 @@ export class DesignInputs {
     }
     if (field.type === 'checkbox' && data.tdpath) return this._check(field);
     if (field.tagName === 'SELECT' && data.tdpath)
-      return DesignHistory.change(work => setPath(work, data.tdpath, field.value));
+      return DesignHistory.change(work => ObjPath.set(work, data.tdpath, field.value));
     if (data.tdpath) return undefined;
     if (data.tdup && field.files[0]) return this._upload(field);
     return undefined;
@@ -140,8 +145,8 @@ export class DesignInputs {
   static _check(field) {
     const path = field.dataset.tdpath;
     DesignHistory.change(work => {
-      setPath(work, path, field.checked);
-      if (/\.lock$/.test(path) && field.checked) setPath(work, path.replace(/\.lock$/, '.heightCm'), 0);
+      ObjPath.set(work, path, field.checked);
+      if (/\.lock$/.test(path) && field.checked) ObjPath.set(work, path.replace(/\.lock$/, '.heightCm'), 0);
     });
   }
 

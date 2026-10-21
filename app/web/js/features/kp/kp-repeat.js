@@ -1,5 +1,12 @@
 import { CatPrice } from './price-hints.js';
 import { Drafts } from './drafts.js';
+import { Modal } from '../../core/modal.js';
+import { FormView } from '../../ui/form-view.js';
+import { Managers } from './managers.js';
+import { esc, today } from '../../core/util.js';
+import { KpState, S } from '../../core/state.js';
+import { Toast } from '../../core/toast.js';
+import { Api } from '../../core/net.js';
 
 /** «Повторить КП» (журнал, карточка клиента): новое КП тому же клиенту, дата — сегодня, цены — как сейчас в каталоге. */
 export class KpRepeat {
@@ -13,12 +20,12 @@ export class KpRepeat {
     if (!(await Drafts.stash())) return;
     let state;
     try {
-      state = await api(`/api/kp/${encodeURIComponent(id)}/state`);
+      state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
     } catch (error) {
-      toast(`КП не открылось: ${error.message || error}`);
+      Toast.show(`КП не открылось: ${error.message || error}`);
       return;
     }
-    S = Object.assign(freshState(), state);
+    KpState.replace(Object.assign(KpState.fresh(), state));
     const was = S.number;
     for (const key of this.DROP) delete S[key];
     S.date = today();
@@ -26,12 +33,12 @@ export class KpRepeat {
     if (S.tender && S.tender.on) S.tender = { on: true, number: '', url: '' }; // другая закупка
     const changes = this._prices();
     document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-    renderForm();
-    persist();
+    FormView.render();
+    KpState.persist();
     window.scrollTo({ top: 0 });
     Drafts.loaded();
     if (!changes.length) {
-      toast(`Новое КП по № ${was}: цены как в каталоге, даты — сегодняшние`);
+      Toast.show(`Новое КП по № ${was}: цены как в каталоге, даты — сегодняшние`);
       return;
     }
     this._show(was, changes);
@@ -53,7 +60,7 @@ export class KpRepeat {
     const rows = changes
       .map(
         change =>
-          `<tr><td>${esc(change.name)}</td><td class="num">${money(change.now)}</td><td class="num"><b>${money(change.cat)}</b></td><td class="num ${change.pct > 0 ? 'up' : 'down'}">${change.pct > 0 ? '+' : ''}${String(change.pct).replace('.', ',')}</td></tr>`,
+          `<tr><td>${esc(change.name)}</td><td class="num">${KPGen.money(change.now)}</td><td class="num"><b>${KPGen.money(change.cat)}</b></td><td class="num ${change.pct > 0 ? 'up' : 'down'}">${change.pct > 0 ? '+' : ''}${String(change.pct).replace('.', ',')}</td></tr>`,
       )
       .join('');
     const modal = new Modal(

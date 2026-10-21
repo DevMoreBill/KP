@@ -12,6 +12,15 @@ import { LgOffers } from './lg-offers.js';
 import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
 import { LgView } from './lg-view.js';
+import { Toast } from '../../core/toast.js';
+import { Catalog, CatalogStore } from '../catalog/catalog-store.js';
+import { FormView } from '../../ui/form-view.js';
+import { Currency } from '../kp/currency.js';
+import { StationMods } from '../layout/station-mods.js';
+import { Kit } from '../kit/kit.js';
+import { KitDoc } from '../kit/kit-doc.js';
+import { KpState, S } from '../../core/state.js';
+import { Api } from '../../core/net.js';
 
 /**
  * Вкладка «Логистика» экономики сделки: тарифы, груз позиций и станций, маршрут, расчёт перед каждой отрисовкой окна —
@@ -37,7 +46,7 @@ export class DealLogistics {
    */
   static async reload() {
     try {
-      LgState.saved = await api('/api/logistics');
+      LgState.saved = await Api.request('/api/logistics');
     } catch {
       LgState.saved = {};
     }
@@ -49,7 +58,7 @@ export class DealLogistics {
   static async loadAll() {
     await DealLogistics.reload();
     try {
-      LgState.status = await api('/api/logistics/status');
+      LgState.status = await Api.request('/api/logistics/status');
     } catch {
       LgState.status = null;
     }
@@ -101,7 +110,7 @@ export class DealLogistics {
     const container = Kit.container(item);
     const rows = [...((container && container.rows) || [])];
     DealLogistics._addMass(rows, item);
-    const mods = container && typeof StationMods !== 'undefined' ? StationMods.of(container) : null;
+    const mods = container ? StationMods.of(container) : null;
     if (mods) DealLogistics._perModule(rows, mods);
     const title = mods ? `Модуль станции (${mods.n} шт.): ` : 'Станция в сборе: ';
     return {
@@ -212,8 +221,9 @@ export class DealLogistics {
       .filter(item => String(item.name || '').trim() && own(item))
       .reduce((sum, item) => {
         const qty = +item.qty || 0;
-        if (item.cost) return sum + (item.cost / DealLogistics.KOPECKS) * qty * (rateOf(item.costCur || 'RUB') || 0);
-        return sum + ((item.price || 0) / DealLogistics.KOPECKS) * qty * (rateOf(kpCur()) || 0);
+        if (item.cost)
+          return sum + (item.cost / DealLogistics.KOPECKS) * qty * (Currency.rate(item.costCur || 'RUB') || 0);
+        return sum + ((item.price || 0) / DealLogistics.KOPECKS) * qty * (Currency.rate(Currency.current()) || 0);
       }, 0);
   }
 
@@ -267,7 +277,7 @@ export class DealLogistics {
     const key = res.routeKey;
     if (!key || LgState.routes[key]) return;
     LgState.routes[key] = 'busy';
-    api(`/api/geo/route?a=${res.from.lat},${res.from.lon}&b=${res.to.lat},${res.to.lon}`)
+    Api.request(`/api/geo/route?a=${res.from.lat},${res.from.lon}&b=${res.to.lat},${res.to.lon}`)
       .then(reply => {
         if (!(reply && reply.km > 0)) {
           LgState.routes[key] = (reply && reply.error) || 'нет маршрута';
@@ -276,7 +286,7 @@ export class DealLogistics {
         LgState.routes[key] = 'ok';
         sup.lg = sup.lg || {};
         sup.lg.route = { key, km: reply.km, hours: reply.hours, src: reply.src };
-        persist();
+        KpState.persist();
         DealWin.render();
       })
       .catch(error => {
@@ -318,16 +328,16 @@ export class DealLogistics {
     const items = DealLogistics.items(sup);
     const done = { saved: 0, pend: 0, noCat: [], fail: [] };
     for (const id of Object.keys(own)) await DealLogistics._saveOne({ id, own, items }, done);
-    persist();
-    renderForm();
-    if (typeof refreshCat === 'function') refreshCat();
+    KpState.persist();
+    FormView.render();
+    Catalog.refresh();
     const report = [
       done.saved ? `Масса и габариты сохранены в каталог: ${done.saved}` : '',
       done.pend ? `отправлено на модерацию: ${done.pend}` : '',
       done.noCat.length ? `нет в каталоге (записано только в КП): ${done.noCat.join(', ')}` : '',
       done.fail.length ? `не сохранено: ${done.fail.join(', ')}` : '',
     ];
-    toast(report.filter(Boolean).join(' · ') || 'Нечего сохранять');
+    Toast.show(report.filter(Boolean).join(' · ') || 'Нечего сохранять');
   }
 
   static _what(fields, value) {
@@ -354,10 +364,10 @@ export class DealLogistics {
       return;
     }
     try {
-      const doc = await CatSrv.get(item.catId);
+      const doc = await CatalogStore.get(item.catId);
       LgCargo.write(doc, value, what);
       doc.updatedAt = new Date().toISOString();
-      const reply = await CatSrv.put(doc);
+      const reply = await CatalogStore.put(doc);
       if (reply && reply._pending) done.pend++;
       else done.saved++;
       delete own[id];

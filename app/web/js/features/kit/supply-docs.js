@@ -1,3 +1,7 @@
+import { AirChain } from '../layout/air-chain.js';
+import { StationReq } from '../req/station-req.js';
+import { StationEquip } from '../layout/station-equip.js';
+import { Kit } from './kit.js';
 /**
  * Документы при поставке станции (блок в КП) — по составу: паспорта и руководства, декларации ЕАЭС по техническим
  * регламентам, паспорт сосуда на каждый ресивер, исполнительная документация и протоколы испытаний.

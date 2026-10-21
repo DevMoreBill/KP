@@ -2,6 +2,7 @@ import { Design } from './design.js';
 import { DesignHistory } from './design-history.js';
 import { DesignModel } from './design-model.js';
 import { DesignView } from './design-view.js';
+import { $ } from '../../core/util.js';
 
 /** Размер за маркеры: ширина и высота независимо; Shift (или «Сохранять пропорции») — пропорционально. */
 export class DesignResize {

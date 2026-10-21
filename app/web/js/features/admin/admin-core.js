@@ -1,4 +1,7 @@
 import { SettingsWindow } from './settings-window.js';
+import { esc } from '../../core/util.js';
+import { Modal } from '../../core/modal.js';
+import { AdminSession, Api } from '../../core/net.js';
 
 /** Состояние окна «Настройки»: вкладка, выбор записей, журнал действий, график, вход администратора, открытая карточка. */
 export class AdminState {
@@ -23,10 +26,10 @@ export class AdminApi {
    */
   static async get(path, opts) {
     try {
-      return await api(`/api/admin/${path}`, opts);
+      return await Api.request(`/api/admin/${path}`, opts);
     } catch (error) {
       if (this.EXPIRED.test(error.message)) {
-        ADMIN.set(false);
+        AdminSession.set(false);
         SettingsWindow.render();
       }
       throw error;

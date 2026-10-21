@@ -1,5 +1,11 @@
 import { CatalogIndex } from './catalog-index.js';
 import { FeedBadge } from './feed-badge.js';
+import { Attrs } from '../../core/item-attrs.js';
+import { Auth } from '../kp/auth.js';
+import { esc } from '../../core/util.js';
+import { EquipTypes } from '../../core/equip-types.js';
+import { SpecValues } from '../../core/spec-values.js';
+import { Currency } from '../kp/currency.js';
 
 /** Строка списка и карточка-предпросмотр окна каталога. */
 export class CatalogCard {
@@ -23,15 +29,15 @@ export class CatalogCard {
    * @returns {string}
    */
   static priceHtml(card) {
-    if (card.price) return `${money(card.price)} ${curSh(card.priceCur || 'RUB')}`;
-    if (card.cost) return `<small>закупка</small>${money(card.cost)} ${curSh(card.costCur || 'RUB')}`;
+    if (card.price) return `${KPGen.money(card.price)} ${Currency.short(card.priceCur || 'RUB')}`;
+    if (card.cost) return `<small>закупка</small>${KPGen.money(card.cost)} ${Currency.short(card.costCur || 'RUB')}`;
     return '<small>без цены</small>';
   }
 
   static _facetTag(field, attrs) {
     if (String(attrs[field.key]) === 'Да') return field.label;
     if (field.key === 'engine' && attrs.engineModel) return `${attrs[field.key]} ${attrs.engineModel}`;
-    return fmtField(field, attrs[field.key]);
+    return SpecValues.show(field, attrs[field.key]);
   }
 
   /**
@@ -42,12 +48,12 @@ export class CatalogCard {
    */
   static tags(win, card) {
     const attrs = CatalogIndex.attrs(card);
-    const type = typeById(attrs.cat);
+    const type = EquipTypes.byId(attrs.cat);
     const out = [];
     const kpi = type.fields
       .filter(field => field.kpi && attrs[field.key] != null && attrs[field.key] !== '')
       .slice(0, this.TAGS)
-      .map(field => fmtField(field, attrs[field.key]));
+      .map(field => SpecValues.show(field, attrs[field.key]));
     if (kpi.length) out.push(`<span class="tag kwt">${esc(kpi.join(' · '))}</span>`);
     const facets = type.fields
       .filter(field => field.facet && !field.kpi && attrs[field.key] && String(attrs[field.key]) !== 'Нет')
@@ -77,7 +83,7 @@ export class CatalogCard {
       <label class="ck" title="Отметить (Shift — диапазон)"><input type="checkbox" data-ck ${sel ? 'checked' : ''} aria-label="Отметить"></label>
       ${card.photo ? `<img src="${esc(card.photo.src)}" alt="" loading="lazy">` : '<i class="ph"></i>'}
       <div class="cw-mn"><b>${esc(card.name)}</b>${win.pend.has(id) ? '<span class="modb">На модерации</span>' : ''}${this.tags(win, card)}</div>
-      <div class="cw-pr">${this.priceHtml(card)}${FeedBadge.html(card)}${count ? `<small>в КП ${count} ${plural(count, 'раз', 'раза', 'раз')}</small>` : ''}</div>
+      <div class="cw-pr">${this.priceHtml(card)}${FeedBadge.html(card)}${count ? `<small>в КП ${count} ${KPGen.plural(count, 'раз', 'раза', 'раз')}</small>` : ''}</div>
       <button class="btn sm${inKp ? ' in' : ''}" type="button" data-add title="${this._addTitle(win, inKp)}">${win.addLabel(id)}</button></div>`;
   }
 
@@ -86,7 +92,7 @@ export class CatalogCard {
       .filter(field => field.kpi && attrs[field.key] != null && attrs[field.key] !== '')
       .map(
         field =>
-          `<div class="pv-k"><b>${esc(fmtField(field, attrs[field.key]))}</b><span>${esc(field.label)}</span></div>`,
+          `<div class="pv-k"><b>${esc(SpecValues.show(field, attrs[field.key]))}</b><span>${esc(field.label)}</span></div>`,
       )
       .join('');
   }
@@ -96,7 +102,7 @@ export class CatalogCard {
       ['Производитель', attrs.maker],
       ['Серия', attrs.series],
       ['Модель', attrs.model],
-      ...type.fields.filter(field => !field.kpi).map(field => [field.label, fmtField(field, attrs[field.key])]),
+      ...type.fields.filter(field => !field.kpi).map(field => [field.label, SpecValues.show(field, attrs[field.key])]),
     ].filter(([, value]) => value != null && value !== '');
   }
 
@@ -114,7 +120,7 @@ export class CatalogCard {
         : '';
     const cat =
       win.optFor == null
-        ? `<label class="pv-cat"><span>Категория</span><select data-pvcat>${typeOptionsHtml(attrs.cat)}</select></label>`
+        ? `<label class="pv-cat"><span>Категория</span><select data-pvcat>${EquipTypes.optionsHtml(attrs.cat)}</select></label>`
         : '';
     return `<div class="pv-photo">${photo}</div>
       ${from}
@@ -128,7 +134,7 @@ export class CatalogCard {
       card.costDisc && card.costDisc.pct && card.costSrc === 'feed'
         ? ` (−${String(card.costDisc.pct).replace('.', ',')} %)`
         : '';
-    return `<span>закупка ${money(card.cost)} ${curSh(card.costCur || 'RUB')}${disc}</span>`;
+    return `<span>закупка ${KPGen.money(card.cost)} ${Currency.short(card.costCur || 'RUB')}${disc}</span>`;
   }
 
   static _feed(card) {
@@ -144,7 +150,9 @@ export class CatalogCard {
   }
 
   static _price(card) {
-    const price = card.price ? `${money(card.price)} ${curSh(card.priceCur || 'RUB')}` : 'Цена не указана';
+    const price = card.price
+      ? `${KPGen.money(card.price)} ${Currency.short(card.priceCur || 'RUB')}`
+      : 'Цена не указана';
     const tip = card.stock && !card.stock.gone && FeedBadge.stockTip(card.stock);
     return `<div class="pv-price"><b>${price}</b>${this._cost(card)}${FeedBadge.html(card)}</div>
       ${tip ? `<p class="pv-stock">${esc(FeedBadge.stockTip(card.stock))}</p>` : ''}
@@ -171,7 +179,7 @@ export class CatalogCard {
     const rows = hist
       .map(
         price =>
-          `<tr><td>${esc(KPGen.ruDate(price.date))}${price.number ? `<br><small>№ ${esc(price.number)}</small>` : ''}</td><td>${esc(price.client || '')}</td><td>${price.price ? `${money(price.price)} ${curSh(price.cur || 'RUB')}` : ''}</td></tr>`,
+          `<tr><td>${esc(KPGen.ruDate(price.date))}${price.number ? `<br><small>№ ${esc(price.number)}</small>` : ''}</td><td>${esc(price.client || '')}</td><td>${price.price ? `${KPGen.money(price.price)} ${Currency.short(price.cur || 'RUB')}` : ''}</td></tr>`,
       )
       .join('');
     return `<p class="pv-cap">В коммерческих предложениях <i>${count}</i></p><table class="pv-t pv-h">${rows}</table>`;
@@ -198,7 +206,7 @@ export class CatalogCard {
       ? '<button class="btn ghost" type="button" data-pv="dup" title="Создать копию позиции и открыть её на редактирование">Создать копию</button>'
       : '';
     const trash =
-      main && can('catDelete')
+      main && Auth.can('catDelete')
         ? '<button class="btn ghost danger-t" type="button" data-pv="trash" title="Удалить позицию в корзину (восстанавливает администратор)">В корзину</button>'
         : '';
     const wide = win.dlg().classList.contains('pvwide') ? 'Свернуть карточку' : '⤢ Крупно';
@@ -214,8 +222,8 @@ export class CatalogCard {
    * @returns {string}
    */
   static html(win, card, { loading }) {
-    const attrs = attrsOf(card);
-    const type = typeById(attrs.cat);
+    const attrs = Attrs.of(card);
+    const type = EquipTypes.byId(attrs.cat);
     const kpi = this._kpi(type, attrs);
     const params = this._params(type, attrs);
     return `<div class="pv-mtop"><button class="btn pv-back" type="button" data-pv="close"><span aria-hidden="true">‹</span> К списку</button></div>

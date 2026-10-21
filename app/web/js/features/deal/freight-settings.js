@@ -6,6 +6,12 @@ import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
 import { LgTariffFile } from './lg-tariff-file.js';
+import { Toast } from '../../core/toast.js';
+import { XlsTable } from '../catalog/excel-import.js';
+import { Fmt } from '../../core/str.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { $, esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
 
 /**
  * «Настройки» → «Тарифы доставки» (администратор): машины, разгрузка, общие параметры, автообновление ставок по ATI.SU,
@@ -28,7 +34,7 @@ export class FreightSettings {
     await DealLogistics.reload();
     let status = null;
     try {
-      status = await api('/api/logistics/status');
+      status = await Api.request('/api/logistics/status');
     } catch {
       status = null;
     }
@@ -77,7 +83,7 @@ export class FreightSettings {
 
   _auto() {
     const { auto, cfg, providers } = this;
-    const help = tip(
+    const help = UiKit.tip(
       '<p>Раз в заданное число дней программа запрашивает у ATI.SU «Средние ставки» по опорным направлениям и берёт <b>верхнюю границу</b> средних ставок за период (с НДС) — максимум по направлениям — для каждого класса машины.</p><p>Нужна лицензия «API Средних ставок» ATI.SU и ключ в «Настройки → Ключи API». Снимите галочку «Авто» у машины, чтобы закрепить свою ставку.</p>',
     );
     const last = FreightSettings._last(auto);
@@ -203,10 +209,10 @@ export class FreightSettings {
     try {
       const rows = /\.xlsx$/i.test(file.name)
         ? await LgTariffFile.readXlsx(await file.arrayBuffer())
-        : parseTable(await file.text());
+        : XlsTable.parse(await file.text());
       LgTariffFile.preview(this.box, { imp: LgTariffFile.parse(rows), fname: file.name, tariffs: this.tariffs });
     } catch (err) {
-      toast(`Файл не прочитан: ${err.message || err}`);
+      Toast.show(`Файл не прочитан: ${err.message || err}`);
     }
   }
 
@@ -236,7 +242,7 @@ export class FreightSettings {
   }
 
   async _put(body) {
-    await api('/api/logistics', { method: 'PUT', headers: FreightSettings.JSON_HEAD, body });
+    await Api.request('/api/logistics', { method: 'PUT', headers: FreightSettings.JSON_HEAD, body });
   }
 
   async _refresh(button) {
@@ -244,11 +250,13 @@ export class FreightSettings {
     button.textContent = 'Обновляю…';
     try {
       await this._put(JSON.stringify(this.read()));
-      const reply = await api('/api/logistics/refresh', { method: 'POST' });
+      const reply = await Api.request('/api/logistics/refresh', { method: 'POST' });
       const notes = (reply.errors || []).length ? `, замечаний: ${reply.errors.length}` : '';
-      toast(reply.error ? reply.error : `Ставки обновлены: ${Object.keys(reply.classes || {}).length} классов${notes}`);
+      Toast.show(
+        reply.error ? reply.error : `Ставки обновлены: ${Object.keys(reply.classes || {}).length} классов${notes}`,
+      );
     } catch (err) {
-      toast(`Не обновлено: ${err.message || err}`);
+      Toast.show(`Не обновлено: ${err.message || err}`);
     }
     return FreightSettings.open(this.box);
   }
@@ -265,10 +273,10 @@ export class FreightSettings {
   async _save() {
     try {
       await this._put(JSON.stringify(this.read()));
-      toast('Тарифы сохранены');
+      Toast.show('Тарифы сохранены');
       FreightSettings.open(this.box);
     } catch (err) {
-      toast(`Не сохранено: ${err.message || err}`);
+      Toast.show(`Не сохранено: ${err.message || err}`);
     }
   }
 
@@ -276,10 +284,10 @@ export class FreightSettings {
     if (!confirm('Вернуть стандартные тарифы доставки? Ваши ставки будут заменены.')) return;
     try {
       await this._put('{}');
-      toast('Стандартные тарифы');
+      Toast.show('Стандартные тарифы');
       FreightSettings.open(this.box);
     } catch (err) {
-      toast(`Не сохранено: ${err.message}`);
+      Toast.show(`Не сохранено: ${err.message}`);
     }
   }
 }
@@ -292,10 +300,10 @@ export class FreightSettingsView {
    */
   static head() {
     const saved = LgState.saved;
-    const help = tip(
+    const help = UiKit.tip(
       '<p>По ним «Экономика сделки» считает доставку со склада поставщика до объекта: машина подбирается по массе и габаритам груза; рейс — подача + ставка за км до 1 000 км + «дальняя» ставка за км дальше (дальний рейс дешевле за км), не меньше минимального заказа; к рейсу добавляются негабарит, тяжеловес, прикрытие и разгрузка. Ставки — с НДС 22 %, ставка перевозчика (агент — отдельно).</p><p>Стандартные значения откалиброваны по рынку осени 2026 года. Точнее всего — по вашим счетам: впишите 5–10 последних счетов в «Сверку со счетами перевозчиков» внизу, программа покажет ошибку тарифа и предложит поправку.</p><p>Негабарит по правилам РФ: шире 2,55 м или выше 4 м от дороги (высота груза на площадке — в столбце «Высота груза»). На открытой площадке груз до 2,55 м шириной едет без спецразрешения.</p>',
     );
-    const fileHelp = tip(
+    const fileHelp = UiKit.tip(
       '<p>Файл Excel (.xlsx) или CSV из шаблона: три таблицы — «Транспорт», «Разгрузка», «Параметр». Скачайте шаблон (в нём ваши текущие тарифы), поправьте ставки и загрузите. Перед применением программа покажет, что изменится.</p><p>Ставки из файла закрепляются: автообновление по ATI.SU для этих машин выключается (включить — галочка «Авто»).</p>',
     );
     const changed =

@@ -1,4 +1,10 @@
 import { TemplateBase } from './template-base.js';
+import { Toast } from '../../core/toast.js';
+import { FormView } from '../../ui/form-view.js';
+import { esc } from '../../core/util.js';
+import { UiKit } from '../../ui/ui-kit.js';
+import { KpState, S } from '../../core/state.js';
+import { Api } from '../../core/net.js';
 
 /**
  * Шаблоны КП (папка templates): выбор шаблона и загрузка всего, что в папке шаблона — настроек (template.json), скелета
@@ -17,7 +23,7 @@ export class Templates {
   /** Список шаблонов с сервера; у КП — выбранный шаблон. */
   static async load() {
     try {
-      this.list = await api('/api/templates');
+      this.list = await Api.request('/api/templates');
     } catch {
       this.list = [];
     }
@@ -56,7 +62,7 @@ export class Templates {
   static picker() {
     const good = this.list.filter(row => !row.error);
     const bad = this.list.filter(row => row.error);
-    const about = (this.current() || {}).description ? tip(esc(this.current().description)) : '';
+    const about = (this.current() || {}).description ? UiKit.tip(esc(this.current().description)) : '';
     const options = good
       .map(row => `<option value="${esc(row.id)}"${row.id === S.template ? ' selected' : ''}>${esc(row.name)}</option>`)
       .join('');
@@ -172,9 +178,9 @@ export class Templates {
       } catch {
         // браузер без хранилища — выбор только в этом КП
       }
-      renderForm();
-      persist();
-      toast(`Шаблон КП: ${(this.current() || {}).name || ''}`);
+      FormView.render();
+      KpState.persist();
+      Toast.show(`Шаблон КП: ${(this.current() || {}).name || ''}`);
     });
   }
 }

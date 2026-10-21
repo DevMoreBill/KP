@@ -4,6 +4,8 @@ import { RalColor } from './ral-color.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationNorms } from './station-norms.js';
 import { TankSize } from './tank-size.js';
+import { PhotoTint } from '../view/photo-tint.js';
+import { LgCargo } from '../deal/lg-cargo.js';
 
 /** Оборудование из состава станции: вид, габариты, масса, цвет, форма, подписи. */
 export class StationEquip {
@@ -212,7 +214,7 @@ export class StationEquip {
     const own = this.nums((part.attrs || {}).size);
     let found = { n: own, src: own ? 'Габариты' : '' };
     if (!own || own.length < 3) found = this._sizeRows(part, found);
-    if ((!found.n || found.n.length < 3) && typeof LgCargo !== 'undefined') {
+    if (!found.n || found.n.length < 3) {
       const cargo = LgCargo.of([{ rows: part.rows || [] }]);
       if (cargo && cargo.dims)
         found = {
@@ -343,7 +345,7 @@ export class StationEquip {
   static mass(part) {
     const massKg = this.num((part.attrs || {}).mass);
     if (massKg > 0) return massKg;
-    if (typeof LgCargo === 'undefined') return null;
+
     const cargo = LgCargo.of([{ rows: part.rows || [] }]);
     return cargo && cargo.mass > 0 ? Math.round(cargo.mass * 1000) : null;
   }
@@ -358,7 +360,7 @@ export class StationEquip {
   /** Ссылка на фото позиции. */
   static photo(part) {
     const text = part && part.photo && part.photo.src;
-    return text && typeof PhotoTint !== 'undefined' ? String(text) : '';
+    return text ? String(text) : '';
   }
 
   /** Зоны других цветов по фото: [{u0, u1, v0, v1, hex}] или null. */
