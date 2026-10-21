@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from crm_funnels import DealFields, Funnels
+from deal_autofill import DealAutoFill
 from kp_track import Val
 
 
@@ -98,6 +99,7 @@ class DealBook:
 
     def __init__(self, store) -> None:
         self.store = store
+        self._filler: DealAutoFill | None = None
 
     @staticmethod
     def _out(row) -> dict:
@@ -555,7 +557,37 @@ class DealBook:
                     deal.pop('lostReason', None)
                     deal['lostAuto'] = False
                 self._log(deal, author, what='stage', auto=True, **{'from': stage, 'to': found[1]})
+        self._autofill(deal, [row['id'] for row in rows], author)
         self._save(conn, deal['id'], deal, author, when=when)
+
+    def _autofill(self, deal: dict, kp_ids: list[str], author: str) -> bool:
+        """Пустые поля Битрикс24 — из КП (сбой подсказки не мешает сохранению сделки)."""
+        try:
+            if self._filler is None:
+                self._filler = DealAutoFill(self.store)
+            changed = self._filler.apply(deal, kp_ids)
+        except Exception as exc:
+            from server_log import ServerLog
+
+            ServerLog.failure(f'поля Битрикс24 сделки {deal.get("id")} из КП', exc)
+            return False
+        if changed:
+            self._log(deal, author, what='fields', fields=changed, auto=True)
+        return bool(changed)
+
+    def autofill(self, did, author: str) -> bool:
+        """Дозаполнить поля Битрикс24 сделки по её КП (карточку открыли). → изменилось ли."""
+        with self.store.lock:
+            deal = self.get(did)
+            if not deal:
+                return False
+            conn = self.store.conn()
+            kp_ids = [row[0] for row in conn.execute('SELECT kp_id FROM deal_kp WHERE deal_id=?', (did,)).fetchall()]
+            if not kp_ids or not self._autofill(deal, kp_ids, author):
+                return False
+            self._save(conn, did, deal, author)
+            conn.commit()
+        return True
 
     @staticmethod
     def _auto_target(funnels, funnel, deal, rows, stage) -> str | None:

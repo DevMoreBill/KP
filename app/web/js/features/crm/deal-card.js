@@ -8,6 +8,7 @@ import { DealKp } from './deal-kp.js';
 import { Cabinet } from './cabinet.js';
 import { DealSummary } from './deal-summary.js';
 import { DealExec } from './deal-exec.js';
+import { DealWin } from './deal-win.js';
 import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
 import { KpTrack } from '../kp/kp-track.js';
@@ -75,6 +76,7 @@ export class DealCard {
     this.changed = false;
     const modal = new Modal(this.html(), 'deal-dlg');
     this.modal = modal;
+    DealWin.bind(modal.d);
     modal.d.addEventListener('close', () => this._closed());
     modal.d.addEventListener('click', event => this._click(event));
     modal.d.addEventListener('change', event => this._change(event));
@@ -131,7 +133,7 @@ export class DealCard {
    */
   static html() {
     const deal = this.deal;
-    return `${this._top(deal)}<div class="dk-in">${this._steps(deal)}${DealSummary.html(deal)}${DealExec.html(deal)}
+    return `${DealWin.grip()}${this._top(deal)}<div class="dk-in">${this._steps(deal)}${DealSummary.html(deal)}${DealExec.html(deal)}
       <div class="dk-cols"><div class="dk-main">${this._about(deal)}${DealFieldsView.html(deal)}</div>
       <div class="dk-side">${this._next(deal)}${this._kps(deal)}${this._history(deal)}</div></div></div>`;
   }
@@ -339,7 +341,7 @@ export class DealCard {
       kpOut: () => `КП № ${item.kp} перенесено в другую сделку`,
       manager: () => `ответственный: ${item.to}`,
       funnel: () => `воронка: ${CrmFunnel.get(item.from).name} → ${CrmFunnel.get(item.to).name}`,
-      fields: () => `поля Битрикс24: ${fields().join(', ')}`,
+      fields: () => `поля Битрикс24${item.auto ? ' заполнены по КП' : ''}: ${fields().join(', ')}`,
       edit: () => `изменено: ${(item.fields || []).map(field => this.FIELDS[field] || field).join(', ')}`,
     };
     return texts[item.what] ? texts[item.what]() : '';
@@ -390,6 +392,11 @@ export class DealCard {
   }
 
   static _input(event) {
+    const add = event.target.closest('[data-ufadd]');
+    if (add) {
+      this._ufSave(DealFieldsView.added(add, this.deal));
+      return;
+    }
     const field = event.target.closest('[data-dkf="client"]');
     if (field) ClientSuggest.run(field, client => this._pickClient(client, field));
   }
@@ -476,7 +483,7 @@ export class DealCard {
   }
 
   static _click(event) {
-    if (event.target === this.modal.d) {
+    if (DealWin.outside(this.modal.d, event)) {
       this.close();
       return;
     }
@@ -488,6 +495,8 @@ export class DealCard {
     const actions = [
       ['[data-x]', () => this.close()],
       ['[data-dkpick]', el => this._pick(el.dataset.dkpick)],
+      ['[data-ufpick]', el => this._ufSave(DealFieldsView.toggle(el, this.deal))],
+      ['[data-ufempty]', () => this._onlyEmpty()],
       ['[data-dknav]', el => this._go(+el.dataset.dknav)],
       ['[data-dks]', el => this._stage(el.dataset.dks)],
       ['[data-dko]', el => DealKp.openKp(el.dataset.dko)],
@@ -502,6 +511,15 @@ export class DealCard {
         return;
       }
     }
+  }
+
+  static async _ufSave(change) {
+    if (change && (await this.save({ uf: { [change.code]: change.value } }))) this._flash();
+  }
+
+  static _onlyEmpty() {
+    DealFieldsView.onlyEmpty = !DealFieldsView.onlyEmpty;
+    this.render();
   }
 
   static async _pick(id) {

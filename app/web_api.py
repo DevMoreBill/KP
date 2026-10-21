@@ -1927,6 +1927,9 @@ class CrmController(Controller):
     def _card(self, did: str, deal: dict) -> Any:
         """Карточка сделки: КП, исполнение, клиент из справочника, дела, Битрикс24, воронки и поля."""
         book = DealBook(store())
+        if book.autofill(did, admin.actor(self.handler)[1]):
+            deal = dict(book.get(did) or deal)
+            self.bitrix_on(did)
         deal['kps'] = book.kps([did])[did]
         if ExecTasks(store()).sync(deal):
             deal = dict(book.get(did) or deal, kps=deal['kps'])

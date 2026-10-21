@@ -219,7 +219,16 @@ dialog.st-confirm.tk-dlg{width:min(520px,calc(100vw - 32px))}
 .cab-tt th:first-child,.cab-tt td:first-child{text-align:left}
 
 /* карточка сделки — панель справа во всю высоту */
-dialog.st-confirm.deal-dlg{width:min(1000px,76vw);max-width:none;height:100dvh;max-height:none;margin:0 0 0 auto;padding:0;border-radius:16px 0 0 16px;overflow:hidden}
+dialog.st-confirm.deal-dlg{width:min(1320px,90vw);max-width:none;height:100dvh;max-height:none;margin:0 0 0 auto;padding:0;border-radius:16px 0 0 16px;overflow:hidden}
+.dk-grip{display:none}
+.dk-pc .dk-grip{display:block;position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:3;touch-action:none}
+.dk-pc .dk-grip::after{content:'';position:absolute;left:2px;top:50%;width:4px;height:44px;margin-top:-22px;border-radius:4px;background:var(--line);opacity:.8}
+.dk-pc .dk-grip:hover::after{background:var(--navy)}
+.dk-pc .dk-top{cursor:grab}
+.dk-pc .dk-top :is(button,input,select,textarea,a,label){cursor:auto}
+.dk-pc .dk-top button,.dk-pc .dk-top a{cursor:pointer}
+dialog.st-confirm.deal-dlg.dk-float{right:auto;bottom:auto;border-radius:16px;resize:both;min-width:640px;min-height:420px;max-height:calc(100dvh - 16px);box-shadow:0 18px 60px rgba(0,0,0,.28)}
+dialog.deal-dlg.dk-float[open]{animation:none}
 dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ease-out}
 @keyframes dk-in{from{transform:translateX(40px);opacity:.4}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){dialog.deal-dlg[open]{animation:none}}
@@ -278,7 +287,7 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 .dp-r{gap:8px;flex-wrap:wrap}
 .dp-r select{flex:1 1 280px;min-width:0;max-width:560px}
 
-@media (max-width:1100px){.cab-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}dialog.st-confirm.deal-dlg{width:min(760px,92vw)}.dk-cols{grid-template-columns:minmax(0,1fr)}
+@media (max-width:1100px){.cab-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}dialog.st-confirm.deal-dlg:not(.dk-float){width:min(760px,92vw)}.dk-cols{grid-template-columns:minmax(0,1fr)}
   .cab-lh,.cab-lr{grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) 100px 110px}.cab-lh>span:nth-child(5),.lr-x{display:none}.lr-m,.cab-lh.lr-all>span:nth-child(6){display:none}}
 @media (max-width:760px){
   dialog.cabwin{width:100vw;height:100dvh;border-radius:0;margin:0;inset:0}
@@ -374,7 +383,15 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 .dk-ufg>summary .muted{font-weight:400}
 .dk-uf .dk-wide{grid-column:1/-1}
 .dk-uf .dk-ro b{display:block;font-weight:500;padding:9px 0;overflow-wrap:anywhere}
-.dk-uf select[multiple]{min-height:84px}
+.dk-uf{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.dk-ufs>.md-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.dk-ufnote{display:block;font-size:12px;margin:0 0 6px}
+.uf-auto{font-style:normal;font-size:11px;font-weight:600;color:var(--navy);background:color-mix(in srgb,var(--navy) 10%,transparent);border-radius:6px;padding:1px 6px;margin-left:6px;white-space:nowrap}
+.uf-multi .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:2px}
+.uf-multi .uf-add{flex:1 1 220px;min-width:160px}
+.dk-uf .uf-empty>span{color:var(--muted)}
+.uf-only .dk-uf>:not(.uf-empty){display:none}
+.uf-only .dk-ufg:not(:has(.uf-empty)){display:none}
 @media (max-width:768px){.cab-fn{min-width:0;max-width:none;width:100%}.dk-stl .f{min-width:0}}
 
 /* сделка: сводка плитками, исполнение, клиент и контакты, выбор компании, подсказка клиента (3.160) */

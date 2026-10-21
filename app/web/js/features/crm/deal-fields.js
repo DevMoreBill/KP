@@ -28,6 +28,9 @@ export class DealFieldsView {
     'employee',
   ]);
   static LONG = 80;
+  static CHIPS_MAX = 12;
+  static LISTS = new Set(['enumeration', 'crm_status', 'employee']);
+  static onlyEmpty = false;
   static NUMBER = new Set(['double', 'integer']);
 
   /**
@@ -39,14 +42,21 @@ export class DealFieldsView {
     const fields = deal.fields || [];
     if (!fields.length) return '';
     const values = deal.uf || {};
+    const empty = fields.filter(field => this.EDIT.has(field.type) && !this._filled(values[field.code])).length;
     const groups = this._groups(fields)
       .map(([title, list], index) => {
         const filled = list.filter(field => this._filled(values[field.code])).length;
-        const inputs = list.map(field => this._field(field, values[field.code], deal.users || {})).join('');
-        return `<details class="dk-ufg"${index === 0 ? ' open' : ''}><summary>${esc(title)} <span class="muted">${filled} из ${list.length}</span></summary><div class="dk-f dk-uf">${inputs}</div></details>`;
+        const inputs = list.map(field => this._field(field, deal)).join('');
+        return `<details class="dk-ufg"${index === 0 || this.onlyEmpty ? ' open' : ''}><summary>${esc(title)} <span class="muted">${filled} из ${list.length}</span></summary><div class="dk-f dk-uf">${inputs}</div></details>`;
       })
       .join('');
-    return `<section class="md-s dk-ufs"><div class="md-h"><p class="sub">Поля Битрикс24</p></div>${groups}</section>`;
+    const auto = Object.keys(deal.ufAuto || {}).length
+      ? `<span class="muted dk-ufnote"><em class="uf-auto">из КП</em> — заполнено программой по КП, можно изменить</span>`
+      : '';
+    const toggle = empty
+      ? `<button type="button" class="chip sm${this.onlyEmpty ? ' on' : ''}" data-ufempty aria-pressed="${this.onlyEmpty}">Только пустые · ${empty}</button>`
+      : '<span class="muted">всё заполнено</span>';
+    return `<section class="md-s dk-ufs${this.onlyEmpty ? ' uf-only' : ''}"><div class="md-h"><p class="sub">Поля Битрикс24</p>${toggle}</div>${auto}${groups}</section>`;
   }
 
   static _groups(fields) {
@@ -65,12 +75,81 @@ export class DealFieldsView {
     return Array.isArray(value) ? value.length > 0 : value != null && value !== '' && value !== '0';
   }
 
-  static _field(field, value, users) {
-    const label = `<span>${esc(field.label || field.title || field.code)}</span>`;
+  static _field(field, deal) {
+    const value = (deal.uf || {})[field.code];
+    const users = deal.users || {};
+    const mark = this._auto(deal, field.code, value)
+      ? ' <em class="uf-auto" title="Заполнено программой по КП — можно изменить">из КП</em>'
+      : '';
+    const label = `<span>${esc(field.label || field.title || field.code)}${mark}</span>`;
+    const state = this._filled(value) ? '' : ' uf-empty';
     if (!this.EDIT.has(field.type))
       return `<div class="f dk-ro">${label}<b>${this._text(field, value, users)}</b></div>`;
+    if (field.multiple && this.LISTS.has(field.type)) return this._multi(field, value, users, label, state);
     const attrs = `data-uf="${esc(field.code)}" aria-label="${esc(field.label || field.code)}"`;
-    return `<label class="f${this._wide(field, value) ? ' dk-wide' : ''}">${label}${this._input(field, value, users, attrs)}</label>`;
+    return `<label class="f${this._wide(field, value) ? ' dk-wide' : ''}${state}">${label}${this._input(field, value, users, attrs)}</label>`;
+  }
+
+  static _auto(deal, code, value) {
+    const auto = deal.ufAuto || {};
+    return code in auto && JSON.stringify(auto[code]) === JSON.stringify(value) && this._filled(value);
+  }
+
+  static _options(field, users) {
+    return field.type === 'employee' ? this._people(users) : field.items || [];
+  }
+
+  // несколько значений: до CHIPS_MAX вариантов — все кнопками, больше — выбранные и поиск по списку
+  static _multi(field, value, users, label, state) {
+    const code = esc(field.code);
+    const chosen = new Set((Array.isArray(value) ? value : [value]).filter(Boolean).map(String));
+    const items = this._options(field, users);
+    const chip = item => {
+      const picked = chosen.has(String(item.id));
+      return `<button type="button" class="chip sm${picked ? ' on' : ''}" data-ufpick="${code}" data-ufid="${esc(item.id)}" aria-pressed="${picked}">${esc(item.value)}${picked && items.length > this.CHIPS_MAX ? ' ✕' : ''}</button>`;
+    };
+    if (items.length <= this.CHIPS_MAX)
+      return `<div class="f dk-wide uf-multi${state}" role="group">${label}<div class="chips">${items.map(chip).join('')}</div></div>`;
+    const chosenItems = items.filter(item => chosen.has(String(item.id)));
+    const rest = items
+      .filter(item => !chosen.has(String(item.id)))
+      .map(item => `<option value="${esc(item.value)}">`)
+      .join('');
+    const list = `uf-${code}`;
+    return `<div class="f dk-wide uf-multi${state}" role="group">${label}<div class="chips">${chosenItems.map(chip).join('')}<input type="text" class="uf-add" data-ufadd="${code}" list="${list}" autocomplete="off" placeholder="＋ добавить — начните вводить" aria-label="Добавить значение"></div><datalist id="${list}">${rest}</datalist></div>`;
+  }
+
+  /**
+   * Нажата кнопка значения (несколько значений): новое значение поля или null.
+   * @param {HTMLElement} button
+   * @param {object} deal
+   * @returns {{code: string, value: string[]} | null}
+   */
+  static toggle(button, deal) {
+    const code = button.dataset.ufpick;
+    const id = button.dataset.ufid;
+    const now = (deal.uf || {})[code];
+    const list = (Array.isArray(now) ? now : [now]).filter(Boolean).map(String);
+    return { code, value: list.includes(id) ? list.filter(one => one !== id) : [...list, id] };
+  }
+
+  /**
+   * Выбрано значение в поиске (несколько значений): новое значение поля или null (такого в списке нет).
+   * @param {HTMLInputElement} input
+   * @param {object} deal
+   * @returns {{code: string, value: string[]} | null}
+   */
+  static added(input, deal) {
+    const code = input.dataset.ufadd;
+    const field = (deal.fields || []).find(row => row.code === code);
+    const text = input.value.trim().toLowerCase();
+    const item =
+      field && this._options(field, deal.users || {}).find(one => String(one.value).trim().toLowerCase() === text);
+    if (!item) return null;
+    const now = (deal.uf || {})[code];
+    const list = (Array.isArray(now) ? now : [now]).filter(Boolean).map(String);
+    input.value = '';
+    return list.includes(String(item.id)) ? null : { code, value: [...list, String(item.id)] };
   }
 
   static _wide(field, value) {
