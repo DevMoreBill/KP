@@ -7,6 +7,7 @@ import { esc } from './util.js';
  */
 export class AppTabs {
   static HOME = 'kp';
+  static OVERLAY = 'authWrap';
   static specs = new Map();
   static dialogs = new Map();
   static titles = new Map();
@@ -31,6 +32,10 @@ export class AppTabs {
    * @param {string} [title] подпись вкладки «по месту» (например, название позиции)
    */
   static show(dialog, key, title) {
+    if (this._overlaid()) {
+      if (!dialog.open) dialog.showModal();
+      return;
+    }
     if (title) this.titles.set(key, title);
     if (this.dialogs.get(key) !== dialog) {
       this.dialogs.set(key, dialog);
@@ -71,6 +76,11 @@ export class AppTabs {
   static close(key) {
     const dialog = this.dialogs.get(key);
     if (dialog && dialog.open) dialog.close();
+  }
+
+  // экран входа закрывает всю страницу: окно («Вход администратора» → «Настройки») — только поверх него
+  static _overlaid() {
+    return !!document.getElementById(this.OVERLAY);
   }
 
   static _isOpen(key) {
