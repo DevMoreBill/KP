@@ -526,6 +526,16 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.169.0 — что сделано:** чистый код, ч. 31 — общие помощники и запуск в ES-модулях, весь интерфейс переведён:
+- `core/` (точка входа `core/index.js`, первым модулем): `Net`, `Features`, `Money`, `Str`, `Toast`, `Files`, `Modal`, `Debounce`,
+  `Morph`, `LazyJs`, `DimInput`, `XlsxStyles`, `Xlsx`, `EquipTypes`, `SpecValues`, `ItemAttrs`, `ItemSpec`; запуск — `main.js`
+  (`App`, `Theme`), последним модулем; `api.js`, `types.js` удалены (мост имён — `core/legacy.js`).
+- Обычными скриптами остаются только нужное до модулей: `core/util.js`, `core/defaults*.js`, `core/state.js`, `core/lists.js`,
+  `features/help.js` (данные версий), `boot.js`, `docx/kpgen.js`; правило — `.claude/rules/00-project.md`.
+- Контраст (тёмная тема): «нет фото» в каталоге, подписи жёлтой плитки карточки сделки.
+- Сверка: прогон ПК и телефона, светлая и тёмная тема — все этапы прошли без ошибок страницы; разметка всех снимков сверена
+  с прогоном 3.163.0 в тот же день (расходятся только случайные номера, порты стенда, размер базы и журнал версий).
+
 **3.168.0 — что сделано:** чистый код, ч. 30 — форма КП в ES-модулях:
 - `ui/*.js`, `ui/steps/*.js` → модули `ui/` (точка входа `ui/index.js`): `UiKit`, `Steps` (бывший `StepList`), `FormView`, `Popups`,
   `Problems`, `SidePanel`, шаги (`ClientStep`, `Tender`, `EquipStep`, `QuickFind`, `PriceStep`, `CoverStep`, `CondsStep`, `ManagerStep`),

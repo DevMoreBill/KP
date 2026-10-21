@@ -239,6 +239,7 @@ pricing (3), cover (4 «Оформление КП»), conditions (5, `CondsStep`
 - **3.166.0** (20.10) — чистый код, ч. 28: каталог, карточка позиции, фото, ИИ, категории → `features/catalog/`; сервер — кэш сжатых файлов по пути и версии.
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
+- **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
 - **3.155.1** (20.10) — `test_update_fallback.wait_version`: ожидание версии после отката вместо фиксированной паузы.
 - **3.155.0** (20.10) — чистый код, ч. 20: «магические числа» сервера 256 → 0 (Ruff PLR2004 включён), `feed_files.PRESSURE_ALIAS`.
 - **3.154.0** (20.10) — чистый код, ч. 19: без флагов, этап 2 (31 → 0): `Mailer.send_service`, `AiAsk.ask/probe`, `install/reinstall`, `DbCopy.daily/now`, `AutoRates`, `Sides`, `CheckMode`, `CatDetect`, `PdfText`, `data_bundle.Keys`, `feeds.Missing`, `FeedPurge.run_and_block`.
