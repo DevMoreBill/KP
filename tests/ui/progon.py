@@ -1094,8 +1094,29 @@ class Scenario(UiRun):
         if self.ev("DealCard.deal.exec.paid") != 450000:
             self.errs.append(('cabinet', 'ERR', 'оплата заказчика не отмечена: %s' % self.ev("DealCard.deal.exec.paid")))
         self.snap('f_deal_exec1', 'dialog.deal-dlg[open]', wait=300)
+        self._cab_sent_call()
         pg.keyboard.press('Escape')
         self.wait(500)
+
+    def _cab_sent_call(self):
+        """«Уже отправил сам» — окно «Когда позвонить клиенту?», «Через неделю» переносит звонок, который программа поставила сама."""
+        pg = self.pg
+        sent = pg.locator('dialog.deal-dlg[open] [data-dknow="sent"]')
+        if not sent.count():
+            self.errs.append(('cabinet', 'ERR', 'нет кнопки «Уже отправил сам» у неотправленного КП'))
+            return
+        sent.click()
+        pg.wait_for_selector('dialog.sc-dlg[open]', timeout=15000)
+        self.snap('f_deal_call', 'dialog.sc-dlg[open]', wait=200)
+        week = pg.locator('dialog.sc-dlg[open] [data-dchip]', has_text='Через неделю')
+        day = week.get_attribute('data-day')
+        week.click()
+        pg.click('dialog.sc-dlg[open] button[type="submit"]')
+        self.wait(1500)
+        calls = self.ev("""() => (DealCard.deal.tasks || []).filter(t => t.kind === 'call' && t.state === 'open'
+          && String(t.title).startsWith('Обратная связь по КП')).map(t => t.due)""")
+        if calls != [day]:
+            self.errs.append(('cabinet', 'ERR', 'звонок после отправки КП: ждали один на %s, есть %s' % (day, calls)))
 
     def _cab_new(self):
         pg = self.pg

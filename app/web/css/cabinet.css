@@ -587,3 +587,5 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .tt-i{font-size:12.5px;border-radius:999px;padding:3px 10px;border:1px solid var(--line)}
 .tt-i.bad{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
 .tt-i.warn{color:var(--warn-ink,var(--ink));border-color:var(--warn-line,var(--line))}
+.sc-dlg .row .btn{flex:1;white-space:nowrap}
+.sc-dlg .row .sp{display:none}

@@ -15,6 +15,7 @@ import { DealWin } from './deal-win.js';
 import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
 import { InnClient } from './inn-client.js';
+import { SentCall } from './sent-call.js';
 import { KpTrack } from '../kp/kp-track.js';
 import { MailDlg } from '../kp/mail-dlg.js';
 import { FEAT } from '../../core/features.js';
@@ -568,7 +569,7 @@ export class DealCard {
 
   static _sendKp(deal) {
     const offer = DealNow.offer(deal);
-    if (offer) MailDlg.open(offer.id, offer.number, () => this.reload());
+    if (offer) MailDlg.open(offer.id, offer.number, () => this._callAfter(offer));
   }
 
   // КП отправлено не из программы — отметить: сделка пойдёт дальше сама
@@ -581,7 +582,13 @@ export class DealCard {
       Toast.show(`Не отмечено: ${error.message}`);
       return;
     }
-    this.reload();
+    this._callAfter(offer);
+  }
+
+  // КП ушло — обновить сделку (звонок программа ставит сама) и сразу спросить, когда позвонить
+  static async _callAfter(offer) {
+    await this.reload();
+    SentCall.ask(this.deal, offer, () => this.reload());
   }
 
   // раскрыть раздел и показать нужное место
