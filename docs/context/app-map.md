@@ -244,6 +244,7 @@
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.176.1** (22.10) — полоса вкладок прокручивается, кнопки шапки на месте; «Excel для согласования» не вытесняется.
 - **3.176.0** (22.10) — несколько КП вкладками: `KpTabs` (features/kp/kp-tabs.js), `LocalDraft` `kp.tabs`, `Api.flying`, `Drafts.quiet`, `KpState.revive/flush/_merge`; открытия КП — через `KpTabs.prepare`; этап прогона `kptabs`.
 - **3.175.1** (22.10) — доска сделок `.kb`: колонки делят ширину экрана, без прокрутки вбок; названия стадий в две строки.
 - **3.175.0** (22.10) — вкладки: `apt-*` классы, `AppTabs.count` (кабинет — дела), `spec.short`, Alt+1…9; шапка без `#kpno`; журнал `.jr-sum`.

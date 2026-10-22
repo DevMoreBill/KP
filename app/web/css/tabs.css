@@ -32,7 +32,8 @@ body.tab-other main.wrap{visibility:hidden}
 .mob body.tab-other .mbar{display:none}
 .mob body.has-tabs #btnMenu{display:none}
 .mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0;border-radius:0!important}
-.top .apptabs{flex:0 0 auto}
+.top .apptabs{flex:0 1 auto;min-width:0}
+.top>.btn,.top>.topmenu,.top>.sp{flex-shrink:0}
 @media (max-width:1180px){.top .apptabs{flex:0 1 auto}.apt-t{padding:0 9px}}
 html dialog.tabwin:is([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]) .dlg-h [aria-label^="Закрыть"],html dialog.tabwin:is([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]) header [aria-label^="Закрыть"],html dialog.tabwin [data-cw=max]{display:none}
 .has-tabs .cab-more [data-cq=journal],.has-tabs .cab-more [data-cq=catalog]{display:none}
@@ -75,3 +76,6 @@ html.mob .jr-sum{justify-content:flex-start}
 .kt-o span{font-size:13px}
 .kt-add{width:100%;justify-content:center}
 @media (max-width:1560px){.has-tabs #saved{display:none}}
+/* экономика сделки во вкладке: «Excel для согласования» и дата договора не вытесняются длинным названием КП и клиента */
+html dialog.tabwin.dealwin>.dlg-h [data-dlx=xlsx],html dialog.tabwin.dealwin>.dlg-h .dl-hd{flex-shrink:0}
+html dialog.tabwin.dealwin>.dlg-h h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

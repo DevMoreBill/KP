@@ -155,6 +155,8 @@ export class AppTabs {
     bar.innerHTML = buttons
       .map((html, index) => html.replace('{hint}', index < this.KEYS ? ` (Alt+${index + 1})` : ''))
       .join('');
+    // вкладок больше, чем помещается, — открытая всегда на виду
+    bar.querySelector('.apt-t.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   // кнопки раздела; КП на ПК — по вкладке на каждое открытое КП и «＋»
