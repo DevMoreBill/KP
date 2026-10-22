@@ -589,3 +589,10 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .tt-i.warn{color:var(--warn-ink,var(--ink));border-color:var(--warn-line,var(--line))}
 .sc-dlg .row .btn{flex:1;white-space:nowrap}
 .sc-dlg .row .sp{display:none}
+.cr-who{margin:0 0 8px}
+.cr-o{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.cr-f .dchips{margin-bottom:8px}
+.cr-o .chip{justify-content:center;white-space:nowrap}
+.cr-f .ck{margin-top:6px}
+.cr-dlg .row .btn{white-space:nowrap}
+@media (max-width:768px){.cr-o .chip{min-height:44px}}

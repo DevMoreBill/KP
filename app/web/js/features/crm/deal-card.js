@@ -69,7 +69,12 @@ export class DealCard {
     return Modal.once('deal-card', () => this._open(id));
   }
 
-  static async _fetch(id) {
+  /**
+   * Свежая карточка сделки с сервера (ошибка — всплывающей строкой).
+   * @param {string} id
+   * @returns {Promise<object|null>}
+   */
+  static async fetch(id) {
     try {
       return this._keep(await Api.request(`/api/crm/deal/${encodeURIComponent(id)}`));
     } catch (error) {
@@ -84,7 +89,7 @@ export class DealCard {
   }
 
   static async _open(id) {
-    const deal = await this._fetch(id);
+    const deal = await this.fetch(id);
     if (!deal) return;
     this.deal = deal;
     this.changed = false;
@@ -113,7 +118,7 @@ export class DealCard {
 
   static async _show(id) {
     await this.queue;
-    const deal = await this._fetch(id);
+    const deal = await this.fetch(id);
     if (!deal || !this.modal) return;
     this.deal = deal;
     this.render();

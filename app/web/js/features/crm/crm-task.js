@@ -1,3 +1,4 @@
+import { CallResult } from './call-result.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt, DateChips } from './crm-fmt.js';
 import { Modal } from '../../core/modal.js';
@@ -27,9 +28,14 @@ export class CrmTask {
     const later = done
       ? ''
       : `<button class="btn sm ghost" type="button" data-tlater="${task.id}" title="Перенести на завтра">+1 день</button>`;
-    return `<div class="tk${over ? ' over' : ''}${done ? ' done' : ''}" data-task="${task.id}"><label class="tk-ck"><input type="checkbox" data-tdone="${task.id}"${done ? ' checked' : ''}${task.state === 'cancel' ? ' disabled' : ''} aria-label="Сделано: ${esc(task.title)}"></label>
+    return `<div class="tk${over ? ' over' : ''}${done ? ' done' : ''}" data-task="${task.id}"><label class="tk-ck"><input type="checkbox" data-tdone="${task.id}"${this._call(task)}${done ? ' checked' : ''}${task.state === 'cancel' ? ' disabled' : ''} aria-label="Сделано: ${esc(task.title)}"></label>
       ${CrmData.icon(task.kind)}<div><b>${esc(this._title(task, opts))}${cancelled}</b>${this._who(task, opts)}${sub ? `<span class="muted">${sub}</span>` : ''}${task.note ? `<span class="muted tk-note">${esc(task.note)}</span>` : ''}</div>
       ${later}<button class="icon sm" type="button" data-tedit="${task.id}" aria-label="Изменить дело" title="Изменить">✎</button></div>`;
+  }
+
+  // звонок по сделке: галочка спрашивает итог разговора (CallResult)
+  static _call(task) {
+    return task.kind === 'call' && task.deal && task.state === 'open' ? ` data-tcall="${esc(task.deal)}"` : '';
   }
 
   // общее название («Звонок», «Письмо») — действием и кому: «Позвонить: Петров П. П.»
@@ -116,7 +122,9 @@ export class CrmTask {
     box.addEventListener('click', event => this._click(event, after));
     box.addEventListener('change', event => {
       const check = event.target.closest('[data-tdone]');
-      if (check) this.put(+check.dataset.tdone, { state: check.checked ? 'done' : 'open' }, after);
+      if (!check) return;
+      if (check.checked && check.dataset.tcall) CallResult.ask(+check.dataset.tdone, check.dataset.tcall, after);
+      else this.put(+check.dataset.tdone, { state: check.checked ? 'done' : 'open' }, after);
     });
     box.addEventListener('submit', event => {
       const form = event.target.closest('form.tq');
@@ -190,20 +198,31 @@ export class CrmTask {
     };
     const owner = this._owner(body.deal);
     if (owner) body.managerId = owner;
+    const task = await this.create(body);
+    delete form.dataset.busy;
+    if (!task) return;
+    fields.title.value = '';
+    fields.time.value = '';
+    if (after) after(task);
+  }
+
+  /**
+   * Новое дело на сервере (сообщение об успехе или ошибке — всплывающей строкой).
+   * @param {{kind: string, title: string, due: string, time?: string, deal?: string, managerId?: string}} body
+   * @returns {Promise<object|null>}
+   */
+  static async create(body) {
     try {
       const task = await Api.request('/api/crm/task', {
         method: 'POST',
         headers: this.JSON_HEAD,
         body: JSON.stringify(body),
       });
-      fields.title.value = '';
-      fields.time.value = '';
       Toast.show(`Дело добавлено: ${task.title}, ${CrmFmt.rel(task.due)}`);
-      if (after) after(task);
+      return task;
     } catch (error) {
       Toast.show(`Дело не добавлено: ${error.message}`);
-    } finally {
-      delete form.dataset.busy;
+      return null;
     }
   }
 

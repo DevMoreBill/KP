@@ -1,7 +1,6 @@
 import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
 import { Modal } from '../../core/modal.js';
-import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
 
@@ -63,21 +62,10 @@ export class SentCall {
         <div class="row"><button class="btn primary" type="submit">Поставить звонок</button><span class="sp"></span><button class="btn" type="button" data-x>Позже</button></div></form>`;
   }
 
-  static async _save(deal, offer, task, when) {
+  static _save(deal, offer, task, when) {
     if (task) return CrmTask.put(task.id, when);
-    try {
-      const body = { kind: 'call', title: `Обратная связь по КП № ${offer.number}`, deal: deal.id, ...when };
-      if (deal.managerId) body.managerId = deal.managerId;
-      const added = await Api.request('/api/crm/task', {
-        method: 'POST',
-        headers: CrmTask.JSON_HEAD,
-        body: JSON.stringify(body),
-      });
-      Toast.show(`Звонок: ${CrmFmt.rel(added.due)}`);
-      return added;
-    } catch (error) {
-      Toast.show(`Звонок не поставлен: ${error.message}`);
-      return null;
-    }
+    const body = { kind: 'call', title: `Обратная связь по КП № ${offer.number}`, deal: deal.id, ...when };
+    if (deal.managerId) body.managerId = deal.managerId;
+    return CrmTask.create(body);
   }
 }

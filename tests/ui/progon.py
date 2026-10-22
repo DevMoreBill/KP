@@ -1117,6 +1117,54 @@ class Scenario(UiRun):
           && String(t.title).startsWith('Обратная связь по КП')).map(t => t.due)""")
         if calls != [day]:
             self.errs.append(('cabinet', 'ERR', 'звонок после отправки КП: ждали один на %s, есть %s' % (day, calls)))
+        self._cab_call_result()
+
+    def _call_check(self, title):
+        """Галочка у открытого звонка сделки по началу названия → окно «Итог звонка»."""
+        pg = self.pg
+        tid = self.ev("""t => ((DealCard.deal.tasks || []).find(x => x.kind === 'call' && x.state === 'open'
+          && String(x.title).startsWith(t)) || {}).id""", title)
+        if not tid:
+            self.errs.append(('cabinet', 'ERR', 'нет открытого звонка «%s…»' % title))
+            return None
+        pg.locator('dialog.deal-dlg[open] [data-tdone="%s"]' % tid).first.check()
+        pg.wait_for_selector('dialog.cr-dlg[open]', timeout=15000)
+        return tid
+
+    def _cab_call_result(self):
+        """Итог звонка: «Думает» — звонок сделан, новый через 3 дня, заметка в ленте; «Договорились» — дело и стадия дальше."""
+        pg = self.pg
+        tid = self._call_check('Обратная связь по КП')
+        if not tid:
+            return
+        pg.click('dialog.cr-dlg[open] [data-cro="think"]')
+        pg.fill('dialog.cr-dlg[open] textarea[name="note"]', 'Ждут бюджет (прогон)')
+        self.snap('f_call_result', 'dialog.cr-dlg[open]', wait=200)
+        day = pg.locator('dialog.cr-dlg[open] input[name="due"]').input_value()
+        pg.click('dialog.cr-dlg[open] button[type="submit"]')
+        self.wait(2500)
+        got = self.ev("""id => { const d = DealCard.deal, all = d.tasks || [];
+          return {done: (all.find(t => t.id === id) || {}).state,
+            again: all.filter(t => t.state === 'open' && t.title === 'Перезвонить: клиент думает').map(t => t.due),
+            said: (d.comments || []).some(c => String(c.text).includes('Ждут бюджет (прогон)'))}; }""", tid)
+        if got != {'done': 'done', 'again': [day], 'said': True}:
+            self.errs.append(('cabinet', 'ERR', 'итог «Думает»: %s, ждали звонок на %s' % (got, day)))
+        if not self._call_check('Перезвонить: клиент думает'):
+            return
+        pg.click('dialog.cr-dlg[open] [data-cro="agreed"]')
+        pg.fill('dialog.cr-dlg[open] input[name="title"]', 'Подготовить договор (прогон)')
+        move = pg.locator('dialog.cr-dlg[open] input[name="move"]')
+        target = move.get_attribute('value') if move.count() else ''
+        pg.click('dialog.cr-dlg[open] button[type="submit"]')
+        self.wait(2500)
+        need = pg.locator('dialog.dn-dlg[open] button.primary')
+        if need.count():
+            need.first.click()
+            self.wait(1500)
+        got = self.ev("""() => ({stage: [DealCard.deal.stage, DealCard.deal.fstage],
+          step: (DealCard.deal.tasks || []).some(t => t.state === 'open' && t.title === 'Подготовить договор (прогон)')})""")
+        if not got['step'] or (target and target not in got['stage']):
+            self.errs.append(('cabinet', 'ERR', 'итог «Договорились»: %s, ждали стадию %s' % (got, target)))
 
     def _cab_new(self):
         pg = self.pg
