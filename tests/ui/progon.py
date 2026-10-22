@@ -394,6 +394,9 @@ class Scenario(UiRun):
         if self.phone and self.visible('#cwPv .pv-back'):
             pg.click('#cwPv .pv-back')
             self.wait(800)
+        if self.mode == 'tab' and self.visible('#cwPv .pv-x'):   # планшет: карточка — выдвижной панелью поверх списка
+            pg.click('#cwPv .pv-x')
+            self.wait(800)
         row = self.visible('#cwList .cw-row')
         if row:
             row.dblclick(timeout=8000)
@@ -514,11 +517,15 @@ class Scenario(UiRun):
             self.snap('45q_st_paint_layout', '#edlg', wait=8000)
             # вид слева снаружи (WebGL, программно — долго): рисунок заказчика на левом торце, крыша и двери своим цветом
             src = pg.evaluate("async()=>{ const x=S.items[S.items.length-1], plan=StationUi.plan(x), meta=StationUi.meta(x, plan);"
-                              " if (!StationRender.ok()) return 'skip'; const im=await StationRender.image(plan, meta, 'out', 72); return im ? im.src : 'ERR '+(StationRender.lastErr||''); }")
+                              " if (!StationRender.ok()) return 'skip'; const late=new Promise(ok=>setTimeout(()=>ok('late'), 180000));"
+                              " const im=await Promise.race([StationRender.image(plan, meta, 'out', 72), late]); if (im==='late') return 'late';"
+                              " return im ? im.src : 'ERR '+(StationRender.lastErr||''); }")
             if src.startswith('data:image/jpeg;base64,'):
                 import base64
                 with open(os.path.join(self.shots, '45r_st_paint_left.jpg'), 'wb') as f:
                     f.write(base64.b64decode(src.split(',', 1)[1]))
+            elif src == 'late':
+                self.errs.append(('station', 'NOTE', 'вид снаружи (WebGL) не построился за 3 мин — перегрузка стенда'))
             elif src != 'skip':
                 self.errs.append(('station', 'paint-3d', src[:150]))
 

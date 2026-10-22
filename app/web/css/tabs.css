@@ -30,7 +30,7 @@ body.tab-other main.wrap{visibility:hidden}
 .mob body.has-tabs .mbar{bottom:calc(var(--tbh) + env(safe-area-inset-bottom,0px));padding-bottom:10px}
 .mob body.has-tabs{padding-bottom:calc(var(--mbh) + var(--tbh) + env(safe-area-inset-bottom,0px))}
 .mob body.has-tabs .toast{bottom:calc(var(--mbh) + var(--tbh) + 14px + env(safe-area-inset-bottom,0px))}
-.mob body.tab-other .mbar{display:none}
+body.tab-other .mbar,.mob body.tab-other .mbar{display:none}
 .mob body.has-tabs #btnMenu{display:none}
 .mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0!important;border-radius:0!important}
 .top .apptabs{flex:0 1 auto;min-width:0}

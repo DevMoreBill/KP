@@ -103,6 +103,7 @@ export class AppTabs {
   }
 
   static _closed(key, dialog) {
+    if (dialog.open) return; // закрыли и сразу открыли снова — событие «закрыто» пришло позже
     dialog.classList.remove('tabwin', 'tab-off');
     this.titles.delete(key);
     this.trail = this.trail.filter(one => one !== key);

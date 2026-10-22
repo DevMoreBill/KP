@@ -59,6 +59,7 @@ export class CallResult {
     });
     form.onsubmit = event => {
       event.preventDefault();
+      if (saved) return;
       const answer = this._answer(form);
       if (!answer) return;
       saved = true;

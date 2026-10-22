@@ -242,7 +242,8 @@ export class StationQuick {
    */
   static _status(item, { fit, miss, errors, calc }) {
     if (fit) return ['bad', '✕ Оборудование не помещается в контейнер'];
-    if (miss) return [errors.length ? 'bad' : 'warn', `${errors.length ? '✕' : '⚠'} В каталоге не нашлось: ${miss[1]}`];
+    if (miss)
+      return [errors.length ? 'bad' : 'warn', `${errors.length ? '✕' : '⚠'} В каталоге не нашлось: ${miss[1]}`];
     if (errors.length) return ['bad', `✕ ${errors[0].text}${errors.length > 1 ? ` (и ещё ${errors.length - 1})` : ''}`];
     const ask = this.ask(item);
     if (ask) return ['info', `ⓘ ${ask}`];
