@@ -2160,6 +2160,10 @@ class CrmController(Controller):
             mid = deal.get('managerId') or uid
         elif everyone and data.get('managerId'):
             mid = self._manager(str(data['managerId']))[0]
+        twin = TaskBook(store()).twin(did, data) if did and not data.get('again') else None
+        if twin:
+            day = '.'.join(reversed(str(twin['due']).split('-')[1:]))
+            return self.text(409, 'Такое дело уже есть: «{}» на {}.'.format(twin['title'], day))
         with self.user_input():
             task = TaskBook(store()).add(data, mid, admin.actor(self.handler)[1], did or None)
         self.bitrix_on(task['id'], 'task')

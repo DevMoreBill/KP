@@ -28,6 +28,12 @@ import { Modal } from '../../core/modal.js';
  * содержимое раздела. Открывается на «Сегодня»; выбранный раздел помнится, пока открыта страница.
  */
 export class Cabinet {
+  static NEW = [
+    ['mail', '📩 Из письма или ТЗ', 'Вставьте письмо или ТЗ — клиент, суть и модели заполнятся сами'],
+    ['deal', '🤝 Сделка', 'Сделка без КП: запрос, встреча, тендер'],
+    ['newkp', '📄 КП', 'Новое коммерческое предложение'],
+    ['task', '☎ Дело', 'Звонок, встреча, письмо или задача'],
+  ];
   static TABS = [
     ['today', 'Сегодня'],
     ['deals', 'Сделки'],
@@ -181,25 +187,41 @@ export class Cabinet {
     const date = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
     return `<header class="cab-h"><div class="cab-t"><h3>${this._title()}</h3><span class="muted md-date">${esc(date)}</span></div>
       <nav class="cab-tabs" role="tablist" aria-label="Разделы кабинета">${this._tabs()}</nav>
-      <div class="cab-tools">${this._who()}<span class="cab-q"><button class="btn" type="button" data-cq="task" title="Звонок, встреча, письмо или задача">＋ Дело</button><button class="btn" type="button" data-cq="deal" title="Сделка без КП: запрос, встреча, тендер">＋ Сделка</button><button class="btn primary" type="button" data-cq="newkp">＋ КП</button></span>
+      <div class="cab-tools">${this._who()}<span class="cab-q"><button class="btn primary" type="button" data-cnew aria-expanded="false" aria-haspopup="menu">＋ Новое ▾</button><span class="cab-newm" role="menu" hidden>${this._newItems()}</span></span>
       <button class="icon cab-help" type="button" data-cguide aria-label="Как пользоваться кабинетом" title="Как пользоваться кабинетом">?</button><button class="icon" type="button" data-x aria-label="Закрыть кабинет" title="Закрыть (Esc)">✕</button></div></header>`;
   }
 
   static _tabs() {
     return this.TABS.filter(([key]) => key !== 'team' || CrmData.board.canAll)
       .map(([key, label]) => {
-        const count = this._count(key);
         const active = this.tab === key;
-        return `<button type="button" role="tab" aria-selected="${active}" class="cab-tab${active ? ' on' : ''}" data-ctab="${key}">${label}${count ? ` <b class="md-c">${count}</b>` : ''}</button>`;
+        return `<button type="button" role="tab" aria-selected="${active}" class="cab-tab${active ? ' on' : ''}" data-ctab="${key}">${label}${this._badge(key)}</button>`;
       })
       .join('');
   }
 
-  static _count(key) {
-    if (key === 'today')
-      return CrmData.openTasks().filter(task => task.due <= today()).length + CabToday.bxNew().length;
-    if (key === 'deals') return CrmData.openDeals().length;
-    return 0;
+  // что горит — видно без перехода: просроченные дела красным, новые заявки — отдельно от всех сделок
+  static _badge(key) {
+    const badges = {
+      today: () => this._todayBadge(),
+      deals: () => this._dealsBadge(),
+    };
+    return badges[key] ? badges[key]() : '';
+  }
+
+  static _todayBadge() {
+    const tasks = CrmData.openTasks();
+    const late = tasks.filter(task => task.due < today()).length;
+    if (late) return ` <b class="md-c bad" title="Просрочено дел: ${late}">${late}</b>`;
+    const due = tasks.filter(task => task.due === today()).length + CabToday.bxNew().length;
+    return due ? ` <b class="md-c" title="На сегодня: ${due}">${due}</b>` : '';
+  }
+
+  static _dealsBadge() {
+    const fresh = CabToday.bxNew().length;
+    const open = CrmData.openDeals().length;
+    const freshBadge = fresh ? ` <b class="md-c warn" title="Новые заявки: ${fresh}">${fresh} нов.</b>` : '';
+    return `${open ? ` <b class="md-c" title="В работе: ${open}">${open}</b>` : ''}${freshBadge}`;
   }
 
   static _who() {
@@ -215,8 +237,30 @@ export class Cabinet {
   }
 
   static _fab() {
-    return `<div class="cab-fab"><div class="cab-fabm" hidden><button class="btn" type="button" data-cq="task">☎ Дело</button><button class="btn" type="button" data-cq="deal">🤝 Сделка</button><button class="btn primary" type="button" data-cq="newkp">📄 КП</button></div>
+    return `<div class="cab-fab"><div class="cab-fabm" hidden>${this._newItems()}</div>
       <button class="cab-fabb" type="button" data-cfab aria-label="Создать: дело, сделку или КП" aria-expanded="false">＋</button></div>`;
+  }
+
+  // одно «Новое» на ПК и телефоне: заявка из письма — первой, ею заводится большинство сделок
+  static _newItems() {
+    return this.NEW.map(
+      ([kind, label, hint]) =>
+        `<button class="btn${kind === 'mail' ? ' primary' : ''}" type="button" role="menuitem" data-cq="${kind}" title="${hint}">${label}</button>`,
+    ).join('');
+  }
+
+  static _toggleNew() {
+    const menu = this.dlg().querySelector('.cab-newm');
+    menu.hidden = !menu.hidden;
+    this.dlg().querySelector('[data-cnew]').setAttribute('aria-expanded', String(!menu.hidden));
+  }
+
+  static _hideMenus() {
+    this.dlg()
+      .querySelectorAll('.cab-newm, .cab-fabm')
+      .forEach(menu => {
+        menu.hidden = true;
+      });
   }
 
   static _toggleFab() {
@@ -230,6 +274,7 @@ export class Cabinet {
     const after = () => this.reload();
     const actions = {
       task: () => CrmTask.quick('', after, { pick: true }),
+      mail: () => DealNew.open({ mail: true }),
       deal: () => DealNew.open(),
       newkp: () => this._leave(() => NewKp.open()),
       journal: () => this._leave(() => Journal.open()),
@@ -276,7 +321,14 @@ export class Cabinet {
       ['[data-x]', () => this.dlg().close()],
       ['a.dc-bx', () => null],
       ['[data-ctab]', el => this.show(el.dataset.ctab)],
-      ['[data-cq]', el => this._quick(el.dataset.cq)],
+      [
+        '[data-cq]',
+        el => {
+          this._hideMenus();
+          this._quick(el.dataset.cq);
+        },
+      ],
+      ['[data-cnew]', () => this._toggleNew()],
       ['[data-cfab]', () => this._toggleFab()],
       ['[data-cguide]', () => CabGuide.open()],
       ['[data-ctip]', () => CabGuide.hideTip()],
@@ -291,6 +343,7 @@ export class Cabinet {
   }
 
   static _click(event) {
+    if (!event.target.closest('.cab-q, .cab-fab')) this._hideMenus();
     if (CabDeals.click(event) || CabToday.click(event)) return;
     for (const [selector, run] of this._clicks()) {
       const el = event.target.closest(selector);

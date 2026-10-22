@@ -221,7 +221,10 @@ export class CrmTask {
       Toast.show(`Дело добавлено: ${task.title}, ${CrmFmt.rel(task.due)}`);
       return task;
     } catch (error) {
-      Toast.show(`Дело не добавлено: ${error.message}`);
+      if (error.status === Api.CONFLICT && !body.again && confirm(`${error.message} Всё равно добавить?`)) {
+        return this.create({ ...body, again: true });
+      }
+      if (error.status !== Api.CONFLICT) Toast.show(`Дело не добавлено: ${error.message}`);
       return null;
     }
   }

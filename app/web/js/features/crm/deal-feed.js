@@ -11,13 +11,13 @@ import { esc } from '../../core/util.js';
  */
 export class DealFeed {
   static MODES = [
-    ['task', 'Дело'],
-    ['comment', 'Комментарий'],
+    ['task', '＋ Звонок или дело'],
+    ['comment', '💬 Комментарий'],
   ];
   static SHOWN = 40;
   // служебное (правки и автозаполнение полей) в ленту не идёт — только то, что важно по сделке
   static SERVICE = new Set(['kp', 'fields', 'edit']);
-  static mode = 'task';
+  static mode = '';
   static all = false;
   static ICONS = {
     create: '✦',
@@ -41,14 +41,20 @@ export class DealFeed {
     const open = (deal.tasks || [])
       .filter(task => task.state === 'open')
       .sort((one, two) => `${one.due}${one.time || ''}`.localeCompare(`${two.due}${two.time || ''}`));
-    const none = '<p class="muted dk-none">Пока ничего — добавьте строкой выше.</p>';
+    const none = '<p class="muted dk-none">Пока ничего — нажмите «＋ Звонок или дело».</p>';
     const planned = open.length
       ? `<div class="tk-l dk-open">${open.map(task => CrmTask.row(task, { noDeal: true, date: true })).join('')}</div>`
       : none;
     return `<section class="md-s dk-feed"><div class="dk-fh" role="tablist" aria-label="Добавить в ленту">${this._modes()}</div>
-      ${this.mode === 'comment' ? this._comment() : CrmTask.form(deal.id)}
+      ${this._form(deal)}
       <p class="sub dk-ft">Запланировано${open.length ? ` <b class="md-c">${open.length}</b>` : ''}</p>${planned}
       <p class="sub dk-ft">Лента</p>${this._events(deal, hist)}</section>`;
+  }
+
+  // форма раскрыта только по нажатию: список дел и лента сразу на виду
+  static _form(deal) {
+    const forms = { task: () => CrmTask.form(deal.id), comment: () => this._comment() };
+    return forms[this.mode] ? forms[this.mode]() : '';
   }
 
   static _modes() {
@@ -121,7 +127,7 @@ export class DealFeed {
   static click(event) {
     const mode = event.target.closest('[data-feedmode]');
     if (mode) {
-      this.mode = mode.dataset.feedmode;
+      this.mode = this.mode === mode.dataset.feedmode ? '' : mode.dataset.feedmode;
       return true;
     }
     if (!event.target.closest('[data-feedall]')) return false;

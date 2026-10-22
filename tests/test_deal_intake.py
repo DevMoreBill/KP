@@ -113,5 +113,17 @@ class ApiTest(unittest.TestCase):
             self.assertIn('Кузнецова Мария', [row.get('name') for row in card.get('contacts') or []])
 
 
+    def test_task_twin(self):
+        """то же дело в той же сделке на тот же день — 409 с понятным текстом; «всё равно добавить» — again"""
+        board = Http.js(self.stand.http.req('GET', '/api/crm/board', headers=self.H)[1])
+        did = board['deals'][0]['id']
+        body = {'deal': did, 'kind': 'call', 'title': 'Позвонить снабженцу', 'due': '2027-01-15'}
+        self.assertEqual(self.stand.http.req('POST', '/api/crm/task', body, headers=self.H)[0], 200)
+        status, text, _ = self.stand.http.req('POST', '/api/crm/task', dict(body, title=' позвонить  СНАБЖЕНЦУ'), headers=self.H)
+        self.assertEqual((status, text), (409, 'Такое дело уже есть: «Позвонить снабженцу» на 15.01.'))
+        self.assertEqual(self.stand.http.req('POST', '/api/crm/task', dict(body, again=True), headers=self.H)[0], 200)
+        self.assertEqual(self.stand.http.req('POST', '/api/crm/task', dict(body, due='2027-01-16'), headers=self.H)[0], 200)
+
+
 if __name__ == '__main__':
     unittest.main()

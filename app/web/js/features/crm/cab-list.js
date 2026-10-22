@@ -127,7 +127,7 @@ export class CabList {
       sum: () => CrmFmt.short(deal.sum),
       expected: () => row.expected(deal) || '<span class="muted">—</span>',
       next: () => row.next(deal),
-      manager: () => esc(CrmData.mgrShort(deal)),
+      manager: () => esc(CrmData.mgrShort(deal)) || '<span class="muted">— не назначен —</span>',
       created: () => esc(CrmFmt.day(String(deal.created || '').slice(0, 10))),
       kps: () => String((deal.kps || []).length || '—'),
     };

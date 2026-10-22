@@ -809,6 +809,18 @@ class TaskBook:
             raise LookupError('Дело не найдено')
         return found
 
+    def twin(self, did: str, data: Any) -> dict | None:
+        """Открытое дело сделки с тем же названием на тот же день (повтор по ошибке) или None."""
+        if not isinstance(data, dict):
+            return None
+        title = ' '.join(str(data.get('title') or '').lower().split())
+        due = str(data.get('due') or '')
+        for task in self.list(deal=did):
+            same = ' '.join(str(task.get('title') or '').lower().split()) == title
+            if task.get('state') == 'open' and same and task.get('due') == due:
+                return task
+        return None
+
     def list(self, managers=None, deal=None, days=14) -> list:
         """Незакрытые дела и закрытые за последние days дней: менеджеров (None — всех) или одной сделки (все её дела)."""
         if deal:

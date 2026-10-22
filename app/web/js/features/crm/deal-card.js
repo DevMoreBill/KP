@@ -103,7 +103,10 @@ export class DealCard {
     modal.d.addEventListener('keydown', event => this._key(event));
     modal.d.addEventListener('input', event => this._input(event));
     modal.d.addEventListener('toggle', event => DealParts.toggled(event.target), true);
-    CrmTask.bind(modal.d, () => this.reload());
+    CrmTask.bind(modal.d, () => {
+      if (DealFeed.mode === 'task') DealFeed.mode = '';
+      this.reload();
+    });
     DealDocs.bind(
       modal.d,
       () => this.deal,
@@ -218,7 +221,7 @@ export class DealCard {
     const created = KpDate.ddmm(String(deal.created || '').slice(0, 10));
     const card =
       ClientCard.enabled() && (deal.client || deal.clientInn)
-        ? `<button class="btn sm ghost" type="button" data-cc="${esc(JSON.stringify({ id: deal.clientId || '', inn: deal.clientInn || '', name: deal.client || '' }))}">Карточка клиента</button>`
+        ? `<button class="btn sm ghost" type="button" data-cc="${esc(JSON.stringify({ id: deal.clientId || '', inn: deal.clientInn || '', name: deal.client || '' }))}" aria-label="Карточка клиента"><span aria-hidden="true">👤</span><span class="dk-cct"> Карточка клиента</span></button>`
         : '';
     return `<header class="dk-top">${this._nav(deal)}<div class="dk-hd"><span class="muted">Сделка № ${esc(deal.number)}${deal.manager ? ` · ${esc(deal.manager)}` : ''} · создана ${esc(created)} <span class="dk-saved" aria-live="polite"></span></span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" placeholder="Название: объект или задача клиента">${this._bx(deal)}</div>
@@ -265,7 +268,7 @@ export class DealCard {
   static _steps(deal) {
     const stages = CrmFunnel.columns(deal.funnel);
     const open = stages.filter(stage => !stage.closed);
-    if (open.length > this.MANY) return this._stepList(deal, open, stages);
+    if (open.length > this.MANY || Mobile.isPhone()) return this._stepList(deal, open, stages);
     const index = open.findIndex(stage => stage.key === deal.stage);
     const closed = CrmFunnel.closed(deal);
     const chevrons = open
@@ -696,6 +699,7 @@ export class DealCard {
         );
         this.changed = true;
         if (area) area.value = '';
+        DealFeed.mode = '';
         this.render();
         this._flash();
       } catch (error) {

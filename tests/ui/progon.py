@@ -1061,6 +1061,15 @@ class Scenario(UiRun):
             self.snap('f_deal_mail_kp', None, wait=300)
         self.closeall()
 
+    def _deal_stage(self, key):
+        """Стадия в карточке сделки: на ПК — стрелкой, на телефоне — из списка."""
+        pg = self.pg
+        chevron = pg.locator('dialog.deal-dlg[open] [data-dks="%s"]' % key)
+        if chevron.count() and chevron.first.is_visible():
+            chevron.first.click()
+        else:
+            pg.select_option('dialog.deal-dlg[open] select[data-dkf="stage"]', key)
+
     def _cab_card(self):
         pg = self.pg
         card = pg.locator('#cabWin .dc, #cabWin .cab-lr').first
@@ -1070,7 +1079,8 @@ class Scenario(UiRun):
         card.click()
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
         self.snap('f_deal_card', 'dialog.deal-dlg[open]', wait=800)
-        title = 'Позвонить главному инженеру (прогон)'
+        title = 'Позвонить главному инженеру (прогон, %s)' % self.mode  # режимы — на одном стенде: без дубля дела
+        pg.click('dialog.deal-dlg[open] [data-feedmode="task"]')
         pg.fill('dialog.deal-dlg[open] form.tq input[name=title]', title)
         pg.click('dialog.deal-dlg[open] form.tq [data-dchip][data-day]:nth-child(2)')
         pg.click('dialog.deal-dlg[open] form.tq button[type=submit]')
@@ -1234,8 +1244,11 @@ class Scenario(UiRun):
 
     def _new_deal_dialog(self, snap=True):
         pg = self.pg
-        if pg.locator('#cabWin .cab-q [data-cq="deal"]').is_visible():
-            pg.click('#cabWin .cab-q [data-cq="deal"]')
+        if pg.locator('#cabWin [data-cnew]').is_visible():
+            pg.click('#cabWin [data-cnew]')
+            if snap:
+                self.snap('f_cab_new', '#cabWin', wait=200)
+            pg.click('#cabWin .cab-newm [data-cq="deal"]')
         else:
             pg.click('#cabWin [data-cfab]')
             if snap:
@@ -1336,7 +1349,7 @@ class Scenario(UiRun):
         self.ev("id => DealCard.open(id)", deal['id'])
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=20000)
         self.snap('g1_regs_card', 'dialog.deal-dlg[open]', wait=400)
-        pg.click('dialog.deal-dlg[open] [data-dks="C5:TAKEN"]')
+        self._deal_stage('C5:TAKEN')
         pg.wait_for_selector('dialog.dn-dlg[open]', timeout=15000)
         self.snap('g2_regs_need', 'dialog.dn-dlg[open]', wait=300)
         self._regs_fill()

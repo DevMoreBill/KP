@@ -27,8 +27,11 @@ export class DealNew {
     { key: 'own', label: 'Личная', hint: 'клиента нашли сами и выявили потребность' },
   ];
 
-  /** Открыть окно. */
-  static open() {
+  /**
+   * Открыть окно.
+   * @param {{mail?: boolean}} [opts] mail — сразу раскрыть «Заполнить из письма или ТЗ»
+   */
+  static open(opts = {}) {
     const expected = CrmFmt.after(this.AHEAD);
     const modal = new Modal(this._html(expected), 'dk-new-dlg');
     const form = modal.$('form');
@@ -42,7 +45,8 @@ export class DealNew {
       event.preventDefault();
       this._create(form, modal);
     };
-    setTimeout(() => form.elements.client.focus(), this.FOCUS_MS);
+    if (opts.mail) modal.$('.dk-mail').open = true;
+    setTimeout(() => (opts.mail ? form.elements.mail : form.elements.client).focus(), this.FOCUS_MS);
   }
 
   static _html(expected) {

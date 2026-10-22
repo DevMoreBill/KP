@@ -8,12 +8,16 @@ import { FEAT } from '../../core/features.js';
 
 /** «Иванов И. П.» из полного ФИО. */
 export class ShortName {
+  // так сервер подписывает действие без выбранного менеджера — это не имя человека
+  static NOBODY = 'Не выбран';
+
   /**
-   * Фамилия и инициалы.
+   * Фамилия и инициалы («Не выбран» — пусто).
    * @param {string} name
    * @returns {string}
    */
   static of(name) {
+    if (String(name || '').trim() === this.NOBODY) return '';
     const parts = String(name || '')
       .trim()
       .split(/\s+/);
