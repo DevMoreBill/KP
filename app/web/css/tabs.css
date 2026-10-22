@@ -11,7 +11,8 @@
 .has-tabs #srvBtns{display:none!important}
 .has-tabs .topmenu [data-a=myDay]{display:none}
 
-html dialog.tabwin{overflow:auto;position:fixed;inset:var(--apptop,64px) 0 0 0;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border:0;border-radius:0!important;box-shadow:none;z-index:15;transform:none;animation:none}
+/* inset — с !important: окно, развёрнутое раньше «во весь экран» (класс max, запомнен), не залезает под шапку */
+html dialog.tabwin{overflow:auto;position:fixed!important;inset:var(--apptop,64px) 0 0 0!important;resize:none!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border:0;border-radius:0!important;box-shadow:none;z-index:15;transform:none;animation:none}
 html dialog.tabwin.tab-off{display:none!important}
 html dialog.tabwin .dlg-h [data-close],html dialog.tabwin .dlg-h [data-dlx=close]{order:99}
 body.tab-other{overflow:hidden}
@@ -31,14 +32,13 @@ body.tab-other main.wrap{visibility:hidden}
 .mob body.has-tabs .toast{bottom:calc(var(--mbh) + var(--tbh) + 14px + env(safe-area-inset-bottom,0px))}
 .mob body.tab-other .mbar{display:none}
 .mob body.has-tabs #btnMenu{display:none}
-.mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0;border-radius:0!important}
+.mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0!important;border-radius:0!important}
 .top .apptabs{flex:0 1 auto;min-width:0}
 .top>.btn,.top>.topmenu,.top>.sp{flex-shrink:0}
 @media (max-width:1180px){.top .apptabs{flex:0 1 auto}.apt-t{padding:0 9px}}
 html dialog.tabwin:is([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]) .dlg-h [aria-label^="Закрыть"],html dialog.tabwin:is([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]) header [aria-label^="Закрыть"],html dialog.tabwin [data-cw=max]{display:none}
 .has-tabs .cab-more [data-cq=journal],.has-tabs .cab-more [data-cq=catalog]{display:none}
 .mob body.tab-other .top{display:none}
-html.mob dialog.tabwin{top:0}
 html dialog.tabwin :is([data-dlx=max],[data-st=max]){display:none}
 html dialog.tabwin.jrnwin[open]{display:flex;flex-direction:column;padding:0}
 html dialog.tabwin.jrnwin>.dlg-h{padding:12px 20px 0}
