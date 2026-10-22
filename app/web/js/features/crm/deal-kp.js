@@ -7,6 +7,7 @@ import { AppTabs } from '../../core/app-tabs.js';
 import { Api } from '../../core/net.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Catalog } from '../catalog/catalog-store.js';
+import { CatalogFill } from '../catalog/catalog-fill.js';
 import { FormView } from '../../ui/form-view.js';
 import { ClientStore } from '../kp/client-store.js';
 import { NewKp } from '../kp/new-kp.js';
@@ -41,25 +42,49 @@ export class DealKp {
   /**
    * Новое КП для сделки.
    * @param {object} deal
+   * @param {string[]} [ids] модели каталога — сразу позициями (заявка из письма)
    */
-  static async newKp(deal) {
+  static async newKp(deal, ids = []) {
     if (!(await this._clearCurrent())) return;
     this._closeAll();
     NewKp.fresh();
     S.dealId = deal.id;
     const opened = S;
+    if (!(await this._client(deal, opened))) return;
+    const added = await this._items(ids, opened);
+    FormView.render();
+    KpState.persist();
+    Toast.show(`Новое КП для сделки «${deal.title || deal.client}»${added ? ` — позиций из заявки: ${added}` : ''}`);
+    if (!added && Catalog.cache.length) CatalogWindow.open({});
+  }
+
+  // клиент сделки — в КП (из справочника целиком); false — пока ждали, открыли другое КП
+  static async _client(deal, opened) {
     const key = deal.clientId || (deal.clientInn ? `inn${deal.clientInn}` : '');
     const client = key ? await ClientStore.byId(key).catch(() => null) : null;
-    if (S !== opened) return;
+    if (S !== opened) return false;
     if (client) ClientStore.apply(client);
     else {
       S.client = deal.client || '';
       S.clientInn = deal.clientInn || '';
-      FormView.render();
-      KpState.persist();
     }
-    Toast.show(`Новое КП для сделки «${deal.title || deal.client}»`);
-    if (Catalog.cache.length) CatalogWindow.open({});
+    return true;
+  }
+
+  // модели каталога из заявки — позициями КП
+  static async _items(ids, opened) {
+    let added = 0;
+    for (const id of ids) {
+      const light = Catalog.cache.find(row => row.id === id) || { id, _light: true };
+      const card = await Catalog.fullDoc(light);
+      if (S !== opened || !card || !card.name) continue;
+      const item = KpState.newItem();
+      CatalogFill.fill(item, card);
+      const blank = S.items.length === 1 && !S.items[0].name && !S.items[0].price;
+      S.items = blank ? [item] : [...S.items, item];
+      added++;
+    }
+    return added;
   }
 
   /**

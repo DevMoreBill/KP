@@ -593,6 +593,7 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .cr-o{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
 .cr-f .dchips{margin-bottom:8px}
 .cr-o .chip{justify-content:center;white-space:nowrap}
+.cr-f .ck,.dk-mail-m .ck{display:flex;align-items:center;gap:8px;width:auto;height:auto;flex:initial;place-items:initial;justify-content:flex-start;min-height:32px}
 .cr-f .ck{margin-top:6px}
 .cr-dlg .row .btn{white-space:nowrap}
 @media (max-width:768px){.cr-o .chip{min-height:44px}}
@@ -602,3 +603,12 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .dd-add{align-items:center;gap:10px;flex-wrap:wrap}
 .dd-kind{font-weight:600}
 @media (max-width:768px){.dd-k .chip{min-height:44px}}
+.dk-mail{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:0 0 10px}
+.dk-mail>summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center}
+.dk-mail textarea{width:100%;margin:8px 0}
+.dk-mail-a{align-items:center;gap:8px;flex-wrap:wrap}
+.dk-mail-f{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:10px 0 6px}
+.dk-mail-f dt{color:var(--muted)}
+.dk-mail-f dd{margin:0}
+.dk-mail-m{display:grid;gap:4px;margin:6px 0}
+@media (max-width:768px){.dk-mail>summary{min-height:44px}}

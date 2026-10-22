@@ -1024,6 +1024,42 @@ class Scenario(UiRun):
         pg.wait_for_selector('dialog.cg-dlg[open]', timeout=10000)
         self.snap('f_cab_guide', 'dialog.cg-dlg[open]', wait=200)
         self.closeall()
+        self._cab_intake()
+
+    def _cab_intake(self):
+        """Заявка из письма: «Разобрать» — клиент (ИНН), задача, контакт и модель каталога; сделка → КП с этой моделью."""
+        pg = self.pg
+        self.ev("Cabinet.open()")
+        self.wait(800)
+        model = self.ev("(Catalog.cache.find(x => /\\d/.test(x.name || '')) || {}).name || ''")
+        letter = ('Добрый день!\nПросим выставить КП на %s, 1 шт., поставка в Казань.\n\nС уважением,\n'
+                  'Кузнецова Мария Ивановна\nООО «Ромашка-Прогон», ИНН 7701234567\nтел. +7 (916) 555-44-33, m.kuz@romashka-test.ru'
+                  % (model or 'компрессор'))
+        self._new_deal_dialog(snap=False)
+        pg.click('dialog.dk-new-dlg[open] .dk-mail > summary')
+        pg.fill('dialog.dk-new-dlg[open] [name=mail]', letter)
+        pg.click('dialog.dk-new-dlg[open] [data-dnparse]')
+        pg.wait_for_selector('dialog.dk-new-dlg[open] .dk-mail-f', timeout=20000)
+        self.snap('f_deal_mail', 'dialog.dk-new-dlg[open]', wait=300)
+        got = self.ev("""() => { const f = document.querySelector('dialog.dk-new-dlg[open] form').elements;
+          return {client: f.client.value, title: f.title.value, task: f.task.value,
+            models: [...document.querySelectorAll('dialog.dk-new-dlg[open] [name=dnmodel]')].length}; }""")
+        if got['client'] != '7701234567' or not got['title'].startswith('Просим выставить КП') or 'Кузнецова' not in got['task']:
+            self.errs.append(('cabinet', 'ERR', 'заявка из письма: поля не заполнены — %s' % got))
+        if model and not got['models']:
+            self.errs.append(('cabinet', 'ERR', 'заявка из письма: модель «%s» не найдена' % model))
+        pg.fill('dialog.dk-new-dlg[open] [name=client]', 'ООО «Ромашка-Прогон»')  # без ФНС: на стенде нет интернета
+        src = pg.locator('dialog.dk-new-dlg[open] [data-dnsrc]')
+        if src.count():
+            src.first.click()
+        pg.click('dialog.dk-new-dlg[open] button[type=submit]')
+        self.wait(3000)
+        if model:
+            items = self.ev("S.items.map(x => x.name)")
+            if model not in items or not self.ev("S.dealId"):
+                self.errs.append(('cabinet', 'ERR', 'КП из заявки: ждали «%s», в КП %s' % (model, items)))
+            self.snap('f_deal_mail_kp', None, wait=300)
+        self.closeall()
 
     def _cab_card(self):
         pg = self.pg
@@ -1196,15 +1232,20 @@ class Scenario(UiRun):
             self.errs.append(('cabinet', 'ERR', 'закрывающие: %s' % got))
         self.snap('f_deal_docs1', 'dialog.deal-dlg[open]', wait=300)
 
-    def _cab_new(self):
+    def _new_deal_dialog(self, snap=True):
         pg = self.pg
         if pg.locator('#cabWin .cab-q [data-cq="deal"]').is_visible():
             pg.click('#cabWin .cab-q [data-cq="deal"]')
         else:
             pg.click('#cabWin [data-cfab]')
-            self.snap('f_cab_fab', '#cabWin', wait=200)
+            if snap:
+                self.snap('f_cab_fab', '#cabWin', wait=200)
             pg.click('#cabWin .cab-fabm [data-cq="deal"]')
         pg.wait_for_selector('dialog.dk-new-dlg[open]', timeout=10000)
+
+    def _cab_new(self):
+        pg = self.pg
+        self._new_deal_dialog()
         self.ev("""() => Api.request('/api/clients/innprogon1', {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'},
           body: JSON.stringify({id: 'innprogon1', name: 'ООО «Контакт-Прогон»', inn: '', contacts: [{name: 'Смирнова Ольга', phone: '+7 (912) 345-67-89'}]})})""")
         pg.locator('dialog.dk-new-dlg[open] [name=client]').press_sequentially('89123456789', delay=30)

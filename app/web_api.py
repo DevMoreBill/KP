@@ -51,6 +51,7 @@ from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
 from deal_files import DealClosing, DealFiles
+from deal_intake import DealIntake
 from deal_rules import ClientByInn, DealRegs
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
@@ -201,6 +202,14 @@ class Controller(metaclass=ControllerMeta):
         self, name
     ) -> Any:  # self.send_json(...) → handler.send_json(...); self.server, self.path, self.headers
         return getattr(self.handler, name)
+
+    def _too_big(self, what) -> bool:
+        """Документ для разбора больше допустимого («Значения программы»): ответить 413 и вернуть True."""
+        max_mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
+        if self.body_size() <= max_mb * 1024 * 1024:
+            return False
+        self.text(413, f'{what} больше {max_mb} МБ')
+        return True
 
     def json_body(self) -> dict:
         """Тело запроса — объект JSON; иначе BadRequest (400)."""
@@ -1024,14 +1033,6 @@ class ToolsController(Controller):
             return self.send_json(feeds.page_text(str(data.get('url') or '').strip(), defaults.img_opts(store())))
         except Exception as exc:
             return self.text(422, f'Страница не прочитана: {str(exc)[:200]}')
-
-    def _too_big(self, what) -> bool:
-        """Документ для разбора больше допустимого («Значения программы»): ответить 413 и вернуть True."""
-        max_mb = defaults.SrvVal.get(store(), 'cat.docMaxMB')
-        if self.body_size() <= max_mb * 1024 * 1024:
-            return False
-        self.text(413, f'{what} больше {max_mb} МБ')
-        return True
 
     @route(r'/api/pdftext', 'POST')  # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
     def pdftext(self) -> None:
@@ -1883,6 +1884,9 @@ class CrmController(Controller):
         )
         with self.user_input():
             deal = DealBook(store()).create(data, mid, mname, admin.actor(self.handler)[1])
+            DealIntake(store()).attach_contact(
+                deal.get('clientId') or '', data.get('contact'), admin.actor(self.handler)[1]
+            )
         admin.log(
             self.handler,
             store(),
@@ -1894,6 +1898,19 @@ class CrmController(Controller):
         )
         self.bitrix_on(deal['id'])
         return self.send_json(deal)
+
+    @route(r'/api/crm/intake', 'POST')
+    def intake(self) -> Any:
+        """Заявка из письма или ТЗ: JSON {text} или файл (?name=…: PDF, Word, Excel, TXT, письмо .eml) → поля сделки."""
+        if self._too_big('Файл'):
+            return None
+        intake = DealIntake(store())
+        with self.user_input():
+            if 'json' in str(self.handler.headers.get('Content-Type') or ''):
+                mail = {'text': str(self.json_body().get('text') or '')}
+            else:
+                mail = intake.read(str(self.query.get('name') or ''), self.body())
+            return self.send_json(intake.parse(mail))
 
     @route(r'/api/crm/deal/(d\d{1,9})', ('GET', 'PUT'))
     def deal(self, did) -> Any:

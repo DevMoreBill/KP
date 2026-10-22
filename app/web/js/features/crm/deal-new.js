@@ -5,6 +5,8 @@ import { DealCard } from './deal-card.js';
 import { Cabinet } from './cabinet.js';
 import { ClientSuggest } from './client-suggest.js';
 import { InnClient } from './inn-client.js';
+import { DealIntakeView } from './deal-intake.js';
+import { DealKp } from './deal-kp.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { Str } from '../../core/str.js';
@@ -48,7 +50,7 @@ export class DealNew {
     const funnel = DealCard.funnelSelect({ funnel: CrmData.funnel() }, 'name="funnel"');
     return `<div class="dlg-h"><h3>Новая сделка</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted dk-nnote">Сделки появляются и сами — при сохранении КП. Здесь — сделка без КП: запрос, встреча, тендер.</p>
-      <form class="dk-new" autocomplete="off"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" placeholder="Название, ИНН, телефон, e-mail или ФИО — подскажем; по ИНН найдём в ФНС"><small class="muted dk-found"></small></label>
+      <form class="dk-new" autocomplete="off">${DealIntakeView.html()}<label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" placeholder="Название, ИНН, телефон, e-mail или ФИО — подскажем; по ИНН найдём в ФНС"><small class="muted dk-found"></small></label>
         ${this._sources()}<label class="f"><span>Объект или задача</span><input type="text" name="title" maxlength="200" placeholder="Например: компрессорная для цеха № 3"></label>
         <div class="dk-nr"><label class="f"><span>Сумма, ₽ <em class="muted">если известна</em></span><input type="text" name="sum" inputmode="decimal" placeholder="по КП"></label>
         <label class="f"><span>Ожидаемая дата</span><input type="date" name="expected" value="${expected}"></label></div>
@@ -90,7 +92,7 @@ export class DealNew {
   }
 
   static _click(event, modal) {
-    if (DateChips.click(event)) return;
+    if (DateChips.click(event) || DealIntakeView.click(event, modal)) return;
     if (event.target.closest('[data-x]')) {
       modal.close();
       return;
@@ -138,7 +140,7 @@ export class DealNew {
     if (form.dataset.busy) return;
     form.dataset.busy = '1';
     try {
-      const body = await this._byInn(this._body(fields));
+      const body = await this._byInn({ ...this._body(fields), ...DealIntakeView.extra() });
       if (!body) return;
       const deal = await Api.request('/api/crm/deal', {
         method: 'POST',
@@ -146,9 +148,11 @@ export class DealNew {
         body: JSON.stringify(body),
       });
       await this._firstTask(form, deal);
+      const models = DealIntakeView.models(form);
       modal.close();
       if (document.getElementById('cabWin')?.open) await Cabinet.reload();
-      DealCard.open(deal.id);
+      if (models.length) DealKp.newKp(deal, models);
+      else DealCard.open(deal.id);
     } catch (error) {
       Toast.show(`Сделка не создана: ${error.message}`);
     } finally {

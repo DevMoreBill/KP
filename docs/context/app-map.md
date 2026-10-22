@@ -244,6 +244,7 @@
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.186.0** (22.10) — заявка из письма или ТЗ: `DealIntake` (`MailText`, `IntakeRules`, `CatalogPick`, нейросеть по желанию), `/api/crm/intake`, `DealIntakeView` в «Новой сделке», `DealKp.newKp(deal, ids)`.
 - **3.185.0** (22.10) — документы сделки: `DealFiles` (наследник `KpFiles`), `DealClosing` + дело `auto:closing:`, `BitrixDealDocs` (поле файлов по названию или лента), `DealDocs` в карточке.
 - **3.184.0** (22.10) — `CallResult`: итог звонка по сделке (договорились / думает / не дозвонился / отказ) → дело, стадия, проигрыш; `CrmTask.create`.
 - **3.183.0** (22.10) — `SentCall`: после отправки КП — «Когда позвонить клиенту?», переносит авто-звонок `auto:sent:<КП>`.
