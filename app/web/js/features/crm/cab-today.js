@@ -5,6 +5,7 @@ import { CrmTask } from './crm-task.js';
 import { Cabinet } from './cabinet.js';
 import { CabDeals } from './cab-deals.js';
 import { CabGuide } from './cab-guide.js';
+import { CabTodaySide } from './cab-today-side.js';
 import { Toast } from '../../core/toast.js';
 import { S } from '../../core/state.js';
 import { Fmt } from '../../core/str.js';
@@ -17,7 +18,7 @@ import { KpDate } from '../kp/kp-date.js';
 import { esc, today } from '../../core/util.js';
 import { MyDay } from '../kp/my-day.js';
 
-/** «Сегодня»: цифры одной строкой, один список «Что сделать» (дела и сделки, которым нужно действие), свёрнутое прочее. */
+/** «Сегодня»: плитки дня, «Что сделать» (дела и сделки, которым нужно действие), напоминания по КП; справа — неделя, месяц, воронка. */
 export class CabToday {
   static SHOW = 6;
   static DAY_MS = 864e5;
@@ -37,7 +38,7 @@ export class CabToday {
   }
 
   /**
-   * Раздел: строка цифр, один список «Что сделать» (дела и сделки, которым нужно действие), ниже — свёрнутое прочее.
+   * Раздел: плитки дня, слева — «Что сделать» и напоминания по КП, справа — неделя, месяц, воронка, черновики.
    * @returns {string}
    */
   static html() {
@@ -45,30 +46,61 @@ export class CabToday {
       !CrmData.board.me && !CrmData.all()
         ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>'
         : '';
-    return `<div class="td-wrap">${who}${CabGuide.tip()}${this._stats()}${this._todo()}${this._extra()}
-      <label class="md-start"><input type="checkbox" id="mdStart"${MyDay.atStart() ? ' checked' : ''}> Открывать кабинет при запуске программы</label></div>`;
+    return `${who}${CabGuide.tip()}${this._tiles()}<div class="td-g"><div class="td-l">${this._todo()}${this._reminders()}</div>
+      <aside class="td-r">${CabTodaySide.html()}${this._drafts()}${this._more()}</aside></div>
+      <label class="md-start"><input type="checkbox" id="mdStart"${MyDay.atStart() ? ' checked' : ''}> Открывать кабинет при запуске программы</label>`;
   }
 
   static _sum(deals) {
     return deals.reduce((total, deal) => total + (deal.sum || 0), 0);
   }
 
-  // цифры одной строкой; каждая ведёт к своим сделкам
-  static _stats() {
+  // плитки дня: дела, сделки в работе, без шага, новые заявки — нажатием к своему списку
+  static _tiles() {
     const now = today();
-    const month = now.slice(0, 7);
+    const tasks = CrmData.openTasks();
+    const over = tasks.filter(task => task.due < now).length;
+    const due = over + tasks.filter(task => task.due === now).length;
+    const done = CrmData.tasks().filter(
+      task => task.state === 'done' && String(task.doneAt || '').slice(0, 10) === now,
+    ).length;
     const open = CrmData.openDeals();
-    const expected = open.filter(deal => String(deal.expected || '').slice(0, 7) <= month);
-    const won = CrmData.deals().filter(
-      deal => deal.stage === 'won' && String(deal.stageAt || '').slice(0, 7) === month,
-    );
-    const stat = (key, label, list) =>
-      `<button type="button" class="td-st" data-kpi="${key}"><span>${label}</span> <b>${list.length}</b> <span class="muted">${CrmFmt.short(this._sum(list))}</span></button>`;
-    return `<div class="td-sts" role="group" aria-label="Коротко">${stat('deals', 'В работе', open)}${stat('month', 'Ожидаются в этом месяце', expected)}${stat('won', 'Выиграно в этом месяце', won)}</div>`;
+    const free = open.filter(deal => !deal.next).length;
+    const fresh = this.bxNew();
+    const waiting = fresh.filter(deal => this._late(deal)).length;
+    const tiles = [
+      {
+        key: 'tasks',
+        label: 'Дела на сегодня',
+        value: due,
+        note: over ? `<span class="bad-t">просрочено ${over}</span> · сделано ${done}` : `сделано ${done}`,
+        tone: over ? 'bad' : '',
+      },
+      { key: 'deals', label: 'Сделки в работе', value: open.length, note: CrmFmt.short(this._sum(open)) },
+      {
+        key: 'free',
+        label: 'Без следующего шага',
+        value: free,
+        note: free ? 'запланируйте звонок' : 'у всех есть шаг',
+        tone: free ? 'warn' : 'ok',
+      },
+      {
+        key: 'new',
+        label: 'Новые заявки',
+        value: fresh.length,
+        note: waiting ? `<span class="bad-t">ждут больше суток ${waiting}</span>` : 'из Битрикс24',
+        tone: fresh.length ? 'warn' : '',
+      },
+    ];
+    return `<div class="cab-kpi">${tiles.map(tile => this._tile(tile)).join('')}</div>`;
+  }
+
+  static _tile({ key, label, value, note, tone = '' }) {
+    return `<button type="button" class="cab-k${tone ? ` ${tone}` : ''}" data-kpi="${key}"><span>${label}</span><b>${value}</b><small>${note}</small></button>`;
   }
 
   /**
-   * Нажатие на цифру: к сделкам с нужным отбором; «дела» — открыть строку нового дела.
+   * Нажатие на плитку или цифру: дела — строка нового дела, сделки — «Сделки» с нужным отбором.
    * @param {string} key
    */
   static kpi(key) {
@@ -78,8 +110,8 @@ export class CabToday {
       add?.querySelector('input[name=title]')?.focus();
       return;
     }
-    CabDeals.filter = key === 'month' ? 'month' : '';
-    CabDeals.closed = key === 'won';
+    CabDeals.filter = { month: 'month', free: 'free', new: 'new' }[key] || '';
+    CabDeals.closed = key === 'won' || key === 'lost';
     Cabinet.query = '';
     Cabinet.show('deals');
   }
@@ -188,12 +220,6 @@ export class CabToday {
     return `<details class="tk-done"><summary>Сделано сегодня (${done.length})</summary>${done.map(task => CrmTask.row(task)).join('')}</details>`;
   }
 
-  // напоминания и черновики КП, журнал, каталог — свёрнуто внизу
-  static _extra() {
-    const parts = [this._reminders(), this._drafts()].filter(Boolean).join('');
-    return `<div class="td-x">${parts}${this._more()}</div>`;
-  }
-
   static _reminders() {
     if (!FEAT.on('reminders') || !CrmData.mine()) return '';
     const items = Reminders.items;
@@ -206,8 +232,8 @@ export class CabToday {
       )
       .join('');
     if (!items.length) return '';
-    const all = items.length > limit ? '<button class="lnk" type="button" data-mdall>Все напоминания</button>' : '';
-    return `<details class="md-s td-d"><summary class="sub">Напоминания по КП <b class="md-c">${items.length}</b></summary>${rows}${all}</details>`;
+    const all = items.length > limit ? '<button class="lnk" type="button" data-mdall>Все</button>' : '';
+    return MyDay.section(`КП: напоминания <b class="md-c">${items.length}</b>`, rows, all);
   }
 
   static _drafts() {
@@ -222,8 +248,8 @@ export class CabToday {
       )
       .join('');
     if (!drafts.length) return '';
-    const all = drafts.length > limit ? '<button class="lnk" type="button" data-mddr>Все черновики</button>' : '';
-    return `<details class="md-s td-d"><summary class="sub">Черновики КП <b class="md-c">${drafts.length}</b></summary>${rows}${all}</details>`;
+    const all = drafts.length > limit ? '<button class="lnk" type="button" data-mddr>Все</button>' : '';
+    return MyDay.section(`Черновики КП <b class="md-c">${drafts.length}</b>`, rows, all);
   }
 
   static _more() {
