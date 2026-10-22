@@ -86,7 +86,8 @@ class AutoFillTest(unittest.TestCase):
         self.assertEqual(uf.get('UF_SUM'), '1690000|RUB', 'сумма КП: в сделке — копейки, в поле — рубли')
         self.assertEqual(uf.get('UF_DEPT'), '80', '«Дизельные мотопомпы» — по словам позиции')
         self.assertNotIn('UF_EQUIP', uf, 'импортные и отечественные мотопомпы одинаково подходят — не угадывается')
-        for code in ('UF_SRC', 'UF_ASKED', 'UF_CTYPE', 'UF_SIZE'):
+        self.assertEqual(uf.get('UF_ASKED'), ['61'], 'запрошенный бренд — по первому КП сделки (регламент)')
+        for code in ('UF_SRC', 'UF_CTYPE', 'UF_SIZE'):
             self.assertNotIn(code, uf, code)
         self.assertEqual(set(self.deal(did)['ufAuto']), set(uf))
         hist = [row for row in self.deal(did)['history'] if row.get('what') == 'fields']

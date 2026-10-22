@@ -27,6 +27,8 @@ class AutoTasks:
     SENT = 'auto:sent:'
     IDLE = 'auto:idle:'
     EXPIRE = 'auto:expire:'
+    NEW = 'auto:new:'
+    END_OF_DAY = '17:00'
 
     def __init__(self, store) -> None:
         self.store = store
@@ -34,12 +36,13 @@ class AutoTasks:
 
     def sync(self, deal: dict) -> int:
         """Дела по одной сделке. → сколько поставлено."""
+        have = self.tasks.list(deal=deal['id'])
+        self._settle_new(deal, have)
         if deal.get('stage') in Funnels.CLOSED:
             return 0
-        have = self.tasks.list(deal=deal['id'])
         steps = {task.get('step') for task in have if task.get('step')}
         offers = self._offers(deal['id'])
-        wanted = [*self._after_sent(offers), *self._expiring(offers), *self._idle(deal, have)]
+        wanted = [*self._new_request(deal), *self._after_sent(offers), *self._expiring(offers), *self._idle(deal, have)]
         added = 0
         for step, body in wanted:
             if step in steps:
@@ -121,6 +124,32 @@ class AutoTasks:
             'due': date.today().isoformat(),
         }
         return [(self.IDLE + changed.isoformat(), body)]
+
+    def _new_request(self, deal: dict) -> list[tuple[str, dict]]:
+        """Регламент Битрикс24: к концу дня на стадии «Новая заявка» сделок не остаётся — взять в работу или закрыть."""
+        from deal_rules import DealRegs
+
+        funnel = deal.get('funnel') or Funnels.MAIN
+        if funnel == Funnels.MAIN or deal.get('fstage') != Funnels(self.store).first(funnel):
+            return []
+        if not DealRegs(self.store).enabled():
+            return []
+        body = {
+            'kind': 'task',
+            'title': 'Новая заявка: взять в работу или закрыть до конца дня',
+            'due': date.today().isoformat(),
+            'time': self.END_OF_DAY,
+        }
+        return [(self.NEW + deal['id'], body)]
+
+    def _settle_new(self, deal: dict, have: list[dict]) -> None:
+        """Сделка ушла с «Новой заявки» — её дело «взять в работу» сделано."""
+        if deal.get('fstage') == Funnels(self.store).first(deal.get('funnel') or Funnels.MAIN):
+            return
+        for task in have:
+            if task.get('step') == self.NEW + deal['id'] and task.get('state') == 'open':
+                self.tasks.update(task['id'], {'state': 'done'}, self.WHO)
+                self._to_bitrix(task['id'])
 
     def _to_bitrix(self, tid: Any) -> None:
         from bitrix import BitrixQueue

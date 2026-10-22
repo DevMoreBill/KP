@@ -5,6 +5,7 @@ import { CrmTask } from './crm-task.js';
 import { DealFieldsView } from './deal-fields.js';
 import { DealFeed } from './deal-feed.js';
 import { LostPick } from './lost-pick.js';
+import { DealNeed } from './deal-need.js';
 import { DealKp } from './deal-kp.js';
 import { Cabinet } from './cabinet.js';
 import { DealSummary } from './deal-summary.js';
@@ -31,6 +32,7 @@ import { Modal } from '../../core/modal.js';
  */
 export class DealCard {
   static MANY = 8;
+  static NEED_SHOWN = 3;
   static SAVED_MS = 2000;
   static CLIENTS_SHOWN = 50;
   static KOPECKS = 100;
@@ -141,9 +143,19 @@ export class DealCard {
    */
   static html() {
     const deal = this.deal;
-    return `${DealWin.grip()}${this._top(deal)}<div class="dk-in">${this._steps(deal)}${DealSummary.html(deal)}${DealExec.html(deal)}
+    return `${DealWin.grip()}${this._top(deal)}<div class="dk-in">${this._steps(deal)}${this._regs(deal)}${DealSummary.html(deal)}${DealExec.html(deal)}
       <div class="dk-cols"><div class="dk-main">${this._about(deal)}${this._kps(deal)}${DealFieldsView.html(deal)}</div>
       <div class="dk-side">${DealFeed.html(deal, item => this.hist(item))}</div></div></div>`;
+  }
+
+  // регламент Битрикс24: чего не хватает до следующей стадии
+  static _regs(deal) {
+    const next = deal.regsNext;
+    if (!next || !(next.names || []).length) return '';
+    const shown = next.names.slice(0, this.NEED_SHOWN).join(', ');
+    const rest = next.names.length - this.NEED_SHOWN;
+    const more = rest > 0 ? ` и ещё ${rest}` : '';
+    return `<p class="dk-need" title="${esc(next.names.join(', '))}"><span>До «${esc(next.label)}» не хватает: ${esc(shown)}${more}</span><button class="btn sm" type="button" data-dkneed>Заполнить</button></p>`;
   }
 
   static _top(deal) {
@@ -445,6 +457,10 @@ export class DealCard {
     }
     const field = event.target.closest('[data-dkf]');
     if (!field) return;
+    if (field.dataset.dkf === 'stage') {
+      if (field.value) this._stage(field.value);
+      return;
+    }
     const body = this._body(field.dataset.dkf, field.value);
     if (body && (await this.save(body))) this._flash();
   }
@@ -468,7 +484,27 @@ export class DealCard {
     const deal = this.deal;
     if (key === deal.stage && key !== 'lost') return;
     const body = key === 'lost' ? await LostPick.ask(deal) : { stage: key };
-    if (body && (await this.save(body))) this._flash();
+    if (body) this._apply(() => DealNeed.move(this.deal, body));
+  }
+
+  static _fillNext() {
+    const next = this.deal.regsNext;
+    if (next) this._apply(() => DealNeed.fill(this.deal, next.stage));
+  }
+
+  // по очереди с прочими сохранениями: ответ — карточка сделки
+  static _apply(run) {
+    const done = this.queue.then(async () => {
+      const deal = await run();
+      if (!deal) return false;
+      this.deal = this._keep(deal);
+      this.changed = true;
+      this.render();
+      this._flash();
+      return true;
+    });
+    this.queue = done.catch(() => false);
+    return done;
   }
 
   static _go(step) {
@@ -498,6 +534,7 @@ export class DealCard {
       ['[data-ufempty]', () => this._onlyEmpty()],
       ['[data-dknav]', el => this._go(+el.dataset.dknav)],
       ['[data-dks]', el => this._stage(el.dataset.dks)],
+      ['[data-dkneed]', () => this._fillNext()],
       ['[data-dko]', el => DealKp.openKp(el.dataset.dko)],
       ['[data-dknew]', () => DealKp.newKp(this.deal)],
       ['[data-dklink]', () => DealKp.link(this.deal, () => this.reload())],

@@ -42,6 +42,14 @@ export class CrmData {
   }
 
   /**
+   * Включён регламент оформления сделки Битрикс24 (источник заявки при создании, окно «Заполните» перед стадией).
+   * @returns {boolean}
+   */
+  static regs() {
+    return !!(this.board && this.board.regs);
+  }
+
+  /**
    * Все сделки ответа.
    * @returns {object[]}
    */

@@ -2,6 +2,7 @@ import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { LostPick } from './lost-pick.js';
+import { DealNeed } from './deal-need.js';
 import { Cabinet } from './cabinet.js';
 import { CabList } from './cab-list.js';
 import { Toast } from '../../core/toast.js';
@@ -180,7 +181,7 @@ export class CabDeals {
       : '';
     const empty = `<p class="kb-e">${this.drag ? 'Перетащите сюда сделку' : 'Пусто'}</p>`;
     const paint = stage.color ? ` style="--sc:${esc(stage.color)};--st:${this._ink(stage.color)}"` : '';
-    const add = stage.closed
+    const add = !this._quickAt(stage)
       ? ''
       : `<button type="button" class="kb-add" data-kbadd="${esc(stage.key)}" title="Быстрая сделка на этой стадии" aria-label="Быстрая сделка: ${esc(stage.label)}">＋</button>`;
     return `<section class="kb-c" data-kbs="${esc(stage.key)}" aria-label="${esc(stage.label)}"><header class="kb-h t-${CrmFunnel.tone(funnel, stage.key)}"${paint}>
@@ -194,6 +195,12 @@ export class CabDeals {
     const value = parseInt(String(hex).slice(1), 16);
     const [red, green, blue] = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
     return red * 0.299 + green * 0.587 + blue * 0.114 > this.LIGHT ? '#1F2B4D' : '#fff';
+  }
+
+  // быстрая сделка: на открытых стадиях; по регламенту Битрикс24 новая сделка — только с первой стадии
+  static _quickAt(stage) {
+    if (stage.closed) return false;
+    return !CrmData.regs() || stage.key === CrmData.stages({ open: true })[0]?.key;
   }
 
   static _quick(stage) {
@@ -423,16 +430,8 @@ export class CabDeals {
   static async move(deal, stage) {
     const body = stage === 'lost' ? await LostPick.ask(deal) : { stage };
     if (!body) return;
-    try {
-      await Api.request(`/api/crm/deal/${deal.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-KP-Rev': String(deal.rev) },
-        body: JSON.stringify(body),
-      });
+    if (await DealNeed.move(deal, body))
       Toast.show(`«${deal.title || deal.client}» → ${CrmFunnel.anyLabel(body.stage)}`);
-    } catch (error) {
-      Toast.show(`Стадия не изменена: ${error.message}`);
-    }
     Cabinet.reload();
   }
 }

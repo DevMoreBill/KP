@@ -1,6 +1,7 @@
 import { AdminApi } from './admin-core.js';
 import { BitrixFields, BitrixLog, BitrixManagers, BitrixOld, BitrixStages } from './bitrix-tabs.js';
 import { BitrixFlow, BitrixLink, BitrixSchedule, BitrixSend } from './bitrix-link.js';
+import { BitrixRegs } from './bitrix-regs.js';
 import { StDirty } from './settings-tools.js';
 import { MirrorPanel } from '../crm/mirror-panel.js';
 import { Fmt } from '../../core/str.js';
@@ -23,6 +24,7 @@ export class BitrixPanel {
     ['mgr', 'Менеджеры'],
     ['cats', 'Воронки и этапы'],
     ['fields', 'Поля сделки'],
+    ['regs', 'Регламент сделки'],
     ['send', 'Что передаётся'],
     ['sched', 'Расписание'],
     ['log', 'Журнал и проверка'],
@@ -50,6 +52,7 @@ export class BitrixPanel {
       mgr: BitrixManagers,
       cats: BitrixStages,
       fields: BitrixFields,
+      regs: BitrixRegs,
       send: BitrixSend,
       sched: BitrixSchedule,
       log: BitrixLog,

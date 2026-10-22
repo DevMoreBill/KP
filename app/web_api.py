@@ -50,6 +50,7 @@ from crm import CrmBoard, DealBook, Stages, TaskBook
 from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
+from deal_rules import DealRegs
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
 from features import FeatureAccess, Viewer
@@ -1831,6 +1832,7 @@ class CrmController(Controller):
         except PermissionError as exc:
             return self.text(403, str(exc))
         res = CrmBoard(store()).build(scope)
+        res['regs'] = DealRegs(store()).enabled()  # регламент Битрикс24: источник заявки при создании, окно «Заполните»
         if BitrixConf(store()).enabled():  # ссылки «Открыть в Битрикс24» на карточках доски
             portal = BitrixConf(store()).get().get('portal') or ''
             bx_ids = dict(store().all("SELECT local_id, bx_id FROM bx_link WHERE kind='deal'"))
@@ -1913,6 +1915,8 @@ class CrmController(Controller):
                     )
                 mgr = self._manager(str(body['managerId']))
             with self.user_input():
+                if 'stage' in body:
+                    DealRegs(store()).check(deal, str(body['stage'] or ''), str(body.get('lostReason') or ''))
                 try:
                     new = book.update(did, body, admin.actor(self.handler)[1], self.base_rev(), mgr)
                 except LookupError as exc:
@@ -1925,6 +1929,42 @@ class CrmController(Controller):
             self.bitrix_on(did)
             deal = new
         return self._card(did, deal)
+
+    @route(r'/api/crm/deal/(d\d{1,9})/need', ('GET', 'POST'))
+    def need(self, did) -> Any:
+        """Регламент Битрикс24: что заполнить для стадии (GET) — и заполнить, затем перевести (POST)."""
+        deal = self._deal(did)
+        if deal is None:
+            return None
+        regs, book = DealRegs(store()), DealBook(store())
+        author = admin.actor(self.handler)[1]
+        if self.method == 'GET':
+            book.autofill(did, author)
+            with self.user_input():
+                view = regs.need(
+                    book.get(did) or deal, str(self.query.get('stage') or ''), str(self.query.get('reason') or '')
+                )
+            return self.send_json(dict(view, on=regs.enabled()))
+        body = self.json_body()
+        with self.user_input():
+            filled = regs.save_client(deal, body.get('client'), author)
+            edit = {key: body[key] for key in ('uf', 'note') if key in body}
+            edit.update({key: filled[key] for key in ('clientId', 'clientInn') if filled.get(key) != deal.get(key)})
+            if edit:
+                book.update(did, edit, author)
+            book.autofill(did, author)
+            deal = book.get(did) or deal
+            move = {key: body[key] for key in ('stage', 'lostReason') if key in body}
+            if move.get('stage'):
+                regs.check(deal, str(move['stage']), str(move.get('lostReason') or ''))
+                new = book.update(did, move, author)
+            else:
+                new = deal
+        changes = {key: new.get(key) for key in ('stage', 'lostReason') if new.get(key) != deal.get(key)}
+        if changes:
+            admin.log(self.handler, store(), 'edit_deal', 'deal', did, {key: deal.get(key) for key in changes}, changes)
+        self.bitrix_on(did)
+        return self._card(did, new)
 
     def _card(self, did: str, deal: dict) -> Any:
         """Карточка сделки: КП, исполнение, клиент из справочника, дела, Битрикс24, воронки и поля."""
@@ -1951,6 +1991,7 @@ class CrmController(Controller):
             deal['myCompanyDefault'] = companies.default(BitrixConf(store()).rules().company()['my'])
         funnel = deal.get('funnel') or Funnels.MAIN
         fields = DealFields(store())
+        deal['regsNext'] = self.safe(lambda: DealRegs(store()).next_gaps(deal))
         return self.send_json(
             dict(
                 deal,

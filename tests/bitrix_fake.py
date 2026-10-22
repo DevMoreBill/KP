@@ -212,6 +212,22 @@ class FakeBitrix:
             return {'result': True}
         if m == 'crm.activity.list':
             return self.page([a for a in self.activities.values() if self.match(a, b.get('filter'))], b)
+        if m == 'crm.company.update':
+            c = self.companies[str(b['id'])]
+            for k, v in f.items():
+                c[k] = (c.get(k) or []) + v if k in ('PHONE', 'EMAIL') else v
+            return {'result': True}
+        if m == 'crm.duplicate.findbycomm':
+            want = {''.join(ch for ch in str(v) if ch.isalnum()).lower() for v in b.get('values') or []}
+            ids = [int(i) for i, c in self.contacts.items()
+                   if any(''.join(ch for ch in str(x.get('VALUE')) if ch.isalnum()).lower() in want for x in c.get(b.get('type')) or [])]
+            return {'result': {'CONTACT': ids} if ids else []}
+        if m == 'crm.company.contact.add':
+            self.company_people.setdefault(str(b['id']), []).append(str(f['CONTACT_ID']))
+            return {'result': True}
+        if m == 'crm.deal.contact.items.set':
+            self.deal_people[str(b['id'])] = [str(x['CONTACT_ID']) for x in b.get('items') or []]
+            return {'result': True}
         raise KeyError(m)
 
     # ---------- «пользователь Битрикса» правит

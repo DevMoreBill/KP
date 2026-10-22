@@ -45,7 +45,7 @@ class Modes:
            'phd': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='dark', is_mobile=True, has_touch=True,
                        device_scale_factor=3, user_agent=IPHONE)}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
-              'journal', 'kptabs', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'dbl')
+              'journal', 'kptabs', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'regs', 'dbl')
 
     @staticmethod
     def chromium():
@@ -109,6 +109,24 @@ class UiStand:
                           UF_CRM_INVOICE=str(1200000 + i * 100000), UF_CRM_NOTE='Перезвонить главному инженеру' if i % 2 else '')
         for i in range(3):
             fake.new_deal(TITLE=f'Обращение с сайта {i + 1}', CATEGORY_ID='0', STAGE_ID='NEW', CLOSED='N', UF_CRM_TOPIC='Запчасти')
+        # этап «regs»: воронка «Обращения» и поля регламента оформления сделки (как в «Правилах ведения сделки»)
+        fake.categories.append({'id': 5, 'name': 'Обращения'})
+        fake.stages['DEAL_STAGE_5'] = [('C5:NEW', 'Новая заявка', 'P'), ('C5:TAKEN', 'Взято в работу', 'P'),
+                                       ('C5:TKP', 'ТКП отправлено клиенту', 'P'), ('C5:AGREE', 'Согласование договора', 'P'),
+                                       ('C5:SIGNED', 'Договор подписан', 'P'), ('C5:WON', 'В проект', 'S'),
+                                       ('C5:LOSE', 'Сделка проиграна', 'F'), ('C5:DUP', 'Дубль сделки', 'F')]
+        fake.portal_fields += [
+            {'FIELD_NAME': 'UF_CRM_SRC', 'USER_TYPE_ID': 'enumeration', 'L': 'Источник1',
+             'ITEMS': [{'ID': '1', 'VALUE': 'Рекламная заявка'}, {'ID': '2', 'VALUE': 'Повторная заявка'}, {'ID': '3', 'VALUE': 'Личная заявка'}]},
+            {'FIELD_NAME': 'UF_CRM_CTYPE', 'USER_TYPE_ID': 'enumeration', 'L': 'Тип компании',
+             'ITEMS': [{'ID': '31', 'VALUE': 'Конечный клиент'}, {'ID': '32', 'VALUE': 'Дилер'}]},
+            {'FIELD_NAME': 'UF_CRM_EQ', 'USER_TYPE_ID': 'enumeration', 'L': 'Тип оборудования1',
+             'ITEMS': [{'ID': '51', 'VALUE': 'Компрессоры'}, {'ID': '52', 'VALUE': 'Насосы'}]},
+            {'FIELD_NAME': 'UF_CRM_ASKB', 'USER_TYPE_ID': 'string', 'L': 'Запрошенный бренд1'},
+            {'FIELD_NAME': 'UF_CRM_ASKG', 'USER_TYPE_ID': 'string', 'L': 'Запрошенный товар1'},
+            {'FIELD_NAME': 'UF_CRM_LOSTC', 'USER_TYPE_ID': 'string', 'L': 'Комментарий к проигранной Сделке'},
+            {'FIELD_NAME': 'UF_CRM_DUP', 'USER_TYPE_ID': 'string', 'L': 'ID Основной сделки для Статуса "Дубль Сделки"'},
+        ]
 
     def close(self):
         if getattr(self, 'bx', None):
@@ -954,6 +972,8 @@ class Scenario(UiRun):
                 pg.fill('#setdlg #bxFromD', '2026-01-01')
                 pg.click('#setdlg #bxImpPv')
                 pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Найдено') || document.querySelector('#setdlg .msg.err')", timeout=60000)
+            if t == 'regs':
+                pg.wait_for_selector('#setdlg #bxRegsSave', timeout=20000)
             if pg.locator('#setdlg .msg.err').count():
                 self.errs.append(('bitrix', 'ERR', '%s: %s' % (t, pg.locator('#setdlg .msg.err').first.inner_text()[:200])))
             self.snap('d_bx_' + t, '#setdlg', wait=300)
@@ -1151,6 +1171,69 @@ class Scenario(UiRun):
             self.errs.append(('mirror', 'ERR', 'поле Битрикса не сохранилось: %s' % saved))
         self.snap('e3_card_saved', 'dialog.deal-dlg[open]', wait=300)
         self.closeall()
+
+    def s_regs(self):
+        """Регламент сделки Битрикс24: окно «Заполните» перед стадией, проигрыш «дублем», источник в новой сделке, вкладка регламента."""
+        pg = self.pg
+        self._bx_connect()
+        self._mirror_tab()
+        self._mirror_act('structure', 'Структура загружена')
+        self._bx_tab('regs')
+        pg.wait_for_selector('#setdlg #bxRegsSave', timeout=20000)
+        self.snap('g0_regs_admin', '#setdlg', wait=300)
+        self.closeall()
+        deal = self.ev("""() => Api.request('/api/crm/deal', {method: 'POST', headers: {'Content-Type': 'application/json; charset=utf-8'},
+          body: JSON.stringify({title: 'Компрессор на завод (регламент)', client: 'ООО «Регламент-Прогон»', funnel: 'b5', source: 'ad'})})""")
+        self.ev("id => DealCard.open(id)", deal['id'])
+        pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=20000)
+        self.snap('g1_regs_card', 'dialog.deal-dlg[open]', wait=400)
+        pg.click('dialog.deal-dlg[open] [data-dks="C5:TAKEN"]')
+        pg.wait_for_selector('dialog.dn-dlg[open]', timeout=15000)
+        self.snap('g2_regs_need', 'dialog.dn-dlg[open]', wait=300)
+        self._regs_fill()
+        pg.click('dialog.dn-dlg[open] [data-dnok]')
+        self.wait(2500)
+        if self.ev("DealCard.deal && DealCard.deal.fstage") != 'C5:TAKEN':
+            self.errs.append(('regs', 'ERR', 'после «Заполните» сделка не на «Взято в работу»: %s' % self.ev("DealCard.deal && DealCard.deal.fstage")))
+        self.snap('g3_regs_taken', 'dialog.deal-dlg[open]', wait=300)
+        pg.click('dialog.deal-dlg[open] [data-dks="lost"]')
+        pg.wait_for_selector('dialog.dk-lost-dlg[open]', timeout=10000)
+        pg.check('dialog.dk-lost-dlg[open] input[value="C5:DUP"]')
+        pg.fill('dialog.dk-lost-dlg[open] #lpC', 'Клиент уже ведётся в другой сделке')
+        pg.click('dialog.dk-lost-dlg[open] [data-ok]')
+        pg.wait_for_selector('dialog.dn-dlg[open]', timeout=15000)
+        self.snap('g4_regs_dup', 'dialog.dn-dlg[open]', wait=300)
+        pg.fill('dialog.dn-dlg[open] [data-uf="UF_CRM_DUP"]', '12345')
+        pg.click('dialog.dn-dlg[open] [data-dnok]')
+        self.wait(2500)
+        if self.ev("DealCard.deal && DealCard.deal.fstage") != 'C5:DUP':
+            self.errs.append(('regs', 'ERR', 'дубль не закрыт: %s' % self.ev("DealCard.deal && DealCard.deal.fstage")))
+        self.closeall()
+        self.ev("Cabinet.open('deals')")
+        pg.wait_for_selector('#cabWin .cab-tabs', timeout=30000)
+        self.wait(1200)
+        self.ev("DealNew.open()")
+        pg.wait_for_selector('dialog.dk-new-dlg[open] [data-dnsrc]', timeout=10000)
+        self.snap('g5_regs_new', 'dialog.dk-new-dlg[open]', wait=300)
+        self.closeall()
+
+    def _regs_fill(self):
+        """Окно «Заполните»: списки — первым вариантом, строки и заметка — текстом, клиент — вымышленным."""
+        pg = self.pg
+        box = 'dialog.dn-dlg[open]'
+        for sel in pg.locator(box + ' select[data-uf]').all():
+            sel.select_option(index=1)
+        for inp in pg.locator(box + ' input[data-uf]').all():
+            inp.fill('Прогон: значение')
+        note = pg.locator(box + ' [data-dnnote]')
+        if note.count() and not note.input_value():
+            note.fill('Нужен винтовой компрессор на завод')
+        values = {'companyPhone': '+7 495 100-20-30', 'companyEmail': 'info@reglament.example', 'inn': '7700000155',
+                  'person': 'Орлова Анна Сергеевна', 'personPhone': '+7 900 222-33-44', 'personEmail': 'orlova@reglament.example'}
+        for key, value in values.items():
+            loc = pg.locator(box + ' [data-dnc="%s"]' % key)
+            if loc.count():
+                loc.fill(value)
 
     def s_dbl(self):
         """Двойной щелчок по кнопкам, открывающим окна: окно одно и не пустое."""

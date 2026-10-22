@@ -367,12 +367,15 @@ class DealFields:
         return {row['code']: row for row in self.all()}
 
     def shown(self, fid) -> list[dict]:
-        """Поля карточки сделки воронки fid (по порядку)."""
-        return [row for row in self.all() if fid in (row.get('on') or [])]
+        """Поля карточки сделки воронки fid (по порядку); поля регламента оформления сделки — во всех воронках."""
+        return [row for row in self.all() if fid in (row.get('on') or []) or row.get('reg')]
 
     def codes(self) -> list[str]:
         """Поля, значения которых хранятся в программе (включены хоть в одной воронке)."""
-        return [row['code'] for row in self.all() if row.get('on')]
+        return [row['code'] for row in self.all() if row.get('on') or row.get('reg')]
+
+    def save_rows(self, rows: list[dict]) -> None:
+        self._put(rows)
 
     def _put(self, rows: list[dict], **extra: Any) -> None:
         conf = self.store.kv_get(self.KEY) or {}
@@ -387,7 +390,12 @@ class DealFields:
         for row in defs[: self.LIST_MAX]:
             prev = old.get(row['code'])
             keep = (
-                {'on': prev.get('on') or [], 'label': prev.get('label') or row['label'], 'own': prev.get('own')}
+                {
+                    'on': prev.get('on') or [],
+                    'label': prev.get('label') or row['label'],
+                    'own': prev.get('own'),
+                    'reg': prev.get('reg'),
+                }
                 if prev
                 else {}
             )

@@ -11,6 +11,7 @@ from bitrix import BitrixQueue, BitrixSync
 from bitrix_clients import BitrixClients
 from crm import DealBook, TaskBook
 from crm_funnels import DealFields, Funnels, UfValue
+from deal_rules import DealRegs
 from kp_track import Val
 from server_log import ServerLog
 
@@ -36,6 +37,7 @@ class MirrorStructure:
         fields.save_defs(self._fields(), self._users())
         fill = {row['id']: self._fill(row['bx'], fields.all()) for row in funnels}
         fields.choose(fill)
+        DealRegs(self.store).mark()
         self.sync.log.add(
             f'Структура Битрикс24: воронок {len(funnels)}, полей сделки {len(fields.all())}, в карточке {len(fields.codes())}'
         )

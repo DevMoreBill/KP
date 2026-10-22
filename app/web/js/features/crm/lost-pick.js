@@ -1,3 +1,4 @@
+import { CrmData } from './crm-data.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
@@ -12,7 +13,7 @@ export class LostPick {
   /**
    * Спросить, как закрыть сделку.
    * @param {object} deal
-   * @returns {Promise<{stage: string, lostReason: string}|null>}
+   * @returns {Promise<{stage: string, lostReason: string, lostNote?: string}|null>}
    */
   static async ask(deal) {
     const fails = CrmFunnel.failures(deal.funnel);
@@ -35,7 +36,7 @@ export class LostPick {
       const modal = new Modal(
         `<div class="dlg-h"><h3>Сделка проиграна</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
         <p class="muted" style="margin:0 0 8px">«${esc(deal.title || deal.client)}» — стадия провала, как в Битрикс24.</p>
-        <div class="dk-lr">${options}<label class="f"><span>Комментарий</span><input type="text" id="lpC" maxlength="200" value="${esc(deal.lostReason || '')}"></label></div>
+        <div class="dk-lr">${options}<label class="f"><span>${CrmData.regs() ? 'Почему проиграна' : 'Комментарий'}</span><input type="text" id="lpC" maxlength="200" value="${esc(deal.lostReason || '')}" placeholder="Например: выбрали поставщика дешевле"></label></div>
         <div class="row"><button class="btn primary" type="button" data-ok>Сделка проиграна</button><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button></div>`,
         'dk-lost-dlg',
       );
@@ -56,6 +57,12 @@ export class LostPick {
       return null;
     }
     const stage = fails.find(row => row.key === radio.value);
-    return { stage: radio.value, lostReason: modal.$('#lpC').value.trim() || stage.label };
+    const note = modal.$('#lpC').value.trim();
+    if (CrmData.regs() && !note) {
+      Toast.show('Напишите, почему сделка проиграна — по регламенту Битрикс24');
+      modal.$('#lpC').focus();
+      return null;
+    }
+    return { stage: radio.value, lostReason: note || stage.label, lostNote: note };
   }
 }

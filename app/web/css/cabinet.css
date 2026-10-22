@@ -518,3 +518,18 @@ label.f:has(.csg){position:relative}
 .tk .tk-who a{color:var(--navy);text-decoration:none;white-space:nowrap;font-weight:600}
 .tk .tk-who a:hover{text-decoration:underline}
 .mob .tk .tk-who a{display:inline-block;padding:4px 0}
+/* регламент оформления сделки Битрикс24: строка «не хватает», отметка «*», окно «Заполните», источник заявки */
+.dk-need{display:flex;align-items:center;gap:10px;margin:6px 0 10px;padding:8px 12px;border-radius:10px;font-size:13px;background:color-mix(in srgb,var(--warn-ink,#b45309) 9%,transparent);border:1px solid color-mix(in srgb,var(--warn-ink,#b45309) 28%,transparent)}
+.dk-need span{flex:1;min-width:0}
+.dk-need .btn{flex:none}
+.uf-req{color:var(--danger);font-weight:700;margin-left:2px}
+dialog.st-confirm.dn-dlg{width:min(640px,calc(100vw - 32px));max-width:none}
+.dn-sub{margin:0 0 10px;font-size:13px}
+.dn-b{max-height:min(62vh,560px);overflow:auto;overscroll-behavior:contain;margin-bottom:12px}
+.dn-b .dk-f{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 12px}
+.dn-b .dk-wide{grid-column:1/-1}
+.dn-c{border:1px solid var(--line);border-radius:10px;padding:8px 12px 12px;margin:10px 0 0}
+.dn-c legend{font-size:13px;font-weight:600;padding:0 4px}
+.dk-src .chips{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:480px){.dk-need{flex-wrap:wrap}.dn-b .dk-f{grid-template-columns:1fr}}
+html.mob .dk-src .chip{min-height:44px;padding-inline:14px}

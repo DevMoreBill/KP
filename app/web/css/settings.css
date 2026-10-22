@@ -828,3 +828,6 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .bk-prev .bk-foot{margin-top:10px}
 .sf .bk-a select{width:auto;min-width:200px}
 @media (max-width:640px){ .bk-grid{grid-template-columns:minmax(0,1fr)} .bk-mode{max-width:none} }
+/* «Битрикс24 → Регламент сделки» */
+.bx-rt td{vertical-align:middle}.bx-rt select{min-width:150px;max-width:320px}
+.bx-rck{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}

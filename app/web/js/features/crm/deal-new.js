@@ -18,6 +18,11 @@ export class DealNew {
   static AHEAD = 30;
   static FOCUS_MS = 50;
   static HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
+  static SOURCES = [
+    { key: 'ad', label: 'Рекламная', hint: 'с сайта, по телефону или почте компании, из рекламы' },
+    { key: 'repeat', label: 'Повторная', hint: 'клиент обратился к вам лично (почта, звонок вам)' },
+    { key: 'own', label: 'Личная', hint: 'клиента нашли сами и выявили потребность' },
+  ];
 
   /** Открыть окно. */
   static open() {
@@ -43,7 +48,7 @@ export class DealNew {
     return `<div class="dlg-h"><h3>Новая сделка</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted dk-nnote">Сделки появляются и сами — при сохранении КП. Здесь — сделка без КП: запрос, встреча, тендер.</p>
       <form class="dk-new" autocomplete="off"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" placeholder="Название, ИНН, телефон, e-mail или ФИО — подскажем"><small class="muted dk-found"></small></label>
-        <label class="f"><span>Объект или задача</span><input type="text" name="title" maxlength="200" placeholder="Например: компрессорная для цеха № 3"></label>
+        ${this._sources()}<label class="f"><span>Объект или задача</span><input type="text" name="title" maxlength="200" placeholder="Например: компрессорная для цеха № 3"></label>
         <div class="dk-nr"><label class="f"><span>Сумма, ₽ <em class="muted">если известна</em></span><input type="text" name="sum" inputmode="decimal" placeholder="по КП"></label>
         <label class="f"><span>Ожидаемая дата</span><input type="date" name="expected" value="${expected}"></label></div>
         ${DateChips.html(DateChips.DEAL, 'expected', expected)}${funnel}
@@ -51,6 +56,16 @@ export class DealNew {
           <input type="text" name="task" maxlength="200" placeholder="Например: позвонить, уточнить потребность" aria-label="Что сделать">
           <div class="tq-r">${DateChips.html(DateChips.TASK, 'due', tomorrow)}<input type="date" name="due" value="${tomorrow}" aria-label="Дата дела"></div></fieldset>
         <div class="row"><button class="btn primary" type="submit">Создать сделку</button><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button></div></form>`;
+  }
+
+  // регламент Битрикс24: откуда заявка — обязательно
+  static _sources() {
+    if (!CrmData.regs()) return '';
+    const chips = this.SOURCES.map(
+      row =>
+        `<button type="button" class="chip" data-dnsrc="${row.key}" aria-pressed="false" title="${row.hint}">${row.label}</button>`,
+    ).join('');
+    return `<div class="f dk-src" role="group" aria-label="Откуда заявка"><span class="req">Откуда заявка</span><div class="chips">${chips}</div></div>`;
   }
 
   static _picked(modal, client) {
@@ -79,6 +94,13 @@ export class DealNew {
     }
     const kind = event.target.closest('[data-tqk]');
     if (kind) CrmTask.pickKind(kind);
+    const source = event.target.closest('[data-dnsrc]');
+    if (source) {
+      modal.d.querySelectorAll('[data-dnsrc]').forEach(chip => {
+        chip.classList.toggle('on', chip === source);
+        chip.setAttribute('aria-pressed', String(chip === source));
+      });
+    }
   }
 
   static _body(fields) {
@@ -92,6 +114,8 @@ export class DealNew {
       expected: fields.expected.value,
     };
     if (fields.sum.value.trim()) body.sum = fields.sum.value.replace(/\s/g, '');
+    const source = fields.client.form.querySelector('[data-dnsrc].on');
+    if (source) body.source = source.dataset.dnsrc;
     if (fields.funnel) body.funnel = fields.funnel.value;
     if (CrmData.who && CrmData.who !== 'all') body.managerId = CrmData.who;
     return body;
@@ -102,6 +126,10 @@ export class DealNew {
     if (!fields.client.value.trim() && !fields.title.value.trim()) {
       Toast.show('Укажите клиента');
       fields.client.focus();
+      return;
+    }
+    if (CrmData.regs() && !form.querySelector('[data-dnsrc].on')) {
+      Toast.show('Укажите, откуда заявка: рекламная, повторная или личная');
       return;
     }
     if (form.dataset.busy) return;

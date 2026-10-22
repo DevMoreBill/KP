@@ -1,7 +1,10 @@
 """Компании и контакты Битрикс24 → клиенты программы: по ИНН, иначе по контактам (телефон, почта, ФИО), без дублей."""
 
+import base64
 import json
+import os
 import re
+from pathlib import Path
 from typing import Any
 
 from client_match import ClientMatch, ContactKey
@@ -264,3 +267,157 @@ class BitrixClients:
             return True
         name = ' '.join(ContactKey.words(person.get('name')))
         return bool(name) and name == ' '.join(ContactKey.words(row.get('name')))
+
+
+class BitrixClientOut:
+    """Клиент сделки по регламенту → Битрикс24: телефон и почта компании, контакты (привязаны к компании и сделке),
+    файл КП — в поле «ТКП / счёт». Каждое значение отправляется один раз (отметки в связях обмена)."""
+
+    PEOPLE_MAX = 3
+    PDF = 'КП (PDF)'
+    WORD = 'КП (Word)'
+
+    def __init__(self, sync) -> None:
+        self.sync = sync
+        self.api = sync.api
+        self.store = sync.store
+        self.rules = sync.rules
+        self.links = sync.links
+
+    def push(self, deal: dict, company_id: str | None, bid: str) -> None:
+        if not company_id:
+            return
+        client = self._client(deal)
+        if not client:
+            return
+        if self.rules.can('company', 'out'):
+            self.company_comm(company_id, client)
+        if self.rules.allow(self.rules.company()['contacts'], 'out'):
+            people = self.people(company_id, client, deal.get('managerId'))
+            if people:
+                self.bind_deal(deal['id'], bid, people[0])
+
+    def _client(self, deal: dict) -> dict:
+        cid = deal.get('clientId') or ('inn' + deal['clientInn'] if deal.get('clientInn') else '')
+        found = self.store.client_get(cid) if cid else None
+        return found if isinstance(found, dict) else {}
+
+    def company_comm(self, company_id: str, client: dict) -> None:
+        """Телефон и почта компании из справочника — в компанию Битрикса (дописываются, прежние не трогаются)."""
+        key = f'comm|{company_id}'
+        link = self.links.get('file', key)
+        sent = dict((link or {}).get('sent') or {})
+        fields: dict[str, list] = {}
+        for field, kind in (('phone', 'PHONE'), ('email', 'EMAIL')):
+            value = str(client.get(field) or '').strip()
+            if value and sent.get(field) != value:
+                fields[kind] = [{'VALUE': value, 'VALUE_TYPE': 'WORK'}]
+                sent[field] = value
+        if fields:
+            self.api.call('crm.company.update', {'id': company_id, 'fields': fields})
+            self.links.put('file', key, company_id, sent)
+
+    def people(self, company_id: str, client: dict, manager_id: str | None) -> list[str]:
+        """Контакты клиента → контакты Битрикса этой компании: найденные по телефону или почте, иначе новые."""
+        out = []
+        rows = [row for row in client.get('contacts') or [] if isinstance(row, dict) and row.get('name')]
+        for row in rows[: self.PEOPLE_MAX]:
+            link = self.links.get('file', self.person_key(client, row))
+            bx_id = link['bx'] if link else self._find(row) or self._add(company_id, row, manager_id)
+            if not link:
+                self._join(company_id, bx_id)
+                self.remember(self.links, client, row, bx_id, company_id)
+            out.append(str(bx_id))
+        return out
+
+    @staticmethod
+    def person_key(client: dict, row: dict) -> str:
+        return 'person|{}|{}'.format(client.get('id') or '', ' '.join(ContactKey.words(row.get('name'))))
+
+    @classmethod
+    def remember(cls, links, client: dict, row: dict, bx_id: Any, company_id: Any) -> None:
+        """Контакт уже есть в Битриксе (создан с компанией или найден) — повторно не создаётся."""
+        links.put('file', cls.person_key(client, row), str(bx_id), {'company': str(company_id)})
+
+    def _find(self, row: dict) -> str:
+        for kind, value in (('PHONE', row.get('phone')), ('EMAIL', row.get('email'))):
+            if not value:
+                continue
+            found = self.api.call(
+                'crm.duplicate.findbycomm', {'entity_type': 'CONTACT', 'type': kind, 'values': [value]}
+            )
+            ids = (found or {}).get('CONTACT') if isinstance(found, dict) else None
+            if ids:
+                return str(ids[0])
+        return ''
+
+    def _add(self, company_id: str, row: dict, manager_id: str | None) -> str:
+        parts = str(row['name']).split()
+        fields: dict[str, Any] = {
+            'LAST_NAME': parts[0] if len(parts) > 1 else '',
+            'NAME': ' '.join(parts[1:]) if len(parts) > 1 else parts[0],
+            'POST': row.get('post') or '',
+            'COMPANY_ID': company_id,
+            'OPENED': 'Y',
+            'PHONE': [{'VALUE': row['phone'], 'VALUE_TYPE': 'WORK'}] if row.get('phone') else [],
+            'EMAIL': [{'VALUE': row['email'], 'VALUE_TYPE': 'WORK'}] if row.get('email') else [],
+        }
+        user = self.sync._user_of(manager_id)
+        if user:
+            fields['ASSIGNED_BY_ID'] = user
+        return str(self.api.call('crm.contact.add', {'fields': fields}))
+
+    def _join(self, company_id: str, contact_id: str) -> None:
+        """Связка контакта с компанией (у найденного контакта её могло не быть)."""
+        try:
+            self.api.call('crm.company.contact.add', {'id': company_id, 'fields': {'CONTACT_ID': contact_id}})
+        except Exception:
+            return
+
+    def _pdf(self, word: tuple | None) -> tuple | None:
+        """PDF рядом с Word-файлом КП: создать, если его ещё нет (не вышло — уйдёт Word)."""
+        if not word or not isinstance(word[1], str):
+            return None
+        import pdf_convert
+        from counterparty import Counterparties
+
+        pdf = os.path.splitext(word[1])[0] + '.pdf'
+        try:
+            pdf_convert.convert_file(word[1], pdf, Counterparties(self.store).keys().get('convertapiKey'))
+        except Exception:
+            return None
+        return (os.path.basename(pdf), pdf) if os.path.isfile(pdf) else None
+
+    def bind_deal(self, did: str, bid: str, contact_id: str) -> None:
+        key = f'dealperson|{did}'
+        link = self.links.get('file', key)
+        if link and link['bx'] == contact_id:
+            return
+        self.api.call(
+            'crm.deal.contact.items.set', {'id': bid, 'items': [{'CONTACT_ID': contact_id, 'IS_PRIMARY': 'Y'}]}
+        )
+        self.links.put('file', key, contact_id, {'deal': bid})
+
+    def tkp(self, deal: dict, bid: str, kps: list, field: dict | None) -> None:
+        """Файл последнего КП (PDF, иначе Word) — в поле «ТКП / счёт» сделки Битрикса; новое КП — новый файл."""
+        if not field or not kps:
+            return
+        offer = kps[0]
+        files = {what: (name, path) for name, path, what in self.sync.files(offer['id'])}
+        picked = files.get(self.PDF) or self._pdf(files.get(self.WORD)) or files.get(self.WORD)
+        if not picked:
+            return
+        name, path = picked
+        key = f'tkp|{deal["id"]}'
+        link = self.links.get('file', key)
+        if link and link['sent'].get('name') == name and link['sent'].get('kp') == offer['id']:
+            return
+        try:
+            data = path if isinstance(path, bytes) else Path(path).read_bytes()
+        except OSError:
+            return
+        value: Any = {'fileData': [name, base64.b64encode(data).decode('ascii')]}
+        self.api.call(
+            'crm.deal.update', {'id': bid, 'fields': {field['code']: [value] if field.get('multiple') else value}}
+        )
+        self.links.put('file', key, bid, {'name': name, 'kp': offer['id']})

@@ -75,19 +75,36 @@ export class DealFieldsView {
     return Array.isArray(value) ? value.length > 0 : value != null && value !== '' && value !== '0';
   }
 
+  /**
+   * Одно поле для ввода (карточка сделки, окно «Заполните»).
+   * @param {object} field описание поля портала
+   * @param {object} deal {uf, users, ufAuto, regsNext}
+   * @returns {string}
+   */
+  static field(field, deal) {
+    return this._field(field, deal);
+  }
+
   static _field(field, deal) {
     const value = (deal.uf || {})[field.code];
     const users = deal.users || {};
     const mark = this._auto(deal, field.code, value)
       ? ' <em class="uf-auto" title="Заполнено программой по КП — можно изменить">из КП</em>'
       : '';
-    const label = `<span>${esc(field.label || field.title || field.code)}${mark}</span>`;
+    const need = this._need(deal.regsNext, field.code);
+    const label = `<span>${esc(field.label || field.title || field.code)}${need}${mark}</span>`;
     const state = this._filled(value) ? '' : ' uf-empty';
     if (!this.EDIT.has(field.type))
       return `<div class="f dk-ro">${label}<b>${this._text(field, value, users)}</b></div>`;
     if (field.multiple && this.LISTS.has(field.type)) return this._multi(field, value, users, label, state);
     const attrs = `data-uf="${esc(field.code)}" aria-label="${esc(field.label || field.code)}"`;
     return `<label class="f${this._wide(field, value) ? ' dk-wide' : ''}${state}">${label}${this._input(field, value, users, attrs)}</label>`;
+  }
+
+  // поле нужно по регламенту для следующей стадии
+  static _need(next, code) {
+    if (!next || !(next.codes || []).includes(code)) return '';
+    return ` <b class="uf-req" title="По регламенту — для стадии «${esc(next.label)}»">*</b>`;
   }
 
   static _auto(deal, code, value) {

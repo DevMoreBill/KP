@@ -15,12 +15,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from bitrix_clients import BitrixClients
+from bitrix_clients import BitrixClientOut, BitrixClients
 from bitrix_mirror import BitrixMirror
 from bitrix_my import MyCompanies
 from bitrix_rules import BitrixRules
 from crm import DealBook, Stages, TaskBook
-from crm_funnels import Funnels
+from crm_funnels import DealFields, Funnels
+from deal_rules import DealRegs
 from kp_track import Val
 
 
@@ -893,13 +894,15 @@ class BitrixSync:
             'TITLE': client.get('name') or name,
             'OPENED': 'Y',
             'COMPANY_TYPE': 'CUSTOMER',
-            'PHONE': [{'VALUE': phone, 'VALUE_TYPE': 'WORK'} for phone in phones],
-            'EMAIL': [{'VALUE': mail, 'VALUE_TYPE': 'WORK'} for mail in mails],
+            'PHONE': [{'VALUE': phone, 'VALUE_TYPE': 'WORK'} for phone in [client.get('phone'), *phones] if phone][:3],
+            'EMAIL': [{'VALUE': mail, 'VALUE_TYPE': 'WORK'} for mail in [client.get('email'), *mails] if mail][:3],
         }
         uid = self._user_of(deal.get('managerId'))
         if uid:
             fields['ASSIGNED_BY_ID'] = uid
         cid = self.api.call('crm.company.add', {'fields': fields})
+        sent = {key: client[key] for key in ('phone', 'email') if client.get(key)}
+        self.links.put('file', f'comm|{cid}', str(cid), sent)  # телефон и почта уже в новой компании
         comp_rules = self.rules.company()
         if inn and comp_rules['reqs']:
             preset = self._preset()
@@ -933,7 +936,7 @@ class BitrixSync:
                     pass  # адрес — не главное: компания и реквизиты уже есть
         for x in cons[:3] if self.rules.allow(comp_rules['contacts'], 'out') else []:
             parts = str(x['name']).split()
-            self.api.call(
+            person_id = self.api.call(
                 'crm.contact.add',
                 {
                     'fields': {
@@ -947,6 +950,7 @@ class BitrixSync:
                     }
                 },
             )
+            BitrixClientOut.remember(self.links, client, x, person_id, cid)
         return cid
 
     def _preset(self) -> Any:
@@ -1148,6 +1152,7 @@ class BitrixSync:
             return rules.allow(self._field(k)['dir'], 'out')
 
         fields: dict = {}
+        cid = None
         if out('sum'):
             fields.update(OPPORTUNITY=round((deal.get('sum') or 0) / 100, 2), CURRENCY_ID='RUB')
         if rules.flow('company') != 'off':
@@ -1226,9 +1231,23 @@ class BitrixSync:
         for k in kps:
             self._files(bid, k)
         self._comments(bid, deal)
+        self._regs_out(deal, cid, bid, kps)
         for task in TaskBook(self.store).list(deal=did):
             if not self.links.get('task', task['id']):
                 self.push_task(task['id'], bid)
+
+    def _regs_out(self, deal: dict, cid: str | None, bid: str, kps: list) -> None:
+        """Регламент оформления сделки: телефон и почта компании, контакты со связкой, файл КП в поле «ТКП / счёт»."""
+        regs = DealRegs(self.store)
+        if regs.conf().get('on', True) is False:
+            return
+        code = regs.codes().get('tkp')
+        out = BitrixClientOut(self)
+        try:
+            out.push(deal, cid, bid)
+            out.tkp(deal, bid, kps, DealFields(self.store).by_code().get(code) if code else None)
+        except BitrixError as exc:
+            self.log.add(f'Сделка № {deal.get("number")}: клиент и файл КП в Битрикс24 не отправлены — {exc}', 'warn')
 
     def _my_company(self, deal: dict, link: dict | None) -> str:
         """Наша компания сделки (MYCOMPANY_ID) — что отправить или пусто (не менять).
@@ -2251,6 +2270,15 @@ class BitrixDesk:
                 for (did,) in store.all("SELECT id FROM deals WHERE stage NOT IN ('won', 'lost')"):
                     BitrixQueue.touch(store, 'deal', did)
             return self.send(self.view())
+        if sub == 'bitrix/regs' and method == 'GET':
+            return self.send(DealRegs(store).view())
+        if sub == 'bitrix/regs' and method == 'POST':
+            try:
+                view = DealRegs(store).save(self.body())
+            except ValueError as exc:
+                return self.text(400, str(exc))
+            self.log_fn('edit_settings', 'settings', 'bitrix-regs', None, {'регламент': 'изменён'})
+            return self.send(view)
         if sub == 'bitrix/test' and method == 'POST':
             try:
                 data = self.body()

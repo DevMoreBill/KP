@@ -90,6 +90,7 @@ class DealBook:
 
     RUB_MAX = 1e12
     REASON_MAX = 200
+    SOURCES = ('ad', 'repeat', 'own')  # заявка: рекламная, повторная, личная (регламент Битрикс24)
 
     HISTORY_MAX = 60
     GROUP_DAYS = 30  # КП одного клиента у одного менеджера с промежутком до 30 дней — одна сделка (adopt)
@@ -240,6 +241,7 @@ class DealBook:
             conn = self.store.conn()
             did = self._new(conn, x, author)
             conn.commit()
+        self.autofill(did, author)  # поля регламента, известные сразу (источник заявки, сумма)
         return self._require(did)
 
     def _funnel_of(self, data, default) -> str:
@@ -275,6 +277,11 @@ class DealBook:
             out['clientId'] = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('clientId') or ''))[:64]
         if 'myCompany' in data:
             out['myCompany'] = MyCompanies.clean(data.get('myCompany'))
+        if 'source' in data:
+            source = str(data.get('source') or '')
+            if source not in self.SOURCES:
+                raise ValueError('Источник заявки: рекламная, повторная или личная')
+            out['source'] = source
         if 'clientPick' in data:
             out['clientPick'] = ClientPick.clean(data.get('clientPick'))
         elif 'clientId' in data or 'client' in data:
@@ -618,7 +625,7 @@ class DealBook:
                 return False
             conn = self.store.conn()
             kp_ids = self._fill_order(self._rows(conn, did))
-            if not kp_ids or not self._autofill(deal, kp_ids, author):
+            if not self._autofill(deal, kp_ids, author):
                 return False
             self._save(conn, did, deal, author)
             conn.commit()
@@ -761,6 +768,7 @@ class TaskBook:
 
     KINDS = (('call', 'Звонок'), ('meet', 'Встреча'), ('mail', 'Письмо'), ('task', 'Задача'))
     STATES = ('open', 'done', 'cancel')
+    AUTO_STEP = 'auto:'  # дела, которые кабинет ставит сам (crm_auto.AutoTasks)
     TIME = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
     COLS = 'id, deal_id, manager_id, kind, due, time, title, note, state, done_at, created, created_by, step'
 
@@ -890,7 +898,10 @@ class TaskBook:
                 int(tid),
             ),
         )
-        if new.get('step') and new['deal'] and x.get('state') == 'done' and cur['state'] != 'done':
+        exec_step = new.get('step') and not str(new['step']).startswith(
+            self.AUTO_STEP
+        )  # дела «сами» — не точки исполнения
+        if exec_step and new['deal'] and x.get('state') == 'done' and cur['state'] != 'done':
             from crm_exec import ExecBook  # дело точки исполнения сделано — точка отмечена
 
             ExecBook(self.store).mark(
