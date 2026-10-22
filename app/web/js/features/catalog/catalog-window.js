@@ -1,3 +1,4 @@
+import { CatalogCompare } from './catalog-compare.js';
 import { CatalogActions } from './catalog-actions.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { CatalogCard } from './catalog-card.js';
@@ -325,6 +326,7 @@ export class CatalogWindow {
     const main = this.optFor == null;
     return `<b>Отмечено: ${count}</b>
         <button class="btn primary" type="button" data-bulk="add">${main ? 'Добавить в КП' : 'Добавить опциями'}</button>
+        ${main && count >= CatalogCompare.MIN && count <= CatalogCompare.MAX ? '<button class="btn" type="button" data-bulk="compare">Сравнить</button>' : ''}
         ${main ? '<button class="btn" type="button" data-bulk="move">Перенести в категорию…</button>' : ''}
         ${main && Auth.can('export') ? '<button class="btn" type="button" data-bulk="export">Выгрузить…</button>' : ''}
         ${main && Auth.can('catDelete') ? '<button class="btn danger" type="button" data-bulk="trash">В корзину</button>' : ''}

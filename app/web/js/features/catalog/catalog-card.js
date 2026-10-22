@@ -200,6 +200,12 @@ export class CatalogCard {
       ${!loading && !feats.length && !groups.length ? '<p class="muted pv-empty">Описания и характеристик пока нет — нажмите «Редактировать».</p>' : ''}`;
   }
 
+  // нет цены или нет на складе — сразу предложить замену
+  static _similar(card) {
+    if (card.price > 0 && CatalogIndex.inStock(card)) return '';
+    return '<button class="btn ghost" type="button" data-pv="similar" title="Та же категория, близкие параметры, в наличии и с ценой">Похожие в наличии</button>';
+  }
+
   static _acts(win, card) {
     const main = win.optFor == null;
     const dup = main
@@ -211,7 +217,7 @@ export class CatalogCard {
         : '';
     const wide = win.dlg().classList.contains('pvwide') ? 'Свернуть карточку' : '⤢ Крупно';
     return `<div class="pv-acts"><div class="pv-main"><button class="btn primary" type="button" data-pv="add">${win.addLabelLong(card.id)}</button><button class="btn" type="button" data-pv="edit">Редактировать</button></div>
-      <div class="pv-sub">${dup}${trash}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${wide}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
+      <div class="pv-sub">${this._similar(card)}${dup}${trash}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${wide}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
   }
 
   /**

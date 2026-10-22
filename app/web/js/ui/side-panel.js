@@ -1,3 +1,4 @@
+import { LivePreview } from '../features/doc/live-preview.js';
 import { Steps } from './steps.js';
 import { Tender } from './tender.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
@@ -107,6 +108,7 @@ export class SidePanel {
     const number = $('#kpno');
     if (number) number.textContent = S.number ? `КП № ${S.number}` : '';
     this.mbar(totals, list, currency);
+    LivePreview.schedule();
     Morph.apply(
       $('#side'),
       `<h2 class="side-h">Итог и сохранение</h2>${this.total(totals, currency)}${this.actions(list)}${DealDefaults.allowed() ? DealSide.html() : ''}`,
@@ -149,7 +151,7 @@ export class SidePanel {
       : '<li class="ok">Проверки пройдены — можно сохранять.</li>';
     return `<div class="checks side-act">
       <button class="btn primary dl" type="button" data-a="download" ${list.length ? 'disabled' : ''}>${S.kpId ? `Сохранить изменения КП № ${esc(S.number)}` : 'Сохранить КП'}</button>
-      <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length ? '' : 'disabled'}>Предпросмотр КП</button>
+      <button class="btn dl pv" type="button" data-a="kpPreview" ${S.items.length ? '' : 'disabled'}>Предпросмотр КП</button>${LivePreview.button()}
       <label class="pdftoo"><input type="checkbox" id="pdfToo" ${PdfExport.wanted() ? 'checked' : ''}> Также сохранить в PDF</label>
       <div class="fname">${S.kpId ? esc(KpFile.saved()) : 'Номер присвоится при сохранении'}</div><div class="msg" id="dlmsg"></div>
       <h3>${list.length ? 'Чтобы сохранить, заполните' : 'Всё заполнено'}</h3>
@@ -183,7 +185,9 @@ export class SidePanel {
     const back = prev
       ? `<button class="mb-back" type="button" data-step="${prev.id}" aria-label="Назад: ${esc(prev.t)}"><span aria-hidden="true">‹</span></button>`
       : '<span class="mb-back" aria-hidden="true"></span>';
-    const sum = `<button class="mb-sum" type="button" data-a="toSave"><small>${list.length ? `Итого · не заполнено: ${list.length}` : 'Итого · всё готово'}</small><b>${KPGen.money(totals.sum)} ${esc(currency)}</b></button>`;
+    // не заполнено — нажатие ведёт сразу к первому пустому полю, а не в начало раздела
+    const target = list.length ? `data-go="${list[0][1]}"` : 'data-a="toSave"';
+    const sum = `<button class="mb-sum" type="button" ${target}><small>${list.length ? `Итого · не заполнено: ${list.length} ›` : 'Итого · всё готово'}</small><b>${KPGen.money(totals.sum)} ${esc(currency)}</b></button>`;
     Morph.apply(bar, back + sum + this._next(steps[k + 1], list));
   }
 
@@ -192,7 +196,7 @@ export class SidePanel {
       return `<button class="btn primary mb-next" type="button" data-step="${next.id}"><span>Далее</span><small>${esc(next.t)}</small></button>`;
     }
     if (list.length) {
-      return `<button class="btn primary mb-next" type="button" data-a="toSave"><span>Проверить</span><small>осталось ${list.length}</small></button>`;
+      return `<button class="btn primary mb-next" type="button" data-go="${list[0][1]}"><span>Заполнить</span><small>осталось ${list.length}</small></button>`;
     }
     return `<button class="btn primary mb-next" type="button" data-a="download"><span>Сохранить</span><small>${S.kpId ? 'изменения КП' : 'КП'}</small></button>`;
   }

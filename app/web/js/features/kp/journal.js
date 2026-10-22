@@ -28,8 +28,11 @@ import { KpTabs } from './kp-tabs.js';
 export class Journal {
   static PERCENT = 100;
 
-  /** Окно журнала. */
-  static async open() {
+  /**
+   * Окно журнала.
+   * @param {{quick?: string}} [opts] quick — сразу быстрый отбор («quiet», «expiring», «tender»)
+   */
+  static async open(opts = {}) {
     const dialog = Modal.host('jrnWin', 'wide jrnwin', 'Журнал КП');
     dialog.innerHTML = this._html();
     AppTabs.show(dialog, 'jrn');
@@ -45,7 +48,8 @@ export class Journal {
       any: false,
     };
     this._bind(ctx);
-    await this._load(ctx);
+    if (opts.quick) this._pick(ctx, opts.quick);
+    else await this._load(ctx);
     $('#jList').addEventListener(
       'toggle',
       event => {
@@ -71,10 +75,66 @@ export class Journal {
       .join('');
     return `<div class="dlg-h"><h3>Журнал КП</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b"><div class="jbar"><input type="text" id="jQ" placeholder="Поиск: номер КП или закупки, получатель, ИНН, позиция" autocomplete="off"><select id="jK" aria-label="Вид КП"><option value="">Все КП</option><option value="std">Обычные</option><option value="tender">Тендеры</option></select><select id="jA" aria-label="Автор"><option value="">Все авторы</option></select><select id="jS" aria-label="Статус КП"${FEAT.on('track') ? '' : ' hidden'}><option value="">Все статусы</option><option value="open">Не закрытые</option>${statuses}</select><button class="btn" type="button" id="jMe" title="Только мои КП">Мои</button><button class="btn" type="button" id="jDr"${FEAT.on('drafts') ? '' : ' hidden'} title="Незаконченные КП и несохранённые правки">Черновики</button><button class="btn" type="button" id="jRep"${FEAT.on('report') ? '' : ' hidden'} title="Отчёт по КП, прибыли и марже за период — по менеджерам и категориям">Отчёт</button></div>
-   <div class="jtot muted" id="jTot"></div><div class="jfun" id="jFun"></div><div id="jList"><p class="empty">Загружаю…</p></div></div>`;
+   <div class="jq" id="jQk" role="group" aria-label="Быстрый отбор">${this._quick()}</div><div class="jtot muted" id="jTot"></div><div class="jfun" id="jFun"></div><div id="jList"><p class="empty">Загружаю…</p></div></div>`;
+  }
+
+  // одним нажатием — то, что ищут чаще всего; повторное нажатие снимает отбор
+  static QUICK = [
+    ['mine', 'Мои'],
+    ['quiet', 'Без ответа > 3 дн.'],
+    ['expiring', 'Истекают'],
+    ['tender', 'Тендеры'],
+  ];
+
+  static _quick() {
+    return this.QUICK.map(
+      ([key, label]) => `<button type="button" class="chip sm" data-jq="${key}" aria-pressed="false">${label}</button>`,
+    ).join('');
+  }
+
+  // отбор по чипу: «Мои» — автор, «Тендеры» — вид КП, остальное — статус
+  static _pick(ctx, key) {
+    const setters = {
+      mine: () => this._mine(ctx),
+      tender: () => this._toggle($('#jK'), 'tender'),
+      quiet: () => this._status(key),
+      expiring: () => this._status(key),
+    };
+    setters[key]();
+    if (key !== 'mine') this._load(ctx);
+  }
+
+  static _toggle(select, value) {
+    select.value = select.value === value ? '' : value;
+  }
+
+  // быстрые статусы — скрытыми пунктами списка статусов
+  static _status(key) {
+    const select = $('#jS');
+    if (![...select.options].some(option => option.value === key)) {
+      select.insertAdjacentHTML('beforeend', `<option value="${key}" hidden>${key}</option>`);
+    }
+    this._toggle(select, key);
+  }
+
+  static _marks() {
+    const picked = {
+      mine: $('#jMe').classList.contains('on'),
+      tender: $('#jK').value === 'tender',
+      quiet: $('#jS').value === 'quiet',
+      expiring: $('#jS').value === 'expiring',
+    };
+    document.querySelectorAll('#jQk [data-jq]').forEach(chip => {
+      chip.classList.toggle('on', !!picked[chip.dataset.jq]);
+      chip.setAttribute('aria-pressed', String(!!picked[chip.dataset.jq]));
+    });
   }
 
   static _bind(ctx) {
+    $('#jQk').onclick = event => {
+      const chip = event.target.closest('[data-jq]');
+      if (chip) this._pick(ctx, chip.dataset.jq);
+    };
     const search = new Debounce();
     $('#jQ').oninput = () => search.run(() => this._load(ctx), DefRegistry.num('ui.jDelay', 220));
     $('#jA').onchange = $('#jK').onchange = $('#jS').onchange = () => this._load(ctx);
@@ -107,6 +167,7 @@ export class Journal {
   }
 
   static _draw(ctx) {
+    this._marks();
     $('#jTot').innerHTML = this._totals(ctx);
     $('#jFun').innerHTML = this._funnel(ctx.funnel || {});
     const more = ctx.total - ctx.rows.length;

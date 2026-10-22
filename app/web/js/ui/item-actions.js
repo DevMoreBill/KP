@@ -17,6 +17,7 @@ import { Api, RemoteResult } from '../core/net.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { ClientsExportDlg } from '../features/catalog/catalog-export.js';
 import { MyPrefs } from '../features/kp/my-prefs.js';
+import { ProblemReport } from './problem-report.js';
 import { DealCard } from '../features/crm/deal-card.js';
 import { MyDay } from '../features/kp/my-day.js';
 import { QuickSearch } from '../features/kp/quick-search.js';
@@ -70,10 +71,7 @@ export class ItemActions {
   static FOCUS_DELAY = 30;
 
   static ITEMS = {
-    delItem: ({ i }) => {
-      S.items.splice(i, 1);
-      return RENDER;
-    },
+    delItem: ({ i }) => ItemActions._drop(i),
     up: ({ i }) => {
       [S.items[i - 1], S.items[i]] = [S.items[i], S.items[i - 1]];
       return RENDER;
@@ -293,6 +291,7 @@ export class ItemActions {
     myDay: () => MyDay.open(),
     dealOpen: ({ button }) => DealCard.open(button.dataset.id),
     myPrefs: () => MyPrefs.open(),
+    report: () => ProblemReport.open(),
     clientsExport: () => ClientsExportDlg.open(),
     deal: () => DealState.open(),
     docsFolder: () =>
@@ -486,6 +485,19 @@ export class ItemActions {
     const box = document.getElementById(target);
     box?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     box?.querySelector('input.bad, input:placeholder-shown, input')?.focus({ preventScroll: true });
+  }
+
+  // удалить позицию сразу, «Отменить» — вернуть на то же место (того же КП)
+  static _drop(i) {
+    const [removed] = S.items.splice(i, 1);
+    const opened = S;
+    Toast.undo(`Позиция «${removed.name || i + 1}» удалена`, () => {
+      if (S !== opened) return;
+      S.items.splice(i, 0, removed);
+      FormView.render();
+      KpState.persist();
+    });
+    return RENDER;
   }
 
   static _context(button, event) {

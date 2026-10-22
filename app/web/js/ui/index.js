@@ -4,7 +4,9 @@ import { FieldEvents } from './field-events.js';
 import { FormView, Popups } from './form-view.js';
 import { GeoInput, GeoParse } from './geo-input.js';
 import { ItemActions } from './item-actions.js';
+import { ItemOrder } from './item-order.js';
 import { Mobile } from './mobile.js';
+import { ProblemReport } from './problem-report.js';
 import { Problems, SidePanel } from './side-panel.js';
 import { ClientPrev, ClientStep } from './step-client.js';
 import { CondMemory, CondsStep } from './step-conds.js';
@@ -27,7 +29,9 @@ export const UI_PARTS = {
   GeoInput,
   GeoParse,
   ItemActions,
+  ItemOrder,
   Mobile,
+  ProblemReport,
   Problems,
   SidePanel,
   ClientPrev,
@@ -60,3 +64,7 @@ TopBar.listen();
 AppKeys.listen();
 Mobile.listen();
 DatePicker.listen();
+UiKit.listenTips();
+Steps.listen();
+ItemOrder.listen();
+ProblemReport.listen();

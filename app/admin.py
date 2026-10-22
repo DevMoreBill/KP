@@ -603,6 +603,28 @@ class KpJournal:
             cls._cache[key] = rows
         return rows
 
+    QUIET_DAYS = 3
+
+    @classmethod
+    def wanted(cls, store, rec: dict, want: str) -> bool:
+        """Подходит ли КП под отбор статуса; быстрые отборы: quiet — отправлено и без ответа дольше QUIET_DAYS дней,
+        expiring — срок действия кончается в ближайшие kp.expireAhead дней."""
+        status = cls.status(rec)
+        if not want:
+            return True
+        if want == 'open':
+            return status not in ('won', 'lost')
+        if want == 'quiet':
+            moved = str((rec.get('track') or {}).get('at') or '')[:10] if isinstance(rec.get('track'), dict) else ''
+            return (
+                status == 'sent' and bool(moved) and moved < (date.today() - timedelta(days=cls.QUIET_DAYS)).isoformat()
+            )
+        if want == 'expiring':
+            until = str(rec.get('validUntil') or '')[:10]
+            ahead = (date.today() + timedelta(days=SrvVal.get(store, 'kp.expireAhead'))).isoformat()
+            return status not in ('won', 'lost') and date.today().isoformat() <= until <= ahead
+        return status == want
+
     @classmethod
     def page(cls, handler, store, query) -> dict:
         """Журнал КП постранично: поиск и автор — в базе; итоги (сумма, прибыль) — по всему отбору."""
@@ -627,10 +649,7 @@ class KpJournal:
             stage['n'] += 1
             stage['sum'] += econ_rub(rec)[0] or 0
         want = query.get('status', '')
-        if want == 'open':
-            rows = [rec for rec in rows if cls.status(rec) not in ('won', 'lost')]
-        elif want:
-            rows = [rec for rec in rows if cls.status(rec) == want]
+        rows = [rec for rec in rows if cls.wanted(store, rec, want)]
         s_sum, s_profit, n_profit = 0, 0, 0
         for rec in rows:
             rub, profit = econ_rub(rec)
@@ -1747,6 +1766,17 @@ class AdminApi:
             if not rec:
                 return self.err(404, 'Документ не найден')
             self.log('delete_kp_file', 'kp', acc.group(1), {'name': rec['name'], 'size': rec['size']}, None)
+            return self.ok({'ok': True})
+        if sub == 'feedback':  # «Сообщить о проблеме» — сообщения менеджеров, новые сверху
+            from feedback import Feedback
+
+            return self.ok({'items': list(reversed(Feedback(store).all()))[:50]})
+        acc = re.match(r'^feedback/(\d{1,9})/done$', sub)
+        if acc and method == 'POST':
+            from feedback import Feedback
+
+            if not Feedback(store).done(int(acc.group(1))):
+                return self.err(404, 'Сообщение не найдено')
             return self.ok({'ok': True})
         acc = re.match(r'^dealfiles/(d\d{1,9})/(\d{1,9})/delete$', sub)
         if acc and method == 'POST':  # документ сделки — после первых минут удаляет только администратор

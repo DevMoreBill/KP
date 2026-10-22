@@ -102,7 +102,7 @@ export class ClientStep {
   ${has ? DealPick.html() : ''}
   ${this._contact(client)}
   ${this._object(client)}
-  <div class="csec"><div class="grid g2">${UiKit.field('Дата КП', 'date', { type: 'date', req: 1 })}${UiKit.field('Город', 'city')}</div></div>
+  <div class="csec"><div class="grid g2">${UiKit.field('Дата КП', 'date', { type: 'date', req: 1 })}${UiKit.field('Город', 'city', { ph: 'Например: Казань' })}</div></div>
   </section>`;
   }
 
@@ -147,9 +147,9 @@ export class ClientStep {
     return `<div class="cl-form">
       <div class="grid inn-row"><label class="f"><span>ИНН</span><input type="text" inputmode="numeric" data-p="clientInn" value="${esc(S.clientInn)}" placeholder="10 или 12 цифр" class="${!S.clientInn || Inn.valid(S.clientInn) ? '' : 'bad'}" maxlength="12"></label>
         <div style="align-self:end" class="row"><button class="btn" type="button" data-a="partyFind">Заполнить по ИНН</button><span class="muted" id="partyMsg">${S.clientSrc ? `Данные: ${esc(S.clientSrc)}` : ''}</span></div></div>
-      <div class="grid g2" style="margin-top:12px">${field('Название в КП', 'client', { req: 1, ph: 'ООО «Компания»' })}${field('Полное наименование', 'clientFull')}</div>
-      <div class="grid g3" style="margin-top:12px">${field('КПП', 'clientKpp')}${field('ОГРН', 'clientOgrn')}${field('Руководитель', 'clientDir', { ph: 'ФИО' })}</div>
-      <div class="grid" style="margin-top:12px">${field('Юридический адрес', 'clientAddr')}</div></div>`;
+      <div class="grid g2" style="margin-top:12px">${field('Название в КП', 'client', { req: 1, ph: 'ООО «Компания»' })}${field('Полное наименование', 'clientFull', { ph: 'Общество с ограниченной ответственностью «Компания»' })}</div>
+      <div class="grid g3" style="margin-top:12px">${field('КПП', 'clientKpp', { ph: '9 цифр' })}${field('ОГРН', 'clientOgrn', { ph: '13 цифр' })}${field('Руководитель', 'clientDir', { ph: 'ФИО' })}</div>
+      <div class="grid" style="margin-top:12px">${field('Юридический адрес', 'clientAddr', { ph: 'Индекс, город, улица, дом' })}</div></div>`;
   }
 
   static _contact(client) {

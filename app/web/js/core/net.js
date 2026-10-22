@@ -1,3 +1,4 @@
+import { ServerLink } from './server-link.js';
 import { CopyText, FileSave } from './files.js';
 import { Toast } from './toast.js';
 import { Auth } from '../features/kp/auth.js';
@@ -63,7 +64,14 @@ export class Api {
   static async _request(path, opts) {
     const headers = { ...(opts.headers || {}), ...this._signature() };
     if (AdminSession.csrf) headers['X-CSRF-Token'] = AdminSession.csrf;
-    const reply = await fetch(path, { ...opts, headers });
+    let reply;
+    try {
+      reply = await fetch(path, { ...opts, headers });
+    } catch (error) {
+      ServerLink.gone();
+      throw new Error('нет связи с сервером отдела', { cause: error });
+    }
+    ServerLink.back();
     if (reply.status === this.CONFLICT) {
       const retried = await this._conflict(reply, path, opts);
       if (retried) return retried.value;

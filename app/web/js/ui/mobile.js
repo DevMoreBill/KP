@@ -7,6 +7,7 @@ import { Modal } from '../core/modal.js';
 import { FormView } from './form-view.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { MyPrefs } from '../features/kp/my-prefs.js';
+import { ProblemReport } from './problem-report.js';
 import { HelpWindow } from '../features/kp/help-window.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { KpPreview } from '../features/doc/kp-preview.js';
@@ -43,6 +44,7 @@ export class Mobile {
     help: () => HelpWindow.open(),
     theme: () => $('#btnTheme').click(),
     prefs: () => MyPrefs.open(),
+    report: () => ProblemReport.open(),
     settings: () => SettingsWindow.open(),
   };
 
@@ -94,7 +96,7 @@ export class Mobile {
       ${item('preview', '▤', 'Предпросмотр КП', 'Документ целиком')}
       ${DealDefaults.allowed() ? item('deal', '₽', 'Экономика сделки', 'Прибыль, финансирование, Excel') : ''}
       ${item('help', '?', 'Руководство', 'Как пользоваться, история версий')}
-      <hr>${item('prefs', '☺', 'Мои настройки', 'Тема, стартовый экран, мои условия, подпись в письмах')}${item('theme', dark ? '☀' : '☾', dark ? 'Светлая тема' : 'Тёмная тема', '')}
+      <hr>${item('prefs', '☺', 'Мои настройки', 'Тема, стартовый экран, мои условия, подпись в письмах')}${item('theme', dark ? '☀' : '☾', dark ? 'Светлая тема' : 'Тёмная тема', '')}${item('report', '⚑', 'Сообщить о проблеме', 'Администратору — с тем, где это случилось')}
       ${AuthMenu.mobileItems(item)}${item('settings', '⚙', 'Настройки', 'Для администратора')}${AdminSession.on ? item('uitexts', '✎', 'Тексты интерфейса', 'Правка надписей и подсказок') : ''}`;
   }
 

@@ -304,7 +304,7 @@ export class CabDeals {
       ? `<button type="button" class="btn ghost kb-more" data-kbmore="list">Показать ещё ${rest}</button>`
       : '';
     if (!shown.length)
-      return `${this._stageChips(stages, deals, picked)}<p class="empty">${Cabinet.query || this.filter ? 'Не найдено.' : 'Сделок нет.'}</p>`;
+      return `${this._stageChips(stages, deals, picked)}<p class="empty">${Cabinet.query || this.filter ? 'Не найдено.' : 'Сделок нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button> <button class="btn sm" type="button" data-cq="deal">🤝 Сделка</button>'}</p>`;
     const row = { expected: deal => this._expected(deal), next: deal => `${this._next(deal)}${this.exec(deal)}` };
     return `${this._stageChips(stages, deals, picked)}${CabList.html(shown, { more, row })}`;
   }

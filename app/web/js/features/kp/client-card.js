@@ -208,7 +208,7 @@ export class ClientCard {
         : '';
     const rows = kps.length
       ? kps.map(row => this._kpRow(row)).join('')
-      : '<p class="empty">КП этому клиенту ещё не было.</p>';
+      : '<p class="empty">КП этому клиенту ещё не было. <button class="btn sm primary" type="button" data-ccnew>＋ Новое КП</button></p>';
     return `<section class="cc-kps"><p class="sub">КП клиента${managers}</p>
           <div class="cc-kl">${rows}</div></section>`;
   }

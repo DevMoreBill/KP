@@ -376,3 +376,10 @@ span.mb-back{border:0}
 .mob .catwin.pvon .cw-fb{display:none}
 /* карточка клиента на телефоне: «Повторить» и «Открыть» — второй строкой, дата и сумма КП видны целиком */
 .mob .cc-kl .md-r{flex-wrap:wrap;row-gap:4px} .mob .cc-kl .md-r>div{flex:1 1 calc(100% - 110px)} .mob .cc-kl .md-r [data-ccr]{margin-left:auto}
+.stp-m{display:none}
+.mob .stepper .stp{display:none}
+.mob .stp-m{display:flex;align-items:center;gap:8px;width:100%}
+.mob .stp-m .icon{min-width:44px;min-height:44px;font-size:22px}
+.mob .stp-ms{flex:1;min-width:0;display:grid;gap:2px}
+.mob .stp-ms .muted{font-size:12px}
+.mob .stp-ms select{font-size:16px;font-weight:600;min-height:44px}

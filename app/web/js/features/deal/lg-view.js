@@ -192,7 +192,10 @@ export class LgCard {
   _toField(help, value) {
     const label = this.toAsm ? `Куда — склад «${esc(this.asmName)}» (сборка)` : 'Куда — адрес объекта';
     const placeholder = this.toAsm ? 'адрес производства контейнера' : 'адрес объекта, город или координаты';
-    return `<label class="f"><span>${label}${help}</span>
+    const toKp = DealLogistics.differsFromKp(this.sup, value)
+      ? `<button class="btn ghost sm lg-tokp" type="button" data-lgx="tokp" data-k="${this.k}" title="Скопировать в КП: «Клиент» → «Адрес объекта»">→ В КП</button>`
+      : '';
+    return `<label class="f"><span>${label}${help}${toKp}</span>
             <input type="text" data-lgf="to" data-geo="to" data-k="${this.k}" value="${esc(value)}" placeholder="${placeholder}" autocomplete="off"></label>`;
   }
 

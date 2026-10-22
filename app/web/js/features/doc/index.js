@@ -5,6 +5,7 @@ import { DocxWriter } from './docx-writer.js';
 import { KpDocx } from './kp-docx.js';
 import { KpFile } from './kp-file.js';
 import { KpModels } from './kp-models.js';
+import { LivePreview } from './live-preview.js';
 import { KpPreview } from './kp-preview.js';
 import { KpSave } from './kp-save.js';
 import { PdfExport } from './pdf-export.js';
@@ -23,6 +24,7 @@ export const DOC = {
   KpDocx,
   KpFile,
   KpModels,
+  LivePreview,
   KpPreview,
   KpSave,
   PdfExport,
@@ -39,5 +41,6 @@ TemplateEditor.listen();
 CoverThumb.listen();
 PdfExport.listen();
 KpPreview.listen();
+LivePreview.listen();
 DesignMouse.listen();
 LISTS.ready(TemplateFields.LISTS);

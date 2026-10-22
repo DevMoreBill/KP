@@ -108,3 +108,7 @@ dialog::backdrop{background:rgba(10,20,40,.45)}
 /* условия, подставленные из «Экономики сделки» */
 .cond-auto{font-style:normal;font-size:11px;font-weight:600;color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent);padding:1px 7px;border-radius:999px;margin-left:6px;white-space:nowrap}
 .cond-sync{display:block;margin-top:4px;font-size:12.5px;text-align:left;border:0;background:none;padding:0;color:var(--navy);text-decoration:underline;cursor:pointer}
+.toast-undo{pointer-events:auto;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;padding:6px 4px;margin:-6px 0;cursor:pointer;text-decoration:underline}
+dialog .row:has(> .sp):has(> .btn.primary:first-child){flex-direction:row-reverse}
+.link-bar{position:fixed;left:0;right:0;top:0;z-index:100;background:var(--warn-bg);color:var(--warn-ink);border-bottom:1px solid var(--warn-line);padding:8px 16px calc(8px);padding-top:calc(8px + env(safe-area-inset-top,0px));text-align:center;font-weight:600;font-size:14px}
+.link-bar[hidden]{display:none}

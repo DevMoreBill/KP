@@ -150,7 +150,7 @@ export class CabGantt {
         ? `<div class="gn-r"><div class="gn-l"><b>Дела без сделки</b><span class="muted">${free.length}</span></div><div class="gn-tr" style="width:${tape.width}px">${free.map(task => tape.task(task)).join('')}</div></div>`
         : '';
     if (!rows.length && !freeRow)
-      return `${this._controls(opts, lead)}<p class="empty">${Cabinet.query ? 'Не найдено.' : 'Сделок в работе нет.'}</p>`;
+      return `${this._controls(opts, lead)}<p class="empty">${Cabinet.query ? 'Не найдено.' : 'Сделок в работе нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button>'}</p>`;
     const lines = rows.map(row => this._line(row, tape, opts)).join('');
     return `${this._controls(opts, lead)}<div class="gn" id="gn"><div class="gn-in"><div class="gn-r gn-hd"><div class="gn-l"><b>Сделка</b></div><div class="gn-tr" style="width:${tape.width}px">${tape.head()}</div></div>
       <div class="gn-rows">${lines}${freeRow}<div class="gn-now" style="left:calc(var(--gl) + ${tape.mid(now)}px)" aria-hidden="true"></div></div></div></div>`;

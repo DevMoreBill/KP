@@ -272,7 +272,7 @@ export class CrmTask {
         headers: this.JSON_HEAD,
         body: JSON.stringify(body),
       });
-      if (body.state === 'done') Toast.show(`Сделано: ${task.title}`);
+      if (body.state === 'done') Toast.undo(`Сделано: ${task.title}`, () => this.put(id, { state: 'open' }, after));
       if (after) after(task);
       return task;
     } catch (error) {

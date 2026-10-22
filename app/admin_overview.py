@@ -92,6 +92,7 @@ class Attention:
             self._login,
             self._trash,
             self._health,
+            self._feedback,
         ):
             try:
                 out.extend(check())
@@ -262,6 +263,27 @@ class Attention:
             if count
             else []
         )
+
+    def _feedback(self):
+        from feedback import Feedback
+
+        rows = Feedback(self.store).new()
+        if not rows:
+            return []
+        last = rows[-1]
+        text = 'Сообщений о проблемах от менеджеров: {} (последнее — {}: «{}»)'.format(
+            len(rows), last.get('by') or 'менеджер', str(last.get('text') or '')[:80]
+        )
+        return [
+            {
+                'level': 'warn',
+                'text': text,
+                'tab': 'feedback',
+                'act': 'Прочитать',
+                'key': f'feedback:{last.get("id")}',
+                'alert': True,
+            }
+        ]
 
     def _moderation(self):
         count = len(self.store.pending_list('pending'))

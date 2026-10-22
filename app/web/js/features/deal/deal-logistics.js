@@ -320,6 +320,32 @@ export class DealLogistics {
   }
 
   /**
+   * Адрес поставки (вкладка «Логистика», поле «Куда») — в КП: «Клиент» → «Адрес объекта».
+   * @param {object} sup
+   */
+  static toKp(sup) {
+    const addr = DealLogistics.input(sup).to.addr;
+    if (!addr) return;
+    S.object = { ...S.object, address: addr };
+    KpState.persist();
+    FormView.render();
+    Toast.show('Адрес поставки скопирован в КП — «Клиент» → «Адрес объекта»');
+  }
+
+  /**
+   * Нужна ли кнопка «В КП»: адрес объекта, а не склад сборки, и в КП записан другой.
+   * @param {object} sup
+   * @param {string} addr
+   * @returns {boolean}
+   */
+  static differsFromKp(sup, addr) {
+    const asm = DealLogistics.asm();
+    if (asm && asm.toAsm.has(sup.id)) return false;
+    const text = String(addr || '').trim();
+    return Boolean(text) && text !== String((S.object && S.object.address) || '').trim();
+  }
+
+  /**
    * Вписанные масса и габариты — в характеристики позиции КП и в карточку каталога.
    * @param {object} sup
    */

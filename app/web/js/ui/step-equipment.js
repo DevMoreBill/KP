@@ -110,6 +110,11 @@ export class EquipStep {
     return item.photo ? `<img src="${esc(item.photo.src)}" alt="">` : '<span>+ фото</span>';
   }
 
+  static _handle(i) {
+    if (S.items.length < 2) return '';
+    return `<span class="idrag" draggable="true" data-drag="${i}" title="Перетащите, чтобы переставить" aria-hidden="true">⋮⋮</span>`;
+  }
+
   /**
    * Карточка позиции.
    * @param {object} item
@@ -120,11 +125,11 @@ export class EquipStep {
     const path = `items.${i}`;
     const type = EquipTypes.byId(Attrs.of(item).cat);
     const missing = this._missing(item, i);
-    return `<div class="item" id="item-${item.id}">
+    return `<div class="item" id="item-${item.id}" data-pos="${i}">
    <div class="icard">
      <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" data-thumb="${i}" title="Нажмите — фото и описание. Главное фото можно перетащить сюда или вставить (Ctrl+V), наведя курсор">${this._thumb(item)}</button>
      <div class="imain">
-       <div class="itop"><span class="item-no">${i + 1}</span><span class="ttype">${esc(type.item || type.name)}</span></div>
+       <div class="itop">${this._handle(i)}<span class="item-no">${i + 1}</span><span class="ttype">${esc(type.item || type.name)}</span></div>
        <textarea class="iname" rows="${item.name.length > this.NAME_WRAP ? 2 : 1}" data-p="${path}.name" placeholder="Наименование позиции" aria-label="Наименование">${esc(item.name)}</textarea>
        <div class="ikp">${esc(ItemSpec.mainLine(item, this.MAIN_PARAMS) || item.spec || 'Параметры не заполнены')}</div>
        ${missing.length ? `<div class="ready">${missing.join('')}</div>` : ''}

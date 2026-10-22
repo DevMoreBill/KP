@@ -121,6 +121,10 @@ export class LgBind {
       LgOffers.quote(k);
     } else if (action === 'savecargo') DealLogistics.saveCargo(sup).then(() => DealWin.render());
     else if (action === 'mode') LgBind._mode(sup, { button, dlg, done });
+    else if (action === 'tokp') {
+      DealLogistics.toKp(sup);
+      done();
+    }
   }
 
   static _mode(sup, { button, dlg, done }) {

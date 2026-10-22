@@ -831,3 +831,11 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 /* «Битрикс24 → Регламент сделки» */
 .bx-rt td{vertical-align:middle}.bx-rt select{min-width:150px;max-width:320px}
 .bx-rck{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}
+.fb-dlg{width:min(720px,96vw)}
+.fb-l{display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow:auto}
+.fb-r{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.fb-r p{margin:6px 0 0}
+.fb-done{opacity:.65}
+.fb-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fb-h .btn,.fb-h>span:last-child{margin-left:auto}
+.fb-e{white-space:pre-wrap;font-size:12px;margin:4px 0 0}

@@ -1,3 +1,4 @@
+import { CatalogCompare, CatalogSimilar } from './catalog-compare.js';
 import { CatalogActions } from './catalog-actions.js';
 import { CatalogTree } from './catalog-nav.js';
 import { ModerationList } from './moderation.js';
@@ -13,6 +14,8 @@ export class CatalogClicks {
   static BULK = {
     add: (win, ids) => CatalogActions.add(win, ids),
     move: (win, ids) => CatalogActions.moveDlg(win, ids),
+    compare: (win, ids) =>
+      CatalogCompare.open(ids.map(id => win.doc(id)).filter(Boolean), id => CatalogActions.add(win, [id])),
     trash: (win, ids) => CatalogActions.trash(win, ids),
     export: (win, ids) => CatalogExportDlg.open(ids, ids.map(id => win.doc(id)).filter(Boolean)),
     clear: win => {
@@ -25,6 +28,7 @@ export class CatalogClicks {
     add: (win, id) => CatalogActions.add(win, [id]),
     edit: (win, id) => CatalogActions.edit(win, id),
     dup: (win, id) => CatalogActions.dup(win, id),
+    similar: (win, id) => CatalogSimilar.open(win.doc(id), other => win.activate(other)),
     trash: (win, id) => CatalogActions.trash(win, [id]),
     wide: (win, id, dialog) => (dialog.classList.contains('pvwide') ? win.collapse() : win.expand()),
     close: (win, id, dialog) => {

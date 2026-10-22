@@ -3,6 +3,9 @@ import { S } from '../core/state.js';
 import { ObjPath } from '../core/str.js';
 /** Общие элементы формы: подсказка «?» и поле ввода, привязанное к пути в данных КП. */
 export class UiKit {
+  // подписи, у которых «?» — прямо внутри: поле формы, заголовки разделов и блоков
+  static TIP_HOSTS = '.f > span, h2, h3, .sub, .md-h > p, .dk-pb > p, legend';
+
   static AREA_ROWS = 3;
 
   /**
@@ -12,6 +15,19 @@ export class UiKit {
    */
   static tip(html) {
     return `<details class="tip"><summary title="Подсказка" aria-label="Подсказка">?</summary><div class="tip-b">${html}</div></details>`;
+  }
+
+  /** Подсказка «?» открывается и нажатием на саму подпись рядом — по маленькому кружку на телефоне попасть трудно. */
+  static listenTips() {
+    document.addEventListener('click', event => {
+      const target = event.target;
+      if (!target.closest || target.closest('details.tip, input, select, textarea, button, a')) return;
+      const host = target.closest(this.TIP_HOSTS);
+      const tip = host && [...host.children].find(child => child.matches('details.tip'));
+      if (!tip) return;
+      event.preventDefault();
+      tip.open = !tip.open;
+    });
   }
 
   /**

@@ -199,3 +199,4 @@ dialog.st-confirm.kf-dlg{width:min(760px,calc(100vw - 32px));max-width:none}
 .cc-deal{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;background:none;border:0;border-top:1px solid var(--line);padding:8px 2px;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-height:44px}
 .cc-deal:hover{background:var(--soft)}
 .cc-c a{color:var(--navy)}
+.jq{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}

@@ -123,7 +123,33 @@ export class Steps {
     const buttons = this.visible()
       .map((step, k) => this._button(step, k, bad))
       .join('');
-    return `<nav class="stepper" aria-label="Разделы КП">${buttons}</nav>`;
+    return `<nav class="stepper" aria-label="Разделы КП">${buttons}${this._compact(bad)}</nav>`;
+  }
+
+  // телефон: «‹ Шаг 2 из 6 · Оборудование ›» — полоса из шести шагов не помещалась и уезжала вбок
+  static _compact(bad) {
+    const list = this.visible();
+    const k = list.findIndex(step => step.id === Steps.current);
+    const options = list
+      .map((step, i) => {
+        const state = this._state(step.id, bad);
+        const mark = { ok: ' ✓', bad: ' — заполнить' }[state] || '';
+        return `<option value="${step.id}"${i === k ? ' selected' : ''}>${i + 1}. ${esc(step.t)}${mark}</option>`;
+      })
+      .join('');
+    const arrow = (step, sign, label) =>
+      step
+        ? `<button class="icon" type="button" data-step="${step.id}" aria-label="${label}: ${esc(step.t)}">${sign}</button>`
+        : `<button class="icon" type="button" disabled aria-label="${label}">${sign}</button>`;
+    return `<div class="stp-m">${arrow(list[k - 1], '‹', 'Назад')}<label class="stp-ms"><span class="muted">Шаг ${k + 1} из ${list.length}</span><select data-stepsel aria-label="Раздел КП">${options}</select></label>${arrow(list[k + 1], '›', 'Далее')}</div>`;
+  }
+
+  /** Выбор раздела КП из списка (телефон). */
+  static listen() {
+    document.addEventListener('change', event => {
+      const select = event.target.closest && event.target.closest('[data-stepsel]');
+      if (select) this.open(select.value);
+    });
   }
 
   static _state(id, bad) {

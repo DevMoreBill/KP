@@ -51,6 +51,7 @@ export class DealCard {
     myCompany: 'наша компания',
   };
   static deal = null;
+  static LAST_KEY = 'kp.lastDeal';
   static modal = null;
   static changed = false;
   static list = [];
@@ -84,6 +85,27 @@ export class DealCard {
     }
   }
 
+  /**
+   * Последняя открытая сделка (для «Продолжить» в «Найти»): {id, title} или null.
+   * @returns {{id: string, title: string}|null}
+   */
+  static last() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(this.LAST_KEY) || 'null');
+      return saved && saved.id ? saved : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static _remember(deal) {
+    try {
+      localStorage.setItem(this.LAST_KEY, JSON.stringify({ id: deal.id, title: deal.title || deal.client || '' }));
+    } catch {
+      // браузер не хранит — без «Продолжить»
+    }
+  }
+
   static _keep(deal) {
     if (deal && deal.funnels) CrmFunnel.cache = deal.funnels;
     return deal;
@@ -94,6 +116,7 @@ export class DealCard {
     if (!deal) return;
     this.deal = deal;
     this.changed = false;
+    this._remember(deal);
     const modal = new Modal(this.html(), 'deal-dlg');
     this.modal = modal;
     DealWin.bind(modal.d);
@@ -379,7 +402,9 @@ export class DealCard {
   }
 
   static _kps(deal) {
-    const rows = (deal.kps || []).map(offer => this._kpRow(offer)).join('') || '<p class="empty">КП ещё нет.</p>';
+    const rows =
+      (deal.kps || []).map(offer => this._kpRow(offer)).join('') ||
+      '<p class="empty">КП ещё нет. <button class="btn sm primary" type="button" data-dknew>＋ Создать КП</button></p>';
     return `${rows}<div class="row dk-kb"><button class="btn" type="button" data-dknew>＋ Новое КП для сделки</button><button class="btn ghost" type="button" data-dklink title="КП этого клиента из журнала — в эту сделку">Добавить КП клиента</button></div>`;
   }
 
@@ -560,8 +585,10 @@ export class DealCard {
   static async _stage(key) {
     const deal = this.deal;
     if (key === deal.stage && key !== 'lost') return;
+    const before = deal.fstage || deal.stage;
     const body = key === 'lost' ? await LostPick.ask(deal) : { stage: key };
-    if (body) this._apply(() => DealNeed.move(this.deal, body));
+    if (!body || !(await this._apply(() => DealNeed.move(this.deal, body)))) return;
+    Toast.undo(`Стадия: «${CrmFunnel.label(this.deal)}»`, () => this.save({ stage: before }));
   }
 
   // кнопки «Что сделать сейчас»

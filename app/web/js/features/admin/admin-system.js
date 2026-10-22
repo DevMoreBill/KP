@@ -1,4 +1,5 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
+import { AdminFeedback } from './admin-feedback.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
@@ -55,10 +56,21 @@ export class AdminSystem {
     const rows = items
       .map(
         row =>
-          `<div class="at-r at-${esc(row.level)}"><span class="at-l">${esc(this.LEVEL[row.level] || '')}</span><span class="at-t">${esc(row.text)}</span>${row.tab ? `<button class="btn sm" type="button" data-sttab="${esc(row.tab)}">${esc(row.act || 'Открыть')}</button>` : ''}</div>`,
+          `<div class="at-r at-${esc(row.level)}"><span class="at-l">${esc(this.LEVEL[row.level] || '')}</span><span class="at-t">${esc(row.text)}</span>${this._go(row)}</div>`,
       )
       .join('');
     box.innerHTML = `<div class="st-card at-card"><p class="sub">Требует внимания · ${items.length}</p>${rows}</div>`;
+    box.onclick = event => {
+      if (event.target.closest('[data-stfb]')) AdminFeedback.open(() => this.attention(box));
+    };
+  }
+
+  // кнопка строки: раздел «Настроек» или окно сообщений менеджеров
+  static _go(row) {
+    if (row.tab === 'feedback') return `<button class="btn sm" type="button" data-stfb>${esc(row.act)}</button>`;
+    return row.tab
+      ? `<button class="btn sm" type="button" data-sttab="${esc(row.tab)}">${esc(row.act || 'Открыть')}</button>`
+      : '';
   }
 
   static _sleep(delay) {

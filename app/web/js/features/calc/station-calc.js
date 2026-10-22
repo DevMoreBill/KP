@@ -107,7 +107,7 @@ export class StationCalc {
       ? `<label class="stl-chk"><input type="checkbox" data-req="${i}" data-rk="accept"${result.accept ? ' checked' : ''}> отклонения согласованы с заказчиком — КП сохраняется</label>`
       : '';
     return `<details class="stl-air calc stl-sp"${Spoiler.attr(`calc:${station.id}`, !!(result.errors.length && !result.accept))}><summary class="stl-air-h"><b>Расчёт станции</b><span class="${cls}">${text}</span><small class="muted">формулы, коэффициенты, источники · правила ${esc(result.version)}</small></summary>
-      <div class="calc-opts"><label class="stl-chk"><input type="checkbox" data-stl="calc" data-i="${i}"${opts.calc ? ' checked' : ''}> в КП — приложение «Расчётная записка» (только по запросу заказчика: ТКП — без расчётов)</label>
+      <div class="calc-opts"><label class="stl-chk"><input type="checkbox" data-stl="calc" data-i="${i}"${opts.calc ? ' checked' : ''}> в КП — приложение «Расчётная записка» (только по запросу заказчика: в обычном КП — без расчётов)</label>
         ${accept}</div>
       ${iss.length ? `<ul class="stl-iss">${iss.map(issue => `<li class="${issue.level}"><b>${StationCalc.LEVEL[issue.level]}:</b> ${esc(issue.text)}</li>`).join('')}</ul>` : ''}
       ${result.questions.length ? `<h5 class="calc-h">Нужно узнать у заказчика</h5><ol class="calc-l">${StationCalc._items(result.questions)}</ol>` : ''}

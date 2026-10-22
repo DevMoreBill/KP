@@ -56,6 +56,7 @@ from deal_rules import ClientByInn, DealRegs
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
 from features import FeatureAccess, Viewer
+from feedback import Feedback
 from images import ImageStore
 from kp_files import KpFiles
 from kp_templates import (
@@ -1898,6 +1899,13 @@ class CrmController(Controller):
         )
         self.bitrix_on(deal['id'])
         return self.send_json(deal)
+
+    @route(r'/api/feedback', 'POST')
+    def feedback(self) -> Any:
+        """«Сообщить о проблеме»: текст менеджера и где это случилось — администратору."""
+        with self.user_input():
+            entry = Feedback(store()).add(self.json_body(), admin.actor(self.handler)[1])
+        return self.send_json({'id': entry['id']})
 
     @route(r'/api/crm/intake', 'POST')
     def intake(self) -> Any:

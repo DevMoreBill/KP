@@ -617,6 +617,28 @@ class Scenario(UiRun):
         b = self.pg.locator('#form [data-a=deal]').first
         b.click() if b.count() else self.ev("DealState.open()")
 
+    def _deal_addr_to_kp(self, tabs):
+        """«Логистика» → «→ В КП»: адрес поставки — в «Адрес объекта» КП."""
+        pg, addr = self.pg, 'г. Казань, ул. Прогонная, д. 7'
+        for t in tabs:
+            pg.locator('dialog[open] .dl-tab[data-id="%s"]' % t).first.click()
+            self.wait(800)
+            field = pg.locator('dialog[open] input[data-lgf="to"]')
+            if field.count():
+                break
+        else:
+            self.errs.append(('deal', 'NOTE', 'нет поля «Куда» в логистике'))
+            return
+        field.first.fill(addr)
+        self.wait(600)
+        pg.locator('dialog[open] [data-lgx="tokp"]').first.click()
+        self.wait(400)
+        got = self.ev("S.object && S.object.address")
+        if got != addr:
+            self.errs.append(('deal', 'SCRIPT', 'адрес в КП: ожидался %r, в КП %r' % (addr, got)))
+        if pg.locator('dialog[open] [data-lgx="tokp"]').count():
+            self.errs.append(('deal', 'SCRIPT', 'кнопка «→ В КП» не скрылась после копирования'))
+
     def s_deal(self):
         pg = self.pg
         self.go('price')
@@ -634,6 +656,7 @@ class Scenario(UiRun):
                 self.ev("[...document.querySelectorAll('dialog[open] *')].filter(e=>e.scrollHeight>e.clientHeight+20&&"
                         "/(auto|scroll)/.test(getComputedStyle(e).overflowY)).forEach(e=>e.scrollTop=e.scrollHeight)")
                 self.snap('60_deal_%s_bottom' % t, root, wait=300)
+        self._deal_addr_to_kp(tabs)
         self.closeall()
         self._open_deal()   # повторное открытие — окно не пустое
         self.snap('61_deal_reopen', self.topdlg(), wait=2000)

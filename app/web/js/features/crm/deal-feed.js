@@ -41,7 +41,8 @@ export class DealFeed {
     const open = (deal.tasks || [])
       .filter(task => task.state === 'open')
       .sort((one, two) => `${one.due}${one.time || ''}`.localeCompare(`${two.due}${two.time || ''}`));
-    const none = '<p class="muted dk-none">Пока ничего — нажмите «＋ Звонок или дело».</p>';
+    const none =
+      '<p class="muted dk-none">Пока ничего. <button class="btn sm" type="button" data-feedmode="task">＋ Запланировать звонок</button></p>';
     const planned = open.length
       ? `<div class="tk-l dk-open">${open.map(task => CrmTask.row(task, { noDeal: true, date: true })).join('')}</div>`
       : none;

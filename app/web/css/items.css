@@ -578,3 +578,5 @@ dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
 .md-act{flex-wrap:wrap;gap:8px}
 .md-cost{margin:0;font-size:12.5px}
 .stl-st .stl-mods{margin-top:4px}
+.idrag{cursor:grab;color:var(--muted);font-weight:700;letter-spacing:-2px;padding:0 6px 0 0;user-select:none}
+.mob .idrag{display:none}

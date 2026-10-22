@@ -8,6 +8,11 @@ import { KpLoader } from './reminders.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Steps } from '../../ui/steps.js';
 import { DealCard } from '../crm/deal-card.js';
+import { CabDeals } from '../crm/cab-deals.js';
+import { Cabinet } from '../crm/cabinet.js';
+import { Journal } from './journal.js';
+import { AppTabs } from '../../core/app-tabs.js';
+import { S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { CrmFmt } from '../crm/crm-fmt.js';
 import { QuickFind } from '../../ui/step-equipment.js';
@@ -50,6 +55,46 @@ export class RecentModels {
     } catch {
       // приватный режим — без «недавних моделей»
     }
+  }
+}
+
+/** Фразы в «Найти» вместо фильтров: «сделки без дела», «просроченные», «без ответа», «истекают», «тендеры». */
+export class QuickCommands {
+  static LIST = [
+    { key: 'free', find: /без\s+(следующ\S*\s+)?(дела|шага)/i, label: 'Сделки без следующего шага' },
+    { key: 'late', find: /просроч/i, label: 'Просроченные дела — «Сегодня»' },
+    { key: 'fresh', find: /нов\S*\s+заявк/i, label: 'Новые заявки — «Сегодня»' },
+    { key: 'quiet', find: /без\s+ответа|не\s+ответ/i, label: 'КП без ответа больше 3 дней' },
+    { key: 'expiring', find: /истека|истёк|срок\s+кп/i, label: 'КП, у которых истекает срок' },
+    { key: 'tender', find: /тендер|закупк/i, label: 'Тендерные КП' },
+  ];
+  static RUN = {
+    free: () => {
+      CabDeals.filter = 'free';
+      Cabinet.open('deals');
+    },
+    late: () => Cabinet.open('today'),
+    fresh: () => Cabinet.open('today'),
+    quiet: () => Journal.open({ quick: 'quiet' }),
+    expiring: () => Journal.open({ quick: 'expiring' }),
+    tender: () => Journal.open({ quick: 'tender' }),
+  };
+
+  /**
+   * Команды, которые подходят под фразу.
+   * @param {string} query
+   * @returns {{key: string, label: string}[]}
+   */
+  static of(query) {
+    return this.LIST.filter(row => row.find.test(query));
+  }
+
+  /**
+   * Выполнить команду.
+   * @param {string} key
+   */
+  static run(key) {
+    if (this.RUN[key]) this.RUN[key]();
   }
 }
 
@@ -164,10 +209,11 @@ export class QuickSearch {
         )
       : '';
     return (
-      this._sect(
-        'Последние КП',
-        journal.slice(0, this.SHOWN).map(row => this._kpRow(row)),
-      ) +
+      this._sect('Продолжить', this._continue()) +
+        this._sect(
+          'Последние КП',
+          journal.slice(0, this.SHOWN).map(row => this._kpRow(row)),
+        ) +
         people +
         this._sect(
           'Недавно добавленные модели',
@@ -176,8 +222,27 @@ export class QuickSearch {
     );
   }
 
-  static async _found(query) {
-    const [kps, clients, deals] = await Promise.all([
+  // открытое КП и последняя открытая сделка — первой строкой при пустом поиске
+  static _continue() {
+    const rows = [];
+    if (S.items.some(item => item.name)) {
+      rows.push(
+        this._row(
+          'data-qback="1"',
+          `КП ${S.kpId ? `№ ${esc(S.number)}` : 'в работе'}`,
+          esc(S.client || 'вернуться к форме'),
+        ),
+      );
+    }
+    const deal = DealCard.last();
+    if (deal)
+      rows.push(this._row(`data-qdl="${esc(deal.id)}"`, esc(deal.title || 'Сделка'), 'последняя открытая сделка'));
+    return rows;
+  }
+
+  // КП, клиенты и сделки — с сервера одновременно
+  static _search(query) {
+    return Promise.all([
       Api.request(`/api/history?limit=${this.FOUND}&offset=0&q=${encodeURIComponent(query)}`)
         .then(answer => answer.items || [])
         .catch(() => []),
@@ -188,15 +253,25 @@ export class QuickSearch {
             .catch(() => [])
         : Promise.resolve([]),
     ]);
+  }
+
+  static async _found(text) {
+    const commands = QuickCommands.of(text).map(row =>
+      this._row(`data-qcmd="${row.key}"`, `→ ${esc(row.label)}`, 'открыть отбор'),
+    );
+    // «кп Ромашка» — только журнал КП, без слова «кп» в поиске
+    const query = text.replace(/^кп\s+/i, '');
+    const [kps, clients, deals] = await this._search(query);
     const catalog = QuickFind.matches(query).slice(0, this.FOUND);
     const all = catalog.length
       ? `<div class="qs-i"><button type="button" class="qs-b qs-all" data-qall><b>Все модели по «${esc(query)}» — в каталоге</b></button></div>`
       : '';
     return (
-      this._sect(
-        'КП',
-        kps.map(row => this._kpRow(row)),
-      ) +
+      this._sect('Перейти', commands) +
+        this._sect(
+          'КП',
+          kps.map(row => this._kpRow(row)),
+        ) +
         this._sect(
           'Клиенты',
           clients.map(client =>
@@ -255,6 +330,8 @@ export class QuickSearch {
       }
     },
     qdl: id => DealCard.open(id),
+    qcmd: key => QuickCommands.run(key),
+    qback: () => AppTabs.open(AppTabs.HOME),
     qadd: id => {
       const item = CatFind.id(id);
       if (!item) return;
@@ -274,7 +351,9 @@ export class QuickSearch {
       modal.close();
       return;
     }
-    const button = target.closest('[data-qkp],[data-qrep],[data-qcl],[data-qdl],[data-qcat],[data-qadd],[data-qall]');
+    const button = target.closest(
+      '[data-qkp],[data-qrep],[data-qcl],[data-qdl],[data-qcat],[data-qadd],[data-qall],[data-qcmd],[data-qback]',
+    );
     if (!button) return;
     modal.close();
     const key = Object.keys(this._ACTIONS).find(name => button.dataset[name]);
