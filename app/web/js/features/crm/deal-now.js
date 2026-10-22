@@ -38,6 +38,7 @@ export class DealNow {
       () => this._take(deal, next),
       () => this._gaps(deal),
       () => this._offer(deal),
+      () => this._send(deal),
       () => this._exec(deal),
       () => this._task(deal),
       () => this._late(deal),
@@ -101,6 +102,30 @@ export class DealNow {
       actions: [
         { act: 'kp', label: '＋ Создать КП' },
         { act: 'link', label: 'Добавить готовое КП клиента' },
+      ],
+    };
+  }
+
+  /**
+   * Последнее непроигранное КП сделки или null.
+   * @param {object} deal
+   * @returns {object|null}
+   */
+  static offer(deal) {
+    return (deal.kps || []).find(row => row.status !== 'lost') || null;
+  }
+
+  // КП сохранено, но не отправлено: после отправки сделка сама перейдёт на «ТКП отправлено», звонок — через 3 дня
+  static _send(deal) {
+    const offer = this.offer(deal);
+    if (!offer || offer.status !== 'new') return null;
+    return {
+      title: `КП № ${offer.number} готово — отправьте клиенту`,
+      hint: 'после отправки сделка сама перейдёт на следующую стадию, звонок клиенту программа поставит через 3 дня',
+      tone: '',
+      actions: [
+        { act: 'send', label: '✉ Отправить письмом' },
+        { act: 'sent', label: 'Уже отправил сам' },
       ],
     };
   }

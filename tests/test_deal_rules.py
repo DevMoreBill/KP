@@ -160,9 +160,28 @@ class RegsTest(RegsBase):
         self.assertEqual(len(gaps), 6, 'клиента нет в справочнике — всё пусто')
         with self.assertRaises(ValueError):
             self.regs().save_client(deal, {'person': 'Петров Иван'}, 'тест')
-        filled = self.regs().save_client(deal, {'inn': '7700000099', 'person': 'Петров Иван', 'personPhone': '89001112233'}, 'тест')
+        from unittest import mock
+        with mock.patch('counterparty.Counterparties.lookup', return_value={}):
+            filled = self.regs().save_client(deal, {'inn': '7700000099', 'person': 'Петров Иван', 'personPhone': '89001112233'}, 'тест')
         self.assertEqual(filled['clientId'], 'inn7700000099')
         self.assertEqual(self.st.client_get('inn7700000099')['contacts'][0]['name'], 'Петров Иван')
+
+    def test_client_by_inn(self):
+        """ИНН — карточка из ФНС (реквизиты, адрес); известный — из справочника; ошибка в ИНН — понятный текст."""
+        from unittest import mock
+        from deal_rules import ClientByInn
+        found = {'short': 'ООО «Гамма»', 'full': 'ООО «Гамма»', 'kpp': '770101001', 'address': 'г. Москва, ул. Тверская, 1'}
+        with mock.patch('counterparty.Counterparties.lookup', return_value=found) as lookup:
+            doc = ClientByInn(self.st).ensure('7701000011', '', 'тест')
+            self.assertEqual((doc['name'], doc['address']), ('ООО «Гамма»', 'г. Москва, ул. Тверская, 1'))
+            self.assertEqual(ClientByInn(self.st).ensure('7700000001')['name'], 'ООО «Альфа»', 'известный — из справочника')
+            self.assertEqual(lookup.call_count, 1)
+        with mock.patch('counterparty.Counterparties.lookup', return_value={'error': 'нет'}):
+            with self.assertRaises(ValueError):
+                ClientByInn(self.st).ensure('7701000022')
+            self.assertEqual(ClientByInn(self.st).ensure('7701000022', 'ООО «Дельта»')['name'], 'ООО «Дельта»')
+        with self.assertRaises(ValueError):
+            ClientByInn(self.st).ensure('12345')
 
     def test_known_client_kept(self):
         """ИНН клиента, который уже есть в справочнике, — карточка дополняется, контакты и реквизиты не теряются."""

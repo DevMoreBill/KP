@@ -320,9 +320,7 @@ class DealRegs:
         if not client:
             if not inn:
                 raise ValueError('Укажите ИНН клиента — без него клиента нет в справочнике')
-            known = self.store.client_get('inn' + inn)  # клиент с этим ИНН уже есть — дополняется, а не заменяется
-            client = known if isinstance(known, dict) else {}
-            client = client or {'id': 'inn' + inn, 'name': deal.get('client') or '', 'inn': inn, 'contacts': []}
+            client = ClientByInn(self.store).ensure(inn, deal.get('client') or '', author)
         doc = {key: value for key, value in client.items() if key != '_rev'}
         if inn and not doc.get('inn'):
             doc['inn'] = inn
@@ -510,3 +508,43 @@ class DealRegs:
         self.store.kv_set(self.KEY, conf)
         self.mark()
         return self.view()
+
+
+class ClientByInn:
+    """Клиент по ИНН: из справочника, иначе — реквизиты из ФНС (DaData, ЕГРЮЛ) и новая карточка; так регион, адрес и
+    тип компании для полей Битрикс24 заполняются сами."""
+
+    KEEP = ('kpp', 'ogrn', 'full', 'address', 'director', 'directorPost', 'okved', 'status')
+
+    def __init__(self, store) -> None:
+        self.store = store
+
+    def ensure(self, inn: str, name: str = '', author: str = '') -> dict:
+        """Карточка клиента с этим ИНН (найденная или новая). ValueError — ИНН с ошибкой."""
+        digits = re.sub(r'\D', '', str(inn or ''))
+        if len(digits) not in DealRegs.INN_LENGTHS:
+            raise ValueError('ИНН — 10 цифр (организация) или 12 (ИП)')
+        known = self.store.client_get('inn' + digits)
+        if isinstance(known, dict) and known:
+            return known
+        found = self._lookup(digits)
+        doc = {
+            'id': 'inn' + digits,
+            'name': str(found.get('short') or found.get('full') or name or '')[: DealRegs.NAME_MAX * 2],
+            'inn': digits,
+            'contacts': [],
+            **{key: found[key] for key in self.KEEP if found.get(key)},
+        }
+        if not doc['name']:
+            raise ValueError('Организация с таким ИНН не найдена — проверьте ИНН или впишите название')
+        self.store.client_put(doc['id'], doc, author)
+        return doc
+
+    def _lookup(self, inn: str) -> dict:
+        from counterparty import Counterparties
+
+        try:
+            found = Counterparties(self.store).lookup(inn)
+        except Exception:
+            return {}
+        return found if isinstance(found, dict) and not found.get('error') else {}

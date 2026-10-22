@@ -35,8 +35,10 @@ export class CrmFunnel {
    */
   static get(id) {
     const list = this.all();
+    const wanted = id || this.MAIN;
     return (
-      list.find(funnel => funnel.id === (id || this.MAIN)) ||
+      list.find(funnel => funnel.id === wanted) ||
+      (this.cache || []).find(funnel => funnel.id === wanted) ||
       list.find(funnel => funnel.id === this.MAIN) || { id: this.MAIN, name: '', stages: [] }
     );
   }

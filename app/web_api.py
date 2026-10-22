@@ -50,7 +50,7 @@ from crm import CrmBoard, DealBook, Stages, TaskBook
 from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
-from deal_rules import DealRegs
+from deal_rules import ClientByInn, DealRegs
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
 from features import FeatureAccess, Viewer
@@ -1929,6 +1929,16 @@ class CrmController(Controller):
             self.bitrix_on(did)
             deal = new
         return self._card(did, deal)
+
+    @route(r'/api/crm/client/inn', 'POST')
+    def client_by_inn(self) -> Any:
+        """Клиент по ИНН: из справочника или из ФНС (новая карточка) — для сделки без ручного ввода реквизитов."""
+        body = self.json_body()
+        with self.user_input():
+            doc = ClientByInn(store()).ensure(
+                str(body.get('inn') or ''), str(body.get('name') or '')[:300], admin.actor(self.handler)[1]
+            )
+        return self.send_json({key: doc.get(key) or '' for key in ('id', 'name', 'inn', 'address')})
 
     @route(r'/api/crm/deal/(d\d{1,9})/need', ('GET', 'POST'))
     def need(self, did) -> Any:

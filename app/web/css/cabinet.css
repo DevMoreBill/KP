@@ -579,3 +579,11 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .tf-b>i{display:block;height:100%;border-radius:4px;background:var(--tc,var(--navy))}
 .td-r .cab-more{display:flex;flex-wrap:wrap;gap:8px}
 @media (max-width:1000px){.td-g{grid-template-columns:1fr}}
+.cab-cl-w{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;margin:2px 0 6px}.cab-cl-w>span{color:var(--muted)}.cab-cl-w a{color:var(--navy)}
+.tt-a{margin-bottom:12px}
+.tt-r{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px 0;border-top:1px solid var(--line)}
+.tt-r>.lnk{font-weight:600;min-width:180px;text-align:left}
+.tt-is{display:flex;flex-wrap:wrap;gap:6px}
+.tt-i{font-size:12.5px;border-radius:999px;padding:3px 10px;border:1px solid var(--line)}
+.tt-i.bad{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
+.tt-i.warn{color:var(--warn-ink,var(--ink));border-color:var(--warn-line,var(--line))}

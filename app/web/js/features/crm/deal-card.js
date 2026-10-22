@@ -14,7 +14,9 @@ import { DealExec } from './deal-exec.js';
 import { DealWin } from './deal-win.js';
 import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
+import { InnClient } from './inn-client.js';
 import { KpTrack } from '../kp/kp-track.js';
+import { MailDlg } from '../kp/mail-dlg.js';
 import { FEAT } from '../../core/features.js';
 import { ClientStore } from '../kp/client-store.js';
 import { UiKit } from '../../ui/ui-kit.js';
@@ -501,13 +503,27 @@ export class DealCard {
       return;
     }
     const field = event.target.closest('[data-dkf]');
-    if (!field) return;
+    if (field) this._field(field);
+  }
+
+  // поле «О сделке»: стадия — через регламент, ИНН в «Клиенте» — клиент из ФНС, прочее — сохранить
+  static async _field(field) {
     if (field.dataset.dkf === 'stage') {
       if (field.value) this._stage(field.value);
       return;
     }
+    if (field.dataset.dkf === 'client' && InnClient.looks(field.value) && !this._known(field.value)) {
+      const client = await InnClient.find(field.value);
+      if (client) this._pickClient(client, field);
+      return;
+    }
     const body = this._body(field.dataset.dkf, field.value);
     if (body && (await this.save(body))) this._flash();
+  }
+
+  static _known(text) {
+    const digits = String(text).replace(/\D/g, '');
+    return (ClientStore.list || []).some(row => row.inn === digits);
   }
 
   static _body(key, value) {
@@ -540,12 +556,32 @@ export class DealCard {
       next: () => next && this._stage(next.key),
       fill: () => deal.regsNext && this._apply(() => DealNeed.fill(this.deal, deal.regsNext.stage)),
       kp: () => DealKp.newKp(deal),
+      send: () => this._sendKp(deal),
+      sent: () => this._sentKp(deal),
       link: () => DealKp.link(deal, () => this.reload()),
       task: () => CrmTask.quick(deal.id, () => this.reload()),
       exec: () => this._reveal('exec', '[data-dkpart="exec"]'),
       date: () => this._reveal('about', '[data-dkf="expected"]'),
     };
     if (actions[act]) actions[act]();
+  }
+
+  static _sendKp(deal) {
+    const offer = DealNow.offer(deal);
+    if (offer) MailDlg.open(offer.id, offer.number, () => this.reload());
+  }
+
+  // КП отправлено не из программы — отметить: сделка пойдёт дальше сама
+  static async _sentKp(deal) {
+    const offer = DealNow.offer(deal);
+    if (!offer) return;
+    try {
+      await KpTrack.put(offer.id, { status: 'sent' });
+    } catch (error) {
+      Toast.show(`Не отмечено: ${error.message}`);
+      return;
+    }
+    this.reload();
   }
 
   // раскрыть раздел и показать нужное место

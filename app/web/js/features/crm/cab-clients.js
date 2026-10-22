@@ -34,6 +34,7 @@ export class CabClients {
       wonSum: 0,
       last: '',
       next: null,
+      who: null,
       deals: [],
     };
   }
@@ -50,6 +51,7 @@ export class CabClients {
       client.sum += deal.sum || 0;
     }
     if (deal.next && (!client.next || deal.next.due < client.next.due)) client.next = deal.next;
+    client.who = client.who || this._reachable(deal.who);
     byKey.set(key, client);
   }
 
@@ -75,9 +77,23 @@ export class CabClients {
       : `<b>${esc(client.name)}</b>`;
     const num = (label, count, sum) =>
       `<span><small>${label}</small><b>${count}</b>${count ? `<em>${CrmFmt.short(sum)}</em>` : ''}</span>`;
-    return `<article class="cab-cl"><div class="cab-cl-h">${name}${client.inn ? `<span class="muted">ИНН ${esc(client.inn)}</span>` : ''}</div>
+    return `<article class="cab-cl"><div class="cab-cl-h">${name}${client.inn ? `<span class="muted">ИНН ${esc(client.inn)}</span>` : ''}</div>${this._who(client.who)}
       <div class="cab-cl-n">${num('В работе', client.open, client.sum)}${num('Выиграно', client.won, client.wonSum)}<span><small>Последнее</small><b>${esc(CrmFmt.day(client.last))}</b></span></div>
       <div class="cab-cl-f">${this._next(client)}<button class="btn sm" type="button" data-cldeals="${esc(client.name)}">Сделки (${client.deals.length})</button></div></article>`;
+  }
+
+  static _reachable(who) {
+    return who && (who.phone || who.email) ? who : null;
+  }
+
+  // контакт клиента: позвонить или написать одним нажатием
+  static _who(who) {
+    if (!who) return '';
+    const phone = who.phone
+      ? `<a href="tel:${esc(String(who.phone).replace(/[^\d+]/g, ''))}">☎ ${esc(who.phone)}</a>`
+      : '';
+    const mail = who.email ? `<a href="mailto:${esc(who.email)}">✉ ${esc(who.email)}</a>` : '';
+    return `<div class="cab-cl-w"><span>${esc(who.name || '')}</span>${phone}${mail}</div>`;
   }
 
   static _next(client) {

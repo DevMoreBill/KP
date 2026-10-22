@@ -13,13 +13,17 @@ import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { AdminSession, Api } from '../../core/net.js';
-import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
 import { KpTabs } from './kp-tabs.js';
+import { CrmData } from '../crm/crm-data.js';
+import { CrmFmt } from '../crm/crm-fmt.js';
+import { CrmFunnel } from '../crm/crm-funnel.js';
+import { DealCard } from '../crm/deal-card.js';
+import { Fmt, Str } from '../../core/str.js';
 
 /**
- * Карточка клиента: реквизиты, контакты и объекты из справочника, все КП клиента с итогами по статусам, заметки отдела.
+ * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.
  * Сервер — ClientCardController. Открывается из раздела «Клиент», журнала, кабинета.
  */
 export class ClientCard {
@@ -110,7 +114,7 @@ export class ClientCard {
       `${this._head(ctx)}
       ${this._tiles(ctx)}
       <div class="cc-g">
-        ${this._kps(ctx)}
+        <div class="cc-main">${this._deals(ctx)}${this._kps(ctx)}</div>
         ${this._side(ctx)}
       </div>
       <div class="dlg-acts"><button class="btn primary" type="button" data-ccnew>＋ Новое КП этому клиенту</button></div>`,
@@ -167,6 +171,33 @@ export class ClientCard {
         ${this.tile('Последнее КП', last ? esc(KpDate.ddmm(last.date)) : '—', last ? esc(ShortName.of(last.manager || '')) : '')}</div>`;
   }
 
+  // сделки клиента из кабинета (если он загружен): стадия, сумма, следующий шаг — открыть одним нажатием
+  static _deals({ answer, client }) {
+    if (!CrmData.board) return '';
+    const inn = client.inn || answer.inn || '';
+    const name = Str.norm(client.name || answer.name || '');
+    const deals = CrmData.deals().filter(deal =>
+      inn ? deal.clientInn === inn : name && Str.norm(deal.client || '') === name,
+    );
+    if (!deals.length) return '';
+    const rows = deals
+      .map(deal => {
+        const next = deal.next ? ` · ${esc(deal.next.title)}, ${esc(CrmFmt.rel(deal.next.due))}` : '';
+        return `<button type="button" class="md-r cc-deal" data-ccdeal="${esc(deal.id)}"><b>${esc(deal.title || deal.client)}</b><span class="muted">${esc(CrmFunnel.label(deal))} · ${CrmFmt.short(deal.sum)}${next}</span></button>`;
+      })
+      .join('');
+    return `<section class="cc-kps"><p class="sub">Сделки клиента <b class="md-c">${deals.length}</b></p><div class="cc-kl">${rows}</div></section>`;
+  }
+
+  // телефон и почта — нажатием: звонок, письмо
+  static _reach(row) {
+    const phone = row.phone
+      ? `<a href="tel:${esc(String(row.phone).replace(/[^\d+]/g, ''))}">${esc(row.phone)}</a>`
+      : '';
+    const mail = row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : '';
+    return [esc(row.post || ''), phone, mail].filter(Boolean).join(' · ');
+  }
+
   static _kps({ answer, kps }) {
     const managers =
       answer.managers && answer.managers.length
@@ -194,10 +225,7 @@ export class ClientCard {
     const people = contacts.length
       ? contacts
           .slice(0, this.CONTACTS)
-          .map(
-            row =>
-              `<div class="cc-c"><b>${esc(row.name)}</b><span class="muted">${esc([row.post, row.phone, row.email].filter(Boolean).join(' · '))}</span></div>`,
-          )
+          .map(row => `<div class="cc-c"><b>${esc(row.name)}</b><span class="muted">${this._reach(row)}</span></div>`)
           .join('')
       : '<p class="empty">Контакты появятся после сохранения КП с контактным лицом.</p>';
     const places = objects.length
@@ -260,6 +288,13 @@ export class ClientCard {
       },
     ],
     ['[data-ccnew]', ctx => ClientCard._newKp(ctx)],
+    [
+      '[data-ccdeal]',
+      (ctx, button) => {
+        ctx.modal.close();
+        DealCard.open(button.dataset.ccdeal);
+      },
+    ],
   ];
 
   static _click(ctx, target) {

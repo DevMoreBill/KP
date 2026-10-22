@@ -4,6 +4,7 @@ import { CrmTask } from './crm-task.js';
 import { DealCard } from './deal-card.js';
 import { Cabinet } from './cabinet.js';
 import { ClientSuggest } from './client-suggest.js';
+import { InnClient } from './inn-client.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { Str } from '../../core/str.js';
@@ -47,7 +48,7 @@ export class DealNew {
     const funnel = DealCard.funnelSelect({ funnel: CrmData.funnel() }, 'name="funnel"');
     return `<div class="dlg-h"><h3>Новая сделка</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted dk-nnote">Сделки появляются и сами — при сохранении КП. Здесь — сделка без КП: запрос, встреча, тендер.</p>
-      <form class="dk-new" autocomplete="off"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" placeholder="Название, ИНН, телефон, e-mail или ФИО — подскажем"><small class="muted dk-found"></small></label>
+      <form class="dk-new" autocomplete="off"><label class="f"><span class="req">Клиент</span><input type="text" name="client" maxlength="300" placeholder="Название, ИНН, телефон, e-mail или ФИО — подскажем; по ИНН найдём в ФНС"><small class="muted dk-found"></small></label>
         ${this._sources()}<label class="f"><span>Объект или задача</span><input type="text" name="title" maxlength="200" placeholder="Например: компрессорная для цеха № 3"></label>
         <div class="dk-nr"><label class="f"><span>Сумма, ₽ <em class="muted">если известна</em></span><input type="text" name="sum" inputmode="decimal" placeholder="по КП"></label>
         <label class="f"><span>Ожидаемая дата</span><input type="date" name="expected" value="${expected}"></label></div>
@@ -82,8 +83,10 @@ export class DealNew {
   }
 
   static _found(modal) {
-    const client = this._client(modal.$('[name=client]').value.trim());
-    modal.$('.dk-found').textContent = client ? `✓ из справочника${client.inn ? `, ИНН ${client.inn}` : ''}` : '';
+    const text = modal.$('[name=client]').value.trim();
+    const client = this._client(text);
+    const byInn = !client && InnClient.looks(text) ? 'ИНН — название и реквизиты программа найдёт в ФНС сама' : '';
+    modal.$('.dk-found').textContent = client ? `✓ из справочника${client.inn ? `, ИНН ${client.inn}` : ''}` : byInn;
   }
 
   static _click(event, modal) {
@@ -135,10 +138,12 @@ export class DealNew {
     if (form.dataset.busy) return;
     form.dataset.busy = '1';
     try {
+      const body = await this._byInn(this._body(fields));
+      if (!body) return;
       const deal = await Api.request('/api/crm/deal', {
         method: 'POST',
         headers: this.HEAD,
-        body: JSON.stringify(this._body(fields)),
+        body: JSON.stringify(body),
       });
       await this._firstTask(form, deal);
       modal.close();
@@ -149,6 +154,15 @@ export class DealNew {
     } finally {
       delete form.dataset.busy;
     }
+  }
+
+  // в поле «Клиент» — ИНН, которого нет в справочнике: клиент из ФНС
+  static async _byInn(body) {
+    if (body.clientId || !InnClient.looks(body.client)) return body;
+    const client = await InnClient.find(body.client);
+    if (!client) return null;
+    const title = body.title === body.client ? client.name : body.title;
+    return { ...body, client: client.name, clientInn: client.inn, clientId: client.id, title };
   }
 
   static async _firstTask(form, deal) {
