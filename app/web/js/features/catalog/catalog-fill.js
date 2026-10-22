@@ -15,6 +15,9 @@ import { CoverSync } from '../../ui/step-cover.js';
 import { CoverHint, ItemSpec } from '../../core/item-spec.js';
 import { Uid } from '../../core/util.js';
 import { RecentModels } from '../kp/quick-search.js';
+import { Makers } from './makers.js';
+import { CatalogEditor } from './catalog-edit.js';
+import { ItemEditor } from './item-editor.js';
 
 /** Позиция КП из карточки каталога: всё содержимое карточки, цена — в валюте КП, без следов прежнего оборудования. */
 export class CatalogFill {
@@ -311,6 +314,11 @@ export class CatalogSync {
       return;
     }
     const need = CatFind.id(item.catId) ? 'catEdit' : 'catAdd';
+    if (need === 'catAdd' && !Makers.ensure(item)) {
+      if (ItemEditor.current) CatalogEditor.askMaker(index);
+      else Toast.show('Укажите производителя: «Изменить» → «Основное» → «Производитель»');
+      return;
+    }
     if (!Auth.can(need)) {
       Auth.cannot(need);
       return;

@@ -335,3 +335,5 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .qs-all b{color:var(--navy)}
 .qs-k{margin:8px 0 0;font-size:12px}
 .find-btn span[aria-hidden]{font-size:17px;line-height:1}
+/* обязательное поле позиции каталога (производитель) */
+.f .req{color:var(--danger);font-weight:700}

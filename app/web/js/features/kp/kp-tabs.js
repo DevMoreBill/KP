@@ -8,6 +8,7 @@ import { $, esc, Uid } from '../../core/util.js';
 import { FormView } from '../../ui/form-view.js';
 import { Steps } from '../../ui/steps.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
+import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { StationImages } from '../station/station-images.js';
 
 /**
@@ -235,6 +236,10 @@ export class KpTabs {
 
   // переключение не начинается, пока идёт другое или сохраняется КП в журнал
   static _free() {
+    if (CatalogEditor.session) {
+      Toast.show('Сначала сохраните или закройте позицию каталога');
+      return false;
+    }
     if (!this.busy && !Drafts.paused) return true;
     Toast.show('Подождите — КП ещё сохраняется');
     return false;

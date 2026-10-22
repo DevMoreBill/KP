@@ -9,6 +9,7 @@ import { ItemEditor } from './item-editor.js';
 import { Kit } from '../kit/kit.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
+import { Makers } from './makers.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.
@@ -225,8 +226,23 @@ export class CatalogEditor {
       Toast.show('Укажите наименование позиции');
       return;
     }
+    if (CatalogEditor.session.isNew && !Makers.ensure(item)) {
+      this.askMaker(0);
+      return;
+    }
     const doc = await this._put(item);
     if (doc) await this._finish(doc);
+  }
+
+  /**
+   * Новое оборудование без производителя: открыть «Основное», поле производителя — в фокус.
+   * @param {number} index позиция в окне
+   */
+  static askMaker(index) {
+    ItemEditor.current.tab = 'main';
+    ItemEditor.render();
+    setTimeout(() => $(`#edlg [data-p="items.${index}.attrs.${Makers.FIELD}"]`)?.focus(), this.FOCUS_DELAY);
+    Toast.show('Укажите производителя — выберите из списка или впишите');
   }
 
   /** «Отмена» и Esc — с вопросом, если есть несохранённые правки. */
