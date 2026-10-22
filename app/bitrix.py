@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bitrix_clients import BitrixClientOut, BitrixClients
+from bitrix_docs import BitrixDealDocs
 from bitrix_mirror import BitrixMirror
 from bitrix_my import MyCompanies
 from bitrix_rules import BitrixRules
@@ -1231,6 +1232,7 @@ class BitrixSync:
         for k in kps:
             self._files(bid, k)
         self._comments(bid, deal)
+        BitrixDealDocs(self).push(deal, bid)
         self._regs_out(deal, cid, bid, kps)
         for task in TaskBook(self.store).list(deal=did):
             if not self.links.get('task', task['id']):

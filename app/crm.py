@@ -939,13 +939,17 @@ class CrmBoard:
             if task['state'] == 'open' and task['deal'] and task['deal'] not in nxt:
                 nxt[task['deal']] = task
         from crm_exec import ExecPlan
+        from deal_files import DealClosing, DealFiles
 
         contacts: dict[str, dict | None] = {}
+        docs = DealFiles.of(self.store).kinds([deal['id'] for deal in deals])
         for deal in deals:
             deal['who'] = self._who(deal, contacts)
             deal['kps'] = kps.get(deal['id'], [])
             deal['next'] = nxt.get(deal['id'])
             deal['execSum'] = ExecPlan(deal).summary()
+            deal['docs'] = docs.get(deal['id'], [])
+            deal['closingDue'] = DealClosing.shipped(deal) and not set(deal['docs']) & set(DealFiles.CLOSING)
             ExecPlan.strip(deal['kps'])
             for key in ('history', 'uf', 'exec'):
                 deal.pop(key, None)

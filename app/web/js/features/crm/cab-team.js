@@ -13,6 +13,7 @@ export class CabTeam {
     ['fresh', 'заявки ждут больше суток', 'bad'],
     ['free', 'сделки без следующего шага', 'warn'],
     ['late', 'ожидаемая дата прошла', 'warn'],
+    ['docs', 'нет акта или УПД', 'warn'],
   ];
   static PERCENT = 100;
 
@@ -71,7 +72,7 @@ export class CabTeam {
   }
 
   static _blank(id, name) {
-    return { id, name, open: 0, sum: 0, won: 0, wonSum: 0, lost: 0, over: 0, free: 0, fresh: 0, late: 0 };
+    return { id, name, open: 0, sum: 0, won: 0, wonSum: 0, lost: 0, over: 0, free: 0, fresh: 0, late: 0, docs: 0 };
   }
 
   static _tally(deals) {
@@ -88,11 +89,12 @@ export class CabTeam {
       if (row && task.due < today()) row.over++;
     }
     return [...byId.values()]
-      .filter(row => row.open || row.won || row.lost || row.over || row.fresh)
+      .filter(row => row.open || row.won || row.lost || row.over || row.fresh || row.docs)
       .sort((one, two) => two.sum - one.sum);
   }
 
   static _count(row, deal, thisMonth) {
+    if (deal.closingDue) row.docs++;
     if (deal.stage === 'won') {
       if (thisMonth) {
         row.won++;

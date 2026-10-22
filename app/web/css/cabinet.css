@@ -596,3 +596,9 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .cr-f .ck{margin-top:6px}
 .cr-dlg .row .btn{white-space:nowrap}
 @media (max-width:768px){.cr-o .chip{min-height:44px}}
+.dd-box{border:1px dashed var(--line);border-radius:10px;padding:10px;display:grid;gap:8px}
+.dd-box.over{border-color:var(--sky);background:var(--soft)}
+.dd-k{display:flex;flex-wrap:wrap;gap:6px}
+.dd-add{align-items:center;gap:10px;flex-wrap:wrap}
+.dd-kind{font-weight:600}
+@media (max-width:768px){.dd-k .chip{min-height:44px}}

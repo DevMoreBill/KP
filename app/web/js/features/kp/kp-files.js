@@ -251,8 +251,14 @@ export class KpFilesPanel {
     return `Снимок ${two(now.getDate())}.${two(now.getMonth() + 1)}.${now.getFullYear()} ${two(now.getHours())}-${two(now.getMinutes())}-${two(now.getSeconds())}.${ext}`;
   }
 
-  // почему файл не прикрепить ('' — можно)
-  static _bad(name, file, max) {
+  /**
+   * Почему файл не прикрепить ('' — можно).
+   * @param {string} name
+   * @param {File} file
+   * @param {number} max предел файла, МБ
+   * @returns {string}
+   */
+  static problem(name, file, max) {
     const ext = (name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase();
     if (!this.EXTS.includes(ext)) {
       return `«${name}» — такой файл не прикрепить (можно PDF, Word, Excel, JPG, PNG, DWG, DXF, ZIP, TXT)`;
@@ -274,7 +280,7 @@ export class KpFilesPanel {
     let done = 0;
     for (const [i, file] of files.entries()) {
       const name = this.nameOf(file);
-      const why = this._bad(name, file, max);
+      const why = this.problem(name, file, max);
       if (why) {
         bad.push(why);
         continue;

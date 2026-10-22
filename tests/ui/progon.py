@@ -1165,6 +1165,36 @@ class Scenario(UiRun):
           step: (DealCard.deal.tasks || []).some(t => t.state === 'open' && t.title === 'Подготовить договор (прогон)')})""")
         if not got['step'] or (target and target not in got['stage']):
             self.errs.append(('cabinet', 'ERR', 'итог «Договорились»: %s, ждали стадию %s' % (got, target)))
+        self._cab_docs()
+
+    PDF = b'%PDF-1.4\n' + b'0' * 2000
+
+    def _doc_upload(self, button, name):
+        pg = self.pg
+        with pg.expect_file_chooser() as chooser:
+            pg.click(button)
+        chooser.value.set_files({'name': name, 'mimeType': 'application/pdf', 'buffer': self.PDF})
+        self.wait(2000)
+
+    def _cab_docs(self):
+        """Документы сделки: договор — чипом и кнопкой; «Выиграно» → «Прикрепите закрывающие» → УПД, напоминание снято."""
+        pg = self.pg
+        self._part('docs')
+        pg.click('dialog.deal-dlg[open] [data-ddkind="contract"]')
+        self._doc_upload('dialog.deal-dlg[open] [data-ddpick]', 'Договор поставки (прогон).pdf')
+        kinds = self.ev("(DealCard.deal.files || []).map(f => f.kind + ':' + f.name)")
+        if 'contract:Договор поставки (прогон).pdf' not in kinds:
+            self.errs.append(('cabinet', 'ERR', 'договор не прикреплён: %s' % kinds))
+        self.ev("""async () => { const d = DealCard.deal; await Api.request(`/api/crm/deal/${d.id}`, {method: 'PUT',
+          headers: {'Content-Type': 'application/json; charset=utf-8', 'X-KP-Rev': String(d.rev)}, body: JSON.stringify({stage: 'won'})});
+          await DealCard.reload(); }""")
+        pg.wait_for_selector('dialog.deal-dlg[open] [data-dknow="docs"]', timeout=15000)
+        self.snap('f_deal_docs', 'dialog.deal-dlg[open]', wait=300)
+        self._doc_upload('dialog.deal-dlg[open] [data-dknow="docs"]', 'УПД № 7 (прогон).pdf')
+        got = self.ev("({due: DealCard.deal.closingDue, upd: (DealCard.deal.files || []).some(f => f.kind === 'upd')})")
+        if got != {'due': False, 'upd': True}:
+            self.errs.append(('cabinet', 'ERR', 'закрывающие: %s' % got))
+        self.snap('f_deal_docs1', 'dialog.deal-dlg[open]', wait=300)
 
     def _cab_new(self):
         pg = self.pg

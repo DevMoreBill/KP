@@ -28,6 +28,7 @@ class AutoTasks:
     IDLE = 'auto:idle:'
     EXPIRE = 'auto:expire:'
     NEW = 'auto:new:'
+    CLOSING = 'auto:closing:'
     END_OF_DAY = '17:00'
 
     def __init__(self, store) -> None:
@@ -38,11 +39,16 @@ class AutoTasks:
         """Дела по одной сделке. → сколько поставлено."""
         have = self.tasks.list(deal=deal['id'])
         self._settle_new(deal, have)
-        if deal.get('stage') in Funnels.CLOSED:
-            return 0
         steps = {task.get('step') for task in have if task.get('step')}
-        offers = self._offers(deal['id'])
-        wanted = [*self._new_request(deal), *self._after_sent(offers), *self._expiring(offers), *self._idle(deal, have)]
+        wanted = self._closing(deal)
+        if deal.get('stage') not in Funnels.CLOSED:
+            offers = self._offers(deal['id'])
+            wanted += [
+                *self._new_request(deal),
+                *self._after_sent(offers),
+                *self._expiring(offers),
+                *self._idle(deal, have),
+            ]
         added = 0
         for step, body in wanted:
             if step in steps:
@@ -141,6 +147,30 @@ class AutoTasks:
             'time': self.END_OF_DAY,
         }
         return [(self.NEW + deal['id'], body)]
+
+    def _closing(self, deal: dict) -> list[tuple[str, dict]]:
+        """Поставка отмечена или сделка выиграна, а акта и УПД нет — «прикрепить закрывающие документы»."""
+        from deal_files import DealClosing
+
+        if not DealClosing(self.store).due(deal):
+            return []
+        body = {
+            'kind': 'task',
+            'title': 'Прикрепить закрывающие документы (акт или УПД)',
+            'due': date.today().isoformat(),
+        }
+        return [(self.CLOSING + deal['id'], body)]
+
+    def settle_closing(self, did: str) -> None:
+        """Акт или УПД прикреплены — дело «прикрепить закрывающие документы» сделано."""
+        from deal_files import DealFiles
+
+        if not DealFiles.of(self.store).has_closing(did):
+            return
+        for task in self.tasks.list(deal=did):
+            if task.get('step') == self.CLOSING + did and task.get('state') == 'open':
+                self.tasks.update(task['id'], {'state': 'done'}, self.WHO)
+                self._to_bitrix(task['id'])
 
     def _settle_new(self, deal: dict, have: list[dict]) -> None:
         """Сделка ушла с «Новой заявки» — её дело «взять в работу» сделано."""

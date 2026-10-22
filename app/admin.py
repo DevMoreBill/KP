@@ -1748,6 +1748,15 @@ class AdminApi:
                 return self.err(404, 'Документ не найден')
             self.log('delete_kp_file', 'kp', acc.group(1), {'name': rec['name'], 'size': rec['size']}, None)
             return self.ok({'ok': True})
+        acc = re.match(r'^dealfiles/(d\d{1,9})/(\d{1,9})/delete$', sub)
+        if acc and method == 'POST':  # документ сделки — после первых минут удаляет только администратор
+            from deal_files import DealFiles
+
+            rec = DealFiles.of(store).delete(acc.group(1), int(acc.group(2)))
+            if not rec:
+                return self.err(404, 'Документ не найден')
+            self.log('delete_deal_file', 'deal', acc.group(1), {'name': rec['name'], 'kind': rec['kind']}, None)
+            return self.ok({'ok': True})
         if sub == 'trash' or sub.startswith('trash/'):
             return self.trash(method, sub, query)
         if sub == 'moderation':

@@ -332,6 +332,19 @@ MIGRATIONS = [
     ('2027-18-client-phones', '', ''),
     # стадии провала воронок Битрикса, пришедшие без вида (после стадии успеха): сделки на них — в столбец «проиграно»
     ('2027-19-funnel-closed', '', ''),
+    # документы сделки (app/deal_files.py): договор, спецификация, счёт, акт, УПД — файлы в data/deal_files/<сделка>/
+    (
+        '2027-20-deal-files',
+        """
+     CREATE TABLE IF NOT EXISTS deal_files (id INTEGER PRIMARY KEY AUTOINCREMENT, deal_id TEXT NOT NULL, kind TEXT NOT NULL,
+       name TEXT NOT NULL, file TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0, mime TEXT, note TEXT, added TEXT NOT NULL,
+       added_by TEXT, added_by_id TEXT);
+     CREATE INDEX IF NOT EXISTS deal_files_deal ON deal_files(deal_id, id);
+     """,
+        """
+     DROP INDEX IF EXISTS deal_files_deal; DROP TABLE IF EXISTS deal_files;
+     """,
+    ),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё

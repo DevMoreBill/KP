@@ -50,6 +50,7 @@ from crm import CrmBoard, DealBook, Stages, TaskBook
 from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
+from deal_files import DealClosing, DealFiles
 from deal_rules import ClientByInn, DealRegs
 from desktop import DesktopError, open_file, open_folder, show_in_folder
 from equipment_types import load_types, save_user_types, types_builtin_path
@@ -1985,6 +1986,7 @@ class CrmController(Controller):
         deal['kps'] = book.kps([did])[did]
         if ExecTasks(store()).sync(deal) + (self.safe(lambda: AutoTasks(store()).sync(deal)) or 0):
             deal = dict(book.get(did) or deal, kps=deal['kps'])
+        deal['closingDue'] = DealClosing(store()).due(deal)
         deal['exec'] = ExecPlan(deal).view(Sums.ALL if self._money(deal) else Sums.SALES)
         ExecPlan.strip(deal['kps'])
         deal['clientCard'] = self._client_card(deal)
@@ -2002,6 +2004,8 @@ class CrmController(Controller):
         funnel = deal.get('funnel') or Funnels.MAIN
         fields = DealFields(store())
         deal['regsNext'] = self.safe(lambda: DealRegs(store()).next_gaps(deal))
+        deal['files'] = DealFiles.of(store()).list(did, admin.actor(self.handler)[0])
+        deal['fileKinds'] = DealFiles.KINDS
         return self.send_json(
             dict(
                 deal,
@@ -2049,6 +2053,50 @@ class CrmController(Controller):
             except LookupError as exc:
                 return self.not_found(str(exc))
         self.bitrix_on(did)
+        return self._card(did, DealBook(store()).get(did) or {})
+
+    @route(r'/api/crm/deal/(d\d{1,9})/files', 'POST')
+    def deal_file_add(self, did: str) -> Any:
+        """Документ сделки: ?kind=…&name=…, тело — файл; уходит и в Битрикс24."""
+        if self._deal(did) is None:
+            return None
+        uid, name, _role = admin.actor(self.handler)
+        with self.user_input():
+            rec = DealFiles.of(store()).add_kind(
+                did, self.query.get('kind', ''), self.query.get('name', ''), self.body(), name, uid
+            )
+        admin.log(self.handler, store(), 'add_deal_file', 'deal', did, None, {'name': rec['name'], 'kind': rec['kind']})
+        AutoTasks(store()).settle_closing(did)
+        self.bitrix_on(did)
+        return self._card(did, DealBook(store()).get(did) or {})
+
+    @route(r'/api/crm/deal/(d\d{1,9})/files/(\d{1,9})', 'GET')
+    def deal_file(self, did: str, fid: str) -> Any:
+        if self._deal(did) is None:
+            return None
+        got = DealFiles.of(store()).read(did, fid)
+        if not got:
+            return self.not_found('Документ не найден')
+        rec, data = got
+        return self.send(
+            200,
+            rec['mime'] or 'application/octet-stream',
+            data,
+            self.attachment(rec['name'], 'document.' + (rec['ext'] or 'bin')),
+        )
+
+    @route(r'/api/crm/deal/(d\d{1,9})/files/(\d{1,9})/remove', 'POST')
+    def deal_file_remove(self, did: str, fid: str) -> Any:
+        """Автор удаляет свой документ в первые kp.fileUndoMin минут; позже — администратор."""
+        if self._deal(did) is None:
+            return None
+        try:
+            rec = DealFiles.of(store()).delete_own(did, fid, admin.actor(self.handler)[0])
+        except LookupError as exc:
+            return self.not_found(str(exc))
+        except PermissionError as exc:
+            return self.text(403, str(exc))
+        admin.log(self.handler, store(), 'delete_deal_file', 'deal', did, {'name': rec['name'], 'author': True}, None)
         return self._card(did, DealBook(store()).get(did) or {})
 
     @route(r'/api/crm/deal/(d\d{1,9})/exec', 'PUT')

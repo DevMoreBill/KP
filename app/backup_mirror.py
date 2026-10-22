@@ -7,6 +7,7 @@ import uuid
 from datetime import date, datetime
 
 import maintenance
+from deal_files import DealFiles
 from defaults import SrvVal
 from kp_files import KpFiles
 from storage import DbZip
@@ -181,6 +182,7 @@ class MirrorBackup:
                 rec['images'] = self._images(os.path.join(conf['path'], 'img'))
             # справочные документы — всегда: заново их не получить
             rec['kpFiles'] = self._kp_files(os.path.join(conf['path'], KpFiles.FOLDER))
+            rec['dealFiles'] = self._files(DealFiles.FOLDER, os.path.join(conf['path'], DealFiles.FOLDER))
         except Exception as exc:
             rec.update(ok=False, error=str(exc)[:300])
         maintenance._save(self.store, backup2=rec)
@@ -220,9 +222,11 @@ class MirrorBackup:
 
     def _kp_files(self, dst_root: str) -> int:
         """Справочные документы КП: только новые, без недописанных .part и посторонних файлов."""
-        return self._sync(
-            os.path.join(self.data_dir, KpFiles.FOLDER), dst_root, KpFiles.DISK.match, copy=self._copy_atomic
-        )
+        return self._files(KpFiles.FOLDER, dst_root)
+
+    def _files(self, folder: str, dst_root: str) -> int:
+        """Документы КП или сделок (папка folder): только новые, без недописанных .part и посторонних файлов."""
+        return self._sync(os.path.join(self.data_dir, folder), dst_root, KpFiles.DISK.match, copy=self._copy_atomic)
 
     @staticmethod
     def _copy_atomic(src: str, dst: str) -> None:

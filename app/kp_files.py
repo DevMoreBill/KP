@@ -19,6 +19,15 @@ class KpFiles:
     NAME_MAX = 150
     NOTE_MAX = 300
     KP_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+    # чьи документы: таблица и столбец владельца (константы, не из запроса), как называть владельца в сообщениях
+    TABLE = 'kp_files'
+    OWNER = 'kp_id'
+    OWNER_ID = KP_ID
+    OWNER_BAD = 'Недопустимый номер КП'
+    WHOSE = 'КП'
+    PER_ONE = 'одно КП'
+    LIMIT_KEYS = {'fileMB': 'kp.fileMB', 'filesMax': 'kp.filesMax', 'filesMB': 'kp.filesMB', 'mailMB': 'kp.mailMB'}
+    EXTRA: tuple[str, ...] = ()
     DISK = re.compile(r'^[0-9a-f]{32}\.[a-z]{3,4}$')
     BAD_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
     OLE = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'  # прежние Word и Excel (.doc, .xls)
@@ -101,12 +110,7 @@ class KpFiles:
         return cls(store, os.path.dirname(os.path.abspath(store.path)))
 
     def limits(self) -> dict:
-        return {
-            'fileMB': SrvVal.get(self.store, 'kp.fileMB'),
-            'filesMax': SrvVal.get(self.store, 'kp.filesMax'),
-            'filesMB': SrvVal.get(self.store, 'kp.filesMB'),
-            'mailMB': SrvVal.get(self.store, 'kp.mailMB'),
-        }
+        return {name: SrvVal.get(self.store, key) for name, key in self.LIMIT_KEYS.items()}
 
     @classmethod
     def megabytes(cls, size) -> str:
@@ -217,8 +221,8 @@ class KpFiles:
         return not head_low.startswith(cls.TEXT_BAD)
 
     def _kp_id(self, kid: str) -> str:
-        if not self.KP_ID.match(str(kid or '')):
-            raise ValueError('Недопустимый номер КП')
+        if not self.OWNER_ID.match(str(kid or '')):
+            raise ValueError(self.OWNER_BAD)
         return str(kid)
 
     def _dir(self, kid: str) -> str:
@@ -234,12 +238,15 @@ class KpFiles:
             raise ValueError('Неверная запись файла')
         return path
 
-    COLS = ('id', 'name', 'file', 'size', 'mime', 'note', 'added', 'added_by', 'added_by_id')
+    BASE_COLS = ('id', 'name', 'file', 'size', 'mime', 'note', 'added', 'added_by', 'added_by_id')
 
-    @staticmethod
-    def _row(rec) -> dict:
+    def _cols(self) -> tuple[str, ...]:
+        return self.BASE_COLS + self.EXTRA
+
+    def _row(self, rec) -> dict:
         """Описание для ответа из строки таблицы {столбец: значение}."""
         return {
+            **{key: rec.get(key) or '' for key in self.EXTRA},
             'id': rec['id'],
             'name': rec['name'],
             'size': rec['size'] or 0,
@@ -253,11 +260,12 @@ class KpFiles:
     def list(self, kid: str, uid: str | None = None) -> list[dict]:
         """Документы КП; у своих свежих файлов (uid — кто спрашивает) — undoUntil: до какого времени автор может удалить."""
         rows = self.store.all(
-            'SELECT {} FROM kp_files WHERE kp_id=? ORDER BY id'.format(', '.join(self.COLS)), (self._kp_id(kid),)
+            'SELECT {} FROM {} WHERE {}=? ORDER BY id'.format(', '.join(self._cols()), self.TABLE, self.OWNER),
+            (self._kp_id(kid),),
         )
         out = []
         for row in rows:
-            raw = dict(zip(self.COLS, row, strict=False))
+            raw = dict(zip(self._cols(), row, strict=False))
             rec = self._row(raw)
             until = self.undo_until(raw, uid)
             if until:
@@ -293,25 +301,26 @@ class KpFiles:
 
     def counts(self, ids) -> dict:
         """Сколько документов у каждого КП из списка: {номер КП: число} (без документов — нет в ответе)."""
-        want = {str(x) for x in ids if self.KP_ID.match(str(x or ''))}
+        want = {str(x) for x in ids if self.OWNER_ID.match(str(x or ''))}
         if not want:
             return {}
         if len(want) <= self.QUERY_IDS_MAX:
             rows = self.store.all(
-                'SELECT kp_id, COUNT(*) FROM kp_files WHERE kp_id IN ({}) GROUP BY kp_id'.format(
-                    ','.join('?' * len(want))
+                'SELECT {0}, COUNT(*) FROM {1} WHERE {0} IN ({2}) GROUP BY {0}'.format(
+                    self.OWNER, self.TABLE, ','.join('?' * len(want))
                 ),
                 sorted(want),
             )
         else:  # весь журнал (админка): одним запросом по всем КП с документами
-            rows = self.store.all('SELECT kp_id, COUNT(*) FROM kp_files GROUP BY kp_id')
+            rows = self.store.all(f'SELECT {self.OWNER}, COUNT(*) FROM {self.TABLE} GROUP BY {self.OWNER}')
         return {k: count for k, count in rows if k in want}
 
     def _get(self, kid: str, fid: str | int) -> dict | None:
         row = self.store.one(
-            'SELECT {} FROM kp_files WHERE kp_id=? AND id=?'.format(', '.join(self.COLS)), (self._kp_id(kid), int(fid))
+            'SELECT {} FROM {} WHERE {}=? AND id=?'.format(', '.join(self._cols()), self.TABLE, self.OWNER),
+            (self._kp_id(kid), int(fid)),
         )
-        return dict(zip(self.COLS, row, strict=False)) if row else None
+        return dict(zip(self._cols(), row, strict=False)) if row else None
 
     def get(self, kid: str, fid: str) -> dict | None:
         rec = self._get(kid, fid)
@@ -339,7 +348,7 @@ class KpFiles:
     def clean_note(cls, note) -> str:
         return re.sub(r'\s+', ' ', cls.BAD_CHARS.sub(' ', str(note or ''))).strip()[: cls.NOTE_MAX]
 
-    def add(self, kid: str, name, data, note='', author: str = '', by_id='') -> dict:
+    def add(self, kid: str, name, data, note='', author: str = '', by_id='', extra: dict | None = None) -> dict:
         """Прикрепить файл к КП → описание. ValueError — понятным текстом (тип, размер, пределы КП)."""
         kid = self._kp_id(kid)
         name, ext = self.clean_name(name)
@@ -356,16 +365,18 @@ class KpFiles:
         path = self._path(kid, disk)
         tmp = path + '.part'
         with self.store.lock:
-            usage, total = self.store.one('SELECT COUNT(*), COALESCE(SUM(size), 0) FROM kp_files WHERE kp_id=?', (kid,))
+            usage, total = self.store.one(
+                f'SELECT COUNT(*), COALESCE(SUM(size), 0) FROM {self.TABLE} WHERE {self.OWNER}=?', (kid,)
+            )
             if usage >= lim['filesMax']:
                 raise ValueError(
-                    f'У КП уже {usage} документов — больше {lim["filesMax"]} прикрепить нельзя. '
+                    f'У {self.WHOSE} уже {usage} документов — больше {lim["filesMax"]} прикрепить нельзя. '
                     'Объедините часть в один PDF или архив ZIP'
                 )
             if total + len(data) > lim['filesMB'] * self.MEGABYTE:
                 raise ValueError(
-                    'Документы КП вместе займут {} МБ — можно не больше {} МБ на одно КП'.format(
-                        self.megabytes(total + len(data)), lim['filesMB']
+                    'Документы {} вместе займут {} МБ — можно не больше {} МБ на {}'.format(
+                        self.WHOSE, self.megabytes(total + len(data)), lim['filesMB'], self.PER_ONE
                     )
                 )
             try:
@@ -375,8 +386,12 @@ class KpFiles:
                 os.replace(tmp, path)
                 conn = self.store.conn()
                 cur = conn.execute(
-                    'INSERT INTO kp_files (kp_id, name, file, size, mime, note, added, added_by, added_by_id) '
-                    'VALUES (?,?,?,?,?,?,?,?,?)',
+                    'INSERT INTO {} ({}, name, file, size, mime, note, added, added_by, added_by_id{}) VALUES ({})'.format(
+                        self.TABLE,
+                        self.OWNER,
+                        ''.join(f', {key}' for key in self.EXTRA),
+                        ','.join('?' * (len(self.BASE_COLS) + len(self.EXTRA))),
+                    ),
                     (
                         kid,
                         name,
@@ -387,6 +402,7 @@ class KpFiles:
                         datetime.now().isoformat(timespec='seconds'),
                         str(author or '')[:120],
                         str(by_id or '')[:64] or None,
+                        *[(extra or {}).get(key) for key in self.EXTRA],
                     ),
                 )
                 conn.commit()
@@ -404,7 +420,8 @@ class KpFiles:
         if not self._get(kid, fid):
             raise LookupError('Документ не найден')
         self.store.write(
-            'UPDATE kp_files SET note=? WHERE kp_id=? AND id=?', (self.clean_note(note), self._kp_id(kid), int(fid))
+            f'UPDATE {self.TABLE} SET note=? WHERE {self.OWNER}=? AND id=?',
+            (self.clean_note(note), self._kp_id(kid), int(fid)),
         )
         return self._require(kid, fid)
 
@@ -413,7 +430,7 @@ class KpFiles:
         rec = self._get(kid, fid)
         if not rec:
             return None
-        self.store.write('DELETE FROM kp_files WHERE kp_id=? AND id=?', (self._kp_id(kid), int(fid)))
+        self.store.write(f'DELETE FROM {self.TABLE} WHERE {self.OWNER}=? AND id=?', (self._kp_id(kid), int(fid)))
         self._remove(kid, rec['file'])
         return self._row(rec)
 

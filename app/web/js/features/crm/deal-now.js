@@ -32,9 +32,10 @@ export class DealNow {
    * @returns {object|null}
    */
   static step(deal) {
-    if (CrmFunnel.closed(deal)) return null;
+    if (CrmFunnel.closed(deal)) return this._closing(deal);
     const next = this.nextStage(deal);
     const rules = [
+      () => this._closing(deal),
       () => this._take(deal, next),
       () => this._gaps(deal),
       () => this._offer(deal),
@@ -127,6 +128,17 @@ export class DealNow {
         { act: 'send', label: '✉ Отправить письмом' },
         { act: 'sent', label: 'Уже отправил сам' },
       ],
+    };
+  }
+
+  // поставка отмечена или сделка выиграна, а акта и УПД нет
+  static _closing(deal) {
+    if (!deal.closingDue) return null;
+    return {
+      title: 'Прикрепите закрывающие документы',
+      hint: 'акт или УПД — скан или PDF; уйдёт и в Битрикс24',
+      tone: 'warn',
+      actions: [{ act: 'docs', label: '📎 Прикрепить акт / УПД' }],
     };
   }
 

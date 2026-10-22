@@ -186,6 +186,8 @@ export class AuditLabels {
     add_kp_file: 'Документ к КП прикреплён',
     edit_kp_file: 'Примечание к документу КП',
     delete_kp_file: 'Документ КП удалён',
+    add_deal_file: 'Документ к сделке прикреплён',
+    delete_deal_file: 'Документ сделки удалён',
   };
 
   static ENT = {

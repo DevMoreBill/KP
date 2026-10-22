@@ -153,6 +153,9 @@ class SrvVal:
         'kp.mailPerHour': (30, 1, 500),
         'kp.fileUndoMin': (10, 0, 120),
         'kp.imgMB': (25, 5, 100),
+        # документы сделки (app/deal_files.py)
+        'deal.filesMax': (40, 1, 200),
+        'deal.filesMB': (300, 10, 2000),
         # кабинет: дела сами (app/crm_auto.py), 0 — правило выключено
         'crm.autoCallDays': (3, 0, 30),
         'crm.autoIdleDays': (7, 0, 90),

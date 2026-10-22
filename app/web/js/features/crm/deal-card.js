@@ -16,6 +16,7 @@ import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
 import { InnClient } from './inn-client.js';
 import { SentCall } from './sent-call.js';
+import { DealDocs } from './deal-docs.js';
 import { KpTrack } from '../kp/kp-track.js';
 import { MailDlg } from '../kp/mail-dlg.js';
 import { FEAT } from '../../core/features.js';
@@ -103,6 +104,11 @@ export class DealCard {
     modal.d.addEventListener('input', event => this._input(event));
     modal.d.addEventListener('toggle', event => DealParts.toggled(event.target), true);
     CrmTask.bind(modal.d, () => this.reload());
+    DealDocs.bind(
+      modal.d,
+      () => this.deal,
+      task => this._apply(task),
+    );
   }
 
   static _closed() {
@@ -179,6 +185,7 @@ export class DealCard {
           : 'ещё нет',
         body: this._kps(deal),
       },
+      { html: DealDocs.part(deal) },
       fields && {
         key: 'fields',
         title: 'Поля Битрикс24',
@@ -197,7 +204,7 @@ export class DealCard {
     ];
     return parts
       .filter(Boolean)
-      .map(part => DealParts.part(part))
+      .map(part => part.html || DealParts.part(part))
       .join('');
   }
 
@@ -568,8 +575,17 @@ export class DealCard {
       task: () => CrmTask.quick(deal.id, () => this.reload()),
       exec: () => this._reveal('exec', '[data-dkpart="exec"]'),
       date: () => this._reveal('about', '[data-dkf="expected"]'),
+      docs: () => this._docs(),
     };
     if (actions[act]) actions[act]();
+  }
+
+  // «Прикрепить акт / УПД»: выбор файла сразу (по нажатию), раздел «Документы» раскрыт
+  static _docs() {
+    DealDocs.kind = 'upd';
+    DealParts.show('docs');
+    this.render();
+    DealDocs.pick(files => this._apply(() => DealDocs.upload(this.deal, files)));
   }
 
   static _sendKp(deal) {
