@@ -232,7 +232,12 @@ class MirrorImport:
         return res
 
     def _chunk(self, rows: list, res: dict) -> None:
-        companies = self._companies([row.get('COMPANY_ID') for row in rows])
+        people: dict[str, list[str]] = {}
+        for row in rows:
+            contact = str(row.get('CONTACT_ID') or '')
+            if contact and contact != '0' and str(row.get('COMPANY_ID') or '0') != '0':
+                people.setdefault(str(row['COMPANY_ID']), []).append(contact)
+        companies = self._companies([row.get('COMPANY_ID') for row in rows], people)
         BitrixQueue._quiet.on = True
         try:
             for bx_deal in rows:
@@ -260,9 +265,9 @@ class MirrorImport:
         sync._import_deal(bx_deal, mid, company)
         return 'created'
 
-    def _companies(self, ids: list) -> dict:
-        """Компании пачкой: {id: {company, name, inn, clientId | pick}} — со слиянием с базой клиентов."""
-        return BitrixClients(self.sync).bulk(ids)
+    def _companies(self, ids: list, people: dict) -> dict:
+        """Компании пачкой: {id: {company, name, inn, clientId | pick}} — со слиянием с базой клиентов (и контакты сделок)."""
+        return BitrixClients(self.sync).bulk(ids, people)
 
     def _tasks(self) -> int:
         """Открытые дела загруженных сделок (по связям сделок)."""

@@ -526,6 +526,14 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.179.0 — что сделано:** контакты клиентов из Битрикс24:
+- `BitrixClients`: контакты сделки (`CONTACT_ID` + `crm.deal.contact.items.get`) и контакты, связанные с компанией
+  (`crm.company.contact.items.get`), кроме контактов с основной компанией (`COMPANY_ID`); `of_deal`, `of_company(cid, extra)`,
+  `people_of`/`_by_id` (пачками `crm.contact.list` по `ID`), `bulk(ids, deal_contacts)` — зеркало сделок передаёт контакты по компаниям;
+- `BitrixSync.people(did)` — дозагрузка для старой сделки (раз в сутки на сделку, `kv bxPeopleAt`), связывает клиента со сделкой;
+  вызывается из карточки сделки (`_card`), если у клиента нет контактов; `people_sweep()` — фоном раз в час, до `PEOPLE_BATCH` = 30 сделок;
+- проверки `tests/test_crm_exec.py`: `test_deal_and_linked_contacts`, `test_people_for_old_deal`, `test_people_sweep`.
+
 **3.178.0 — что сделано:** производитель обязателен у нового оборудования каталога:
 - `Makers` (features/catalog/makers.js): список производителей каталога (`<datalist id="makerList">`), `ensure(item)` — указан или
   определён автоматически (тогда записывается явно);

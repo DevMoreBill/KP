@@ -25,6 +25,7 @@ class FakeBitrix:
                       {'ID': '7', 'NAME': 'Анна', 'LAST_NAME': 'Иванова', 'EMAIL': 'ivanova@example.com'},
                       {'ID': '8', 'NAME': 'Олег', 'LAST_NAME': 'Петров', 'EMAIL': 'PETROV@example.com'}]
         self.ufields, self.companies, self.requisites, self.contacts, self.deals = [], {}, {}, {}, {}
+        self.deal_people, self.company_people = {}, {}  # контакты, привязанные к сделке и к компании списком связей
         self.rows, self.comments, self.activities, self.addresses = {}, [], {}, []
         self.portal_fields = []          # свои поля сделки портала (кабинет как Битрикс24): {FIELD_NAME, USER_TYPE_ID, L, ITEMS}
         srv = ThreadingHTTPServer(('127.0.0.1', 0), self._handler())
@@ -154,6 +155,9 @@ class FakeBitrix:
             return {'result': self.companies[str(b['id'])]}
         if m == 'crm.contact.list':
             return self.page([c for c in self.contacts.values() if self.match(c, b.get('filter'))], b)
+        if m in ('crm.deal.contact.items.get', 'crm.company.contact.items.get'):
+            links = self.deal_people if m.startswith('crm.deal') else self.company_people
+            return {'result': [{'CONTACT_ID': cid} for cid in links.get(str(b['id']), [])]}
         if m == 'crm.contact.get':
             return {'result': self.contacts[str(b['id'])]}
         if m == 'crm.contact.add':

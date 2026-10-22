@@ -1938,6 +1938,11 @@ class CrmController(Controller):
         deal['exec'] = ExecPlan(deal).view(Sums.ALL if self._money(deal) else Sums.SALES)
         ExecPlan.strip(deal['kps'])
         deal['clientCard'] = self._client_card(deal)
+        # сделка из Битрикса без контактов у клиента — подтянуть контакты сделки и компании (раз в сутки)
+        no_people = not (deal['clientCard'] or {}).get('contacts')
+        if no_people and BitrixConf(store()).enabled() and self.safe(lambda: BitrixSync(store()).people(did)):
+            deal = dict(book.get(did) or deal, kps=deal['kps'], exec=deal['exec'])
+            deal['clientCard'] = self._client_card(deal)
         deal['tasks'] = TaskBook(store()).list(deal=did)
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))

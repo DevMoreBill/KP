@@ -102,6 +102,43 @@ class BitrixClientsTest(SyncBase):
         self.assertTrue(doc['noInn'])
         self.assertEqual(doc['contacts'][0]['name'], 'Новиков Олег')
 
+    def test_deal_and_linked_contacts(self):
+        """Контакты сделки и связанные с компанией списком связей (без «основной компании») — в карточку клиента."""
+        self.company('505', 'Промстрой', '7700000005')
+        self.person('605', 'Ким', 'Игорь', '+7 900 555-00-01')  # к сделке
+        self.person('606', 'Ли', 'Анна', email='li@prom.ru')  # к компании списком связей
+        self.fake.company_people['505'] = ['606']
+        bx_id = self.fake.new_deal(TITLE='Мотопомпа', COMPANY_ID='505', CONTACT_ID='605')
+        self.fake.deal_people[str(bx_id)] = ['605']
+        deal = self.sync()._import_deal(self.fake.deals[bx_id], 'm1')
+        names = [row.get('name') for row in self.st.client_get(deal['clientId'])['contacts']]
+        self.assertEqual(names[:2], ['Ким Игорь', 'Ли Анна'], 'контакт сделки — первым')
+
+    def test_people_for_old_deal(self):
+        """Сделка загружена раньше без контактов — карточка подтягивает их из Битрикса один раз в сутки."""
+        from bitrix import BitrixLinks
+        from crm import DealBook
+        self.company('507', 'Промстрой', '7700000007')
+        did = DealBook(self.st).create({'title': 'Мотопомпа', 'client': 'Промстрой', 'clientInn': '7700000007'}, 'm1', 'И', 'И')['id']
+        self.person('607', 'Ким', 'Игорь', '+7 900 555-00-07')
+        bx_id = self.fake.new_deal(TITLE='Мотопомпа', COMPANY_ID='507', CONTACT_ID='607')
+        BitrixLinks(self.st).put('deal', did, bx_id)
+        self.assertEqual(self.sync().people(did), 1)
+        self.assertEqual(DealBook(self.st).get(did)['clientId'], 'inn7700000007', 'клиент связан со сделкой')
+        self.assertEqual(self.sync().people(did), 0, 'второй раз за сутки — не спрашивает')
+
+    def test_people_sweep(self):
+        """Фоновый проход: контакты подтягиваются для сделок без контактов, без открытия карточки."""
+        from bitrix import BitrixLinks
+        from crm import DealBook
+        self.company('508', 'Техмаш', '7700000008')
+        did = DealBook(self.st).create({'title': 'Компрессор', 'client': 'Техмаш', 'clientInn': '7700000008'}, 'm1', 'И', 'И')['id']
+        self.person('608', 'Орлов', 'Олег', '+7 900 555-00-08')
+        BitrixLinks(self.st).put('deal', did, self.fake.new_deal(TITLE='Компрессор', COMPANY_ID='508', CONTACT_ID='608'))
+        self.assertEqual(self.sync().people_sweep(), 1)
+        self.assertEqual(len(self.st.client_get('inn7700000008')['contacts']), 1)
+        self.assertEqual(self.sync().people_sweep(), 0, 'контакты есть — повторно не спрашивает')
+
     def test_deal_with_contact_only(self):
         self.person('604', 'Сидоров', 'Пётр', email='s@alfa.ru')
         bx_id = self.fake.new_deal(TITLE='Запрос с сайта', CONTACT_ID='604', COMPANY_ID='0')

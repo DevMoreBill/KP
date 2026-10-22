@@ -30,18 +30,18 @@ class BitrixClients:
 
     # ---------------------------------------------------------------- из Битрикса
     def of_deal(self, bx_deal: dict) -> dict:
-        """Клиент сделки Битрикса: по компании, а сделка без компании — по контакту."""
+        """Клиент сделки Битрикса: по компании (с контактами самой сделки), а сделка без компании — по контакту."""
         cid = str(bx_deal.get('COMPANY_ID') or '')
+        deal_people = self.people_of(self.deal_contacts(bx_deal))
         if cid and cid != '0':
-            return self.of_company(cid)
-        contact = str(bx_deal.get('CONTACT_ID') or '')
-        if not contact or contact == '0':
+            return self.of_company(cid, deal_people)
+        if not deal_people:
             return {}
-        row = self.api.call('crm.contact.get', {'id': contact}) or {}
-        people = [self._person(row)] if row else []
-        return self.resolve({'company': '', 'name': '', 'inn': '', 'people': people, 'key': 'c' + contact})
+        key = 'c' + str(bx_deal.get('CONTACT_ID') or deal_people[0].get('name') or '')
+        return self.resolve({'company': '', 'name': '', 'inn': '', 'people': deal_people, 'key': key})
 
-    def of_company(self, cid: str) -> dict:
+    def of_company(self, cid: str, extra: list | None = None) -> dict:
+        """Компания: реквизиты, её контакты (основные и привязанные списком связей) и extra — контакты сделки."""
         comp = self.api.call('crm.company.get', {'id': cid}) or {}
         req = self.api.list(
             'crm.requisite.list',
@@ -57,11 +57,45 @@ class BitrixClients:
                 'crm.contact.list', {'filter': {'COMPANY_ID': cid}, 'select': list(self.CONTACT_SELECT)}, limit=20
             )
         ]
-        return self.resolve(self._company(cid, comp, req[0] if req else {}, people))
+        linked = self.people_of(self._items('crm.company.contact.items.get', cid))
+        return self.resolve(self._company(cid, comp, req[0] if req else {}, [*(extra or []), *people, *linked]))
 
-    def bulk(self, ids: list) -> dict:
-        """Компании пачкой (загрузка тысяч сделок): {id: клиент} — компании, реквизиты, контакты — по CHUNK за запрос."""
+    def deal_contacts(self, bx_deal: dict) -> list[str]:
+        """Контакты сделки: основной (CONTACT_ID) и все привязанные к сделке."""
+        ids = [str(bx_deal.get('CONTACT_ID') or '')]
+        if bx_deal.get('ID'):
+            ids += self._items('crm.deal.contact.items.get', bx_deal['ID'])
+        return list(dict.fromkeys(cid for cid in ids if cid and cid != '0'))
+
+    def _items(self, method: str, owner) -> list[str]:
+        """Связанные контакты (crm.*.contact.items.get); старый портал без метода — пусто."""
+        try:
+            rows = self.api.call(method, {'id': owner}) or []
+        except Exception:
+            return []
+        return [str(row.get('CONTACT_ID')) for row in rows if isinstance(row, dict) and row.get('CONTACT_ID')]
+
+    def people_of(self, ids: list) -> list[dict]:
+        """Контакты по номерам."""
+        by_id = self._by_id(ids)
+        return [by_id[cid] for cid in ids if cid in by_id]
+
+    def _by_id(self, ids: list) -> dict[str, dict]:
+        """{номер: контакт} — пачками по CHUNK."""
+        out: dict[str, dict] = {}
+        for start in range(0, len(ids), self.CHUNK):
+            part = ids[start : start + self.CHUNK]
+            rows = self.api.list(
+                'crm.contact.list', {'filter': {'ID': part}, 'select': list(self.CONTACT_SELECT)}, limit=len(part)
+            )
+            out.update({str(row.get('ID')): self._person(row) for row in rows})
+        return out
+
+    def bulk(self, ids: list, deal_contacts: dict | None = None) -> dict:
+        """Компании пачкой (загрузка тысяч сделок): {id: клиент} — компании, реквизиты, контакты — по CHUNK за запрос;
+        deal_contacts {компания: [контакты сделок]} — контакты сделок дописываются к своей компании."""
         want = sorted({str(cid) for cid in ids if cid and str(cid) != '0'})
+        extra = self._deal_people(deal_contacts or {})
         out: dict = {}
         for start in range(0, len(want), self.CHUNK):
             part = want[start : start + self.CHUNK]
@@ -76,9 +110,15 @@ class BitrixClients:
             reqs = self._reqs(part)
             people = self._people(part)
             for cid in part:
-                info = self._company(cid, comps.get(cid, {}), reqs.get(cid, {}), people.get(cid, []))
+                rows = [*extra.get(cid, []), *people.get(cid, [])]
+                info = self._company(cid, comps.get(cid, {}), reqs.get(cid, {}), rows)
                 out[cid] = self.resolve(info)
         return out
+
+    def _deal_people(self, deal_contacts: dict) -> dict:
+        ids = list(dict.fromkeys(cid for rows in deal_contacts.values() for cid in rows))
+        by_id = self._by_id(ids)
+        return {company: [by_id[cid] for cid in rows if cid in by_id] for company, rows in deal_contacts.items()}
 
     def _reqs(self, part: list) -> dict:
         out: dict = {}

@@ -603,6 +603,8 @@ class BitrixSync:
     """Обмен с Битрикс24: очередь отправки и опрос изменений."""
 
     TEXT_MAX = 40
+    PEOPLE_KEEP = 500  # отметок «контакты уже подтягивали сегодня»
+    PEOPLE_BATCH = 30  # сделок за фоновый проход
 
     LOCK = threading.Lock()
     KIND = BitrixRules.TASK_KINDS
@@ -1814,6 +1816,56 @@ class BitrixSync:
             tasks.update(task['id'], {'state': state})
         self.links.put('task', task['id'], activity['ID'], sent)
         return 1
+
+    def people(self, did) -> int:
+        """Контакты сделки и её компании из Битрикса — в карточку клиента (сделка загружена раньше, контактов нет).
+        → сколько контактов у клиента стало. Не чаще раза в сутки на сделку."""
+        link = self.links.get('deal', did)
+        if not link or not self.rules.can('company', 'in'):
+            return 0
+        tried = self.store.kv_get('bxPeopleAt') or {}
+        today = datetime.now(UTC).date().isoformat()
+        if tried.get(did) == today:
+            return 0
+        tried[did] = today
+        self.store.kv_set('bxPeopleAt', dict(list(tried.items())[-self.PEOPLE_KEEP :]))
+        bx_deal = self.api.call('crm.deal.get', {'id': link['bx']}) or {}
+        company = BitrixClients(self).of_deal(bx_deal) if bx_deal else {}
+        cid = company.get('clientId') or ''
+        deal = DealBook(self.store).get(did) or {}
+        if cid and not deal.get('clientId'):  # клиент сделки найден только сейчас — связать
+            BitrixQueue._quiet.on = True
+            try:
+                DealBook(self.store).update(did, {'clientId': cid}, self.WHO)
+            finally:
+                BitrixQueue._quiet.on = False
+        client = self.store.client_get(cid) if cid else None
+        return len((client or {}).get('contacts') or [])
+
+    def people_sweep(self) -> int:
+        """Фоном: сделки из Битрикса, у клиентов которых нет контактов, — подтянуть контакты (не больше PEOPLE_BATCH за проход).
+        → сколько сделок проверено."""
+        if not self.conf.enabled() or not self.rules.can('company', 'in'):
+            return 0
+        rows = self.store.all(
+            "SELECT d.id, json_extract(d.doc, '$.clientId') FROM bx_link l JOIN deals d ON d.id = l.local_id "
+            "WHERE l.kind='deal' ORDER BY d.updated DESC"
+        )
+        tried = self.store.kv_get('bxPeopleAt') or {}
+        today = datetime.now(UTC).date().isoformat()
+        asked = 0
+        for did, cid in rows:
+            if asked >= self.PEOPLE_BATCH:
+                break
+            if tried.get(did) == today or self._has_people(cid):
+                continue
+            asked += 1
+            self.people(did)
+        return asked
+
+    def _has_people(self, cid) -> bool:
+        client = self.store.client_get(cid) if cid else None
+        return bool((client or {}).get('contacts'))
 
     def card(self, did) -> dict | None:
         link = self.links.get('deal', did)
