@@ -512,3 +512,9 @@ label.f:has(.csg){position:relative}
 .fd-t .fd-i{border-color:var(--ok)}
 .fd-k .fd-i{border-color:var(--cs2)}
 .dk-feed .tq{margin-top:0}
+/* дело: кому звонить или писать — компания, контакт, телефон и почта нажатием */
+.tk .tk-who{font-size:13.5px;color:var(--ink);line-height:1.35;overflow-wrap:anywhere}
+.tk .tk-who b{display:inline;font-weight:700}
+.tk .tk-who a{color:var(--navy);text-decoration:none;white-space:nowrap;font-weight:600}
+.tk .tk-who a:hover{text-decoration:underline}
+.mob .tk .tk-who a{display:inline-block;padding:4px 0}

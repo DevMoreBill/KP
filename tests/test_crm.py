@@ -133,6 +133,18 @@ class UnitTest(unittest.TestCase):
         self.assertEqual(len(tb.list(['m1'])), 1, 'сделанное сегодня — в списке')
         self.assertEqual(tb.list(['m2']), [])
 
+    def test_board_who(self):
+        """Дело в кабинете: кому звонить — компания и первый контакт клиента из справочника."""
+        from crm import CrmBoard, DealBook
+        self.st.client_put('inn7700000001', {'name': 'ООО «Пример Кому»', 'inn': '7700000001',
+                                             'contacts': [{'name': 'Петров П. П.', 'post': 'гл. инженер',
+                                                           'phone': '+7 900 000-00-01', 'email': 'p@example.ru'}]})
+        did = DealBook(self.st).create({'title': 'Насос', 'client': 'ООО «Пример Кому»', 'clientInn': '7700000001'},
+                                       'm1', 'Иванов', 'И')['id']
+        deal = next(row for row in CrmBoard(self.st).build(['m1'])['deals'] if row['id'] == did)
+        self.assertEqual(deal['who']['company'], 'ООО «Пример Кому»')
+        self.assertEqual((deal['who']['name'], deal['who']['phone']), ('Петров П. П.', '+7 900 000-00-01'))
+
 
 class ApiTest(unittest.TestCase):
     @classmethod

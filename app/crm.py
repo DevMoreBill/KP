@@ -929,7 +929,9 @@ class CrmBoard:
                 nxt[task['deal']] = task
         from crm_exec import ExecPlan
 
+        contacts: dict[str, dict | None] = {}
         for deal in deals:
+            deal['who'] = self._who(deal, contacts)
             deal['kps'] = kps.get(deal['id'], [])
             deal['next'] = nxt.get(deal['id'])
             deal['execSum'] = ExecPlan(deal).summary()
@@ -945,6 +947,24 @@ class CrmBoard:
             'today': date.today().isoformat(),
             'now': datetime.now().isoformat(timespec='minutes'),
         }
+
+    def _who(self, deal: dict, seen: dict) -> dict | None:
+        """Кому звонить или писать по сделке: компания и первый контакт клиента из справочника (один запрос на клиента)."""
+        cid = deal.get('clientId') or ('inn' + deal['clientInn'] if deal.get('clientInn') else '')
+        if not cid:
+            return None
+        if cid not in seen:
+            client = self.store.client_get(cid)
+            contact = next((row for row in (client or {}).get('contacts') or [] if isinstance(row, dict)), {})
+            seen[cid] = (
+                {
+                    'company': str(client.get('name') or ''),
+                    **{key: str(contact.get(key) or '') for key in ClientPick.CONTACT},
+                }
+                if client
+                else None
+            )
+        return seen[cid]
 
     def find(self, managers, query, limit: int = 8) -> list[dict]:
         """Сделки по словам (название, клиент, ИНН, номер) — единый поиск программы; сначала незакрытые и свежие."""

@@ -9,6 +9,7 @@ import { esc, today } from '../../core/util.js';
 
 /** Дела: строка списка, быстрое добавление (вид, что сделать, дата чипом, время), правка; дела не удаляются — отменяются. */
 export class CrmTask {
+  static VERBS = { call: 'Позвонить', meet: 'Встреча', mail: 'Написать', task: 'Задача' };
   static FOCUS_MS = 50;
   static JSON_HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
 
@@ -27,8 +28,43 @@ export class CrmTask {
       ? ''
       : `<button class="btn sm ghost" type="button" data-tlater="${task.id}" title="Перенести на завтра">+1 день</button>`;
     return `<div class="tk${over ? ' over' : ''}${done ? ' done' : ''}" data-task="${task.id}"><label class="tk-ck"><input type="checkbox" data-tdone="${task.id}"${done ? ' checked' : ''}${task.state === 'cancel' ? ' disabled' : ''} aria-label="Сделано: ${esc(task.title)}"></label>
-      ${CrmData.icon(task.kind)}<div><b>${esc(task.title)}${cancelled}</b>${sub ? `<span class="muted">${sub}</span>` : ''}${task.note ? `<span class="muted tk-note">${esc(task.note)}</span>` : ''}</div>
+      ${CrmData.icon(task.kind)}<div><b>${esc(this._title(task, opts))}${cancelled}</b>${this._who(task, opts)}${sub ? `<span class="muted">${sub}</span>` : ''}${task.note ? `<span class="muted tk-note">${esc(task.note)}</span>` : ''}</div>
       ${later}<button class="icon sm" type="button" data-tedit="${task.id}" aria-label="Изменить дело" title="Изменить">✎</button></div>`;
+  }
+
+  // общее название («Звонок», «Письмо») — действием и кому: «Позвонить: Петров П. П.»
+  static _title(task, opts) {
+    const kind = CrmData.KIND_LIST.find(row => row.key === task.kind);
+    const deal = !opts.noDeal && task.deal ? CrmData.deal(task.deal) : null;
+    if (!kind || task.title !== kind.label || !deal) return task.title;
+    const who = deal.who || {};
+    const whom = who.name || who.company || deal.client;
+    return whom ? `${this.VERBS[task.kind]}: ${whom}` : task.title;
+  }
+
+  // кому звонить или писать: компания, контакт и должность, телефон и почта — нажатием
+  static _who(task, opts) {
+    const deal = !opts.noDeal && task.deal ? CrmData.deal(task.deal) : null;
+    if (!deal) return '';
+    const who = deal.who || {};
+    const company = who.company || deal.client || '';
+    const reach = [this._person(who), ...this._links(who)].filter(Boolean);
+    const parts = [company && `<b>${esc(company)}</b>`, ...reach].filter(Boolean);
+    if (!parts.length) return '';
+    const none = company && !reach.length ? ' <span class="muted">— контакт не указан</span>' : '';
+    return `<span class="tk-who">${parts.join(' · ')}${none}</span>`;
+  }
+
+  static _person(who) {
+    return esc([who.name, who.post && `(${who.post})`].filter(Boolean).join(' '));
+  }
+
+  static _links(who) {
+    const phone = who.phone
+      ? `<a href="tel:${esc(who.phone.replace(/[^\d+]/g, ''))}" title="Позвонить">☎ ${esc(who.phone)}</a>`
+      : '';
+    const mail = who.email ? `<a href="mailto:${esc(who.email)}" title="Написать письмо">✉ ${esc(who.email)}</a>` : '';
+    return [phone, mail];
   }
 
   static _sub(task, opts) {
