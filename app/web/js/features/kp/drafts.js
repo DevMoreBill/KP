@@ -185,7 +185,8 @@ export class Drafts {
     const box = $('#saved');
     if (!box) return;
     setTimeout(() => {
-      box.textContent = `Сохранено на сервере в ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+      box.textContent = `✓ Сохранено ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+      box.title = 'Черновик КП сохранён на сервере';
     }, this.SAVED_NOTE_MS);
   }
 

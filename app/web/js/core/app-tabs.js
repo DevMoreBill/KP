@@ -8,17 +8,19 @@ import { esc } from './util.js';
 export class AppTabs {
   static HOME = 'kp';
   static OVERLAY = 'authWrap';
+  static KEYS = 9;
   static specs = new Map();
   static dialogs = new Map();
   static titles = new Map();
+  static counts = new Map();
   static active = AppTabs.HOME;
   static trail = [];
 
   /**
    * Раздел для полосы вкладок.
    * @param {string} key
-   * @param {{label: string|Function, icon: string, fixed?: boolean, open?: Function, shown?: Function}} spec
-   *   fixed — вкладка видна всегда; open — открыть раздел; shown — раздел доступен (функция включена)
+   * @param {{label: string|Function, short?: string, icon: string, fixed?: boolean, open?: Function, shown?: Function}} spec
+   *   short — подпись на телефоне; fixed — вкладка видна всегда; open — открыть раздел; shown — раздел доступен (функция включена)
    */
   static register(key, spec) {
     this.specs.set(key, spec);
@@ -117,9 +119,30 @@ export class AppTabs {
     );
   }
 
+  /**
+   * Число на вкладке (например, дела на сегодня в кабинете); 0 — без числа.
+   * @param {string} key
+   * @param {number} value
+   * @param {string} [tone] 'bad' — красное (есть просроченное)
+   */
+  static count(key, value, tone = '') {
+    const was = this.counts.get(key);
+    if (was && was.value === value && was.tone === tone) return;
+    this.counts.set(key, { value, tone });
+    this.render();
+  }
+
   static _label(key, spec) {
+    const phone = document.documentElement.classList.contains('mob');
     const label = typeof spec.label === 'function' ? spec.label() : spec.label;
+    if (phone && spec.short) return spec.short;
     return this.titles.get(key) || label;
+  }
+
+  static _badge(key) {
+    const found = this.counts.get(key);
+    if (!found || !found.value) return '';
+    return `<b class="apt-n${found.tone ? ` ${found.tone}` : ''}">${found.value}</b>`;
   }
 
   /** Перерисовать полосу вкладок. */
@@ -127,12 +150,13 @@ export class AppTabs {
     const bar = this._bar();
     if (!bar) return;
     bar.innerHTML = this._tabs()
-      .map(([key, spec]) => {
+      .map(([key, spec], index) => {
         const current = key === this.active;
         const closer =
-          spec.fixed || key === this.HOME ? '' : `<span class="at-x" data-tabx="${esc(key)}" title="Закрыть">✕</span>`;
+          spec.fixed || key === this.HOME ? '' : `<span class="apt-x" data-tabx="${esc(key)}" title="Закрыть">✕</span>`;
         const label = esc(this._label(key, spec));
-        return `<button type="button" class="at-t${current ? ' on' : ''}" data-tab="${esc(key)}" aria-current="${current ? 'page' : 'false'}" title="${label}"><i aria-hidden="true">${spec.icon}</i><span>${label}</span>${closer}</button>`;
+        const hint = index < this.KEYS ? ` (Alt+${index + 1})` : '';
+        return `<button type="button" class="apt-t${current ? ' on' : ''}" data-tab="${esc(key)}" aria-current="${current ? 'page' : 'false'}" title="${label}${hint}"><i aria-hidden="true">${spec.icon}</i><span>${label}</span>${this._badge(key)}${closer}</button>`;
       })
       .join('');
   }
@@ -147,7 +171,7 @@ export class AppTabs {
       bar.className = 'apptabs';
       bar.setAttribute('aria-label', 'Разделы');
       bar.addEventListener('click', event => this._click(event));
-      document.addEventListener('keydown', event => this._escape(event));
+      document.addEventListener('keydown', event => this._key(event));
       new ResizeObserver(() => this._measure()).observe(header);
     }
     this._place(bar, header);
@@ -159,6 +183,21 @@ export class AppTabs {
     const phone = document.documentElement.classList.contains('mob');
     if (phone && bar.parentElement !== document.body) document.body.appendChild(bar);
     if (!phone && bar.parentElement !== header) header.querySelector('.brand')?.after(bar);
+  }
+
+  static _key(event) {
+    if (this._digit(event)) return;
+    this._escape(event);
+  }
+
+  // Alt+1…9 — вкладка по порядку
+  static _digit(event) {
+    if (!event.altKey || event.ctrlKey || event.metaKey || !/^Digit[1-9]$/.test(event.code)) return false;
+    const found = this._tabs()[Number(event.code.slice(-1)) - 1];
+    if (!found || document.querySelector('dialog[open]:modal')) return false;
+    event.preventDefault();
+    this.open(found[0]);
+    return true;
   }
 
   // Esc во вкладке — как в окне поверх всего: окно может отменить (событие cancel), иначе закрывается

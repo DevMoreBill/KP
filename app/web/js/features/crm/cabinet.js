@@ -114,6 +114,16 @@ export class Cabinet {
     body.scrollTop = scroll;
     this._shownTab = this.tab;
     if (view.after) view.after(body);
+    this._tabCount();
+  }
+
+  // на вкладке «Кабинет» — дела на сегодня и просроченные (красным, если просрочено)
+  static _tabCount() {
+    const now = today();
+    const tasks = CrmData.openTasks();
+    const over = tasks.filter(task => task.due < now).length;
+    const due = over + tasks.filter(task => task.due === now).length;
+    AppTabs.count('cab', due, over ? 'bad' : '');
   }
 
   /** Перерисовать только раздел (поиск: поле ввода не теряет набранное и курсор). */

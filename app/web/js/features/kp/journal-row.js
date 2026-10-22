@@ -125,7 +125,7 @@ export class JournalRow {
   static html(row, econ) {
     return `<div class="jr${row.tender && row.tender.number ? ' tnd' : ''}">${this._number(row)}
       ${this._client(row)}
-      <div class="jr-e"><b>${econ.sum}</b><span>${econ.line}</span><span class="jr-st">${KpTrack.chip(row)}</span></div>
+      <div class="jr-e"><div class="jr-sum"><b>${econ.sum}</b><span class="jr-st">${KpTrack.chip(row)}</span></div><span>${econ.line}</span></div>
       <div class="acts"><button class="btn" type="button" data-jo="${esc(row.id)}" title="Открыть КП для просмотра и правки">Открыть</button><button class="btn" type="button" data-jc="${esc(row.id)}" title="Новое КП на основе этого: позиции, цены и условия — те же, получатель — новый">Копия</button>${this.menu(row)}</div></div>`;
   }
 

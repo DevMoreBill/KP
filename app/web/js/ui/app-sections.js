@@ -15,7 +15,12 @@ export class AppSections {
   static register() {
     document.body.classList.add('has-tabs');
     const server = () => Srv.on;
-    AppTabs.register(AppTabs.HOME, { label: () => (S.number ? `КП № ${S.number}` : 'КП'), icon: '▤', fixed: true });
+    AppTabs.register(AppTabs.HOME, {
+      label: () => (S.number ? `КП № ${S.number}` : 'КП'),
+      short: 'КП',
+      icon: '▤',
+      fixed: true,
+    });
     AppTabs.register('cab', {
       label: 'Кабинет',
       icon: '◫',
