@@ -2,6 +2,10 @@ import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { esc, today } from '../../core/util.js';
+import { Api } from '../../core/net.js';
+import { Morph } from '../../core/morph.js';
+import { FileSave } from '../../core/files.js';
+import { Toast } from '../../core/toast.js';
 
 /** «Отдел»: утренняя сводка «кому нужно внимание», воронка по стадиям, итоги месяца по менеджерам (руководителю и администратору). */
 export class CabTeam {
@@ -29,7 +33,8 @@ export class CabTeam {
     const open = deals.filter(deal => !CrmData.closed(deal) && CrmData.inFunnel(deal));
     return `<div class="cab-team">${this._attention(deals)}<section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p>${CrmFunnel.switcher(deals, CrmData.funnel())}<span class="muted">${open.length} в работе · ${CrmFmt.short(this._sum(open))}</span></div><div class="fn">${this._funnel(open)}</div></section>
       <section class="md-s"><div class="md-h"><p class="sub">Менеджеры</p><span class="muted">итоги месяца — с 1-го числа; имя — открыть кабинет менеджера</span></div>
-      <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th><th>Заявки ждут</th></tr></thead><tbody>${this._rows(deals)}</tbody></table></div></section></div>`;
+      <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th><th>Заявки ждут</th></tr></thead><tbody>${this._rows(deals)}</tbody></table></div></section>
+      ${TeamTime.html()}</div>`;
   }
 
   // утренняя сводка: у кого что горит — по каждому менеджеру, самые проблемные сверху
@@ -126,5 +131,111 @@ export class CabTeam {
           `<tr><td><button type="button" class="lnk" data-tmgr="${esc(row.id)}" title="Открыть кабинет менеджера">${esc(row.name)}</button></td><td>${row.open}</td><td>${CrmFmt.short(row.sum)}</td><td>${row.won}${row.won ? ` · ${CrmFmt.short(row.wonSum)}` : ''}</td><td>${row.lost}</td><td class="${row.over ? 'bad-t' : ''}">${row.over}</td><td class="${row.free ? 'warn-t' : ''}">${row.free}</td><td class="${row.fresh ? 'bad-t' : ''}">${row.fresh}</td></tr>`,
       )
       .join('');
+  }
+}
+
+/** «Где тратится время» — по отделу, без имён: дни на каждой стадии (медиана), от заявки до первого КП, дела позже срока. */
+export class TeamTime {
+  static data = null;
+  static loadedAt = 0;
+  static FRESH_MS = 300000;
+  static PERCENT = 100;
+  static loading = false;
+
+  /**
+   * Блок (данные приходят с сервера — при первом показе загрузка, потом перерисовка).
+   * @returns {string}
+   */
+  static html() {
+    if (!this.data || Date.now() - this.loadedAt > this.FRESH_MS) this._load();
+    return `<section class="md-s wt-s" id="cabTime">${this._inner()}</section>`;
+  }
+
+  static _inner() {
+    return `<div class="md-h"><p class="sub">Где тратится время</p><span class="muted">по отделу, без имён · последние полгода</span></div>${MonthXlsx.html()}${this._body()}`;
+  }
+
+  static _body() {
+    const data = this.data;
+    if (!data) return '<p class="muted">Считаю…</p>';
+    if (!data.deals) return '<p class="empty">Сделок за полгода нет — считать нечего.</p>';
+    const top = Math.max(...data.stages.map(row => row.median), 1);
+    const bars = data.stages
+      .map(
+        row =>
+          `<div class="wt-r"><span>${esc(row.label)}</span><i style="width:${Math.max(2, Math.round((row.median / top) * this.PERCENT))}%"></i><b>${this._days(row.median)}</b><small class="muted">${row.deals} сд.</small></div>`,
+      )
+      .join('');
+    const late = data.lateTasks;
+    const share = late.done ? Math.round((late.late / late.done) * this.PERCENT) : 0;
+    const tiles = `<div class="wt-t"><div><b>${data.firstKp.median == null ? '—' : this._days(data.firstKp.median)}</b><span>от заявки до первого КП (медиана, ${data.firstKp.deals} сд.)</span></div>
+      <div><b>${late.done ? `${share} %` : '—'}</b><span>дел закрыто позже срока (${late.late} из ${late.done})</span></div></div>`;
+    return `${tiles}<p class="muted wt-h">Сколько дней сделка обычно стоит на стадии (медиана) — длинная полоса подсказывает, где застревают:</p>${bars || '<p class="empty">Движения по стадиям ещё нет.</p>'}${this._losses(data.losses)}`;
+  }
+
+  // «Где теряем»: на какой стадии проиграли и частые причины
+  static _losses(losses) {
+    if (!losses || !losses.lost) return '';
+    const top = Math.max(...losses.stages.map(row => row.lost), 1);
+    const bars = losses.stages
+      .map(
+        row =>
+          `<div class="wt-r wt-lost"><span>${esc(row.label)}</span><i style="width:${Math.max(2, Math.round((row.lost / top) * this.PERCENT))}%"></i><b>${row.lost}</b><small class="muted">${Math.round((row.lost / losses.lost) * this.PERCENT)} %</small></div>`,
+      )
+      .join('');
+    const reasons = losses.reasons.map(row => `<li>${esc(row.text)} — <b>${row.lost}</b></li>`).join('');
+    const closed = losses.lost + losses.won;
+    return `<p class="sub wt-g">Где теряем · проиграно ${losses.lost} из ${closed} закрытых</p><p class="muted wt-h">На какой стадии сделку проиграли:</p>${bars}<p class="muted wt-h">Частые причины:</p><ul class="wt-why">${reasons}</ul>`;
+  }
+
+  static _days(value) {
+    return `${String(value).replace('.', ',')} дн.`;
+  }
+
+  static async _load() {
+    if (this.loading) return;
+    this.loading = true;
+    try {
+      this.data = await Api.request('/api/crm/time');
+    } catch {
+      this.data = this.data || { deals: 0, stages: [], firstKp: {}, lateTasks: {} };
+    } finally {
+      this.loading = false;
+      this.loadedAt = Date.now();
+    }
+    const box = document.getElementById('cabTime');
+    if (box) Morph.apply(box, this._inner());
+  }
+}
+
+/** «Отчёт за месяц» в Excel (итоги отдела, по менеджерам, КП, сделки) — в «Отделе» над «Где тратится время». */
+export class MonthXlsx {
+  static MONTH_CHARS = 7;
+
+  /**
+   * Строка выбора месяца и кнопка.
+   * @returns {string}
+   */
+  static html() {
+    const month = new Date().toISOString().slice(0, this.MONTH_CHARS);
+    return `<div class="wt-x"><label>Отчёт за месяц <input type="month" id="cabMonth" value="${month}" max="${month}"></label><button class="btn sm" type="button" data-cabmonth title="Итоги отдела, по менеджерам, КП и сделки месяца — файлом Excel">⬇ Excel</button></div>`;
+  }
+
+  /**
+   * Скачать отчёт выбранного месяца.
+   * @param {HTMLElement} button
+   */
+  static async save(button) {
+    const month = (document.getElementById('cabMonth') || {}).value || '';
+    button.disabled = true;
+    try {
+      const reply = await Api.request(`/api/crm/month?m=${encodeURIComponent(month)}`, { raw: true });
+      FileSave.download(`Отчёт отдела ${month}.xlsx`, await reply.blob());
+      Toast.show('Отчёт за месяц выгружен в Excel');
+    } catch (error) {
+      Toast.show(`Отчёт не выгружен: ${error.message || error}`);
+    } finally {
+      button.disabled = false;
+    }
   }
 }

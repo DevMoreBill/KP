@@ -6,7 +6,7 @@ from datetime import datetime
 
 class UserPrefs:
     KV_KEY = 'userPrefs'
-    THEMES = ('auto', 'light', 'dark')
+    THEMES = ('auto', 'light', 'dark', 'time')
     STARTS = ('auto', 'myday', 'catalog', 'journal', 'none')
     DEF_RX = re.compile(r'^(kp\.city|kp\.cur|cond\.[^.]{1,60})$')
     CURS = ('RUB', 'USD', 'EUR', 'CNY')

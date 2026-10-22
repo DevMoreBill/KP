@@ -21,6 +21,8 @@ import { CrmFmt } from '../crm/crm-fmt.js';
 import { CrmFunnel } from '../crm/crm-funnel.js';
 import { DealCard } from '../crm/deal-card.js';
 import { Fmt, Str } from '../../core/str.js';
+import { CopyText } from '../../core/files.js';
+import { ClientFeed } from './client-feed.js';
 
 /**
  * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.
@@ -114,7 +116,7 @@ export class ClientCard {
       `${this._head(ctx)}
       ${this._tiles(ctx)}
       <div class="cc-g">
-        <div class="cc-main">${this._deals(ctx)}${this._kps(ctx)}</div>
+        <div class="cc-main">${this._deals(ctx)}${this._kps(ctx)}${ClientFeed.html({ kps: ctx.kps, notes: answer.notes || [], deals: this._clientDeals(ctx) })}</div>
         ${this._side(ctx)}
       </div>
       <div class="dlg-acts"><button class="btn primary" type="button" data-ccnew>＋ Новое КП этому клиенту</button></div>`,
@@ -141,7 +143,7 @@ export class ClientCard {
       : '';
     const address =
       client.address || client.director ? `<p class="muted cc-addr">${esc(client.address || '')}${director}</p>` : '';
-    return `<div class="dlg-h"><div><h3>${esc(client.name || answer.name || 'Клиент')}</h3><span class="muted cc-req">${req || 'реквизиты не указаны'}${client.status ? ` · ${esc(client.status)}` : ''}</span></div><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+    return `<div class="dlg-h"><div><h3>${esc(client.name || answer.name || 'Клиент')}</h3><span class="muted cc-req">${req || 'реквизиты не указаны'}${client.status ? ` · ${esc(client.status)}` : ''}</span></div>${req ? '<button class="btn sm" type="button" data-ccreq title="Название, ИНН, КПП, ОГРН, адрес и руководитель — одним текстом, чтобы вставить в письмо или счёт">📋 Реквизиты</button>' : ''}<button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       ${address}`;
   }
 
@@ -172,13 +174,16 @@ export class ClientCard {
   }
 
   // сделки клиента из кабинета (если он загружен): стадия, сумма, следующий шаг — открыть одним нажатием
-  static _deals({ answer, client }) {
-    if (!CrmData.board) return '';
+  static _clientDeals({ answer, client }) {
     const inn = client.inn || answer.inn || '';
     const name = Str.norm(client.name || answer.name || '');
-    const deals = CrmData.deals().filter(deal =>
+    return CrmData.deals().filter(deal =>
       inn ? deal.clientInn === inn : name && Str.norm(deal.client || '') === name,
     );
+  }
+
+  static _deals(ctx) {
+    const deals = this._clientDeals(ctx);
     if (!deals.length) return '';
     const rows = deals
       .map(deal => {
@@ -288,6 +293,7 @@ export class ClientCard {
       },
     ],
     ['[data-ccnew]', ctx => ClientCard._newKp(ctx)],
+    ['[data-ccreq]', ctx => Requisites.copy({ ...ctx.client, inn: ctx.client.inn || ctx.answer.inn })],
     [
       '[data-ccdeal]',
       (ctx, button) => {
@@ -354,5 +360,40 @@ export class ClientCard {
       }
       this.open(query);
     });
+  }
+}
+
+/** Реквизиты клиента одним текстом в буфер обмена — вставить в письмо, счёт или договор. */
+export class Requisites {
+  /**
+   * Текст реквизитов (пустые строки не попадают).
+   * @param {object} client
+   * @returns {string}
+   */
+  static text(client) {
+    const director = client.director ? `${client.directorPost || 'Руководитель'}: ${client.director}` : '';
+    return [
+      client.full || client.name,
+      client.inn && `ИНН ${client.inn}`,
+      client.kpp && `КПП ${client.kpp}`,
+      client.ogrn && `ОГРН ${client.ogrn}`,
+      client.address && `Адрес: ${client.address}`,
+      director,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  /**
+   * Скопировать.
+   * @param {object} client
+   */
+  static async copy(client) {
+    const ok = await CopyText.copy(this.text(client));
+    Toast.show(
+      ok
+        ? 'Реквизиты скопированы — вставьте их в письмо или документ'
+        : 'Не скопировалось — браузер не дал доступ к буферу обмена',
+    );
   }
 }

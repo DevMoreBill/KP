@@ -200,3 +200,9 @@ dialog.st-confirm.kf-dlg{width:min(760px,calc(100vw - 32px));max-width:none}
 .cc-deal:hover{background:var(--soft)}
 .cc-c a{color:var(--navy)}
 .jq{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.cc-feed summary{cursor:pointer}
+.cf-l{list-style:none;margin:4px 0 0;padding:0}
+.cf-l li{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:1px solid var(--line)}
+.cf-l li>div{display:flex;flex-direction:column;min-width:0}
+.cf-l .muted{font-size:12px}
+.cf-k{flex:none;width:20px;text-align:center}

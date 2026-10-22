@@ -1,5 +1,7 @@
 import { KpDate } from './kp-date.js';
 import { MyPrefs } from './my-prefs.js';
+import { MailTemplates } from './mail-templates.js';
+import { S } from '../../core/state.js';
 import { Reminders } from './reminders.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
@@ -56,8 +58,26 @@ export class MailDlg {
     form = MyPrefs.mail(form); // подпись и копия себе — из «Моих настроек»
     const modal = new Modal(this._html(number, form), 'ml-dlg');
     this.sum(modal, form);
-    modal.d.onchange = () => this.sum(modal, form);
+    modal.d.onchange = event => {
+      if (event.target.id === 'mlTpl') this._useTemplate(modal, number, event.target.value);
+      this.sum(modal, form);
+    };
     modal.d.onclick = event => this._click({ modal, id, number, onSent }, event.target);
+  }
+
+  static _templates() {
+    if (!MailTemplates.LIST.length) return '';
+    const options = MailTemplates.LIST.map((tpl, i) => `<option value="${i}">${esc(tpl.name)}</option>`).join('');
+    return `<label class="f"><span>Шаблон письма</span><select id="mlTpl"><option value="">Как обычно (текст из «Настроек»)</option>${options}</select></label>`;
+  }
+
+  // тема и текст из шаблона; подпись из «Моих настроек» — в конец
+  static _useTemplate(modal, number, index) {
+    const tpl = MailTemplates.LIST[+index];
+    if (index === '' || !tpl) return;
+    const vars = { number, client: S.client || '', manager: (S.manager && S.manager.name) || '' };
+    modal.$('#mlS').value = MailTemplates.fill(tpl.subject, vars);
+    modal.$('#mlB').value = MyPrefs.mail({ body: MailTemplates.fill(tpl.body, vars) }).body;
   }
 
   static _html(number, form) {
@@ -74,6 +94,7 @@ export class MailDlg {
     return `<div class="dlg-h"><h3>Отправить КП № ${esc(number)} клиенту</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <label class="f"><span>Кому *</span><input type="text" id="mlTo" value="${esc(form.to)}" placeholder="client@company.ru — несколько через запятую" autocomplete="off"></label>
       <label class="f"><span>Копия</span><input type="text" id="mlCc" value="${esc(form.cc)}" autocomplete="off"></label>
+      ${this._templates()}
       <label class="f"><span>Тема</span><input type="text" id="mlS" value="${esc(form.subject)}"></label>
       <label class="f"><span>Текст письма</span><textarea id="mlB" rows="9">${esc(form.body)}</textarea></label>
       <div class="ml-files"><span class="muted">Вложения:</span><label><input type="checkbox" id="mlW" checked><span>Word — ${esc(form.word)}</span></label>
@@ -102,7 +123,12 @@ export class MailDlg {
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify(this._body(modal)),
       });
-      Toast.show(`КП № ${number} отправлено: ${modal.$('#mlTo').value}`);
+      const refused = answer.refused || [];
+      Toast.show(
+        refused.length
+          ? `КП № ${number} отправлено, но почтовый сервер не принял: ${refused.join(', ')} — проверьте адрес`
+          : `КП № ${number} отправлено: ${modal.$('#mlTo').value}`,
+      );
       if (onSent) onSent(answer.track);
       modal.close();
       Reminders.load();

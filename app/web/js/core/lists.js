@@ -6,6 +6,7 @@ import { ContainerKind } from '../features/kit/container-kind.js';
 import { CrmStages } from '../features/crm/crm-data.js';
 import { KpTrack } from '../features/kp/kp-track.js';
 import { ClientFields } from '../features/kp/client-store.js';
+import { MailTemplates } from '../features/kp/mail-templates.js';
 
 import { Api } from './net.js';
 import { KpConditions } from './conditions.js';
@@ -304,6 +305,24 @@ LISTS.addStrings({
   hint: 'Варианты в окне «Ход сделки» при статусе «Проиграно» (журнал КП) и при закрытии сделки как проигранной (кабинет менеджера).',
   late: true,
 });
+LISTS.add({
+  key: 'mail.templates',
+  group: 'kp',
+  label: 'Шаблоны писем',
+  target: () => MailTemplates.LIST,
+  hint: 'Выбор «Шаблон» в окне «Отправить КП письмом»: тема и текст подставляются, менеджер правит перед отправкой. В тексте можно писать {номер}, {клиент}, {менеджер} — подставится своё. Подпись менеджера («Мои настройки») добавляется сама.',
+  cols: [
+    ['name', 'Название', 'text', { req: true, unique: true }],
+    ['subject', 'Тема', 'text', { req: true }],
+    ['body', 'Текст письма', 'area', { req: true }],
+  ],
+  toRow: tpl => ({ name: tpl.name, subject: tpl.subject, body: tpl.body }),
+  fromRow: row =>
+    row.name && row.subject && row.body
+      ? { name: String(row.name).trim(), subject: String(row.subject).trim(), body: String(row.body) }
+      : null,
+});
+
 LISTS.add({
   key: 'crm.stages',
   group: 'crm',

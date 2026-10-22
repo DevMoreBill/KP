@@ -1,4 +1,5 @@
 import { DealCal } from './deal-cal.js';
+import { DealSeen } from './deal-seen.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealDefaults } from './deal-defaults.js';
@@ -286,7 +287,10 @@ export class DealState {
       return;
     }
     DealUi.open = undefined;
-    const dlg = Modal.host('dealdlg', 'dealwin', 'Экономика сделки', box => DealWin.bind(box));
+    const dlg = Modal.host('dealdlg', 'dealwin', 'Экономика сделки', box => {
+      DealWin.bind(box);
+      box.addEventListener('close', () => DealSeen.close(DealState.deal()));
+    });
     if (!dlg.open) {
       dlg.innerHTML =
         '<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>';

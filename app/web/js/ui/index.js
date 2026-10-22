@@ -17,6 +17,9 @@ import { ManagerStep } from './step-manager.js';
 import { PriceStep } from './step-price.js';
 import { Steps } from './steps.js';
 import { Tender, TenderBlock } from './tender.js';
+import { Tour } from './tour.js';
+import { BigMode } from './big-mode.js';
+import { PicView } from './pic-view.js';
 import { UiKit } from './ui-kit.js';
 
 export const UI_PARTS = {
@@ -49,6 +52,9 @@ export const UI_PARTS = {
   Steps,
   Tender,
   TenderBlock,
+  Tour,
+  BigMode,
+  PicView,
   UiKit,
 };
 
@@ -71,3 +77,5 @@ Steps.listen();
 ItemOrder.listen();
 ProblemReport.listen();
 AdminGearClicks.listen();
+PicView.listen();
+Tour.later();

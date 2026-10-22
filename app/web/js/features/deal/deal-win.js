@@ -23,6 +23,7 @@ import { Morph } from '../../core/morph.js';
 import { ItemAttrs } from '../../core/item-attrs.js';
 import { $, esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
+import { DealSeen } from './deal-seen.js';
 
 /**
  * Окно «Экономика сделки»: шапка с датой договора и Excel, вкладки шагов по порядку заполнения (открыта одна), правая
@@ -72,6 +73,7 @@ export class DealWin {
     const kpData = DealState.inputs();
     const calc = DealCalculator.calc(kpData, deal);
     if (DealConds.sync(calc)) KpState.persist();
+    DealSeen.shown(calc);
     // на телефоне шапка — одна строка, дата договора — в строке с прибылью
     const mob = Mobile.isPhone();
     const date = DealWin._date(deal);
@@ -81,7 +83,7 @@ export class DealWin {
     dlg.dataset.tab = DealUi.open;
     Morph.apply(
       dlg,
-      `${DealWin._head(mob ? '' : date)}${DealWin._banner(kpData)}<div class="dl-mini">${mob ? date : ''}${DealWin._mini(calc)}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
+      `${DealWin._head(mob ? '' : date)}${DealWin._banner(kpData)}${DealSeen.html(deal, calc)}<div class="dl-mini">${mob ? date : ''}${DealWin._mini(calc)}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
       ${DealOverview.html(calc)}
       ${DealPurchase.html(calc)}
       ${DealLogistics.view(calc)}

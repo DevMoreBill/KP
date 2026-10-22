@@ -21,6 +21,7 @@ import { ClientSuggest } from './client-suggest.js';
 import { DealFieldsView } from './deal-fields.js';
 import { LostPick } from './lost-pick.js';
 import { MirrorPanel } from './mirror-panel.js';
+import { PhoneCall } from './phone-call.js';
 import { LISTS } from '../../core/lists.js';
 
 export const CRM = {
@@ -49,6 +50,8 @@ export const CRM = {
   DealFieldsView,
   LostPick,
   MirrorPanel,
+  PhoneCall,
 };
 
 LISTS.ready(CrmStages.LISTS);
+PhoneCall.listen();

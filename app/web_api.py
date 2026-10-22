@@ -1431,7 +1431,7 @@ class TrackController(Controller):
             )  # без входа по паролю «кто» — заголовок запроса: считаем по компьютеру
             MailRate.take(store(), 'u:{}'.format(u['id']) if u else f'ip:{self.handler.client_address[0]}')
         try:
-            Mailer(store()).send(
+            accepted = Mailer(store()).send(
                 recipients,
                 copies,
                 str(data.get('subject') or '')[:300],
@@ -1467,7 +1467,8 @@ class TrackController(Controller):
             None,
             {'to': recipients, 'cc': copies, 'files': [x[0] for x in files]},
         )
-        return self.send_json({'ok': True, 'track': track})
+        refused = [addr for addr in recipients + copies if addr not in accepted]
+        return self.send_json({'ok': True, 'track': track, 'refused': refused})
 
     @route(
         r'/api/report', 'GET'
@@ -1845,6 +1846,37 @@ class CrmController(Controller):
         uid, name, everyone = self.who(self.handler)
         res.update(me=uid, meName=name, canAll=everyone, managers=CrmBoard(store()).managers() if everyone else [])
         return self.send_json(res)
+
+    @route(r'/api/crm/time', 'GET')
+    def deal_time(self) -> Any:
+        """«Где тратится время» — по отделу, без имён: только тем, кому виден весь отдел."""
+        try:
+            self._scope('all')
+        except PermissionError as exc:
+            return self.text(403, str(exc))
+        from crm_time import DealTime
+
+        return self.send_json(DealTime(store()).report())
+
+    @route(r'/api/crm/month', 'GET')
+    def month_report(self) -> Any:
+        """«Отчёт за месяц» в Excel — тем, кому виден весь отдел."""
+        try:
+            self._scope('all')
+        except PermissionError as exc:
+            return self.text(403, str(exc))
+        from crm_month import MonthReport
+
+        try:
+            report = MonthReport(store(), self.query.get('m') or MonthReport.current())
+        except ValueError as exc:
+            return self.text(400, str(exc))
+        return self.send(
+            200,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            report.xlsx(),
+            self.attachment(report.file_name(), 'report.xlsx'),
+        )
 
     @route(r'/api/crm/pick', 'GET')
     def pick(self) -> Any:

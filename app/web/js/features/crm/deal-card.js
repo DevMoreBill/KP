@@ -4,6 +4,8 @@ import { CrmFunnel } from './crm-funnel.js';
 import { CrmTask } from './crm-task.js';
 import { DealFieldsView } from './deal-fields.js';
 import { DealFeed } from './deal-feed.js';
+import { DealPrint } from './deal-print.js';
+import { DealKeys } from './deal-keys.js';
 import { LostPick } from './lost-pick.js';
 import { DealNeed } from './deal-need.js';
 import { DealKp } from './deal-kp.js';
@@ -248,7 +250,7 @@ export class DealCard {
         : '';
     return `<header class="dk-top">${this._nav(deal)}<div class="dk-hd"><span class="muted">Сделка № ${esc(deal.number)}${deal.manager ? ` · ${esc(deal.manager)}` : ''} · создана ${esc(created)} <span class="dk-saved" aria-live="polite"></span></span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" placeholder="Название: объект или задача клиента">${this._bx(deal)}</div>
-      <div class="dk-acts">${card}<button class="icon" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">✕</button></div></header>`;
+      <div class="dk-acts">${card}<button class="icon dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">🖨</button><button class="icon dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">⌨</button><button class="icon" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">✕</button></div></header>`;
   }
 
   static _nav(deal) {
@@ -696,6 +698,8 @@ export class DealCard {
       ['[data-dknow]', el => this._now(el.dataset.dknow)],
       ['[data-dko]', el => DealKp.openKp(el.dataset.dko)],
       ['[data-dknew]', () => DealKp.newKp(this.deal)],
+      ['[data-dkprint]', () => DealPrint.open(this.deal, item => this.hist(item))],
+      ['[data-dkkeys]', () => DealKeys.help()],
       ['[data-dklink]', () => DealKp.link(this.deal, () => this.reload())],
       ['[data-cc]', el => ClientCard.open(JSON.parse(el.dataset.cc))],
     ];
@@ -749,8 +753,27 @@ export class DealCard {
     const typing = event.target.closest('input,textarea,select,[contenteditable]');
     if (typing || event.altKey || event.ctrlKey || event.metaKey) return;
     const steps = { ArrowLeft: -1, ArrowRight: 1 };
-    if (!steps[event.key]) return;
+    if (steps[event.key]) {
+      event.preventDefault();
+      this._go(steps[event.key]);
+      return;
+    }
+    const act = DealKeys.action(event);
+    if (!act) return;
     event.preventDefault();
-    this._go(steps[event.key]);
+    this._hotkey(act);
+  }
+
+  // клавиша → то же, что кнопка карточки
+  static _hotkey(act) {
+    const press = selector => this.modal?.d.querySelector(selector)?.click();
+    const run = {
+      task: () => press('[data-feedmode="task"]:not(.on)'),
+      comment: () => press('[data-feedmode="comment"]:not(.on)'),
+      kp: () => DealKp.newKp(this.deal),
+      print: () => DealPrint.open(this.deal, item => this.hist(item)),
+      help: () => DealKeys.help(),
+    };
+    run[act]?.();
   }
 }

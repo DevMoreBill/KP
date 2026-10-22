@@ -22,6 +22,7 @@ import { ReqNum } from '../req/req-num.js';
 import { esc } from '../../core/util.js';
 import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
+import { StationSteps } from './station-steps.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна
@@ -103,16 +104,23 @@ export class StationQuick {
         ? this._select(index, ['industry', 'Отрасль заказчика', StationReq.INDUSTRY, req.industry || ''])
         : '';
     const busy = this.busy.has(item.id);
+    const state = main ? this._state(item) : null;
     return `<div class="sq">
       <div class="sq-h"><b>Подбор станции</b><span class="muted">Главное — ниже; остальное программа подберёт сама: оборудование из каталога, контейнер, компоновку и изображения для КП.</span></div>
+      ${this._steps(item, kind, state)}
       <div class="sq-g">${fields}${this._kindFields(item, index, kind)}${this._select(index, ['reserve', 'Резерв', StationReq.RES, req.reserve || ''])}${industry}</div>
       ${this._oil(index, kind, req)}
       <div class="sq-a"><button class="btn primary" type="button" data-sq="pick" data-i="${index}"${busy ? ' disabled' : ''}>${this._pickLabel(busy, main)}</button>
         ${`<button class="btn ghost" type="button" data-a="tzLoad" data-i="${index}">ТЗ заказчика: файл или текст</button>`}
         ${req.src && req.src.name ? `<span class="muted">по ТЗ «${esc(req.src.name)}»</span>` : ''}</div>
       ${StationParams.html(item, index)}
-      ${main ? this.result(item, index) : ''}
+      ${state ? this.result(item, index, state) : ''}
       <details class="sq-more"${Spoiler.attr(`req:${item.id}`)}><summary>Все требования, условия расчёта и проверки</summary>${StationReq.details(item, index)}</details></div>`;
+  }
+
+  static _steps(item, kind, state) {
+    const status = state ? this._status(item, state)[0] : '';
+    return StationSteps.html(item, { need: (this.NEED[kind] || [])[0], status });
   }
 
   static _pickLabel(busy, main) {
@@ -199,10 +207,10 @@ export class StationQuick {
    * Итог подбора: статус одной строкой, что подобрано, проверки значками, 3D-вид.
    * @param {object} item
    * @param {number} index
+   * @param {object} [state] компоновка и расчёт, если уже посчитаны
    * @returns {string}
    */
-  static result(item, index) {
-    const state = this._state(item);
+  static result(item, index, state = this._state(item)) {
     const [cls, title] = this._status(item, state);
     const text = title.replace(this.MARK, '');
     const fixes = ExpertFix.html(item, index, null, { all: true, max: this.FIX_MAX, skip: text });
@@ -234,8 +242,7 @@ export class StationQuick {
    */
   static _status(item, { fit, miss, errors, calc }) {
     if (fit) return ['bad', '✕ Оборудование не помещается в контейнер'];
-    if (miss)
-      return [errors.length ? 'bad' : 'warn', `${errors.length ? '✕' : '⚠'} В каталоге не нашлось: ${miss[1]}`];
+    if (miss) return [errors.length ? 'bad' : 'warn', `${errors.length ? '✕' : '⚠'} В каталоге не нашлось: ${miss[1]}`];
     if (errors.length) return ['bad', `✕ ${errors[0].text}${errors.length > 1 ? ` (и ещё ${errors.length - 1})` : ''}`];
     const ask = this.ask(item);
     if (ask) return ['info', `ⓘ ${ask}`];

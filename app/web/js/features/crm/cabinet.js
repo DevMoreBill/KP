@@ -5,7 +5,7 @@ import { CabToday } from './cab-today.js';
 import { CabDeals } from './cab-deals.js';
 import { CabGantt } from './cab-gantt.js';
 import { CabClients } from './cab-clients.js';
-import { CabTeam } from './cab-team.js';
+import { CabTeam, MonthXlsx } from './cab-team.js';
 import { CabGuide } from './cab-guide.js';
 import { DealCard } from './deal-card.js';
 import { DealNew } from './deal-new.js';
@@ -338,6 +338,7 @@ export class Cabinet {
       ['[data-cc]', el => ClientCard.open(JSON.parse(el.dataset.cc))],
       ['[data-cldeals]', el => this._clientDeals(el.dataset.cldeals)],
       ['[data-tmgr]', el => this._manager(el.dataset.tmgr)],
+      ['[data-cabmonth]', el => MonthXlsx.save(el)],
       ['[data-gsc]', el => CabGantt.scale(el.dataset.gsc)],
     ];
   }

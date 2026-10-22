@@ -1,7 +1,7 @@
 ---
 name: progon
 description: Прогон интерфейса «Конструктора КП» в браузере — весь путь менеджера и «Настройки» администратора на ПК и телефоне (iPhone 16 Pro Max), в светлой и тёмной теме, со снимками и проверками вёрстки (выход за край, наложения, контраст, области нажатия, ошибки страницы, двойные щелчки). Использовать после изменений интерфейса и перед выпуском.
-argument-hint: "[режимы pc,pcd,ph,phd] [этапы]"
+argument-hint: "[режимы pc,pcd,ph,phd,tab] [этапы]"
 ---
 
 # Прогон интерфейса
@@ -9,8 +9,9 @@ argument-hint: "[режимы pc,pcd,ph,phd] [этапы]"
 Команда (из корня репозитория):
 
 ```
-python3 tests/ui/progon.py --modes pc,pcd,ph,phd --out <папка во временной/рабочей папке сеанса>
+python3 tests/ui/progon.py --modes pc,pcd,ph,phd,tab --out <папка во временной/рабочей папке сеанса>
 ```
+Режимы: pc — ПК 1440×900, pcd — ПК 1366×768 тёмная, ph/phd — iPhone 16 Pro Max светлая/тёмная, tab — планшет iPad Air 820×1180 (касания).
 
 - `--stages client,cat,editor,station,price,deal,steps,preview,save,files,mail,journal,misc,settings,bitrix,dbl` — только эти этапы
   (для проверки одного окна). Этапы зависят от предыдущих: «save» требует заполненного КП (client, cat, price, steps).

@@ -18,6 +18,7 @@ import { DealState } from '../features/deal/deal-state.js';
 import { ClientsExportDlg } from '../features/catalog/catalog-export.js';
 import { MyPrefs } from '../features/kp/my-prefs.js';
 import { ProblemReport } from './problem-report.js';
+import { Tour } from './tour.js';
 import { DealCard } from '../features/crm/deal-card.js';
 import { MyDay } from '../features/kp/my-day.js';
 import { QuickSearch } from '../features/kp/quick-search.js';
@@ -28,6 +29,7 @@ import { UiTexts } from '../features/kp/ui-texts.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { PartyCheck } from '../features/kp/party-check.js';
 import { ClientFields, ClientStore, PartyFind } from '../features/kp/client-store.js';
+import { Requisites } from '../features/kp/client-card.js';
 import { CatalogSync } from '../features/catalog/catalog-fill.js';
 import { CatPrice, PriceHist } from '../features/kp/price-hints.js';
 import { CatalogWindow } from '../features/catalog/catalog-window.js';
@@ -271,6 +273,17 @@ export class ItemActions {
       return RENDER;
     },
     clPrev: () => ItemActions._clientKps(),
+    clientReq: () =>
+      Requisites.copy({
+        name: S.client,
+        full: S.clientFull,
+        inn: S.clientInn,
+        kpp: S.clientKpp,
+        ogrn: S.clientOgrn,
+        address: S.clientAddr,
+        director: S.clientDir,
+        directorPost: S.clientDirPost,
+      }),
   };
 
   static APP = {
@@ -292,6 +305,7 @@ export class ItemActions {
     dealOpen: ({ button }) => DealCard.open(button.dataset.id),
     myPrefs: () => MyPrefs.open(),
     report: () => ProblemReport.open(),
+    tour: () => Tour.start(),
     clientsExport: () => ClientsExportDlg.open(),
     deal: () => DealState.open(),
     docsFolder: () =>

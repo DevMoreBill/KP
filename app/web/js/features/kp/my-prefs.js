@@ -29,6 +29,7 @@ export class MyPrefs {
     ['auto', 'Как в системе'],
     ['light', 'Светлая'],
     ['dark', 'Тёмная'],
+    ['time', 'По времени суток (тёмная с 19:00 до 7:00)'],
   ];
   static CURRENCIES = [
     ['RUB', 'Рубли'],

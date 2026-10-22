@@ -8,6 +8,8 @@ import { FormView } from './form-view.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { MyPrefs } from '../features/kp/my-prefs.js';
 import { ProblemReport } from './problem-report.js';
+import { BigMode } from './big-mode.js';
+import { Tour } from './tour.js';
 import { HelpWindow } from '../features/kp/help-window.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { KpPreview } from '../features/doc/kp-preview.js';
@@ -45,6 +47,8 @@ export class Mobile {
     theme: () => $('#btnTheme').click(),
     prefs: () => MyPrefs.open(),
     report: () => ProblemReport.open(),
+    big: () => BigMode.toggle(),
+    tour: () => Tour.start(),
     settings: () => SettingsWindow.open(),
   };
 
@@ -95,8 +99,8 @@ export class Mobile {
       ${item('catalog', '▦', 'Каталог оборудования', 'Подбор и своё оборудование')}
       ${item('preview', '▤', 'Предпросмотр КП', 'Документ целиком')}
       ${DealDefaults.allowed() ? item('deal', '₽', 'Экономика сделки', 'Прибыль, финансирование, Excel') : ''}
-      ${item('help', '?', 'Руководство', 'Как пользоваться, история версий')}
-      <hr>${item('prefs', '☺', 'Мои настройки', 'Тема, стартовый экран, мои условия, подпись в письмах')}${item('theme', dark ? '☀' : '☾', dark ? 'Светлая тема' : 'Тёмная тема', '')}${item('report', '⚑', 'Сообщить о проблеме', 'Администратору — с тем, где это случилось')}
+      ${item('help', '?', 'Руководство', 'Как пользоваться, история версий')}${item('tour', '➜', 'Обзор программы', 'Короткий тур по главным кнопкам')}
+      <hr>${item('prefs', '☺', 'Мои настройки', 'Тема, стартовый экран, мои условия, подпись в письмах')}${item('theme', dark ? '☀' : '☾', dark ? 'Светлая тема' : 'Тёмная тема', '')}${item('big', 'А', BigMode.active() ? 'Обычный размер' : 'Крупный режим', BigMode.active() ? 'Вернуть обычный текст и кнопки' : 'Крупнее текст и кнопки на этом телефоне')}${item('report', '⚑', 'Сообщить о проблеме', 'Администратору — с тем, где это случилось')}
       ${AuthMenu.mobileItems(item)}${item('settings', '⚙', 'Настройки', 'Для администратора')}${AdminSession.on ? item('uitexts', '✎', 'Тексты интерфейса', 'Правка надписей и подсказок') : ''}`;
   }
 

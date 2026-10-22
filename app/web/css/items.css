@@ -580,3 +580,14 @@ dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
 .stl-st .stl-mods{margin-top:4px}
 .idrag{cursor:grab;color:var(--muted);font-weight:700;letter-spacing:-2px;padding:0 6px 0 0;user-select:none}
 .mob .idrag{display:none}
+/* шаги подбора станции (StationSteps) */
+.sq-steps{display:flex;gap:6px;list-style:none;margin:8px 0;padding:0;counter-reset:none}
+.sq-steps li{flex:1 1 0;min-width:0}
+.sq-steps button{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--muted);font:inherit;font-size:13.5px;text-align:left;cursor:pointer;touch-action:manipulation}
+.sq-steps i{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);font-style:normal;font-weight:700;font-size:12.5px}
+.sq-steps span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sq-steps .done button{color:var(--ok)}
+.sq-steps .done i{background:var(--ok);border-color:var(--ok);color:#fff}
+.sq-steps .now button{border-color:var(--navy);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--navy) inset}
+.sq-steps .now i{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
+.mob .sq-steps button{flex-direction:column;gap:2px;padding:6px 4px;text-align:center;font-size:12.5px}

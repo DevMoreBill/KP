@@ -1,3 +1,4 @@
+import { DealValues } from './deal-values.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
@@ -129,7 +130,7 @@ export class DealResult {
   static _kpi(calc) {
     const show = key =>
       calc.unknown.length > 0 ? DealResult._range(calc, row => row[key], DealFmt.pct) : DealFmt.pct(calc.base[key]);
-    return `<div class="dl-kpi"><div><small>Маржинальность ${DealFmt.help('Прибыль ÷ выручка без НДС. Сколько копеек прибыли в каждом рубле выручки.')}</small><b>${show('margin')}</b></div>
+    return `<div class="dl-kpi"><div><small>Маржинальность ${DealFmt.help('Прибыль ÷ выручка без НДС. Сколько копеек прибыли в каждом рубле выручки. Цвет — «Светофор маржи» в «Параметрах».')}</small><b class="mg-${DealValues.marginTone(calc.base ? calc.base.margin : null) || 'none'}">${show('margin')}</b></div>
           <div><small>Наценка ${DealFmt.help('Прибыль ÷ себестоимость (все расходы с финансированием, без НДС к вычету, и прочие расходы наличными).')}</small><b>${show('markup')}</b></div></div>`;
   }
 

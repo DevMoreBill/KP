@@ -1,3 +1,4 @@
+import { DealValues } from './deal-values.js';
 import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealTimeline } from './deal-timeline.js';
@@ -81,7 +82,7 @@ export class DealOverview {
     const tile = DealOverview._tile;
     const profit = calc.base ? Fmt.rub(res.P) : `${Fmt.rub(calc.lo.P)} … ${Fmt.rub(calc.hi.P)}`;
     return `${tile('Цена КП с НДС', Fmt.rub(calc.S))}${tile('Прибыль до налога', profit, res.P < 0 ? 'neg' : 'pos')}
-        ${tile('Маржинальность', DealFmt.pct(res.margin), res.margin < 0 ? 'neg' : '')}${tile('Чистая прибыль', Fmt.rub(res.net), res.net < 0 ? 'neg' : '', `после налога ${DealFmt.inp(calc.taxP)} %`)}`;
+        ${tile('Маржинальность', DealFmt.pct(res.margin), `dlo-mg ${DealValues.marginTone(res.margin)}`)}${tile('Чистая прибыль', Fmt.rub(res.net), res.net < 0 ? 'neg' : '', `после налога ${DealFmt.inp(calc.taxP)} %`)}`;
   }
 
   static _per100(calc, res) {

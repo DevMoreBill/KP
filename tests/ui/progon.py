@@ -37,13 +37,18 @@ sys.path.insert(0, os.path.dirname(HERE))
 class Modes:
     IPHONE = ('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) '
               'Version/18.0 Mobile/15E148 Safari/604.1')
+    IPAD = ('Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) '
+            'Version/18.0 Mobile/15E148 Safari/604.1')
     BASE = {'locale': 'ru-RU', 'timezone_id': 'Europe/Moscow'}
     ALL = {'pc': dict(BASE, viewport={'width': 1440, 'height': 900}, color_scheme='light'),
            'pcd': dict(BASE, viewport={'width': 1366, 'height': 768}, color_scheme='dark'),
            'ph': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='light', is_mobile=True, has_touch=True,
                       device_scale_factor=3, user_agent=IPHONE),
            'phd': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='dark', is_mobile=True, has_touch=True,
-                       device_scale_factor=3, user_agent=IPHONE)}
+                       device_scale_factor=3, user_agent=IPHONE),
+           # планшет (iPad Air, книжная): раскладка ПК, но касания и узкий экран
+           'tab': dict(BASE, viewport={'width': 820, 'height': 1180}, color_scheme='light', is_mobile=True, has_touch=True,
+                       device_scale_factor=2, user_agent=IPAD)}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
               'journal', 'kptabs', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'regs', 'dbl')
 
@@ -184,7 +189,8 @@ class UiRun:
                     names = re.findall(r'^export (?:class|const|let|function) (\w+)', src.read(), re.M)
                 if names:
                     mods.append(['/web/js/' + os.path.relpath(path, root).replace(os.sep, '/'), names])
-        return '''addEventListener('DOMContentLoaded', async () => {
+        return '''try { localStorage.setItem('kp.tour', '1'); } catch (e) {}
+addEventListener('DOMContentLoaded', async () => {
   for (const [path, names] of %s) {
     const ns = await import(path);
     for (const name of names) if (!(name in window)) Object.defineProperty(window, name, { get: () => ns[name], configurable: true });
@@ -587,6 +593,24 @@ class Scenario(UiRun):
                     self.snap('46_st_layout_v%d' % k, '#edlg', wait=2500)
             except Exception as e:
                 self.errs.append(('station', 'SCRIPT-view', str(e)[:150]))
+        self._pic_view()
+
+    def _pic_view(self):
+        """3D-вид станции — на весь экран (PicView): открывается, листается, закрывается."""
+        pg = self.pg
+        img = pg.locator('#edlg img[data-st3d]').first
+        if not img.count() or not img.is_visible():
+            return
+        try:
+            img.click()
+            pg.wait_for_selector('dialog.pv-dlg', timeout=5000)
+            self.snap('46v_st_picview', 'dialog.pv-dlg', wait=500)
+            if pg.locator('dialog.pv-dlg [data-pv="1"]').count():
+                pg.locator('dialog.pv-dlg [data-pv="1"]').click()
+            pg.keyboard.press('Escape')
+            pg.wait_for_selector('dialog.pv-dlg', state='detached', timeout=5000)
+        except Exception as e:
+            self.errs.append(('station', 'SCRIPT-picview', str(e)[:150]))
 
     def s_price(self):
         pg = self.pg
@@ -906,6 +930,21 @@ class Scenario(UiRun):
             self.pg.click('details.topmenu > summary')
             self.snap('b6_topmenu', None)
             self.pg.click('details.topmenu > summary')
+        self._tour()
+
+    def _tour(self):
+        """Тур первого входа: все подсказки по очереди, «Готово» закрывает."""
+        pg = self.pg
+        self.closeall()
+        self.ev("Tour.start()")
+        for k in range(8):
+            if not pg.locator('.tour').count():
+                break
+            self.snap('b8_tour_%d' % k, None, wait=300)
+            pg.locator('.tour [data-tourn]').click()
+            self.wait(300)
+        if pg.locator('.tour').count():
+            self.errs.append(('tour', 'SCRIPT', 'тур не закрылся кнопкой «Готово»'))
 
     def s_settings(self):
         """«Настройки»: вход администратора через форму, все вкладки всех групп и их подразделы."""
@@ -1536,7 +1575,7 @@ class Progon:
 
     def __init__(self, argv):
         a = argparse.ArgumentParser(description='Прогон интерфейса в браузере (ПК, телефон, светлая и тёмная тема)')
-        a.add_argument('--modes', default='pc,pcd,ph,phd')
+        a.add_argument('--modes', default='pc,pcd,ph,phd,tab')
         a.add_argument('--stages', default='', help='этапы через запятую: ' + ','.join(Modes.STAGES))
         a.add_argument('--out', default='')
         a.add_argument('--db', default='', help='КОПИЯ базы вместо вымышленных данных')

@@ -9,6 +9,7 @@ import { StationModsUi } from './station-mods-ui.js';
 import { StationParams } from './station-params.js';
 import { StationQuick } from './station-quick.js';
 import { StationSize } from './station-size.js';
+import { StationSteps } from './station-steps.js';
 import { StationUi } from './station-ui.js';
 
 export const STATION = {
@@ -24,10 +25,12 @@ export const STATION = {
   StationParams,
   StationQuick,
   StationSize,
+  StationSteps,
   StationUi,
 };
 
 Spoiler.listen();
 StationQuick.listen();
+StationSteps.listen();
 StationBrief.listen();
 StationUi.listen();

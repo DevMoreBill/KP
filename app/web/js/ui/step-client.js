@@ -139,7 +139,7 @@ export class ClientStep {
       <div class="cl-meta">${ids.filter(Boolean).join(' · ') || '<span class="muted">реквизиты не указаны</span>'}</div>
       ${S.clientAddr ? `<div class="cl-meta">${esc(S.clientAddr)}</div>` : ''}
       ${S.clientDir ? `<div class="cl-meta">${esc([S.clientDirPost || 'Руководитель', S.clientDir].join(': '))}</div>` : ''}
-      <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="clientEdit">${edit ? 'Скрыть реквизиты' : 'Изменить реквизиты'}</button><button class="btn ghost" type="button" data-a="clientChange">Другой клиент</button>${this._card()}</div></div>`;
+      <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="clientEdit">${edit ? 'Скрыть реквизиты' : 'Изменить реквизиты'}</button><button class="btn ghost" type="button" data-a="clientChange">Другой клиент</button>${S.clientInn ? '<button class="btn ghost" type="button" data-a="clientReq" title="Название, ИНН, КПП, ОГРН, адрес и руководитель — одним текстом">📋 Реквизиты</button>' : ''}${this._card()}</div></div>`;
   }
 
   static _form() {

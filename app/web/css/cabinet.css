@@ -630,3 +630,33 @@ html.mob .kb-add{min-width:44px;min-height:44px}
   .dk-cct{display:none}
 }
 @media (max-width:760px){.dk-acts .btn,.dk-acts .icon{min-width:44px;min-height:44px}}
+.dkk-l{margin:0 0 10px;padding-left:18px;display:grid;gap:6px}
+.mob .dk-keys,.mob .dk-prn{display:none}
+/* печать карточки сделки: только лист сделки */
+#dkPrint{display:none}
+@media print{
+  body.printing-deal>*:not(#dkPrint){display:none!important}
+  body.printing-deal #dkPrint{display:block;color:#000;font:12pt/1.4 Arial,sans-serif;padding:12mm}
+  #dkPrint h1{font-size:16pt;margin:0 0 8pt} #dkPrint h3{font-size:12.5pt;margin:12pt 0 4pt}
+  #dkPrint table{border-collapse:collapse;width:100%} #dkPrint th,#dkPrint td{border:1px solid #999;padding:3pt 6pt;text-align:left;vertical-align:top}
+  #dkPrint .dp-info th{width:30%;background:#eee} #dkPrint .dp-feed td:first-child{white-space:nowrap;width:22%}
+  #dkPrint .dp-foot{margin-top:12pt;color:#555;font-size:9pt}
+}
+/* «Где тратится время» (Отдел) */
+.wt-t{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:0 0 10px}
+.wt-t>div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:2px}
+.wt-t b{font-size:20px;color:var(--navy)}
+.wt-t span{font-size:12.5px;color:var(--muted)}
+.wt-h{margin:6px 0}
+.wt-r{display:grid;grid-template-columns:minmax(120px,200px) 1fr 70px 50px;gap:8px;align-items:center;padding:4px 0;font-size:13.5px}
+.wt-r i{display:block;height:10px;border-radius:999px;background:var(--sky)}
+.wt-r b{text-align:right}
+.mob .wt-r{grid-template-columns:1fr 60px;grid-template-areas:"l d" "b b"}
+.mob .wt-r span{grid-area:l} .mob .wt-r b{grid-area:d} .mob .wt-r i{grid-area:b} .mob .wt-r small{display:none}
+.wt-r.wt-lost i{background:var(--danger)}
+.wt-g{margin:14px 0 4px}
+.wt-why{margin:0;padding-left:18px;font-size:13.5px}
+.wt-why li{padding:2px 0}
+.wt-x{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
+.wt-x label{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.wt-x input{width:auto}

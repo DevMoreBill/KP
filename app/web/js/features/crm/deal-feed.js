@@ -70,7 +70,16 @@ export class DealFeed {
       <div class="row"><button class="btn primary" type="button" data-dkcomm>Отправить</button><span class="muted">уходит и в ленту сделки Битрикс24</span></div></div>`;
   }
 
-  // события ленты: [время, значок, текст, кто, класс]
+  /**
+   * События ленты: [время, значок, текст (HTML), кто, класс], новые сверху.
+   * @param {object} deal
+   * @param {Function} hist строка истории сделки
+   * @returns {Array<Array<string>>}
+   */
+  static items(deal, hist) {
+    return this._items(deal, hist);
+  }
+
   static _items(deal, hist) {
     const comments = (deal.comments || []).map(row => [
       row.at,

@@ -407,13 +407,17 @@ class Mailer:
         return self.settings()
 
     def _deliver_to(self, mail: dict, msg, rcpt: list[str]) -> list[str]:
+        """→ адреса, которые почтовый сервер принял (часть могла не пройти — отказ по адресу)."""
         try:
-            self._deliver(mail, msg, rcpt)
+            refused = self._deliver(mail, msg, rcpt)
+        except smtplib.SMTPRecipientsRefused as exc:
+            bad = ', '.join(str(addr) for addr in exc.recipients)[:200]
+            raise RuntimeError(f'Почтовый сервер не принял адрес: {bad} — проверьте написание адреса клиента') from None
         except smtplib.SMTPAuthenticationError:
             raise RuntimeError('Почтовый сервер не принял логин или пароль — проверьте «Настройки → Почта»') from None
         except (smtplib.SMTPException, OSError) as email:
             raise RuntimeError(f'Письмо не отправлено: {(str(email) or type(email).__name__)[:200]}') from email
-        return rcpt
+        return [addr for addr in rcpt if addr not in (refused or {})]
 
     @staticmethod
     def _message(mail, recipients, copies, subject, body, files, reply_to) -> EmailMessage:
@@ -436,7 +440,7 @@ class Mailer:
         return msg
 
     @staticmethod
-    def _deliver(mail, msg, rcpt) -> None:
+    def _deliver(mail, msg, rcpt) -> dict:
         host, port, sec = mail['host'], int(mail.get('port') or 465), mail.get('security') or 'ssl'
         srv = (
             smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context())
@@ -448,4 +452,4 @@ class Mailer:
                 srv.starttls(context=ssl.create_default_context())
             if mail.get('login'):
                 srv.login(mail['login'], mail.get('password') or '')
-            srv.send_message(msg, to_addrs=rcpt)
+            return srv.send_message(msg, to_addrs=rcpt) or {}

@@ -914,3 +914,24 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-qrow span+span,.dl-qrow .dl-q+span{margin-left:12px}
 .dl-big b{font-size:26px}
 .lg-tokp{margin-left:8px;padding:1px 8px;min-height:0;font-size:12px;vertical-align:middle}
+/* светофор маржи (п. 26): пороги — «Параметры → Экономика сделки → Светофор маржи» */
+.dlo-t.neg b,.mg-neg{color:var(--danger)}
+.dlo-t.warn b,.mg-warn{color:var(--warn-ink,#b45309)}
+.dlo-t.pos b,.mg-pos{color:var(--ok)}
+.dlo-mg.neg{box-shadow:inset 3px 0 0 var(--danger)}
+.dlo-mg.warn{box-shadow:inset 3px 0 0 var(--warn)}
+.dlo-mg.pos{box-shadow:inset 3px 0 0 var(--ok)}
+.dl-seen{background:var(--soft);color:var(--ink)} .dl-seen b.pos{color:var(--ok)} .dl-seen b.neg{color:var(--danger)}
+/* логистика карточками (п. 27): каждое предложение перевозчика — карточка с выбором, сумма крупно */
+.lg-of,.lg-of tbody{display:block}
+.lg-of tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.lg-of tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"name name" "kind days" "sum sum";gap:4px 10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--card)}
+.lg-of tr.on{border-color:var(--navy);box-shadow:0 0 0 1px var(--navy) inset}
+.lg-of tr.on td,.lg-of tr.best td{background:transparent}
+.lg-of td{border:0!important;padding:0!important}
+.lg-of td:nth-child(1){grid-area:name}
+.lg-of td:nth-child(2){grid-area:kind;color:var(--muted);font-size:12.5px}
+.lg-of td:nth-child(3){grid-area:days;text-align:right;color:var(--muted);font-size:12.5px}
+.lg-of td:nth-child(4){grid-area:sum;font-size:17px;font-weight:700;text-align:left!important}
+.lg-of td small{max-width:none}
+.lg-of .lg-pk{cursor:pointer}
