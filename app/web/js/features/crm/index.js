@@ -14,7 +14,8 @@ import { DealNew } from './deal-new.js';
 import { DealKp } from './deal-kp.js';
 import { DealPick } from './deal-pick.js';
 import { DealExec } from './deal-exec.js';
-import { DealSummary } from './deal-summary.js';
+import { DealParts } from './deal-parts.js';
+import { DealNow } from './deal-now.js';
 import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
 import { DealFieldsView } from './deal-fields.js';
@@ -41,7 +42,8 @@ export const CRM = {
   DealKp,
   DealPick,
   DealExec,
-  DealSummary,
+  DealParts,
+  DealNow,
   DealClient,
   ClientSuggest,
   DealFieldsView,

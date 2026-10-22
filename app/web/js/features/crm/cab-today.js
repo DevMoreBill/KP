@@ -17,7 +17,7 @@ import { KpDate } from '../kp/kp-date.js';
 import { esc, today } from '../../core/util.js';
 import { MyDay } from '../kp/my-day.js';
 
-/** «Сегодня»: показатели (нажимаются), дела по срокам с быстрым добавлением, «Требуют внимания», напоминания, черновики. */
+/** «Сегодня»: цифры одной строкой, один список «Что сделать» (дела и сделки, которым нужно действие), свёрнутое прочее. */
 export class CabToday {
   static SHOW = 6;
   static DAY_MS = 864e5;
@@ -37,7 +37,7 @@ export class CabToday {
   }
 
   /**
-   * Раздел.
+   * Раздел: строка цифр, один список «Что сделать» (дела и сделки, которым нужно действие), ниже — свёрнутое прочее.
    * @returns {string}
    */
   static html() {
@@ -45,49 +45,37 @@ export class CabToday {
       !CrmData.board.me && !CrmData.all()
         ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>'
         : '';
-    return `${who}${CabGuide.tip()}${this._kpi()}<div class="md-g cab-g">${this._tasks()}<div class="md-col">${this._attention()}${this._reminders()}${this._drafts()}</div></div>${this._more()}
-      <label class="md-start"><input type="checkbox" id="mdStart"${MyDay.atStart() ? ' checked' : ''}> Открывать кабинет при запуске программы</label>`;
+    return `<div class="td-wrap">${who}${CabGuide.tip()}${this._stats()}${this._todo()}${this._extra()}
+      <label class="md-start"><input type="checkbox" id="mdStart"${MyDay.atStart() ? ' checked' : ''}> Открывать кабинет при запуске программы</label></div>`;
   }
 
   static _sum(deals) {
     return deals.reduce((total, deal) => total + (deal.sum || 0), 0);
   }
 
-  static _kpi() {
+  // цифры одной строкой; каждая ведёт к своим сделкам
+  static _stats() {
     const now = today();
     const month = now.slice(0, 7);
-    const tasks = CrmData.openTasks();
-    const over = tasks.filter(task => task.due < now).length;
-    const due = over + tasks.filter(task => task.due === now).length;
-    const done = CrmData.tasks().filter(
-      task => task.state === 'done' && String(task.doneAt || '').slice(0, 10) === now,
-    ).length;
     const open = CrmData.openDeals();
     const expected = open.filter(deal => String(deal.expected || '').slice(0, 7) <= month);
-    const late = open.filter(deal => deal.expected && deal.expected < now).length;
     const won = CrmData.deals().filter(
       deal => deal.stage === 'won' && String(deal.stageAt || '').slice(0, 7) === month,
     );
-    const taskNote = over ? `<span class="bad-t">${over} просрочено</span>` : `сделано ${done}`;
-    const lateNote = late ? ` · <span class="bad-t">срок прошёл у ${late}</span>` : '';
-    return `<div class="cab-kpi">${this._tile({ key: 'tasks', label: 'Дела на сегодня', value: due, note: taskNote, tone: over ? 'bad' : '' })}
-      ${this._tile({ key: 'deals', label: 'Сделки в работе', value: open.length, note: CrmFmt.short(this._sum(open)) })}
-      ${this._tile({ key: 'month', label: 'Ожидаются в этом месяце', value: expected.length, note: CrmFmt.short(this._sum(expected)) + lateNote })}
-      ${this._tile({ key: 'won', label: 'Выиграно в этом месяце', value: won.length, note: CrmFmt.short(this._sum(won)), tone: won.length ? 'ok' : '' })}</div>`;
-  }
-
-  static _tile({ key, label, value, note, tone = '' }) {
-    return `<button type="button" class="cab-k${tone ? ` ${tone}` : ''}" data-kpi="${key}"><span>${label}</span><b>${value}</b><small>${note}</small></button>`;
+    const stat = (key, label, list) =>
+      `<button type="button" class="td-st" data-kpi="${key}"><span>${label}</span> <b>${list.length}</b> <span class="muted">${CrmFmt.short(this._sum(list))}</span></button>`;
+    return `<div class="td-sts" role="group" aria-label="Коротко">${stat('deals', 'В работе', open)}${stat('month', 'Ожидаются в этом месяце', expected)}${stat('won', 'Выиграно в этом месяце', won)}</div>`;
   }
 
   /**
-   * Нажатие на показатель: к делам или к сделкам с нужным отбором.
+   * Нажатие на цифру: к сделкам с нужным отбором; «дела» — открыть строку нового дела.
    * @param {string} key
    */
   static kpi(key) {
     if (key === 'tasks') {
-      const field = Cabinet.dlg().querySelector('.cab-tasks input[name=title]');
-      if (field) field.focus();
+      const add = Cabinet.dlg().querySelector('.td-add');
+      if (add) add.open = true;
+      add?.querySelector('input[name=title]')?.focus();
       return;
     }
     CabDeals.filter = key === 'month' ? 'month' : '';
@@ -96,101 +84,114 @@ export class CabToday {
     Cabinet.show('deals');
   }
 
-  static _groups() {
-    const now = today();
-    const tomorrow = KpDate.addDays(now, 1);
-    const week = KpDate.addDays(now, CrmFmt.WEEK);
-    const tasks = CrmData.openTasks().sort((one, two) =>
+  static _tasks() {
+    return CrmData.openTasks().sort((one, two) =>
       `${one.due}${one.time || '99'}`.localeCompare(`${two.due}${two.time || '99'}`),
     );
+  }
+
+  // что требует действия сейчас — по порядку срочности
+  static _now() {
+    const now = today();
+    const tasks = this._tasks();
+    const open = CrmData.openDeals();
     return [
-      ['Просрочено', tasks.filter(task => task.due < now), { cls: 'bad-t', date: true }],
-      ['Сегодня', tasks.filter(task => task.due === now), {}],
-      ['Завтра', tasks.filter(task => task.due === tomorrow), {}],
-      ['На неделе', tasks.filter(task => task.due > tomorrow && task.due <= week), { date: true }],
-      ['Позже', tasks.filter(task => task.due > week), { date: true, later: true }],
+      ['Просрочено', tasks.filter(task => task.due < now), 'task', { cls: 'bad-t', date: true }],
+      ['На сегодня', tasks.filter(task => task.due === now), 'task', {}],
+      ['Новые из Битрикс24 — откройте и возьмите в работу', this.bxNew(), 'new', {}],
+      [
+        'Исполнение: срок точки прошёл',
+        open.filter(deal => deal.execSum && deal.execSum.overdue),
+        'exec',
+        { cls: 'bad-t' },
+      ],
+      ['Сделки без следующего шага — запланируйте звонок или встречу', open.filter(deal => !deal.next), 'free', {}],
+      [
+        'Ожидаемая дата сделки прошла — обновите дату или закройте',
+        open.filter(deal => deal.expected && deal.expected < now),
+        'late',
+        {},
+      ],
     ];
   }
 
-  static _group([title, list, opts]) {
-    if (!list.length) return '';
-    const rows = list.map(task => CrmTask.row(task, opts)).join('');
-    const head = `${title} <b class="md-c">${list.length}</b>`;
-    if (opts.later) return `<details class="tk-later"><summary class="tk-g">${head}</summary>${rows}</details>`;
-    return `<p class="tk-g${opts.cls ? ` ${opts.cls}` : ''}">${head}</p>${rows}`;
+  static _todo() {
+    const groups = this._now();
+    const count = groups.reduce((total, [, list]) => total + list.length, 0);
+    const rows = groups.map(group => this._group(...group)).join('');
+    const empty = count
+      ? ''
+      : '<p class="empty td-ok">✓ Всё сделано: дел на сегодня нет, у каждой сделки есть следующий шаг.</p>';
+    return `<section class="md-s td"><div class="md-h"><p class="sub">Что сделать${count ? ` <b class="md-c">${count}</b>` : ''}${UiKit.tip('<p>Сверху — самое срочное: просроченные дела, дела на сегодня, затем сделки, которым нужно действие. У каждой строки — одна кнопка.</p><p>Дело сделано — отметьте галочкой. «+1 день» — перенести на завтра, ✎ — изменить.</p>')}</p></div>
+      ${this._add()}<div class="tk-l">${rows}${empty}</div>${this._later()}${this._done()}</section>`;
   }
 
-  static _tasks() {
-    const groups = this._groups();
-    const empty = groups.every(([, list]) => !list.length)
-      ? '<p class="empty">Дел нет. Запланируйте звонок или встречу — строкой выше: вид дела, что сделать, когда.</p>'
-      : '';
+  static _add() {
+    return `<details class="td-add"><summary><span aria-hidden="true">＋</span> Новое дело — звонок, встреча, письмо или задача</summary>${CrmTask.form('', { pick: true })}</details>`;
+  }
+
+  static _group(title, list, kind, opts) {
+    if (!list.length) return '';
+    const rows =
+      kind === 'task'
+        ? list.map(task => CrmTask.row(task, opts)).join('')
+        : list
+            .slice(0, this.SHOW)
+            .map(deal => this._dealRow(deal, kind))
+            .join('');
+    const rest = kind === 'task' ? 0 : list.length - this.SHOW;
+    const more =
+      rest > 0
+        ? `<button class="lnk cab-all" type="button" data-cflt="${kind}">и ещё ${rest} — показать все</button>`
+        : '';
+    return `<p class="tk-g${opts.cls ? ` ${opts.cls}` : ''}">${title} <b class="md-c">${list.length}</b></p>${rows}${more}`;
+  }
+
+  static _why(deal, kind) {
+    const reasons = {
+      new: () => (this._late(deal) ? 'ждёт больше суток' : 'новая'),
+      exec: () =>
+        deal.execSum.next ? `${deal.execSum.next.label} — план ${CrmFmt.day(deal.execSum.next.plan)}` : 'просрочено',
+      free: () => 'нет запланированного дела',
+      late: () => `ожидалась ${CrmFmt.day(deal.expected)}`,
+    };
+    return reasons[kind] ? reasons[kind]() : '';
+  }
+
+  static _dealRow(deal, kind) {
+    const name = deal.title || deal.client;
+    const client = deal.client && deal.client !== name ? `${esc(deal.client)} · ` : '';
+    const action =
+      kind === 'free'
+        ? `<button class="btn sm primary" type="button" data-dstep="${esc(deal.id)}" title="Запланировать дело по сделке">＋ Дело</button>`
+        : `<button class="btn sm" type="button" data-deal="${esc(deal.id)}">Открыть</button>`;
+    return `<div class="md-r"><span class="cab-dot t-${CrmData.toneOf(deal)}" aria-hidden="true"></span><button type="button" class="cab-rl" data-deal="${esc(deal.id)}"><b>${esc(name)}</b><span class="muted">${client}${esc(CrmFunnel.label(deal))} · ${CrmFmt.short(deal.sum)} · ${esc(this._why(deal, kind))}</span></button>${action}</div>`;
+  }
+
+  // дела на будущие дни — свёрнуто
+  static _later() {
+    const now = today();
+    const tomorrow = KpDate.addDays(now, 1);
+    const later = this._tasks().filter(task => task.due > now);
+    if (!later.length) return '';
+    const soon = later.filter(task => task.due === tomorrow).length;
+    const rows = later.map(task => CrmTask.row(task, { date: true })).join('');
+    return `<details class="tk-later"><summary class="tk-g">Запланировано дальше <b class="md-c">${later.length}</b>${soon ? ` <span class="muted">· завтра ${soon}</span>` : ''}</summary>${rows}</details>`;
+  }
+
+  static _done() {
     const now = today();
     const done = CrmData.tasks().filter(
       task => task.state === 'done' && String(task.doneAt || '').slice(0, 10) === now,
     );
-    const doneList = done.length
-      ? `<details class="tk-done"><summary>Сделано сегодня (${done.length})</summary>${done.map(task => CrmTask.row(task)).join('')}</details>`
-      : '';
-    return `<section class="md-s cab-tasks"><div class="md-h"><p class="sub">Мои дела${UiKit.tip('<p>Отметьте дело галочкой, когда сделали. «+1 день» — перенести на завтра, ✎ — изменить или отменить.</p><p>Дело по сделке добавляйте из карточки сделки — оно будет видно на доске как «следующий шаг».</p>')}</p></div>${CrmTask.form('', { pick: true })}
-      <div class="tk-l">${groups.map(group => this._group(group)).join('')}${empty}${doneList}</div></section>`;
+    if (!done.length) return '';
+    return `<details class="tk-done"><summary>Сделано сегодня (${done.length})</summary>${done.map(task => CrmTask.row(task)).join('')}</details>`;
   }
 
-  static _attention() {
-    const now = today();
-    const open = CrmData.openDeals();
-    const parts = [
-      [
-        'Новые из Битрикс24',
-        this.bxNew(),
-        deal => (this._late(deal) ? 'ждёт больше суток' : 'откройте, чтобы принять'),
-        'new',
-      ],
-      [
-        'Исполнение: точка просрочена',
-        open.filter(deal => deal.execSum && deal.execSum.overdue),
-        deal =>
-          deal.execSum.next ? `${deal.execSum.next.label} — план ${CrmFmt.day(deal.execSum.next.plan)}` : 'просрочено',
-        'exec',
-      ],
-      ['Без следующего дела', open.filter(deal => !deal.next), () => 'запланируйте звонок или встречу', 'free'],
-      [
-        'Срок прошёл',
-        open.filter(deal => deal.expected && deal.expected < now),
-        deal => `ожидалась ${CrmFmt.day(deal.expected)}`,
-        'late',
-      ],
-    ];
-    const count = new Set(parts.flatMap(([, list]) => list.map(deal => deal.id))).size;
-    const body = parts.map(part => this._attn(...part)).join('');
-    return MyDay.section(
-      `Требуют внимания${count ? ` <b class="md-c">${count}</b>` : ''}${UiKit.tip('<p>Сделки, которым нужно действие: новые из Битрикс24, с просроченной точкой исполнения (оплата, готовность, поставка), без запланированного дела и с прошедшей ожидаемой датой.</p><p>«＋ Дело» — запланировать следующий шаг, не открывая сделку.</p>')}`,
-      body || '<p class="empty">Всё в порядке: у каждой сделки есть следующий шаг.</p>',
-    );
-  }
-
-  static _attn(title, list, why, filter) {
-    if (!list.length) return '';
-    const rows = list
-      .slice(0, this.SHOW)
-      .map(deal => this._attnRow(deal, why(deal), filter))
-      .join('');
-    const rest = list.length - this.SHOW;
-    const more =
-      rest > 0
-        ? `<button class="lnk cab-all" type="button" data-cflt="${filter}">и ещё ${rest} — показать все</button>`
-        : '';
-    return `<p class="tk-g${['late', 'exec'].includes(filter) ? ' bad-t' : ''}">${title} <b class="md-c">${list.length}</b></p>${rows}${more}`;
-  }
-
-  static _attnRow(deal, why, filter) {
-    const name = deal.title || deal.client;
-    const client = deal.client && deal.client !== name ? `${esc(deal.client)} · ` : '';
-    const step =
-      filter === 'new'
-        ? ''
-        : `<button class="btn sm" type="button" data-dstep="${esc(deal.id)}" title="Запланировать дело по сделке">＋ Дело</button>`;
-    return `<div class="md-r"><span class="cab-dot t-${CrmData.toneOf(deal)}" aria-hidden="true"></span><button type="button" class="cab-rl" data-deal="${esc(deal.id)}"><b>${esc(name)}</b><span class="muted">${client}${esc(CrmFunnel.label(deal))} · ${CrmFmt.short(deal.sum)} · ${esc(why)}</span></button>${step}</div>`;
+  // напоминания и черновики КП, журнал, каталог — свёрнуто внизу
+  static _extra() {
+    const parts = [this._reminders(), this._drafts()].filter(Boolean).join('');
+    return `<div class="td-x">${parts}${this._more()}</div>`;
   }
 
   static _reminders() {
@@ -204,11 +205,9 @@ export class CabToday {
           `<div class="md-r${item.overdue ? ' over' : ''}"><span aria-hidden="true">${Reminders.icon(item.kind)}</span><div><b>${esc(item.text)}</b><span class="muted">КП № ${esc(item.number)} · ${esc(item.client)}${item.overdue ? ' · <span class="bad-t">просрочено</span>' : ''}</span></div><button class="btn sm" type="button" data-mdr="${index}">Открыть КП</button></div>`,
       )
       .join('');
-    return MyDay.section(
-      `Напоминания по КП${items.length ? ` <b class="md-c">${items.length}</b>` : ''}`,
-      rows || '<p class="empty">Напоминаний нет.</p>',
-      items.length > limit ? '<button class="lnk" type="button" data-mdall>Все</button>' : '',
-    );
+    if (!items.length) return '';
+    const all = items.length > limit ? '<button class="lnk" type="button" data-mdall>Все напоминания</button>' : '';
+    return `<details class="md-s td-d"><summary class="sub">Напоминания по КП <b class="md-c">${items.length}</b></summary>${rows}${all}</details>`;
   }
 
   static _drafts() {
@@ -222,11 +221,9 @@ export class CabToday {
           `<div class="md-r"><div><b>${esc(draft.client || 'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(draft))} · ${draft.positions || 0} поз. · ${esc(Fmt.dateTime(draft.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(draft.id)}">Продолжить</button></div>`,
       )
       .join('');
-    return MyDay.section(
-      `Черновики КП${drafts.length ? ` <b class="md-c">${drafts.length}</b>` : ''}`,
-      rows || '<p class="empty">Незаконченных КП нет.</p>',
-      drafts.length > limit ? '<button class="lnk" type="button" data-mddr>Все</button>' : '',
-    );
+    if (!drafts.length) return '';
+    const all = drafts.length > limit ? '<button class="lnk" type="button" data-mddr>Все черновики</button>' : '';
+    return `<details class="md-s td-d"><summary class="sub">Черновики КП <b class="md-c">${drafts.length}</b></summary>${rows}${all}</details>`;
   }
 
   static _more() {

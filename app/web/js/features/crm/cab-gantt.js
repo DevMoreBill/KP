@@ -133,10 +133,11 @@ export class CabGantt {
   }
 
   /**
-   * Раздел.
+   * График сделок (вид «Сделок»).
+   * @param {string} [lead] переключатель вида — в строку над графиком
    * @returns {string}
    */
-  static html() {
+  static html(lead = '') {
     const opts = this.opt();
     const now = CrmFmt.dayNo(today());
     const rows = this._rows(opts);
@@ -149,13 +150,13 @@ export class CabGantt {
         ? `<div class="gn-r"><div class="gn-l"><b>Дела без сделки</b><span class="muted">${free.length}</span></div><div class="gn-tr" style="width:${tape.width}px">${free.map(task => tape.task(task)).join('')}</div></div>`
         : '';
     if (!rows.length && !freeRow)
-      return `${this._controls(opts)}<p class="empty">${Cabinet.query ? 'Не найдено.' : 'Сделок в работе нет.'}</p>`;
+      return `${this._controls(opts, lead)}<p class="empty">${Cabinet.query ? 'Не найдено.' : 'Сделок в работе нет.'}</p>`;
     const lines = rows.map(row => this._line(row, tape, opts)).join('');
-    return `${this._controls(opts)}<div class="gn" id="gn"><div class="gn-in"><div class="gn-r gn-hd"><div class="gn-l"><b>Сделка</b></div><div class="gn-tr" style="width:${tape.width}px">${tape.head()}</div></div>
+    return `${this._controls(opts, lead)}<div class="gn" id="gn"><div class="gn-in"><div class="gn-r gn-hd"><div class="gn-l"><b>Сделка</b></div><div class="gn-tr" style="width:${tape.width}px">${tape.head()}</div></div>
       <div class="gn-rows">${lines}${freeRow}<div class="gn-now" style="left:calc(var(--gl) + ${tape.mid(now)}px)" aria-hidden="true"></div></div></div></div>`;
   }
 
-  static _controls(opts) {
+  static _controls(opts, lead) {
     const scales = Object.entries(this.SCALES)
       .map(
         ([key, [label]]) =>
@@ -164,7 +165,7 @@ export class CabGantt {
       .join('');
     const check = (key, label) =>
       `<label class="cab-ck"><input type="checkbox" data-gsh="${key}"${opts[key] ? ' checked' : ''}> ${label}</label>`;
-    return `<div class="cab-bar">${Cabinet.search('Сделка или клиент')}<div class="seg" role="radiogroup" aria-label="Масштаб">${scales}</div>${check('deal', 'Сроки сделок')}${check('sup', 'Поставка')}${check('task', 'Дела')}</div>
+    return `<div class="cab-bar">${Cabinet.search('Сделка или клиент')}${lead}<div class="seg" role="radiogroup" aria-label="Масштаб">${scales}</div>${check('deal', 'Сроки сделок')}${check('sup', 'Поставка')}${check('task', 'Дела')}</div>
       <details class="gn-lg muted"${Mobile.isPhone() ? '' : ' open'}><summary>Обозначения</summary><div class="gn-lgi"><span><i class="gb-d t-s2"></i> сделка: создана → ожидаемая дата</span><span><i class="gb-s"></i> поставка по расчёту сделки</span><span>◇ КП действует до</span><span>◆ готовность</span><span>₽ оплата заказчика</span><span>☎ 👥 ✉ ✓ дела</span></div></details>`;
   }
 

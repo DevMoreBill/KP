@@ -30,33 +30,63 @@ export class DealFieldsView {
   static LONG = 80;
   static CHIPS_MAX = 12;
   static LISTS = new Set(['enumeration', 'crm_status', 'employee']);
-  static onlyEmpty = false;
   static NUMBER = new Set(['double', 'integer']);
 
   /**
-   * Раздел карточки или пусто (у воронки нет полей Битрикса).
+   * Поля для раздела карточки: нужные по регламенту — сразу (пустые сверху), остальные — «Ещё поля Битрикс24 (N)».
+   * Без регламента — все поля группами.
    * @param {object} deal ответ /api/crm/deal (fields, users, uf)
-   * @returns {string}
+   * @returns {string} пусто — у воронки нет полей Битрикса
    */
-  static html(deal) {
+  static body(deal) {
     const fields = deal.fields || [];
     if (!fields.length) return '';
+    const auto = Object.keys(deal.ufAuto || {}).length
+      ? '<p class="muted dk-ufnote"><em class="uf-auto">из КП</em> — заполнено программой, можно изменить</p>'
+      : '';
+    const needed = this.needed(deal);
+    if (!needed.length) return `${auto}${this._groupsHtml(fields, deal)}`;
     const values = deal.uf || {};
-    const empty = fields.filter(field => this.EDIT.has(field.type) && !this._filled(values[field.code])).length;
-    const groups = this._groups(fields)
-      .map(([title, list], index) => {
+    const sorted = needed.slice().sort((one, two) => this._filled(values[one.code]) - this._filled(values[two.code]));
+    const rest = fields.filter(field => !needed.includes(field));
+    const more = rest.length
+      ? `<details class="dk-ufmore"><summary>Ещё поля Битрикс24 <span class="muted">(${rest.length})</span></summary>${this._groupsHtml(rest, deal)}</details>`
+      : '';
+    return `${auto}<div class="dk-f dk-uf">${sorted.map(field => this._field(field, deal)).join('')}</div>${more}`;
+  }
+
+  /**
+   * Поля, нужные по регламенту оформления сделки (те, что программа проверяет перед стадиями).
+   * @param {object} deal
+   * @returns {object[]}
+   */
+  static needed(deal) {
+    return (deal.fields || []).filter(field => field.reg);
+  }
+
+  /**
+   * Итог для заголовка раздела: сколько нужных (или всех) полей пусто.
+   * @param {object} deal
+   * @returns {{text: string, empty: number}}
+   */
+  static note(deal) {
+    const values = deal.uf || {};
+    const needed = this.needed(deal);
+    const list = (needed.length ? needed : deal.fields || []).filter(field => this.EDIT.has(field.type));
+    const empty = list.filter(field => !this._filled(values[field.code])).length;
+    if (!empty) return { text: '✓ заполнено', empty };
+    return { text: `${needed.length ? 'нужных ' : ''}пусто: ${empty}`, empty };
+  }
+
+  static _groupsHtml(fields, deal) {
+    const values = deal.uf || {};
+    return this._groups(fields)
+      .map(([title, list]) => {
         const filled = list.filter(field => this._filled(values[field.code])).length;
         const inputs = list.map(field => this._field(field, deal)).join('');
-        return `<details class="dk-ufg"${index === 0 || this.onlyEmpty ? ' open' : ''}><summary>${esc(title)} <span class="muted">${filled} из ${list.length}</span></summary><div class="dk-f dk-uf">${inputs}</div></details>`;
+        return `<details class="dk-ufg"><summary>${esc(title)} <span class="muted">${filled} из ${list.length}</span></summary><div class="dk-f dk-uf">${inputs}</div></details>`;
       })
       .join('');
-    const auto = Object.keys(deal.ufAuto || {}).length
-      ? `<span class="muted dk-ufnote"><em class="uf-auto">из КП</em> — заполнено программой по КП, можно изменить</span>`
-      : '';
-    const toggle = empty
-      ? `<button type="button" class="chip sm${this.onlyEmpty ? ' on' : ''}" data-ufempty aria-pressed="${this.onlyEmpty}">Только пустые · ${empty}</button>`
-      : '<span class="muted">всё заполнено</span>';
-    return `<section class="md-s dk-ufs${this.onlyEmpty ? ' uf-only' : ''}"><div class="md-h"><p class="sub">Поля Битрикс24</p>${toggle}</div>${auto}${groups}</section>`;
   }
 
   static _groups(fields) {

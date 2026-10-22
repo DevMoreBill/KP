@@ -14,20 +14,38 @@ export class DealExec {
   static STATES = { done: 'сделано', overdue: 'просрочено', next: 'ближайшее', wait: '' };
 
   /**
-   * Раздел или пусто (у сделки нет ни расчёта сроков, ни КП).
+   * Есть что показать: расчёт сроков или хотя бы КП (тогда — подсказка, как получить расчёт).
    * @param {object} deal ответ /api/crm/deal (exec, kps)
-   * @returns {string}
+   * @returns {boolean}
    */
-  static html(deal) {
+  static has(deal) {
     const exec = deal.exec;
-    if (!exec || (!exec.has && !(deal.kps || []).length)) return '';
-    return `<section class="md-s dk-exec"><div class="md-h"><p class="sub">Исполнение${exec.kp ? ` по КП № ${esc(exec.kp)}` : ''}${UiKit.tip('<p>Точки после договора — из «Экономики сделки» КП: оплаты заказчика, поставщикам, перевозка, готовность, поставка. План считается от даты подписания договора.</p><p>Сделали — «✓». На ближайшие точки программа сама ставит дела ответственному; сделанное дело отмечает точку.</p>')}</p>${this._progress(exec)}</div>
-      ${this._bar(exec)}${this._missing(deal)}${this._rows(exec)}</section>`;
+    return !!exec && (exec.has || (deal.kps || []).length > 0);
   }
 
-  static _progress(exec) {
+  /**
+   * Итог для заголовка раздела.
+   * @param {object} exec
+   * @returns {string}
+   */
+  static note(exec) {
     const late = exec.overdue ? ` · <span class="bad-t">просрочено ${exec.overdue}</span>` : '';
-    return `<span class="muted">сделано ${exec.done} из ${exec.total}${late}</span>`;
+    const signed = exec.signed ? '' : 'договор не отмечен · ';
+    return `${signed}сделано ${exec.done} из ${exec.total}${late}`;
+  }
+
+  /**
+   * Содержимое раздела: полоса, подсказки, точки.
+   * @param {object} deal
+   * @returns {string}
+   */
+  static body(deal) {
+    const exec = deal.exec;
+    const tip = UiKit.tip(
+      '<p>Точки после договора — из «Экономики сделки» КП: оплаты заказчика, поставщикам, перевозка, готовность, поставка. План считается от даты подписания договора.</p><p>Сделали — «✓». На ближайшие точки программа сама ставит дела ответственному; сделанное дело отмечает точку.</p>',
+    );
+    const head = exec.kp ? `<p class="muted ex-kp">По КП № ${esc(exec.kp)}${tip}</p>` : '';
+    return `${head}${this._bar(exec)}${this._missing(deal)}${this._rows(exec)}`;
   }
 
   static _bar(exec) {
@@ -107,7 +125,7 @@ export class DealExec {
     const undo = target.closest('[data-exundo]');
     if (undo) return { key: undo.dataset.exundo, at: '' };
     if (!target.closest('[data-exsign]')) return null;
-    const day = target.closest('.dk-exec').querySelector('[data-exsignday]');
+    const day = target.closest('[data-dkpart="exec"]').querySelector('[data-exsignday]');
     return { key: 'sign', at: (day && day.value) || today() };
   }
 

@@ -5,6 +5,7 @@ import { LostPick } from './lost-pick.js';
 import { DealNeed } from './deal-need.js';
 import { Cabinet } from './cabinet.js';
 import { CabList } from './cab-list.js';
+import { CabGantt } from './cab-gantt.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { Mobile } from '../../ui/mobile.js';
@@ -51,6 +52,7 @@ export class CabDeals {
    */
   static html() {
     this._restore();
+    if (this.view === 'gantt') return CabGantt.html(this._views());
     const deals = this.deals();
     const open = deals.filter(deal => !CrmData.closed(deal));
     const empty =
@@ -66,7 +68,7 @@ export class CabDeals {
   static _restore() {
     if (this.sort === null) this.sort = this._stored(this.SORT_KEY, Object.keys(this.SORTS), 'exp');
     if (this.view === null)
-      this.view = this._stored(this.VIEW_KEY, ['board', 'list'], Mobile.isPhone() ? 'list' : 'board');
+      this.view = this._stored(this.VIEW_KEY, ['board', 'list', 'gantt'], Mobile.isPhone() ? 'list' : 'board');
   }
 
   static _stored(key, allowed, fallback) {
@@ -105,6 +107,7 @@ export class CabDeals {
     const views = [
       ['board', '▦ Доска'],
       ['list', '☰ Список'],
+      ['gantt', '▤ График'],
     ];
     const buttons = views
       .map(
@@ -319,6 +322,14 @@ export class CabDeals {
       )
       .join('');
     return `<div class="cab-flt cab-stg" role="group" aria-label="Стадия">${this._chip({ attr: 'data-cstage=""', label: 'Все стадии', on: !picked })}${chips}</div>`;
+  }
+
+  /**
+   * После вывода раздела: график — к сегодняшнему дню.
+   * @param {HTMLElement} body
+   */
+  static after(body) {
+    if (this.view === 'gantt') CabGantt.after(body);
   }
 
   /**

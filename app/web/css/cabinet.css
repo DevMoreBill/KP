@@ -415,23 +415,10 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 .uf-multi .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:2px}
 .uf-multi .uf-add{flex:1 1 220px;min-width:160px}
 .dk-uf .uf-empty>span{color:var(--muted)}
-.uf-only .dk-uf>:not(.uf-empty){display:none}
-.uf-only .dk-ufg:not(:has(.uf-empty)){display:none}
 @media (max-width:768px){.cab-fn{min-width:0;max-width:none;width:100%}.dk-stl .f{min-width:0}}
 
 /* сделка: сводка плитками, исполнение, клиент и контакты, выбор компании, подсказка клиента (3.160) */
-.dk-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
-.dk-t{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--card);display:grid;gap:2px;min-width:0}
-.dk-t>span{font-size:12px;color:var(--muted)}
-.dk-t>b{font-size:15.5px;line-height:1.3;color:var(--ink);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.dk-t>small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dk-t.ok b{color:var(--ok)}
-.dk-t.bad{border-color:var(--danger)}.dk-t.bad b{color:var(--danger)}
-.dk-t.warn{border-color:var(--warn-line,var(--line));background:var(--warn-bg,var(--card))}
-.dk-t.warn>span,.dk-t.warn>small{color:var(--warn-ink,var(--ink))}
-.dk-tb{display:block;height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin:3px 0 1px}
-.dk-tb>i{display:block;height:100%;background:var(--ok);border-radius:3px}
-.dk-exec{margin-bottom:14px}
+
 .ex-bar{display:flex;gap:3px;margin:4px 0 10px}
 .ex-bar i{flex:1;height:8px;border-radius:4px;background:var(--soft)}
 .ex-bar i.ex-done{background:var(--ok)}.ex-bar i.ex-overdue{background:var(--danger)}.ex-bar i.ex-next{background:var(--navy)}
@@ -478,9 +465,7 @@ label.f:has(.csg){position:relative}
 .dc-x{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .dc-xb{flex:none;width:42px;height:6px;border-radius:3px;background:var(--soft);overflow:hidden;display:block}
 .dc-xb>i{display:block;height:100%;background:var(--ok)}
-@media (max-width:1100px){.dk-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){
-  .dk-sum{gap:6px}.dk-t{padding:7px 10px}.dk-t>b{font-size:14.5px}
   .ex-r{grid-template-columns:28px minmax(0,1fr) auto;row-gap:6px}
   .ex-d{grid-column:2;text-align:left}
   .ex-r>.btn,.ex-r>.ex-fact{grid-column:2/-1;justify-self:start;min-height:44px}
@@ -519,9 +504,6 @@ label.f:has(.csg){position:relative}
 .tk .tk-who a:hover{text-decoration:underline}
 .mob .tk .tk-who a{display:inline-block;padding:4px 0}
 /* регламент оформления сделки Битрикс24: строка «не хватает», отметка «*», окно «Заполните», источник заявки */
-.dk-need{display:flex;align-items:center;gap:10px;margin:6px 0 10px;padding:8px 12px;border-radius:10px;font-size:13px;background:color-mix(in srgb,var(--warn-ink,#b45309) 9%,transparent);border:1px solid color-mix(in srgb,var(--warn-ink,#b45309) 28%,transparent)}
-.dk-need span{flex:1;min-width:0}
-.dk-need .btn{flex:none}
 .uf-req{color:var(--danger);font-weight:700;margin-left:2px}
 dialog.st-confirm.dn-dlg{width:min(640px,calc(100vw - 32px));max-width:none}
 .dn-sub{margin:0 0 10px;font-size:13px}
@@ -531,5 +513,56 @@ dialog.st-confirm.dn-dlg{width:min(640px,calc(100vw - 32px));max-width:none}
 .dn-c{border:1px solid var(--line);border-radius:10px;padding:8px 12px 12px;margin:10px 0 0}
 .dn-c legend{font-size:13px;font-weight:600;padding:0 4px}
 .dk-src .chips{display:flex;flex-wrap:wrap;gap:6px}
-@media (max-width:480px){.dk-need{flex-wrap:wrap}.dn-b .dk-f{grid-template-columns:1fr}}
+@media (max-width:480px){.dn-b .dk-f{grid-template-columns:1fr}}
 html.mob .dk-src .chip{min-height:44px;padding-inline:14px}
+/* «Сегодня» 3.0: цифры строкой, один список «Что сделать», свёрнутое прочее */
+.td-sts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 12px}
+.td-st{display:inline-flex;align-items:baseline;gap:4px;background:none;border:0;padding:4px 0;font:inherit;font-size:13.5px;color:var(--ink);cursor:pointer;border-bottom:1px dashed transparent}
+.td-st:hover{border-bottom-color:var(--line)}
+.td-st b{font-size:15px}
+.td-wrap{max-width:980px;margin:0 auto}
+.cab-today .td{margin:0 0 12px}
+.td-add{margin:0 0 10px;border:1px dashed var(--line);border-radius:10px;padding:0}
+.td-add>summary{list-style:none;cursor:pointer;padding:10px 12px;font-weight:600;color:var(--navy);display:flex;gap:8px;align-items:center;min-height:44px}
+.td-add>summary::-webkit-details-marker{display:none}
+.td-add[open]>summary{border-bottom:1px dashed var(--line)}
+.td-add>.tq{margin:10px 12px 12px}
+.td-ok{color:var(--ok-ink,var(--ink))}
+.td-x{display:grid;gap:10px;margin-bottom:10px}
+.td-d>summary{cursor:pointer;min-height:40px;display:flex;align-items:center;gap:6px}
+.td-x .cab-more{justify-content:flex-start}
+/* карточка сделки 3.0: цифры строкой, «Что сделать сейчас», разделы-раскрывашки с итогом */
+.dk-facts{display:flex;flex-wrap:wrap;gap:4px 20px;margin:2px 0 10px;font-size:13.5px}
+.dk-fa b{font-size:14.5px}.dk-fa.ok b{color:var(--ok-ink,var(--ink))}.dk-fa.bad b{color:var(--danger)}
+.dk-now{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 12px;padding:12px 14px;border-radius:12px;border:1px solid color-mix(in srgb,var(--navy) 35%,transparent);background:color-mix(in srgb,var(--navy) 7%,transparent)}
+.dk-now.warn{border-color:color-mix(in srgb,var(--warn-ink,#b45309) 40%,transparent);background:color-mix(in srgb,var(--warn-ink,#b45309) 8%,transparent)}
+.dk-now.bad{border-color:color-mix(in srgb,var(--danger) 45%,transparent);background:color-mix(in srgb,var(--danger) 7%,transparent)}
+.dk-nt{flex:1;min-width:220px;display:flex;flex-direction:column;gap:2px}
+.dk-nk{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.dk-nt>b{font-size:15.5px;line-height:1.3}
+.dk-nt>.muted{font-size:13px}
+.dk-na{display:flex;gap:8px;flex-wrap:wrap}
+.dk-part{padding:0}
+.dk-part>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:11px 14px;min-height:44px;flex-wrap:wrap}
+.dk-part>summary::-webkit-details-marker{display:none}
+.dk-part>summary::before{content:'›';display:inline-block;width:12px;color:var(--muted);transition:transform .15s;transform:translateY(1px)}
+.dk-part[open]>summary::before{transform:rotate(90deg) translateX(1px)}
+.dk-part>summary>b{font-size:14px}
+.dk-pn{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.dk-part.warn>summary .dk-pn{color:var(--warn-ink,var(--danger))}
+.dk-pb{padding:0 14px 14px}
+.dk-main>.dk-part+.dk-part{margin-top:10px}
+.dk-auto{margin:0 0 6px;font-size:12.5px}
+.dk-rare,.dk-ufmore{margin-top:10px}
+.dk-rare>summary,.dk-ufmore>summary{cursor:pointer;font-size:13px;color:var(--navy);min-height:36px;display:flex;align-items:center;gap:6px}
+.ex-kp{margin:0 0 6px;font-size:12.5px}
+@media (max-width:480px){.dk-now{padding:10px 12px}.dk-na{width:100%}.dk-na .btn{flex:1}}
+html.mob .td-st,html.mob .cab-cnts .cnt,html.mob .dk-feed .dk-fh>button{min-height:44px}
+html.mob .kb-add{min-width:44px;min-height:44px}
+.dk-dchips .chip{white-space:nowrap}
+.ex-kp details.tip{display:inline-block;vertical-align:middle;margin-left:6px}
+@media (max-width:760px){
+  .td-sts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .td-st{flex-direction:column;align-items:flex-start;gap:0;border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:var(--card);text-align:left}
+  .td-st>span:first-child{font-size:12px;color:var(--muted);line-height:1.2}
+}

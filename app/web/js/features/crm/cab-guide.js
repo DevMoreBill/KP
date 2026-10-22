@@ -51,17 +51,22 @@ export class CabGuide {
    */
   static tip() {
     if (this._hidden()) return '';
-    return `<div class="cab-tip" role="note"><span aria-hidden="true">💡</span><p><b>Совет.</b> Начинайте день с «Сегодня»: отметьте сделанные дела и запланируйте следующий шаг по каждой сделке — кнопка «＋ Дело». Все сделки — на вкладке «Сделки», подсказки — «?» вверху.</p><button class="btn sm" type="button" data-ctip>Понятно</button></div>`;
+    this._remember(); // совет — только при первом входе
+    return `<div class="cab-tip" role="note"><span aria-hidden="true">💡</span><p><b>Совет.</b> Начинайте день с «Сегодня»: здесь одним списком всё, что нужно сделать, — у каждой строки своя кнопка. Все сделки — во вкладке «Сделки», подсказки — «?».</p><button class="btn sm" type="button" data-ctip>Понятно</button></div>`;
   }
 
   /** Скрыть совет навсегда (в этом браузере). */
   static hideTip() {
+    this._remember();
+    document.querySelector('.cab-tip')?.remove();
+  }
+
+  static _remember() {
     try {
       localStorage.setItem(this.KEY, '1');
     } catch {
       // без хранилища совет просто покажется снова
     }
-    document.querySelector('.cab-tip')?.remove();
   }
 
   static _hidden() {

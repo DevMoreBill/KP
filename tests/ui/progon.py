@@ -1055,6 +1055,13 @@ class Scenario(UiRun):
         if pg.locator('dialog.deal-dlg[open]').count():
             self.errs.append(('cabinet', 'ERR', 'Esc не закрыл карточку сделки'))
 
+    def _part(self, key):
+        """Раскрыть раздел карточки сделки (раздел-раскрывашка: «Исполнение», «Поля Битрикс24»…)."""
+        loc = self.pg.locator('dialog.deal-dlg[open] details[data-dkpart="%s"]' % key)
+        if loc.count() and not loc.evaluate('d => d.open'):
+            loc.locator(':scope > summary').click()
+            self.wait(300)
+
     PLAN = {'start': '', 'ready': 30, 'delivery': 40, 'end': 45, 'pnr': None, 'pays': [{'d': 0, 'p': 50, 't': 'Аванс 50 %'}],
             'steps': [{'k': 'c1', 'd': 0, 't': 'Аванс 50 % — при подписании договора', 'p': 'cust', 'a': 450000, 'pc': 50},
                       {'k': 'sp:s1:0', 'd': 3, 't': 'Поставщику: предоплата 100 %', 'p': 'sup', 'a': 610000},
@@ -1073,7 +1080,8 @@ class Scenario(UiRun):
             self.errs.append(('cabinet', 'ERR', 'нет сделки с КП для исполнения'))
             return
         self.ev("id => DealCard.open(id)", did)
-        pg.wait_for_selector('dialog.deal-dlg[open] .dk-exec', timeout=15000)
+        pg.wait_for_selector('dialog.deal-dlg[open] [data-dkpart="exec"]', timeout=15000)
+        self._part('exec')
         self.snap('f_deal_exec0', 'dialog.deal-dlg[open]', wait=800)
         pg.click('dialog.deal-dlg[open] [data-exsign]')
         pg.wait_for_selector('dialog.deal-dlg[open] .ex-r.ex-done', timeout=15000)
@@ -1161,7 +1169,8 @@ class Scenario(UiRun):
             self.errs.append(('mirror', 'ERR', 'колонки доски: %s' % cols))
         self.snap('e1_board', '#cabWin', wait=300)
         pg.locator('#cabWin .kb-c .dc').first.click()
-        pg.wait_for_selector('dialog.deal-dlg[open] .dk-ufs', timeout=20000)
+        pg.wait_for_selector('dialog.deal-dlg[open] [data-dkpart="fields"]', timeout=20000)
+        self._part('fields')
         self.snap('e2_card', 'dialog.deal-dlg[open]', wait=300)
         sel = pg.locator('dialog.deal-dlg[open] select[data-uf="UF_CRM_REGION"]')
         sel.select_option('12')

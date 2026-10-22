@@ -1,6 +1,5 @@
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
-import { CrmFunnel } from './crm-funnel.js';
 import { CrmTask } from './crm-task.js';
 import { KpTrack } from '../kp/kp-track.js';
 import { Fmt } from '../../core/str.js';
@@ -42,9 +41,7 @@ export class DealFeed {
     const open = (deal.tasks || [])
       .filter(task => task.state === 'open')
       .sort((one, two) => `${one.due}${one.time || ''}`.localeCompare(`${two.due}${two.time || ''}`));
-    const none = CrmFunnel.closed(deal)
-      ? ''
-      : '<p class="msg warn dk-none">Следующий шаг не запланирован — добавьте звонок, встречу или письмо, чтобы сделка не потерялась.</p>';
+    const none = '<p class="muted dk-none">Пока ничего — добавьте строкой выше.</p>';
     const planned = open.length
       ? `<div class="tk-l dk-open">${open.map(task => CrmTask.row(task, { noDeal: true, date: true })).join('')}</div>`
       : none;

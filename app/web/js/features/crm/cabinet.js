@@ -31,7 +31,6 @@ export class Cabinet {
   static TABS = [
     ['today', 'Сегодня'],
     ['deals', 'Сделки'],
-    ['gantt', 'График'],
     ['clients', 'Клиенты'],
     ['team', 'Отдел'],
   ];
@@ -64,6 +63,7 @@ export class Cabinet {
   static async open(tab) {
     if (!MyDay.enabled()) return;
     if (tab) this.tab = tab;
+    this._legacy();
     const dialog = this.dlg();
     AppTabs.show(dialog, 'cab');
     if (!dialog.innerHTML) dialog.innerHTML = '<p class="empty cab-wait">Загружаю кабинет…</p>';
@@ -99,7 +99,7 @@ export class Cabinet {
     const count = CabToday.bxNew().length;
     if (!count || !CrmData.mine() || this._seenNew === count) return;
     this._seenNew = count;
-    Toast.show(`Из Битрикс24 пришли новые сделки: ${count} — «Сегодня» → «Требуют внимания»`);
+    Toast.show(`Из Битрикс24 пришли новые сделки: ${count} — «Сегодня» → «Что сделать»`);
   }
 
   /** Перерисовать шапку и раздел (прокрутка раздела сохраняется). */
@@ -141,8 +141,15 @@ export class Cabinet {
     again.setSelectionRange(caret, caret);
   }
 
+  // «График» — вид внутри «Сделок» (прежняя ссылка на раздел ведёт туда)
+  static _legacy() {
+    if (this.tab !== 'gantt') return;
+    this.tab = 'deals';
+    CabDeals.view = 'gantt';
+  }
+
   static _view() {
-    const views = { today: CabToday, deals: CabDeals, gantt: CabGantt, clients: CabClients, team: CabTeam };
+    const views = { today: CabToday, deals: CabDeals, clients: CabClients, team: CabTeam };
     return views[this.tab] || CabToday;
   }
 
@@ -152,6 +159,7 @@ export class Cabinet {
    */
   static show(tab) {
     this.tab = tab;
+    this._legacy();
     this.render();
   }
 
