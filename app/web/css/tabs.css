@@ -60,3 +60,18 @@ html dialog.tabwin.jrnwin .jr:hover{background:var(--soft)}
 .jr-sum{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px 8px}
 .jr-sum>.jr-st{margin-top:0}
 html.mob .jr-sum{justify-content:flex-start}
+/* несколько КП — по вкладке на каждое; «＋» — новое КП в новой вкладке */
+.apt-kp span{max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.apt-kp.kp-on:not(.on){color:var(--ink)}
+.apt-add{flex:none;align-self:center;width:30px;height:30px;margin:0 6px 0 2px;border:1px dashed var(--line);border-radius:8px;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer}
+.apt-add:hover{border-style:solid;border-color:var(--navy);color:var(--navy)}
+@media (max-width:1180px){.apt-kp span{max-width:110px}}
+/* телефон: список открытых КП */
+.kt-l{display:grid;gap:6px;margin-bottom:12px}
+.kt-r{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:4px 4px 4px 0;background:var(--card)}
+.kt-r.on{border-color:var(--navy);box-shadow:inset 3px 0 0 var(--navy)}
+.kt-o{flex:1;min-width:0;display:grid;gap:2px;text-align:left;background:none;border:0;padding:8px 12px;font:inherit;color:var(--ink);cursor:pointer;min-height:44px}
+.kt-o b,.kt-o span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kt-o span{font-size:13px}
+.kt-add{width:100%;justify-content:center}
+@media (max-width:1560px){.has-tabs #saved{display:none}}

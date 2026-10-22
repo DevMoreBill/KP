@@ -11,9 +11,9 @@ import { FormView } from '../../ui/form-view.js';
 import { ClientStore } from '../kp/client-store.js';
 import { NewKp } from '../kp/new-kp.js';
 import { KpState, S } from '../../core/state.js';
-import { Drafts } from '../kp/drafts.js';
 import { Toast } from '../../core/toast.js';
 import { KpLoader } from '../kp/reminders.js';
+import { KpTabs } from '../kp/kp-tabs.js';
 
 /** КП сделки: открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из журнала — в сделку. */
 export class DealKp {
@@ -34,13 +34,8 @@ export class DealKp {
     KpLoader.byId(id).catch(error => Toast.show(`Не открылось: ${error.message}`));
   }
 
-  static async _clearCurrent() {
-    if (!Drafts.meaningful(S)) return true;
-    if (Drafts.enabled()) return Drafts.stash();
-    const text = S.kpId
-      ? `Начать новое КП? Сохранённое КП № ${S.number} останется в журнале.`
-      : 'Начать новое КП? Текущий черновик будет очищен.';
-    return confirm(text);
+  static _clearCurrent() {
+    return KpTabs.prepare();
   }
 
   /**
@@ -52,8 +47,10 @@ export class DealKp {
     this._closeAll();
     NewKp.fresh();
     S.dealId = deal.id;
+    const opened = S;
     const key = deal.clientId || (deal.clientInn ? `inn${deal.clientInn}` : '');
     const client = key ? await ClientStore.byId(key).catch(() => null) : null;
+    if (S !== opened) return;
     if (client) ClientStore.apply(client);
     else {
       S.client = deal.client || '';

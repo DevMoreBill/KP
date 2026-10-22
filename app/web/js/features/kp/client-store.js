@@ -303,7 +303,9 @@ export class ClientStore {
    * @param {object} client
    */
   static apply(client) {
-    Object.assign(S, { clientId: client.id, ...this.fields(client), check: client.check || null });
+    // своя копия проверки у каждого КП: правка одного не трогает другое открытое
+    const check = client.check ? JSON.parse(JSON.stringify(client.check)) : null;
+    Object.assign(S, { clientId: client.id, ...this.fields(client), check });
     if (client.contacts && client.contacts[0] && !S.contact.name) S.contact = { ...S.contact, ...client.contacts[0] };
     S._clEdit = false;
     S._clManual = false;
@@ -324,11 +326,13 @@ export class PartyFind {
       Toast.show('Проверьте ИНН: 10 цифр у организации, 12 — у ИП');
       return;
     }
+    const opened = S;
     const known = await ClientStore.byId(`inn${inn}`);
     const msg = $('#partyMsg');
     if (msg) msg.textContent = 'Ищу организацию…';
     try {
       const answer = await Api.request(`/api/party?inn=${inn}`);
+      if (S !== opened) return;
       if (answer.error) {
         this._failed(answer.error, known, msg);
         return;

@@ -4,12 +4,14 @@ import { S } from '../core/state.js';
 import { Cabinet } from '../features/crm/cabinet.js';
 import { CatalogWindow } from '../features/catalog/catalog-window.js';
 import { Journal } from '../features/kp/journal.js';
+import { KpTabs } from '../features/kp/kp-tabs.js';
+import { NewKp } from '../features/kp/new-kp.js';
 import { MyDay } from '../features/kp/my-day.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { Mobile } from './mobile.js';
 
-/** Разделы программы во вкладках: постоянные (КП, Кабинет, Каталог, Журнал) и открытые «по месту». */
+/** Разделы программы во вкладках: постоянные (КП — по вкладке на каждое открытое, Кабинет, Каталог, Журнал) и открытые «по месту». */
 export class AppSections {
   /** Зарегистрировать разделы (после ответа сервера: каталог и журнал есть только с ним). */
   static register() {
@@ -20,7 +22,14 @@ export class AppSections {
       short: 'КП',
       icon: '▤',
       fixed: true,
+      many: () => KpTabs.items(),
+      pick: uid => KpTabs.pick(uid),
+      drop: uid => KpTabs.close(uid),
+      add: () => NewKp.tab(),
+      roomy: () => KpTabs.roomy(),
+      menu: () => KpTabs.menu(),
     });
+    document.addEventListener('kp:new-tab', () => NewKp.tab());
     AppTabs.register('cab', {
       label: 'Кабинет',
       icon: '◫',

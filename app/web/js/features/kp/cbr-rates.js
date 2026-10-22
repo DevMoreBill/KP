@@ -47,7 +47,9 @@ export class CbrRates {
   static async _load({ emptyOnly }) {
     const msg = $('#cbrMsg');
     if (msg) msg.textContent = 'Загружаю курс ЦБ РФ…';
+    const opened = S;
     const answer = await this._fetch();
+    if (S !== opened) return;
     if (!answer.rates) {
       this._failed(answer.why);
       return;

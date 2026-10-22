@@ -233,7 +233,9 @@ export class QuickFind {
    * @param {object} card
    */
   static async add(card) {
+    const opened = S;
     const full = await Catalog.fullDoc(card);
+    if (S !== opened) return;
     const item = KpState.newItem();
     CatalogFill.fill(item, full);
     const blank = S.items.length === 1 && !S.items[0].name.trim() && !S.items[0].price;

@@ -5,7 +5,6 @@ import { StDirty } from './settings-tools.js';
 import { XlsImport } from '../catalog/excel-import.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { KpState, S } from '../../core/state.js';
-import { Drafts } from '../kp/drafts.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { Api } from '../../core/net.js';
 import { FormView } from '../../ui/form-view.js';
@@ -17,6 +16,7 @@ import { ClientsImport } from '../kp/clients-import.js';
 import { Debounce } from '../../core/debounce.js';
 import { $, esc } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { KpTabs } from '../kp/kp-tabs.js';
 
 /**
  * Записи базы: КП, товары, клиенты, поставщики, контакты менеджеров — поиск, правка, удаление в корзину (вкладка на каждый
@@ -240,8 +240,8 @@ export class RecordEdit {
   }
 
   static async _kp(id) {
-    if (!(await Drafts.stash())) return;
     const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
+    if (!(await KpTabs.prepare({ kpId: id }))) return;
     KpState.replace(Object.assign(KpState.fresh(), state));
     SettingsWindow.dialog().close();
     FormView.render();

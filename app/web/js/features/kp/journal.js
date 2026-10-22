@@ -22,6 +22,7 @@ import { Debounce } from '../../core/debounce.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { $, esc, today } from '../../core/util.js';
+import { KpTabs } from './kp-tabs.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -285,8 +286,8 @@ export class Journal {
   // open — открыть, copy — новое КП на основе этого, econ — открыть и сразу «Экономика сделки»
   static async _openKp(ctx, { id, copy, econ }) {
     try {
-      if (!(await Drafts.stash())) return;
       const state = await Api.request(`/api/kp/${id}/state`);
+      if (!(await KpTabs.prepare({ kpId: copy ? '' : id }))) return;
       KpState.replace(Object.assign(KpState.fresh(), state));
       if (copy) this._copy();
       else {
@@ -376,8 +377,8 @@ export class KpVersions {
 
   static async _open({ modal, id, closeJournal }, vid) {
     try {
-      if (!(await Drafts.stash())) return;
       const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/versions/${vid}`);
+      if (!(await KpTabs.prepare({ kpId: id, here: true }))) return;
       KpState.replace(Object.assign(KpState.fresh(), state));
       try {
         S._rev = (await Api.request(`/api/kp/${encodeURIComponent(id)}/rev`)).rev; // прежняя версия заменит текущую правку КП

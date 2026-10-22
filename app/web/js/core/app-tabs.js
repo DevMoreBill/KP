@@ -19,8 +19,10 @@ export class AppTabs {
   /**
    * Раздел для полосы вкладок.
    * @param {string} key
-   * @param {{label: string|Function, short?: string, icon: string, fixed?: boolean, open?: Function, shown?: Function}} spec
-   *   short — подпись на телефоне; fixed — вкладка видна всегда; open — открыть раздел; shown — раздел доступен (функция включена)
+   * @param {{label: string|Function, short?: string, icon: string, fixed?: boolean, open?: Function, shown?: Function,
+   *   many?: Function, pick?: Function, drop?: Function, add?: Function, roomy?: Function, menu?: Function}} spec
+   *   short — подпись на телефоне; fixed — вкладка видна всегда; open — открыть раздел; shown — раздел доступен (функция включена);
+   *   many … menu — у КП: открытые КП вкладками (на телефоне — список по повторному нажатию)
    */
   static register(key, spec) {
     this.specs.set(key, spec);
@@ -149,16 +151,49 @@ export class AppTabs {
   static render() {
     const bar = this._bar();
     if (!bar) return;
-    bar.innerHTML = this._tabs()
-      .map(([key, spec], index) => {
-        const current = key === this.active;
-        const closer =
-          spec.fixed || key === this.HOME ? '' : `<span class="apt-x" data-tabx="${esc(key)}" title="Закрыть">✕</span>`;
-        const label = esc(this._label(key, spec));
-        const hint = index < this.KEYS ? ` (Alt+${index + 1})` : '';
-        return `<button type="button" class="apt-t${current ? ' on' : ''}" data-tab="${esc(key)}" aria-current="${current ? 'page' : 'false'}" title="${label}${hint}"><i aria-hidden="true">${spec.icon}</i><span>${label}</span>${this._badge(key)}${closer}</button>`;
-      })
+    const buttons = this._tabs().flatMap(([key, spec]) => this._buttons(key, spec));
+    bar.innerHTML = buttons
+      .map((html, index) => html.replace('{hint}', index < this.KEYS ? ` (Alt+${index + 1})` : ''))
       .join('');
+  }
+
+  // кнопки раздела; КП на ПК — по вкладке на каждое открытое КП и «＋»
+  static _buttons(key, spec) {
+    const phone = document.documentElement.classList.contains('mob');
+    if (key === this.HOME && spec.many && !phone) return this._kpButtons(spec);
+    const current = key === this.active;
+    const closer =
+      spec.fixed || key === this.HOME ? '' : `<span class="apt-x" data-tabx="${esc(key)}" title="Закрыть">✕</span>`;
+    const label = esc(this._label(key, spec));
+    const badge = key === this.HOME && spec.many ? this._many(spec) : this._badge(key);
+    return [
+      `<button type="button" class="apt-t${current ? ' on' : ''}" data-tab="${esc(key)}" aria-current="${current ? 'page' : 'false'}" title="${label}{hint}"><i aria-hidden="true">${spec.icon}</i><span>${label}</span>${badge}${closer}</button>`,
+    ];
+  }
+
+  static _kpButtons(spec) {
+    const items = spec.many();
+    const tabs = items.map(item => {
+      const current = this.active === this.HOME && item.on;
+      const label = esc(item.label);
+      const closer =
+        items.length > 1 || item.full
+          ? `<span class="apt-x" data-kpx="${esc(item.uid)}" title="Закрыть КП">✕</span>`
+          : '';
+      return `<button type="button" class="apt-t apt-kp${current ? ' on' : ''}${item.on ? ' kp-on' : ''}" data-tab="${this.HOME}" data-kpu="${esc(item.uid)}" aria-current="${current ? 'page' : 'false'}" title="${label}${item.title ? ` — ${esc(item.title)}` : ''}{hint}"><i aria-hidden="true">${spec.icon}</i><span>${label}</span>${closer}</button>`;
+    });
+    if (spec.roomy && spec.roomy()) {
+      tabs.push(
+        '<button type="button" class="apt-add" data-kpadd title="Новое КП в новой вкладке" aria-label="Новое КП в новой вкладке">＋</button>',
+      );
+    }
+    return tabs;
+  }
+
+  // телефон: сколько КП открыто (больше одного)
+  static _many(spec) {
+    const count = spec.many().length;
+    return count > 1 ? `<b class="apt-n">${count}</b>` : '';
   }
 
   static _bar() {
@@ -190,13 +225,14 @@ export class AppTabs {
     this._escape(event);
   }
 
-  // Alt+1…9 — вкладка по порядку
+  // Alt+1…9 — вкладка по порядку (как в полосе: у каждого КП — своя)
   static _digit(event) {
     if (!event.altKey || event.ctrlKey || event.metaKey || !/^Digit[1-9]$/.test(event.code)) return false;
-    const found = this._tabs()[Number(event.code.slice(-1)) - 1];
-    if (!found || document.querySelector('dialog[open]:modal')) return false;
+    const bar = document.getElementById('appTabs');
+    const button = bar && bar.querySelectorAll('.apt-t')[Number(event.code.slice(-1)) - 1];
+    if (!button || document.querySelector('dialog[open]:modal')) return false;
     event.preventDefault();
-    this.open(found[0]);
+    button.click();
     return true;
   }
 
@@ -217,8 +253,30 @@ export class AppTabs {
       this.close(closer.dataset.tabx);
       return;
     }
+    if (this._kpClick(event)) return;
     const tab = event.target.closest('[data-tab]');
-    if (tab) this.open(tab.dataset.tab);
+    if (!tab) return;
+    const spec = this.specs.get(tab.dataset.tab);
+    if (tab.dataset.tab === this.HOME && this.active === this.HOME && spec && spec.menu && !tab.dataset.kpu) {
+      spec.menu();
+      return;
+    }
+    this.open(tab.dataset.tab);
+  }
+
+  // вкладки КП: перейти, закрыть, новое
+  static _kpClick(event) {
+    const spec = this.specs.get(this.HOME);
+    if (!spec || !spec.many) return false;
+    const drop = event.target.closest('[data-kpx]');
+    const pick = event.target.closest('[data-kpu]');
+    if (event.target.closest('[data-kpadd]')) spec.add();
+    else if (drop) {
+      event.stopPropagation();
+      spec.drop(drop.dataset.kpx);
+    } else if (pick && !pick.classList.contains('kp-on')) spec.pick(pick.dataset.kpu);
+    else return false;
+    return true;
   }
 
   // высота шапки — откуда начинаются страницы-вкладки

@@ -11,6 +11,7 @@ import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
+import { KpTabs } from './kp-tabs.js';
 
 /** Заготовка — КП без клиента (позиции, условия, цены), общая для всех: новое КП из заготовки за один щелчок. */
 export class Presets {
@@ -121,7 +122,6 @@ export class Presets {
    * @param {string} id
    */
   static async use(id) {
-    if (!(await Drafts.stash())) return;
     let answer;
     try {
       answer = await Api.request(`/api/presets/${encodeURIComponent(id)}`);
@@ -129,14 +129,15 @@ export class Presets {
       Toast.show(`Заготовка не открылась: ${error.message || error}`);
       return;
     }
-    const keep = { manager: S.manager, managerId: S.managerId };
+    const keep = { manager: { ...S.manager }, managerId: S.managerId };
+    if (!(await KpTabs.prepare())) return;
     KpState.replace(Object.assign(KpState.fresh(), answer.data.state || {}, keep));
     S.authorId = Managers.meId() || S.managerId || '';
     S.date = today();
     S.items.forEach(item => {
       item.id = Uid.next();
     });
-    document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    KpTabs.show();
     FormView.render();
     KpState.persist();
     Drafts.loaded();

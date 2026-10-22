@@ -45,7 +45,7 @@ class Modes:
            'phd': dict(BASE, viewport={'width': 430, 'height': 932}, color_scheme='dark', is_mobile=True, has_touch=True,
                        device_scale_factor=3, user_agent=IPHONE)}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
-              'journal', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'dbl')
+              'journal', 'kptabs', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'dbl')
 
     @staticmethod
     def chromium():
@@ -730,6 +730,116 @@ class Scenario(UiRun):
         self.closeall()
         self.ev("Journal.open()")
         self.snap('a4_journal_reopen', self.topdlg(), wait=2500)
+        self.closeall()
+
+    def kp_tabs(self):
+        return self.ev("KpTabs.items().map(t=>({uid:t.uid,label:t.label,on:t.on}))")
+
+    def kp_pick(self, n):
+        """Перейти на n-е открытое КП: ПК — вкладка сверху, телефон — «КП» внизу и список."""
+        pg = self.pg
+        if not self.phone:
+            pg.locator('#appTabs [data-kpu]').nth(n).click()
+        else:
+            pg.click('#appTabs [data-tab=kp]')
+            self.wait(400)
+            if not self.visible('.kt-dlg'):
+                pg.click('#appTabs [data-tab=kp]')
+            self.wait(400)
+            pg.locator('.kt-dlg [data-kto]').nth(n).click()
+        self.wait(1500)
+
+    def s_kptabs(self):
+        """Несколько КП вкладками: открыть из журнала второе, правка в нём не трогает первое, «＋» — новое пустое,
+        то же КП ещё раз — переход на его вкладку, после перезагрузки — те же вкладки, ✕ — закрыть."""
+        pg = self.pg
+        bad = []
+        first = self.ev("({client:S.client, kpId:S.kpId||'', n:S.items.length, extra:S.condExtra})")
+        pg.click('#appTabs [data-tab=jrn]')
+        self.wait(2500)
+        rows = pg.locator('#jList [data-jo]')
+        other = None
+        for k in range(rows.count()):
+            if rows.nth(k).get_attribute('data-jo') != first['kpId']:
+                other = rows.nth(k)
+                break
+        if other is None:
+            self.errs.append(('kptabs', 'SCRIPT', 'нет второго КП в журнале'))
+            return
+        other_id = other.get_attribute('data-jo')
+        other.click()
+        self.wait(2500)
+        tabs = self.kp_tabs()
+        second = self.ev("({client:S.client, kpId:S.kpId||''})")
+        if len(tabs) != 2 or second['kpId'] != other_id:
+            bad.append('из журнала — не новой вкладкой: %s' % tabs)
+        self.go('conds')
+        loc = self.visible('#form [data-p=condExtra]')
+        if loc:
+            loc.fill('Вкладка Б — проверка')
+            self.wait(900)
+        else:
+            self.errs.append(('kptabs', 'SCRIPT', 'нет поля «Дополнительные условия»'))
+        self.snap('k0_two_kp', None)
+        self.kp_pick(0)
+        now = self.ev("({client:S.client, kpId:S.kpId||'', n:S.items.length, extra:S.condExtra})")
+        if now != first:
+            bad.append('первое КП изменилось: было %s, стало %s' % (first, now))
+        self.kp_pick(1)
+        if self.ev("S.condExtra") != 'Вкладка Б — проверка':
+            bad.append('правка второго КП потерялась: %s' % self.ev("S.condExtra"))
+        if self.phone:
+            pg.click('#appTabs [data-tab=kp]')
+            self.wait(500)
+            if not self.visible('.kt-dlg'):
+                pg.click('#appTabs [data-tab=kp]')
+            self.snap('k1_kp_menu', '.kt-dlg', wait=600)
+            pg.locator('.kt-dlg [data-ktn]').click()
+        else:
+            pg.click('#appTabs [data-kpadd]')
+        self.wait(2000)
+        self.closeall()
+        tabs = self.kp_tabs()
+        if len(tabs) != 3 or self.ev("S.client") or self.ev("S.items.length"):
+            bad.append('«＋» — не новое пустое КП: %s, клиент «%s»' % (tabs, self.ev("S.client")))
+        pg.click('#appTabs [data-tab=jrn]')
+        self.wait(2000)
+        same = first['kpId'] or other_id  # первое КП не сохранено — проверяем по второму
+        pg.locator('#jList [data-jo="%s"]' % same).first.click()
+        self.wait(2000)
+        if len(self.kp_tabs()) != 3 or self.ev("S.kpId") != same:
+            bad.append('то же КП открылось второй раз: %s' % self.kp_tabs())
+        self.wait(800)
+        pg.reload()
+        pg.wait_for_function("window.__kpExposed && Catalog.cache.length>0", timeout=60000)
+        self.wait(2500)
+        self.closeall()
+        after = self.kp_tabs()
+        if len(after) != 3:
+            bad.append('после перезагрузки вкладок не 3: %s' % after)
+        self.kp_pick(1)
+        if self.ev("S.condExtra") != 'Вкладка Б — проверка':
+            bad.append('после перезагрузки второе КП другое: %s' % self.ev("S.condExtra"))
+        self.kp_pick(0)
+        if self.ev("({client:S.client, kpId:S.kpId||'', n:S.items.length, extra:S.condExtra})") != first:
+            bad.append('после перезагрузки первое КП другое')
+        self.snap('k2_after_reload', None)
+        uid = self.kp_tabs()[1]['uid']
+        if self.phone:
+            pg.click('#appTabs [data-tab=kp]')
+            self.wait(500)
+            if not self.visible('.kt-dlg'):
+                pg.click('#appTabs [data-tab=kp]')
+            self.wait(400)
+            pg.locator('.kt-dlg [data-ktx="%s"]' % uid).click()
+        else:
+            pg.locator('#appTabs [data-kpx="%s"]' % uid).click()
+        self.wait(2500)
+        if len(self.kp_tabs()) != 2:
+            bad.append('✕ не закрыл вкладку: %s' % self.kp_tabs())
+        self.res.setdefault('k0_two_kp', {})['tabs'] = bad or 'ok'
+        for b in bad:
+            self.errs.append(('kptabs', 'ИЗОЛЯЦИЯ', b))
         self.closeall()
 
     def s_misc(self):

@@ -23,6 +23,7 @@ import { $, esc } from './core/util.js';
 import { MyPrefs } from './features/kp/my-prefs.js';
 import { Theme } from './core/theme.js';
 import { AppSections } from './ui/app-sections.js';
+import { KpTabs } from './features/kp/kp-tabs.js';
 // Запуск программы: проверка сервера, вход, загрузка справочников и каталога — последним модулем страницы.
 
 /** Порядок запуска: сервер, вход, умолчания, справочники, первая отрисовка, первый экран. */
@@ -127,6 +128,7 @@ export class App {
   }
 }
 
+KpTabs.init();
 App.start();
 FormView.render();
 Theme.listen();

@@ -16,6 +16,8 @@ export class DealFeed {
     ['comment', 'Комментарий'],
   ];
   static SHOWN = 40;
+  // служебное (правки и автозаполнение полей) в ленту не идёт — только то, что важно по сделке
+  static SERVICE = new Set(['kp', 'fields', 'edit']);
   static mode = 'task';
   static all = false;
   static ICONS = {
@@ -90,7 +92,7 @@ export class DealFeed {
       'fd-k',
     ]);
     const history = (deal.history || [])
-      .filter(item => item.what !== 'kp')
+      .filter(item => !this.SERVICE.has(item.what))
       .map(item => [item.at, this.ICONS[item.what] || '•', esc(hist(item)), item.by || '', 'fd-h']);
     return [...comments, ...tasks, ...offers, ...history]
       .filter(([, , text]) => text)

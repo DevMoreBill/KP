@@ -16,6 +16,7 @@ import { AdminSession, Api } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
+import { KpTabs } from './kp-tabs.js';
 
 /**
  * Карточка клиента: реквизиты, контакты и объекты из справочника, все КП клиента с итогами по статусам, заметки отдела.
@@ -290,7 +291,7 @@ export class ClientCard {
 
   static async _newKp({ modal, client, answer }) {
     modal.close();
-    if (!(await Drafts.stash())) return;
+    if (!(await KpTabs.prepare())) return;
     KpState.replace(KpState.fresh());
     if (client.id) ClientStore.apply(client);
     else {

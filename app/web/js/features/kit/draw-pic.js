@@ -99,13 +99,13 @@ export class DrawPic {
     input.value = '';
     input.multiple = false;
     input.accept = this.ACCEPT;
+    const item = S.items[index];
     input.onchange = async () => {
       const file = input.files[0];
       input.accept = '';
       if (!file) return;
       try {
         const image = await ImageFiles.gallery(file);
-        const item = S.items[index];
         const target = j >= 0 ? Kit.parts(item)[j] : item;
         if (!target) return;
         target.draw = { ...(target.draw || {}), [view]: image };

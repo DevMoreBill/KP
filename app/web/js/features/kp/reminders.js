@@ -1,4 +1,3 @@
-import { Drafts } from './drafts.js';
 import { KpDate } from './kp-date.js';
 import { KpTrack } from './kp-track.js';
 import { FormView } from '../../ui/form-view.js';
@@ -9,6 +8,7 @@ import { DefRegistry } from '../../core/defaults.js';
 import { $, esc, today } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
+import { KpTabs } from './kp-tabs.js';
 
 /** Напоминания: колокольчик в шапке (перезвонить, срок действия КП, отправлено без ответа). */
 export class Reminders {
@@ -153,10 +153,10 @@ export class KpLoader {
    * @param {string} id
    */
   static async byId(id) {
-    if (!(await Drafts.stash())) return;
     const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
+    if (!(await KpTabs.prepare({ kpId: id }))) return;
     KpState.replace(Object.assign(KpState.fresh(), state));
-    document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    KpTabs.show();
     FormView.render();
     KpState.persist();
     window.scrollTo({ top: 0 });

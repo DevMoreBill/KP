@@ -7,6 +7,7 @@ import { esc, today } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
+import { KpTabs } from './kp-tabs.js';
 
 /** «Повторить КП» (журнал, карточка клиента): новое КП тому же клиенту, дата — сегодня, цены — как сейчас в каталоге. */
 export class KpRepeat {
@@ -17,7 +18,6 @@ export class KpRepeat {
    * @param {string} id сохранённое КП
    */
   static async run(id) {
-    if (!(await Drafts.stash())) return;
     let state;
     try {
       state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
@@ -25,6 +25,7 @@ export class KpRepeat {
       Toast.show(`КП не открылось: ${error.message || error}`);
       return;
     }
+    if (!(await KpTabs.prepare())) return;
     KpState.replace(Object.assign(KpState.fresh(), state));
     const was = S.number;
     for (const key of this.DROP) delete S[key];
@@ -32,7 +33,7 @@ export class KpRepeat {
     S.authorId = Managers.meId() || S.managerId || '';
     if (S.tender && S.tender.on) S.tender = { on: true, number: '', url: '' }; // другая закупка
     const changes = this._prices();
-    document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    KpTabs.show();
     FormView.render();
     KpState.persist();
     window.scrollTo({ top: 0 });

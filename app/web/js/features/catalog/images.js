@@ -250,9 +250,10 @@ export class ImageFiles {
       Toast.show('Нужен файл изображения: JPG, PNG или WEBP');
       return;
     }
+    const item = S.items[i];
     try {
       const img = await this.prep(await this.toUrl(file), kind);
-      S.items[i][kind] = img;
+      item[kind] = img;
       FormView.render();
       KpState.persist();
     } catch {

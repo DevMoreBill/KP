@@ -54,4 +54,17 @@ t('черновик: картинки отдельно и один раз, во�
   assert.strictEqual(LocalDraft.load().items[0].photo.src, big, 'черновик прежних версий (картинки внутри) читается');
   LocalDraft.saveLite({ items:[] }); assert.strictEqual([...store.keys()].filter(k=>k.startsWith('kp.img.')).length, 0, 'черновик без фото — записи картинок убраны');
 });
+t('несколько КП: картинки других вкладок не убираются, вкладки читаются обратно', ()=>{
+  const pic='data:image/jpeg;base64,'+'C'.repeat(40000), other='data:image/jpeg;base64,'+'D'.repeat(40000);
+  LocalDraft.tabs=()=>({ list:[{ uid:'a', state:null }, { uid:'b', state:{ items:[{ photo:{ src:other } }], client:'Б' } }] });
+  LocalDraft.save({ items:[{ photo:{ src:pic } }], client:'А' });
+  assert.strictEqual([...store.keys()].filter(k=>k.startsWith('kp.img.')).length, 2, 'картинки обоих КП на месте');
+  LocalDraft.ids.clear();
+  const tabs=LocalDraft.loadTabs();
+  assert.strictEqual(tabs.list[1].state.items[0].photo.src, other, 'фото второго КП вернулось');
+  assert.strictEqual(LocalDraft.load().client, 'А', 'открытое КП — своё');
+  LocalDraft.tabs=()=>null; LocalDraft.save({ items:[] });
+  assert.strictEqual(store.has('kp.tabs'), false, 'одно КП — записи вкладок нет');
+  LocalDraft.tabs=null;
+});
 console.log(`client_speed: ${ok} проверок пройдено`);

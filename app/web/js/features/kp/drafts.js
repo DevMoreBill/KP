@@ -9,6 +9,7 @@ import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { KpTabs } from './kp-tabs.js';
 
 /**
  * Черновики КП на сервере (DraftsController, таблица drafts): незаконченное КП или несохранённые правки сохранённого,
@@ -191,6 +192,15 @@ export class Drafts {
   }
 
   /**
+   * Отложить изменения открытого КП в черновик без сообщений (переключение и закрытие вкладок КП).
+   * @returns {Promise<boolean>} true — записано
+   */
+  static async quiet() {
+    if (this.busy) await this.running;
+    return this._save();
+  }
+
+  /**
    * Перед заменой КП (новое, другое из журнала, черновик, заготовка): текущие изменения — в черновики.
    * @returns {Promise<boolean>} true — можно заменять; false — не отложилось и менеджер выбрал «Отмена»
    */
@@ -263,7 +273,6 @@ export class Drafts {
    * @param {string} id
    */
   static async open(id) {
-    if (S._draft !== id && !(await this.stash())) return;
     let answer;
     try {
       answer = await Api.request(`/api/drafts/${encodeURIComponent(id)}`);
@@ -271,10 +280,11 @@ export class Drafts {
       Toast.show(`Черновик не открылся: ${error.message || error}`);
       return;
     }
+    if (!(await KpTabs.prepare({ draft: id, kpId: (answer.data.state && answer.data.state.kpId) || '' }))) return;
     KpState.replace(Object.assign(KpState.fresh(), answer.data.state || {}));
     if (answer.data.rev != null) S._rev = answer.data.rev;
     S._draft = id;
-    document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    KpTabs.show();
     FormView.render();
     KpState.persist();
     window.scrollTo({ top: 0 });

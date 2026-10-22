@@ -68,10 +68,12 @@ export class CatalogActions {
   }
 
   static async _addItems(win, ids) {
+    const opened = S;
     let added = 0;
     let more = 0;
     let step = 0;
     for (const id of ids) {
+      if (S !== opened) break;
       if (ids.length > this.BUSY_FROM) win.setBusy(`Добавляю в КП: ${++step} из ${ids.length}`);
       const known = S.items.find(item => item.catId === id);
       if (known) {
@@ -80,7 +82,7 @@ export class CatalogActions {
         continue;
       }
       const card = await Catalog.fullDoc(win.doc(id));
-      if (!card) continue;
+      if (!card || S !== opened) continue;
       const item = KpState.newItem();
       CatalogFill.fill(item, card);
       const blank = S.items.length === 1 && !S.items[0].name && !S.items[0].price;

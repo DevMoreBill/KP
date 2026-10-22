@@ -5,9 +5,9 @@ import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { FormView } from '../../ui/form-view.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Modal } from '../../core/modal.js';
+import { KpTabs } from './kp-tabs.js';
 
 /** «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики. */
 export class NewKp {
@@ -22,11 +22,10 @@ export class NewKp {
     const useDrafts = Drafts.enabled();
     const usePresets = Presets.enabled();
     if (!useDrafts && !usePresets) {
-      if (!confirm(this._ask())) return;
-      this.blank();
+      await this.tab();
       return;
     }
-    const note = this._note(useDrafts);
+    const note = this._note();
     const [presets, drafts] = await Promise.all([usePresets ? Presets.list() : [], useDrafts ? Drafts.list() : []]);
     const modal = new Modal(
       `<div class="dlg-h"><h3>Новое КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
@@ -41,18 +40,11 @@ export class NewKp {
     modal.d.onclick = event => this._click(modal, event.target);
   }
 
-  static _ask() {
-    return S.kpId
-      ? `Начать новое КП? Сохранённое КП № ${S.number} останется в журнале.`
-      : 'Начать новое КП? Текущий черновик будет очищен (контакты менеджера сохранятся).';
-  }
-
-  static _note(useDrafts) {
+  static _note() {
     if (!Drafts.meaningful(S)) return '';
-    if (S.kpId) {
-      return `Сохранённое КП № ${esc(S.number)} останется в журнале${useDrafts ? ', несохранённые правки — в черновиках' : ''}.`;
-    }
-    return useDrafts ? 'Текущее КП будет отложено в черновики.' : 'Текущее КП будет очищено.';
+    return KpTabs.roomy()
+      ? 'Новое КП откроется в новой вкладке — текущее останется открытым в своей.'
+      : `Открыто ${KpTabs.MAX} КП — закройте одно (✕ на вкладке), чтобы начать новое.`;
   }
 
   static _presets(presets) {
@@ -116,7 +108,12 @@ export class NewKp {
 
   static async _blankAfterStash(modal) {
     modal.close();
-    if (!(await Drafts.stash())) return;
+    await this.tab();
+  }
+
+  /** Новое пустое КП — в новой вкладке (открытое пустое — в нём же). */
+  static async tab() {
+    if (!(await KpTabs.prepare())) return;
     this.blank();
   }
 

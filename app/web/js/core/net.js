@@ -42,6 +42,8 @@ export class Api {
   static UNAUTHORIZED = 401;
   // проверки и предпросмотр — не сохранение: отметка «несохранённые изменения» в «Настройках» остаётся
   static NOT_SAVE = /\/(preview|test|check|pdf)\b|\/connections\b/;
+  /** запросов в пути: переключение КП ждёт, пока ответы допишут своё в то КП, которое их начало */
+  static flying = 0;
 
   /**
    * @param {string} path
@@ -50,6 +52,15 @@ export class Api {
    * @returns {Promise<*>}
    */
   static async request(path, opts = {}) {
+    this.flying++;
+    try {
+      return await this._request(path, opts);
+    } finally {
+      this.flying--;
+    }
+  }
+
+  static async _request(path, opts) {
     const headers = { ...(opts.headers || {}), ...this._signature() };
     if (AdminSession.csrf) headers['X-CSRF-Token'] = AdminSession.csrf;
     const reply = await fetch(path, { ...opts, headers });

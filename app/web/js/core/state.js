@@ -17,6 +17,9 @@ import { KpConditions } from './conditions.js';
  */
 export class LocalDraft {
   static KEY = 'kp.draft';
+  static TABS = 'kp.tabs';
+  /** другие открытые КП для записи вместе с текущим (KpTabs) — функция или null */
+  static tabs = null;
   static PRE = 'kp.img.';
   static REF = '\u0000img:';
   // меньше — прямо в черновике
@@ -31,12 +34,8 @@ export class LocalDraft {
    */
   static save(state) {
     const used = new Set();
-    const text = JSON.stringify(state, (key, value) =>
-      typeof value === 'string' && value.length >= this.MIN && value.startsWith('data:')
-        ? this.REF + this.put(value, used)
-        : value,
-    );
-    localStorage.setItem(this.KEY, text);
+    localStorage.setItem(this.KEY, this._text(state, used));
+    this._others(rest => this._text(rest, used));
     this.sweep(used);
   }
 
@@ -46,7 +45,31 @@ export class LocalDraft {
    */
   static saveLite(state) {
     localStorage.setItem(this.KEY, JSON.stringify(state));
+    this._others(rest => JSON.stringify(rest, (key, value) => (this._big(value) ? null : value)));
     this.sweep(new Set());
+  }
+
+  /**
+   * Другие открытые КП (вкладки) — из черновика браузера.
+   * @returns {object | null}
+   */
+  static loadTabs() {
+    return this._parse(localStorage.getItem(this.TABS));
+  }
+
+  static _big(value) {
+    return typeof value === 'string' && value.length >= this.MIN && value.startsWith('data:');
+  }
+
+  static _text(state, used) {
+    return JSON.stringify(state, (key, value) => (this._big(value) ? this.REF + this.put(value, used) : value));
+  }
+
+  // КП других вкладок — отдельной записью; картинки у всех общие, поэтому sweep видит и их
+  static _others(write) {
+    const rest = this.tabs ? this.tabs() : null;
+    if (rest) localStorage.setItem(this.TABS, write(rest));
+    else localStorage.removeItem(this.TABS);
   }
 
   /**
@@ -83,7 +106,10 @@ export class LocalDraft {
    * @returns {object | null}
    */
   static load() {
-    const text = localStorage.getItem(this.KEY);
+    return this._parse(localStorage.getItem(this.KEY));
+  }
+
+  static _parse(text) {
     if (!text) return null;
     return JSON.parse(text, (key, value) => {
       if (typeof value !== 'string' || !value.startsWith(this.REF)) return value;
@@ -98,7 +124,8 @@ export class LocalDraft {
   /** Черновик переписан в другой вкладке (она могла убрать «чужие» картинки) — следующее сохранение пишет картинки заново. */
   static watch() {
     window.addEventListener('storage', event => {
-      if (event.key == null || event.key === this.KEY || event.key.startsWith(this.PRE)) this.ids.clear();
+      if (event.key == null || event.key === this.KEY || event.key === this.TABS || event.key.startsWith(this.PRE))
+        this.ids.clear();
     });
   }
 }
@@ -241,26 +268,49 @@ export class KpState {
     let state = this.fresh();
     try {
       const draft = LocalDraft.load();
-      if (draft) {
-        state = Object.assign(this.fresh(), draft);
-        this._fill(state);
-      }
+      if (draft) state = this.revive(draft);
     } catch {
       // черновик испорчен — что успели разобрать
     }
     return state;
   }
 
+  /**
+   * КП из сохранённого вида: вложенные части — поверх нового КП.
+   * @param {object} raw
+   * @returns {object}
+   */
+  static revive(raw) {
+    const state = Object.assign(this.fresh(), raw);
+    this._fill(state);
+    return state;
+  }
+
+  /** Черновик в браузере — сразу, без задержки (перед переключением КП). */
+  static flush() {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this._saveDraft();
+  }
+
   static _fill(state) {
-    state.pricing = Object.assign(this.fresh().pricing, state.pricing || {});
-    state.contact = Object.assign(this.fresh().contact, state.contact || {});
-    state.object = Object.assign(this.fresh().object, state.object || {});
+    this._merge(state);
     state.items.forEach(item => {
       item._busy = false;
       item._srcImg = null;
       item.options = item.options || [];
       item.attrs = item.attrs || {};
     });
+  }
+
+  // вложенные части КП прежних версий и сокращённых записей — поверх нового КП
+  static _merge(state) {
+    state.items = state.items || [];
+    state.pricing = Object.assign(this.fresh().pricing, state.pricing || {});
+    state.contact = Object.assign(this.fresh().contact, state.contact || {});
+    state.object = Object.assign(this.fresh().object, state.object || {});
+    state.manager = Object.assign(this.defManager(), state.manager || {});
   }
 
   /** Состав и титул — по позициям; черновик в браузере — с задержкой (правка позиции каталога его не трогает). */
@@ -274,7 +324,10 @@ export class KpState {
     });
     CoverSync.run();
     clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => this._saveDraft(), this.SAVE_MS);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this._saveDraft();
+    }, this.SAVE_MS);
   }
 
   static _saveDraft() {
@@ -340,6 +393,7 @@ export class KpState {
    * @returns {object}
    */
   static replace(state) {
+    this._merge(state);
     S = state;
     return S;
   }

@@ -255,6 +255,7 @@ export class Managers {
   }
 
   static async _store(id, notify) {
+    const opened = S;
     const doc = await Api.request(`/api/managers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -264,8 +265,8 @@ export class Managers {
     if (index >= 0) Managers.list[index] = doc;
     else Managers.list.push(doc);
     Managers.list.sort((left, right) => String(left.name).localeCompare(String(right.name), 'ru'));
-    const wasNew = !S.managerId;
-    S.managerId = id;
+    const wasNew = !opened.managerId;
+    opened.managerId = id;
     this._remember(id);
     if (wasNew) {
       this.setMe(id);

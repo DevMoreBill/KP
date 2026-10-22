@@ -341,6 +341,12 @@ export class StationImages {
     return changed;
   }
 
+  /** Отложенные пересборки — отменить (открыли другое КП: его станции пересоберутся, когда их тронут). */
+  static cancel() {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+  }
+
   /**
    * Пересобрать после паузы, без лишних перерисовок.
    * @param {object} item
