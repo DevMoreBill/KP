@@ -1,3 +1,4 @@
+import { AdminGearClicks } from './admin-gear.js';
 import { AppKeys, TopBar } from './app-keys.js';
 import { DatePicker, WorkCalendar } from './date-picker.js';
 import { FieldEvents } from './field-events.js';
@@ -19,6 +20,7 @@ import { Tender, TenderBlock } from './tender.js';
 import { UiKit } from './ui-kit.js';
 
 export const UI_PARTS = {
+  AdminGearClicks,
   AppKeys,
   TopBar,
   DatePicker,
@@ -68,3 +70,4 @@ UiKit.listenTips();
 Steps.listen();
 ItemOrder.listen();
 ProblemReport.listen();
+AdminGearClicks.listen();

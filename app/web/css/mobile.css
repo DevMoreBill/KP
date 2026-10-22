@@ -351,10 +351,13 @@ span.mb-back{border:0}
 .mob .st-row .acts{justify-content:flex-start}
 .mob .st-row .acts .btn{flex:1 1 auto}
 /* «Требует внимания»: метка и «Открыть» — строкой сверху, текст — во всю ширину (а не узким столбцом между ними) */
-.mob .at-r{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l b" "t t";gap:6px 10px;padding:10px 0}
-.mob .at-l{grid-area:l;justify-self:start}
-.mob .at-t{grid-area:t}
-.mob .at-r>.btn{grid-area:b}
+.mob .at-r{flex-wrap:wrap;gap:6px 8px;padding:10px 0}
+.mob .at-t{flex:1 1 100%;order:1}
+.mob .at-r>.btn{order:2;flex:1 1 auto}
+.mob .inb-sub{order:3}
+.mob .inb-i{flex-wrap:wrap}
+.mob .inb-a{flex:1 1 100%}
+.mob .inb-a .btn{flex:1 1 auto}
 /* характеристики: название параметра — во всю ширину, значение, ★ и ✕ — под ним */
 .mob .srow>input:first-child{grid-column:1/-1}
 /* график платежей: дата целиком (с годом), стрелки ↑/↓ — ниже, если не помещаются рядом */

@@ -17,6 +17,16 @@ export class BitrixPanel {
   static dry = null; // результат пробного прогона
   static imp = null; // предпросмотр загрузки старых сделок
   static embed = null; // вкладка, открытая разделом «Настроек → Битрикс24» (своя строка меню вместо полосы вкладок)
+  // мастер первого подключения (пока обмен не включён): адрес и связь → воронки → менеджеры → проверка и включение
+  static WIZARD = [
+    ['link', 'Адрес и проверка связи'],
+    ['cats', 'Воронки и этапы'],
+    ['mgr', 'Менеджеры'],
+    ['log', 'Проверка без записи и включение'],
+  ];
+  static full = false; // «Все настройки» вместо мастера
+  // после подключения: первым — «Состояние обмена», остальное — «Тонкая настройка»
+  static MAIN = ['link', 'mirror'];
   static TABS = [
     ['link', 'Связь и включение'],
     ['mirror', 'Кабинет как в Битрикс24'],
@@ -197,27 +207,81 @@ export class BitrixPanel {
    * @param {{t: string, err?: boolean}|null} [note]
    */
   static render(note) {
-    const tab = this.TABS.some(entry => entry[0] === this.tab) ? this.tab : 'link';
+    const wizard = this.wizard();
+    const tabs = wizard ? this.WIZARD : this.TABS;
+    const tab = tabs.some(entry => entry[0] === this.tab) ? this.tab : tabs[0][0];
     const need = this.NEED_C.includes(tab) && !this.portal;
     StDirty.set(false); // вкладка нарисована заново из сохранённого — набранное прежде не ждёт сохранения
-    const bar = this.embed
-      ? ''
-      : `<div class="bx-tabs" role="tablist">${this.TABS.map(([key, label]) => `<button type="button" role="tab" data-bxtab="${key}" class="${key === tab ? 'on' : ''}" aria-selected="${key === tab}">${esc(label)}</button>`).join('')}</div>`;
+    const bar = wizard ? this._steps(tab) : this._bar(tab);
     const view = this._views()[tab];
     const body = need
       ? `<div class="st-card"><p class="muted">${this.state.hasUrl ? 'Загружаю списки из Битрикс24 (воронки, стадии, пользователи, поля)…' : this.NO_URL}</p></div>`
       : view.html();
     this.main.innerHTML = `${bar}
       ${note ? `<p class="msg${note.err ? ' err' : ''}" style="text-align:left">${esc(note.t)}</p>` : ''}
-      ${body}`;
-    this.all('[data-bxtab]').forEach(button => {
-      button.onclick = () => {
-        this.tab = button.dataset.bxtab;
-        this.render();
-        if (this.NEED_C.includes(this.tab)) this.loadPortal();
-      };
-    });
+      ${body}${wizard ? this._next(tab) : ''}`;
+    this._bindBar();
     if (!need) view.bind();
+  }
+
+  static _bindBar() {
+    this.all('[data-bxtab]').forEach(button => {
+      button.onclick = () => this._go(button.dataset.bxtab);
+    });
+    this.one('[data-bxfull]')?.addEventListener('click', () => {
+      this.full = true;
+      this.render();
+    });
+    this.one('[data-bxenable]')?.addEventListener('click', () =>
+      this.run(
+        () => AdminApi.post('bitrix', { on: true }),
+        'Обмен включён: открытые сделки поставлены в очередь отправки',
+      ),
+    );
+  }
+
+  /**
+   * Показывать мастер первого подключения: обмен ещё не включён и «Все настройки» не выбраны.
+   * @returns {boolean}
+   */
+  static wizard() {
+    return !this.state.on && !this.full;
+  }
+
+  static _go(tab) {
+    this.tab = tab;
+    this.render();
+    if (this.NEED_C.includes(this.tab)) this.loadPortal();
+  }
+
+  // после подключения: «Состояние обмена» и «Кабинет как в Битрикс24», остальное — «Тонкая настройка»
+  static _bar(tab) {
+    const button = ([key, label]) =>
+      `<button type="button" role="tab" data-bxtab="${key}" class="${key === tab ? 'on' : ''}" aria-selected="${key === tab}">${esc(key === 'link' ? 'Состояние обмена' : label)}</button>`;
+    const main = this.TABS.filter(([key]) => this.MAIN.includes(key));
+    const fine = this.TABS.filter(([key]) => !this.MAIN.includes(key));
+    return `<div class="bx-tabs" role="tablist">${main.map(button).join('')}<span class="bx-fine-h">Тонкая настройка:</span>${fine.map(button).join('')}</div>`;
+  }
+
+  static _steps(tab) {
+    const step = this.WIZARD.findIndex(([key]) => key === tab);
+    const steps = this.WIZARD.map(
+      ([key, label], i) =>
+        `<button type="button" data-bxtab="${key}" class="bx-st${i === step ? ' on' : ''}${i < step ? ' done' : ''}"><b>${i + 1}</b>${esc(label)}</button>`,
+    ).join('');
+    return `<div class="st-card bx-wiz"><div class="row"><p class="sub" style="margin:0">Подключение Битрикс24 · шаг ${step + 1} из ${this.WIZARD.length}</p><span class="sp"></span><button class="btn ghost sm" type="button" data-bxfull>Все настройки →</button></div>
+      <div class="bx-wsteps">${steps}</div></div>`;
+  }
+
+  static _next(tab) {
+    const step = this.WIZARD.findIndex(([key]) => key === tab);
+    const back =
+      step > 0 ? `<button class="btn" type="button" data-bxtab="${this.WIZARD[step - 1][0]}">← Назад</button>` : '';
+    const last = step === this.WIZARD.length - 1;
+    const forward = last
+      ? `<button class="btn primary" type="button" data-bxenable${this.state.hasUrl ? '' : ' disabled'}>Включить обмен</button>`
+      : `<button class="btn primary" type="button" data-bxtab="${this.WIZARD[step + 1][0]}"${this.state.hasUrl ? '' : ' disabled title="Сначала задайте адрес вебхука и проверьте связь"'}>Далее →</button>`;
+    return `<div class="row bx-wnav">${back}<span class="sp"></span>${forward}</div>`;
   }
 
   /** Списки из Битрикса: воронки, стадии, пользователи, поля. */

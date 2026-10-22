@@ -839,3 +839,54 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .fb-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .fb-h .btn,.fb-h>span:last-child{margin-left:auto}
 .fb-e{white-space:pre-wrap;font-size:12px;margin:4px 0 0}
+/* «Настройки» 3.189: главная-входящие, раздел из одной вкладки, «Параметры», записи в поиске */
+.at-r{flex-wrap:wrap}
+.inb-sub{flex:1 1 100%;display:grid;gap:6px}
+.inb-sub:empty{display:none}
+.inb-i{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.inb-i>div{flex:1;min-width:0;display:grid;gap:2px}
+.inb-i>div span{overflow-wrap:anywhere}
+.inb-a{display:flex;gap:6px;flex-wrap:wrap}
+.st-more{margin-top:12px}
+.st-more>summary{cursor:pointer;margin:0 0 10px}
+.st-nav button.st-n1{margin-top:8px;font-weight:600}
+.df-sep{border:0;border-top:1px solid var(--line);margin:6px 0;width:100%}
+#setdlg [data-autosave]{display:none}
+.st-fr-h{margin:14px 0 8px}
+@media (max-width:820px){ .df-sep{display:none} }
+.mob .df-sep{display:none}
+.st-hist{margin-top:14px}
+.st-hist>summary{cursor:pointer;margin:0}
+.st-hist[open]>summary{margin-bottom:10px}
+.dz{border-color:var(--danger)}
+.dz-r .btn.danger{white-space:nowrap}
+.dz-dlg [data-dzw]{text-transform:uppercase;letter-spacing:.08em}
+@media (max-width:900px){ .st-nav button.st-n1{margin-top:0} }
+.mob .st-nav button.st-n1{margin-top:0}
+.rd>summary{cursor:pointer;margin:0}
+.rd[open]>summary{margin-bottom:8px}
+.rd-bar{height:8px;border-radius:999px;background:var(--soft);overflow:hidden;margin:0 0 10px}
+.rd-bar i{display:block;height:100%;background:var(--ok)}
+.rd-l{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 16px}
+.rd-l li{display:flex;align-items:center;gap:8px;justify-content:space-between;min-height:34px}
+.rd-l li.rd-ok{color:var(--muted)}
+.rd-l li.rd-ok span{color:var(--ok)}
+/* Битрикс24: мастер подключения и «Тонкая настройка» */
+.bx-wsteps{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px}
+.bx-st{display:flex;align-items:center;gap:8px;text-align:left;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;font-size:13.5px;cursor:pointer}
+.bx-st b{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--soft);color:var(--navy);font-size:12.5px}
+.bx-st.on{border-color:var(--navy);background:var(--soft);font-weight:600}
+.bx-st.on b{background:var(--navy);color:var(--on-navy)}
+.bx-st.done b{background:var(--ok);color:var(--on-navy)}
+.bx-wnav{margin:12px 0 4px;gap:8px}
+.bx-fine-h{align-self:center;padding:0 6px 0 12px;font-size:12px;color:var(--muted);white-space:nowrap}
+.bx-tabs:has(.bx-fine-h),.st-ptabs{display:flex;flex-wrap:wrap}
+.bx-tabs:has(.bx-fine-h) button,.st-ptabs button{flex:1 1 auto;border-left:1px solid var(--line)}
+.bx-tabs:has(.bx-fine-h) button:first-child,.st-ptabs button:first-child{border-left:0}
+.bx-tabs .bx-fine-h{flex:1 1 100%;padding:6px 12px;border-top:1px solid var(--line);margin-top:-1px;text-align:left}
+.st-ptabs{margin:0 0 12px}
+.st-gtiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.st-gt{display:grid;gap:4px;align-content:start;text-align:left;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer;min-height:96px}
+.st-gt b{font-size:15px}
+.st-gt span{font-size:12.5px;line-height:1.35}
+.mob .rd-l li.rd-ok{display:none}

@@ -3,6 +3,7 @@ import { AdminNav } from './admin-nav.js';
 import { BackupTab } from './backup-tab.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { ListsPanel } from './lists-panel.js';
+import { RecordsTab } from './records-tab.js';
 import { SettingsWindow } from './settings-window.js';
 import { $, esc } from '../../core/util.js';
 import { Debounce } from '../../core/debounce.js';
@@ -35,6 +36,10 @@ export class SettingsSearch {
     lists: 'списки выбор варианты выпадающие причины проигрыша единицы тексты надписи подписи подсказки переименовать',
     mail: 'почта smtp письмо отправка яндекс mail.ru пароль приложения письма администратору',
     china: 'китай таможенная стоимость экспедитор ставки',
+    params:
+      'параметры умолчания значения подставляет ндс валюта город срок гарантия условия числа функции включить выключить доступ кнопки списки выбор варианты выпадающие тексты надписи подписи нормы станций',
+    carriers: 'перевозчики тарифы доставка перевозка машина разгрузка трал фура логистика китай экспедитор ставки',
+    bitrix: 'битрикс битрикс24 bitrix crm црм вебхук webhook воронка стадии синхронизация обмен поля сделки регламент',
     services:
       'проверка подключений связь сервисы ключи api checko чекко ofdata офдата rusprofile dadata ati деловые линии кит сдэк возовоз convertapi pdf нейросеть ии deepseek openrouter модель токены битрикс битрикс24 bitrix crm црм вебхук webhook воронка стадии синхронизация',
     users: 'администраторы учётные записи мой пароль сменить',
@@ -117,6 +122,15 @@ export class SettingsSearch {
   ];
   static LIMIT = 40;
   static WAIT = 120;
+  static RECORDS_MIN = 3;
+  static RECORDS_EACH = 5;
+  // записи, которые ищутся на сервере: [вид в списке «Справочников», подпись, вкладка]
+  static RECORDS = [
+    ['client', 'Клиент', 'db-client'],
+    ['supplier', 'Поставщик', 'db-supplier'],
+    ['catalog', 'Товар', 'goods'],
+    ['kp', 'КП', 'db-kp'],
+  ];
   static OTHER_KIND = 0.5;
 
   /**
@@ -159,6 +173,25 @@ export class SettingsSearch {
       tab: 'changes',
       kind: 'Файл',
     });
+    for (const tab of AdminNav.tabs())
+      for (const panel of tab.panels || [])
+        add({
+          label: panel.label,
+          where: AdminNav.path(tab.key),
+          text: `${panel.hint} ${this.WORDS[panel.key] || ''}`,
+          tab: `${tab.key}:${panel.key}`,
+          kind: 'Вкладка',
+        });
+    for (const [sub, label] of DefaultsTab.EXTRA)
+      add({ label, where: AdminNav.path('params'), text: this.WORDS[sub] || '', tab: `params:${sub}`, kind: 'Раздел' });
+    for (const [sub, label, hint] of AdminNav.BITRIX_TABS)
+      add({
+        label: `Битрикс24: ${label}`,
+        where: AdminNav.path('bitrix'),
+        text: hint,
+        tab: `bitrix:${sub}`,
+        kind: 'Раздел',
+      });
     this._defaults(add);
     this._backup(add);
     this._more(add);
@@ -285,6 +318,17 @@ export class SettingsSearch {
     const input = dialog.querySelector('#stFind');
     if (!input) return;
     this._idx = null;
+    input.placeholder = 'Найти настройку или запись… (Ctrl+K)';
+    if (!dialog._findKey) {
+      dialog._findKey = true;
+      dialog.addEventListener('keydown', event => {
+        if (!(event.ctrlKey || event.metaKey) || event.code !== 'KeyK') return;
+        event.preventDefault();
+        const find = dialog.querySelector('#stFind');
+        find?.focus();
+        find?.select();
+      });
+    }
     const wait = new Debounce(this.WAIT);
     input.oninput = () => wait.run(() => this.show(input.value));
     input.onkeydown = event => {
@@ -332,6 +376,49 @@ export class SettingsSearch {
       const button = event.target.closest('[data-sfi]');
       if (button) this.goTo(this.res[+button.dataset.sfi]);
     };
+    this._records(query.trim(), main);
+  }
+
+  // записи справочников и каталога — запросом к серверу, ниже найденных настроек
+  static async _records(query, main) {
+    if (query.length < this.RECORDS_MIN) return;
+    const found = await Promise.all(
+      this.RECORDS.map(([type, kind, tab]) =>
+        AdminApi.get(`list/${type}?q=${encodeURIComponent(query)}`)
+          .then(reply => (reply.items || []).slice(0, this.RECORDS_EACH).map(row => ({ row, type, kind, tab, query })))
+          .catch(() => []),
+      ),
+    );
+    const rows = found.flat();
+    const box = main.querySelector('#stFindRes');
+    if (!rows.length || !box || main.dataset.find !== '1' || ($('#stFind') || {}).value?.trim() !== query) return;
+    const start = this.res.length;
+    this.res = [...this.res, ...rows.map(entry => this._record(entry))];
+    box.insertAdjacentHTML(
+      'beforeend',
+      `<p class="sub st-fr-h">Записи</p>${rows
+        .map(
+          (entry, i) =>
+            `<button type="button" class="st-fr" data-sfi="${start + i}"><b>${esc(entry.row.title)}</b><span class="muted">${esc(entry.kind)} · ${esc(entry.row.sub || '')}</span></button>`,
+        )
+        .join('')}`,
+    );
+  }
+
+  static _record({ row, type, kind, tab, query }) {
+    const label = row.title;
+    if (type === 'catalog' || type === 'kp')
+      return { label, kind, tab, open: () => RecordsTab.open(type, row.id, () => {}) };
+    return {
+      label,
+      kind,
+      tab,
+      before: () => {
+        AdminState.del = { type, q: query, sel: new Set() };
+        AdminState.editing = null;
+      },
+      find: label,
+    };
   }
 
   /**
@@ -340,6 +427,10 @@ export class SettingsSearch {
    */
   static async goTo(entry) {
     if (!(await StDirty.leave())) return;
+    if (entry.open) {
+      entry.open();
+      return;
+    }
     const input = $('#stFind');
     if (input) input.value = '';
     const main = $('#stMain');
@@ -361,7 +452,7 @@ export class StNav {
    * @param {string} key
    */
   static select(key) {
-    AdminState.tab = AdminNav.key(key);
+    AdminState.tab = AdminNav.route(key);
     const dialog = $('#setdlg');
     if (dialog)
       dialog
@@ -577,5 +668,55 @@ export class StVal {
     if (first === 'features' && FEAT.get(second)) return FEAT.get(second).label;
     if (first === 'lists' && LISTS.get(second)) return LISTS.get(second).label;
     return this.PART[second] || second;
+  }
+}
+
+/**
+ * Сохранение сразу: изменили поле формы «Настроек» — через мгновение срабатывает её кнопка «Сохранить» (у таких кнопок
+ * data-autosave, сами кнопки скрыты). Значения программы, списки и тексты сохраняются своим способом.
+ */
+export class StAutoSave {
+  static WAIT_MS = 300;
+  static FOCUS_MS = 700;
+  static OWN = '.df-wrap *,.ls *,.tx-l *';
+
+  /**
+   * Следить за окном.
+   * @param {HTMLDialogElement} dialog
+   */
+  static watch(dialog) {
+    if (dialog._autoSave) return;
+    dialog._autoSave = true;
+    dialog.addEventListener('change', event => this._changed(event.target));
+  }
+
+  static _changed(target) {
+    if (!target.closest || !target.closest('#stMain .st-body')) return;
+    if (!target.matches('input,select,textarea') || target.matches(StDirty.SKIP) || target.matches(this.OWN)) return;
+    const button = this._button(target);
+    if (!button) return;
+    const focusId = document.activeElement && document.activeElement.id;
+    setTimeout(() => this._press(button, focusId), this.WAIT_MS);
+  }
+
+  // кнопка той формы, где поле: ближайший общий контейнер
+  static _button(target) {
+    for (let box = target.parentElement; box && !box.matches('#stMain'); box = box.parentElement) {
+      const button = box.querySelector('[data-autosave]');
+      if (button) return button;
+    }
+    return null;
+  }
+
+  static _press(button, focusId) {
+    const all = [...document.querySelectorAll('#stMain [data-autosave]')];
+    const target = button.isConnected ? button : all.length === 1 && all[0];
+    if (!target || target.disabled) return;
+    target.click();
+    StDirty.set(false);
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (focusId && (!active || active === document.body)) document.getElementById(focusId)?.focus();
+    }, this.FOCUS_MS);
   }
 }

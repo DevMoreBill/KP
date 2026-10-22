@@ -1,16 +1,14 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
-import { AdminFeedback } from './admin-feedback.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
 
 /**
- * «Обслуживание»: обновления программы, сведения о системе, журнал сервера, перезапуск; в «Обзоре» — «Требует внимания»
- * (сервер: app/app_update.py, app/admin_overview.py).
+ * «Обслуживание»: обновления программы, сведения о системе, журнал сервера, перезапуск (сервер: app/app_update.py,
+ * app/admin_overview.py).
  */
 export class AdminSystem {
-  static LEVEL = { bad: 'Важно', warn: 'Внимание', info: 'К сведению' };
   static RESTART = { first: 2500, settle: 8000, limit: 120000, step: 1000 };
   static DAY = 86400;
   static HOUR = 3600;
@@ -34,44 +32,6 @@ export class AdminSystem {
     save: '_upSave',
     deltok: '_upSave',
   };
-
-  /**
-   * «Требует внимания».
-   * @param {HTMLElement} box
-   */
-  static async attention(box) {
-    let reply;
-    try {
-      reply = await AdminApi.get('attention');
-    } catch {
-      box.innerHTML = '';
-      return;
-    }
-    const items = reply.items || [];
-    if (!items.length) {
-      box.innerHTML =
-        '<div class="st-card at-card at-ok"><p class="sub" style="margin:0">✓ Всё в порядке — ничего не требует внимания</p></div>';
-      return;
-    }
-    const rows = items
-      .map(
-        row =>
-          `<div class="at-r at-${esc(row.level)}"><span class="at-l">${esc(this.LEVEL[row.level] || '')}</span><span class="at-t">${esc(row.text)}</span>${this._go(row)}</div>`,
-      )
-      .join('');
-    box.innerHTML = `<div class="st-card at-card"><p class="sub">Требует внимания · ${items.length}</p>${rows}</div>`;
-    box.onclick = event => {
-      if (event.target.closest('[data-stfb]')) AdminFeedback.open(() => this.attention(box));
-    };
-  }
-
-  // кнопка строки: раздел «Настроек» или окно сообщений менеджеров
-  static _go(row) {
-    if (row.tab === 'feedback') return `<button class="btn sm" type="button" data-stfb>${esc(row.act)}</button>`;
-    return row.tab
-      ? `<button class="btn sm" type="button" data-sttab="${esc(row.tab)}">${esc(row.act || 'Открыть')}</button>`
-      : '';
-  }
 
   static _sleep(delay) {
     return new Promise(resolve => setTimeout(resolve, delay));
@@ -222,7 +182,7 @@ export class AdminSystem {
       <label class="f"><span>Токен GitHub ${state.hasToken ? '<b class="ok-t">задан</b>' : ''}</span><input type="password" id="upTok" autocomplete="off" placeholder="${state.hasToken ? 'Новый токен — заменит текущий' : 'github_pat_… (только чтение: Contents)'}"></label></div>
       <label class="row muted" style="gap:6px;margin-top:6px"><input type="checkbox" id="upAuto" style="width:auto"${state.auto ? ' checked' : ''}> Проверять новую версию раз в сутки (в «Требует внимания» появится напоминание)</label>
       <p class="muted">Репозиторий приватный — нужен токен: github.com → Settings → Developer settings → Fine-grained tokens → доступ к репозиторию, право «Contents: Read-only». Токен хранится только на компьютере-сервере.</p>
-      <div class="row"><button class="btn primary" type="button" data-up="save">Сохранить</button>${state.hasToken ? '<button class="btn ghost" type="button" data-up="deltok">Удалить токен</button>' : ''}</div></div>`;
+      <div class="row"><button class="btn primary" type="button" data-up="save" data-autosave>Сохранить</button>${state.hasToken ? '<button class="btn ghost" type="button" data-up="deltok">Удалить токен</button>' : ''}</div></div>`;
   }
 
   static _night(state) {
@@ -243,7 +203,7 @@ export class AdminSystem {
       <p class="muted">В это время программа сама проверит новую версию на GitHub, скачает, поставит её и перезапустится (сотрудникам — пара секунд ожидания). Не ставит, если последние 15 минут кто-то сохранял данные (попробует через полчаса), и не повторяет версию, которая уже не запустилась. Если новая версия не запустится, программа сама вернётся к прежней. Об установке придёт письмо, если включены «Письма о проблемах» (вкладка «Почта»).</p>
       ${state.nightSupported ? '' : '<p class="msg warn">Программа запущена не из EXE 3.51 и новее — ночные обновления не сработают (установите полный комплект).</p>'}
       ${last}
-      <button class="btn primary" type="button" data-up="night">Сохранить</button></div>`;
+      <button class="btn primary" type="button" data-up="night" data-autosave>Сохранить</button></div>`;
   }
 
   static async _installed(main, reply) {

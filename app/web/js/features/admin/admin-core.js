@@ -10,6 +10,7 @@ export class AdminState {
   static audit = { page: 0, f: {} };
   static imp = null;
   static chart = 'day';
+  static chartOpen = false;
   static status = null;
   static editing = null;
 }
@@ -54,6 +55,7 @@ export class AdminApi {
 /** Окна подтверждения, выбора и формы поверх «Настроек». */
 export class AdminDialog {
   static DANGER = /Удал|Откат/;
+  static WORD = 'УДАЛИТЬ';
 
   /**
    * Подтверждение.
@@ -66,6 +68,38 @@ export class AdminDialog {
     return Modal.ask(
       `<h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary${this.DANGER.test(ok) ? ' danger-bg' : ''}" type="button" data-v="1">${esc(ok)}</button></div>`,
     );
+  }
+
+  /**
+   * Подтверждение необратимого: кнопка доступна, только когда введено слово «УДАЛИТЬ».
+   * @param {string} title
+   * @param {string} text что случится
+   * @param {string} ok надпись кнопки
+   * @returns {Promise<boolean>}
+   */
+  static danger(title, text, ok) {
+    return new Promise(resolve => {
+      let done = false;
+      const modal = new Modal(
+        `<h3>${esc(title)}</h3><p>${esc(text)}</p><p class="bad-t">Отменить это будет нельзя.</p>
+        <label class="f"><span>Чтобы продолжить, введите слово ${esc(this.WORD)}</span><input type="text" data-dzw autocomplete="off" spellcheck="false"></label>
+        <div class="row"><button class="btn" type="button" data-v="0">Отмена</button><button class="btn primary danger-bg" type="button" data-v="1" disabled>${esc(ok)}</button></div>`,
+        'dz-dlg',
+      );
+      const input = modal.$('[data-dzw]');
+      const button = modal.$('[data-v="1"]');
+      input.focus();
+      input.oninput = () => {
+        button.disabled = input.value.trim().toUpperCase() !== this.WORD;
+      };
+      modal.d.addEventListener('click', event => {
+        const choice = event.target.closest('[data-v]');
+        if (!choice || choice.disabled) return;
+        done = choice.dataset.v === '1';
+        modal.close();
+      });
+      modal.d.addEventListener('close', () => resolve(done));
+    });
   }
 
   /**

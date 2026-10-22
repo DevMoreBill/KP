@@ -32,7 +32,7 @@ export class FeedPurgeUi {
       <label class="f"><span>Что удалить</span><select data-fp="cat"><option value="">Все позиции фида — ${Fmt.num(first.total)}</option>${cats}</select></label>
       <p class="muted" data-fp="info"></p>
       <p><label class="chk-chip"><input type="checkbox" data-fp="block" checked> Не загружать их снова при следующей загрузке фида</label></p>
-      <p class="muted">Позиции уйдут в корзину («Сотрудники и система → Корзина»), восстановить можно ${DefRegistry.num('srv.trashDays', this.TRASH_DAYS)} дн. КП, в которых они уже есть, не меняются.</p>
+      <p class="muted">Позиции уйдут в корзину («Обслуживание → Корзина»), восстановить можно ${DefRegistry.num('srv.trashDays', this.TRASH_DAYS)} дн. КП, в которых они уже есть, не меняются.</p>
       <div class="row"><button class="btn danger-bg" type="button" data-fp="go">Удалить в корзину</button><button class="btn ghost" type="button" data-fp="x">Отмена</button></div>`;
   }
 

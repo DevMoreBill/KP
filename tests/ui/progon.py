@@ -945,6 +945,19 @@ class Scenario(UiRun):
             self.wait(300)
             return
         self.snap('c1_set_' + t, '#setdlg', wait=200)
+        for panel in self.ev("t => (AdminNav.tab(t).panels || []).map(p => p.key)", t)[1:]:
+            pg.locator('#setdlg [data-stpanel="%s"]' % panel).first.click()
+            self.wait(1800)
+            if self.ev("[...document.querySelectorAll('dialog[open]')].some(d=>d.id!=='setdlg')"):
+                self.ev("[...document.querySelectorAll('dialog[open]')].filter(d=>d.id!=='setdlg').forEach(d=>d.close())")
+                self.wait(300)
+            self.snap('c2_set_%s_%s' % (t, panel), '#setdlg', wait=300)
+        if t == 'params':
+            for extra in self.ev("DefaultsTab.EXTRA.map(e => e[0])"):
+                pg.locator('#setdlg [data-dsec="%s"]' % extra).first.click()
+                self.wait(1500)
+                self.snap('c2_set_params_%s' % extra, '#setdlg', wait=300)
+            return
         sub = pg.locator('#setdlg .st-body [data-sub], #setdlg .st-body .tabs button, #setdlg .st-body [role=tab]')
         for k in range(min(sub.count(), 6)):
             try:
@@ -977,9 +990,16 @@ class Scenario(UiRun):
         pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Последний обмен')", timeout=30000)
 
     def _bx_tab(self, tab):
-        """Пункт раздела «Битрикс24» в меню «Настроек» (на телефоне меню может быть свёрнуто — щелчок из страницы)."""
-        self.ev("t=>document.querySelector('#setdlg nav [data-sttab=\"bx-'+t+'\"]').click()", tab)
+        """Вкладка «Связи → Битрикс24» в «Настройках» (щелчок из страницы — на телефоне меню может быть свёрнуто)."""
+        self.ev("""t => {
+          const tab = document.querySelector('#setdlg [data-bxtab="' + t + '"]');
+          if (tab) tab.click();
+          else document.querySelector('#setdlg nav [data-sttab="bitrix"]').click();
+        }""", tab)
         self.wait(1500)
+        if not self.ev("t => !!document.querySelector('#setdlg [data-bxtab=\"' + t + '\"].on')", tab):
+            self.ev("t => document.querySelector('#setdlg [data-bxtab=\"' + t + '\"]')?.click()", tab)
+            self.wait(1500)
 
     def s_bitrix(self):
         """«Настройки → Битрикс24» на подставном Битриксе: связь, все пункты раздела, пробный прогон, старые сделки."""
@@ -996,7 +1016,7 @@ class Scenario(UiRun):
                 pg.click('#setdlg #bxImpPv')
                 pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Найдено') || document.querySelector('#setdlg .msg.err')", timeout=60000)
             if t == 'regs':
-                pg.wait_for_selector('#setdlg #bxRegsSave', timeout=20000)
+                pg.wait_for_selector('#setdlg #bxRegsSave', state='attached', timeout=20000)
             if pg.locator('#setdlg .msg.err').count():
                 self.errs.append(('bitrix', 'ERR', '%s: %s' % (t, pg.locator('#setdlg .msg.err').first.inner_text()[:200])))
             self.snap('d_bx_' + t, '#setdlg', wait=300)
@@ -1364,7 +1384,7 @@ class Scenario(UiRun):
         self._mirror_tab()
         self._mirror_act('structure', 'Структура загружена')
         self._bx_tab('regs')
-        pg.wait_for_selector('#setdlg #bxRegsSave', timeout=20000)
+        pg.wait_for_selector('#setdlg #bxRegsSave', state='attached', timeout=20000)
         self.snap('g0_regs_admin', '#setdlg', wait=300)
         self.closeall()
         deal = self.ev("""() => Api.request('/api/crm/deal', {method: 'POST', headers: {'Content-Type': 'application/json; charset=utf-8'},

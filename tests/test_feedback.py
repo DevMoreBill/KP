@@ -26,6 +26,21 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual([row['id'] for row in book.new()], [2])
 
 
+class InboxTest(unittest.TestCase):
+    """«Главная» «Настроек»: у пункта — действие для кнопки в строке; сбой фида — «Повторить»."""
+
+    def test_feed_failure_and_actions(self):
+        import admin_overview
+        store = TempStore(self).store
+        store.kv_set('feeds', {'items': [{'id': 'f1', 'name': 'Фид Прогон', 'url': 'https://example.test/feed.yml'}]})
+        store.kv_set('feedlog:f1', [{'at': '2026-10-22T10:00:00', 'kind': 'check', 'error': 'нет связи'}])
+        att = admin_overview.Attention(store, None)
+        self.assertEqual([(row['do'], row['tab']) for row in att._feeds()], [('feed:f1', 'feeds')])
+        self.assertIn('проверка с ошибкой — нет связи', att._feeds()[0]['text'])
+        store.kv_set('feedlog:f1', [{'at': '2026-10-22T11:00:00', 'kind': 'check', 'ok': True}])
+        self.assertEqual(att._feeds(), [], 'следующая проверка прошла — пункта нет')
+
+
 class JournalQuickTest(unittest.TestCase):
     def test_wanted(self):
         from admin import KpJournal
@@ -65,7 +80,9 @@ class ApiTest(unittest.TestCase):
         items = Http.js(http.req('GET', '/api/admin/feedback', headers=self.A, cookie=self.adm)[1])['items']
         self.assertEqual(items[0]['text'], 'Окно сделки уезжает')
         attn = Http.js(http.req('GET', '/api/admin/attention', headers=self.A, cookie=self.adm)[1])['items']
-        self.assertTrue(any(row.get('tab') == 'feedback' for row in attn))
+        self.assertTrue(any(row.get('tab') == 'feedback' and row.get('do') == 'feedback' for row in attn))
+        self.assertTrue(all(row.get('do') == 'backup' for row in attn if row.get('tab') == 'backup' and 'копи' in row['text']
+                            and 'вторую папку' not in row['text'] and 'только на этом диске' not in row['text']))
         fid = items[0]['id']
         self.assertNotEqual(http.req('POST', f'/api/admin/feedback/{fid}/done', {}, headers=self.H)[0], 200)
         self.assertEqual(http.req('POST', f'/api/admin/feedback/{fid}/done', {}, headers=self.A, cookie=self.adm)[0], 200)

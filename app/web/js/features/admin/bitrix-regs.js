@@ -25,7 +25,7 @@ export class BitrixRegs {
       <div class="tzi-tw"><table class="tzi-t bx-rt"><thead><tr><th>Что заполнить</th><th>Когда</th><th>Поле Битрикс24</th><th>Проверять</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <p class="muted">Клиент и контакт сделки — всегда со стадии после первой: телефон и почта компании, ИНН, ФИО, телефон и почта контакта; программа передаёт их в Битрикс24 и привязывает контакт к компании и сделке.</p>
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxRegsSave">Сохранить</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxRegsSave" data-autosave>Сохранить</button></div></div>`;
   }
 
   static _row(item, fields) {

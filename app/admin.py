@@ -1506,7 +1506,8 @@ class AdminApi:
         store = self.store
         actor_login = (AdminSessions.of(self.handler) or {}).get('login', '')
         if (
-            sub in ('system', 'attention', 'restart', 'folder', 'log', 'log/download', 'alerts', 'alerts/test')
+            sub
+            in ('system', 'attention', 'readiness', 'restart', 'folder', 'log', 'log/download', 'alerts', 'alerts/test')
             or sub == 'update'
             or sub.startswith('update/')
         ):
@@ -1959,7 +1960,7 @@ class AdminApi:
 
     def system(self, method, sub, query, actor_login) -> None:
         import config
-        from admin_overview import Attention, SystemInfo
+        from admin_overview import Attention, Readiness, SystemInfo
         from app_update import Restarter, UpdateError, Updater
 
         store, updater = self.store, Updater(self.store, config.ROOT, config.DATA_DIR)
@@ -1967,6 +1968,8 @@ class AdminApi:
             return self.ok(dict(SystemInfo(store, config).get(), local=self.handler.is_local()))
         if sub == 'attention' and method == 'GET':
             return self.ok({'items': Attention(store, config).items()})
+        if sub == 'readiness' and method == 'GET':
+            return self.ok({'items': Readiness(store, config).items()})
         if sub == 'log' and method == 'GET':  # журнал сервера: последние ошибки (data/logs/kp.log)
             from server_log import ServerLog
 
@@ -2773,7 +2776,7 @@ class AdminApi:
             or not isinstance(data.get('sections'), dict)
         ):
             raise ValueError(
-                'Это не выгрузка данных программы: нужен файл «КП_выгрузка_…», выгруженный в «База и копии → Выгрузить»'
+                'Это не выгрузка данных программы: нужен файл «КП_выгрузка_…», выгруженный в «Копии и база → Выгрузить»'
             )
         from data_file import DataFile
 

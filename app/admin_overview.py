@@ -93,6 +93,7 @@ class Attention:
             self._trash,
             self._health,
             self._feedback,
+            self._feeds,
         ):
             try:
                 out.extend(check())
@@ -117,13 +118,14 @@ class Attention:
 
         backup = maintenance.state(self.store).get('backup') or {}
         if not backup.get('at'):
-            return [{'level': 'warn', 'text': 'Автоматической копии базы ещё не было', 'tab': 'backup'}]
+            return [{'level': 'warn', 'text': 'Автоматической копии базы ещё не было', 'tab': 'backup', 'do': 'backup'}]
         if not backup.get('ok'):
             return [
                 {
                     'level': 'bad',
                     'text': 'Последняя копия базы с ошибкой: {}'.format((backup.get('error') or '')[:120]),
                     'tab': 'backup',
+                    'do': 'backup',
                     'key': 'backup',
                     'alert': True,
                 }
@@ -136,6 +138,7 @@ class Attention:
                     'level': 'warn',
                     'text': 'Копия базы не обновлялась с {}'.format(backup['at'][:10]),
                     'tab': 'backup',
+                    'do': 'backup',
                     'key': 'backup',
                     'alert': True,
                 }
@@ -200,6 +203,7 @@ class Attention:
                         status['last']['version'], status['current']
                     ),
                     'tab': 'updates',
+                    'do': 'update' if (status['last'] or {}).get('asset') else '',
                 }
             )
         elif status['pending']:
@@ -208,6 +212,7 @@ class Attention:
                     'level': 'warn',
                     'text': 'Обновление {} установлено, но программа ещё не перезапущена'.format(status['installed']),
                     'tab': 'updates',
+                    'do': 'restart',
                 }
             )
         night = status.get('nightLast') or {}
@@ -280,15 +285,50 @@ class Attention:
                 'text': text,
                 'tab': 'feedback',
                 'act': 'Прочитать',
+                'do': 'feedback',
                 'key': f'feedback:{last.get("id")}',
                 'alert': True,
             }
         ]
 
+    def _feeds(self):
+        import feeds
+
+        out = []
+        for feed in feeds.feeds(self.store):
+            last = next(iter(feeds.log_of(self.store, feed.get('id') or '')), None)
+            if (
+                not (isinstance(last, dict) and last.get('error'))
+                or (feeds.JOBS.get(feed['id']) or {}).get('state') == 'run'
+            ):
+                continue
+            kind = 'загрузка' if last.get('kind') == 'import' else 'проверка'
+            out.append(
+                {
+                    'level': 'warn',
+                    'text': 'Фид «{}»: последняя {} с ошибкой — {}'.format(
+                        feed.get('name') or feed['id'], kind, str(last['error'])[:140]
+                    ),
+                    'tab': 'feeds',
+                    'do': 'feed:' + feed['id'],
+                    'key': 'feed:' + feed['id'],
+                }
+            )
+        return out
+
     def _moderation(self):
         count = len(self.store.pending_list('pending'))
         return (
-            [{'level': 'warn', 'text': f'Правок товаров на модерации: {count}', 'tab': 'moderation'}] if count else []
+            [
+                {
+                    'level': 'warn',
+                    'text': f'Правок товаров на модерации: {count}',
+                    'tab': 'moderation',
+                    'do': 'moderation',
+                }
+            ]
+            if count
+            else []
         )
 
     def _mail(self):
@@ -365,6 +405,73 @@ class Attention:
             if count
             else []
         )
+
+
+class Readiness:
+    """«Готовность программы» на главной «Настроек»: что настроено из нужного отделу ({key, label, ok, tab})."""
+
+    def __init__(self, store, cfg) -> None:
+        self.store, self.cfg = store, cfg
+
+    def items(self) -> list[dict]:
+        checks = (
+            ('catalog', 'Каталог оборудования заполнен', 'catalog:goods', self._catalog),
+            ('managers', 'Менеджеры добавлены', 'managers', self._managers),
+            ('login', 'Вход менеджеров по паролю', 'managers', self._login),
+            ('mail', 'Почта для отправки КП', 'mail', self._mail),
+            ('backup', 'Автоматические копии базы', 'backup', self._backup),
+            ('mirror', 'Вторая папка для копий', 'backup', self._mirror),
+            ('checko', 'Проверка контрагентов (ключ Checko)', 'services', self._checko),
+            ('ai', 'Нейросеть для заполнения карточек', 'services', self._neural),
+            ('bitrix', 'Связь с Битрикс24', 'bitrix', self._bitrix),
+        )
+        out = []
+        for key, label, tab, check in checks:
+            try:
+                done = bool(check())
+            except Exception:  # одна проверка не должна ломать главную
+                done = False
+            out.append({'key': key, 'label': label, 'ok': done, 'tab': tab})
+        return out
+
+    def _catalog(self) -> bool:
+        return bool(self.store.catalog_count())
+
+    def _managers(self) -> bool:
+        return bool(self.store.scalar('SELECT COUNT(*) FROM managers'))
+
+    def _login(self) -> bool:
+        import auth_users
+
+        return auth_users.enabled(self.store)
+
+    def _mail(self) -> bool:
+        return bool((self.store.kv_get('mail') or {}).get('host'))
+
+    def _backup(self) -> bool:
+        import maintenance
+
+        return bool((maintenance.state(self.store).get('backup') or {}).get('ok'))
+
+    def _mirror(self) -> bool:
+        from backup_mirror import MirrorBackup
+
+        return bool(MirrorBackup(self.store, self.cfg.DATA_DIR).config()['on'])
+
+    def _checko(self) -> bool:
+        from counterparty import CheckoApi
+
+        return bool(CheckoApi(self.store).key())
+
+    def _neural(self) -> bool:
+        import ai_llm
+
+        return bool(ai_llm.status(self.store)['enabled'])
+
+    def _bitrix(self) -> bool:
+        from bitrix import BitrixConf
+
+        return BitrixConf(self.store).enabled()
 
 
 class DbOverview:

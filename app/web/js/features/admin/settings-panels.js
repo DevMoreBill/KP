@@ -19,12 +19,9 @@ export class SettingsHistoryPanel {
   static filter = ''; // вкладка, по которой отфильтрована история (кнопка «История» в заголовке вкладки)
   // вкладки, у которых есть история (прежние ключи записей истории сводятся через AdminNav.key)
   static TABS = {
-    defaults: 'Значения программы',
-    features: 'Функции программы',
-    lists: 'Списки и тексты',
+    params: 'Параметры программы',
     types: 'Категории оборудования',
-    logistics: 'Тарифы доставки',
-    rules: 'Нормы станций',
+    carriers: 'Перевозчики и тарифы',
     mail: 'Почта',
     feeds: 'Фиды поставщиков',
     managers: 'Вход менеджеров',
@@ -445,7 +442,7 @@ export class AlertsCard {
       ${note ? `<p class="msg ${note.err ? 'err' : 'ok'}" style="text-align:left">${esc(note.t)}</p>` : ''}
       <label class="f"><span>Кому (до 5 адресов через запятую)</span><input type="text" id="alTo" value="${esc(state.to)}" placeholder="admin@company.ru" autocomplete="off"></label>
       <p class="muted" style="margin:6px 0">${sent}</p>
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-al="save">Сохранить</button>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-al="save" data-autosave>Сохранить</button>
         <button class="btn" type="button" data-al="test"${state.mailOn && state.to ? '' : ' disabled'}>Отправить пробное письмо</button></div>`;
   }
 

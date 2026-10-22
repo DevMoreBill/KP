@@ -1,5 +1,5 @@
 import { AdminApi, AdminDialog, AdminState, AuditLabels } from './admin-core.js';
-import { AdminSystem } from './admin-system.js';
+import { AdminInbox, AdminReadiness } from './admin-inbox.js';
 import { SettingsWindow } from './settings-window.js';
 import { Debounce } from '../../core/debounce.js';
 import { Catalog } from '../catalog/catalog-store.js';
@@ -137,13 +137,14 @@ export class StatsTab {
    */
   static async render(box) {
     const stats = await AdminApi.get('stats');
-    box.innerHTML = `<div id="stAttn"></div>
+    box.innerHTML = `${await AdminReadiness.html()}<div id="stAttn"></div>
     <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="connections">Проверить подключения</button><button class="btn" type="button" data-sttab="changed">Изменённые настройки</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
     <div class="st-tiles">${this._tiles(stats)}</div>
+    <details class="st-more"${AdminState.chartOpen ? ' open' : ''}><summary class="sub">Статистика подробнее: КП по периодам, менеджеры, товары, база</summary>
     ${this._chart(stats.series[AdminState.chart])}
     ${this._tops(stats)}
-    ${this._base(stats)}`;
-    AdminSystem.attention(box.querySelector('#stAttn'));
+    ${this._base(stats)}</details>`;
+    AdminInbox.render(box.querySelector('#stAttn'));
     box.onclick = event => this._click(box, event);
   }
 
@@ -151,6 +152,7 @@ export class StatsTab {
     const chart = event.target.closest('[data-chart]');
     if (chart) {
       AdminState.chart = chart.dataset.chart;
+      AdminState.chartOpen = true;
       this.render(box);
       return;
     }
@@ -187,7 +189,7 @@ export class ModerationTab {
       : 'Выключено: правки сохраняются в каталог сразу и записываются в журнал действий (там же — откат правки).';
     return `<div class="st-card"><div class="row"><button class="sw" type="button" role="switch" aria-checked="${enabled}" data-mod="toggle"><i></i>Требовать подтверждение правок товаров</button></div>
         <p class="muted" style="margin:8px 0 0">${text}
-        Принимать и отклонять правки могут и менеджеры с правом «Правки без модерации» («Сотрудники и система → Менеджеры»), их собственные правки идут сразу в каталог.${reply.settings.updatedAt ? ` Изменено: ${esc(Fmt.dateTime(reply.settings.updatedAt))}.` : ''}</p></div>`;
+        Принимать и отклонять правки могут и менеджеры с правом «Правки без модерации» («Люди и доступ → Менеджеры»), их собственные правки идут сразу в каталог.${reply.settings.updatedAt ? ` Изменено: ${esc(Fmt.dateTime(reply.settings.updatedAt))}.` : ''}</p></div>`;
   }
 
   static _reviewed(row) {

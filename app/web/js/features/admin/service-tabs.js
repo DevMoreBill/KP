@@ -136,7 +136,7 @@ export class MailTab {
     <label class="f"><span>Тема</span><input type="text" id="mlSubj" value="${esc(mail.subject)}"></label>
     <label class="f"><span>Текст</span><textarea id="mlBody" rows="9">${esc(mail.body)}</textarea></label>
     <p class="muted">Подстановки: {номер}, {дата}, {клиент}, {поставщик} (имя отправителя), {менеджер}, {должность}, {телефон}, {e-mail}; {, контакт} — «, Иван Петрович» (если в КП указано контактное лицо); {: оборудование} — «: Винтовые компрессоры Remeza ВК10…» по заголовку титула. Менеджер может поправить текст перед отправкой.</p>
-    <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="mlSave">Сохранить</button>
+    <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="mlSave" data-autosave>Сохранить</button>
       <input type="text" id="mlTestTo" placeholder="адрес для проверки" style="max-width:260px" autocomplete="off"><button class="btn" type="button" id="mlTest"${mail.on ? '' : ' disabled'}>Отправить проверочное письмо</button>
       ${mail.hasPassword ? '<button class="btn ghost" type="button" id="mlDel">Удалить пароль</button>' : ''}</div></div>`;
   }
@@ -230,7 +230,7 @@ export class AiTab {
       <label class="f"><span>Модель</span><input type="text" id="aiModel" list="aiModels" value="${esc(config.model)}" autocomplete="off"><datalist id="aiModels">${models}<option value="deepseek/deepseek-chat-v3-0324:free">OpenRouter — DeepSeek V3, бесплатная (с лимитами)</option></datalist></label></div>
     <details class="more"><summary>Другой сервис с таким же API</summary><label class="f" style="margin-top:8px"><span>Адрес API</span><input type="text" id="aiBase" value="${esc(config.base)}" placeholder="https://api.deepseek.com"></label>
       <p class="muted">Например OpenRouter — https://openrouter.ai/api/v1 (модели DeepSeek, в т. ч. бесплатные с лимитами; ключ — с openrouter.ai) или своя модель на сервере отдела (Ollama — http не подойдёт, нужен https). Название модели — в поле «Модель».</p></details>
-    <div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="aiSave">Сохранить</button><button class="btn" type="button" id="aiTest"${config.hasKey ? '' : ' disabled'}>Проверить связь</button>
+    <div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="aiSave" data-autosave>Сохранить</button><button class="btn" type="button" id="aiTest"${config.hasKey ? '' : ' disabled'}>Проверить связь</button>
       ${config.hasKey ? '<button class="btn ghost" type="button" id="aiDel">Удалить ключ</button>' : ''}</div>
     <p class="muted">Ключ — на platform.deepseek.com (раздел API keys), оплата — пополнением баланса там же. Ключ хранится только на компьютере-сервере и попадает в резервную копию ключей; менеджерам он не виден.</p></div>`;
   }

@@ -559,7 +559,7 @@ export class BackupTab {
   }
 
   static async _db(side, file) {
-    const sure = await AdminDialog.confirm(
+    const sure = await AdminDialog.danger(
       `Заменить всю базу файлом «${file.name}»?`,
       'Текущие данные будут заменены содержимым файла. Перед этим программа сохранит копию текущей базы в data\\backup.',
       'Заменить базу',

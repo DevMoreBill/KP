@@ -344,7 +344,7 @@ class MirrorConvert:
 
 
 class MirrorDesk:
-    """«Настройки → Битрикс24 → Как в Битрикс24» (/api/admin/bitrix/mirror…): только администратор, изменения — с CSRF."""
+    """«Настройки → Связи → Битрикс24 → Как в Битрикс24» (/api/admin/bitrix/mirror…): только администратор, изменения — с CSRF."""
 
     def __init__(self, handler, store, log_fn, opener=None) -> None:
         self.handler, self.store, self.log_fn, self.opener = handler, store, log_fn, opener

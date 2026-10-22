@@ -105,7 +105,7 @@ export class TrashTab {
   static async _clear({ state, view }) {
     const label = Object.fromEntries(this.TYPES);
     const count = state.type ? (view.counts || {})[state.type] || 0 : view.total;
-    const ok = await AdminDialog.confirm(
+    const ok = await AdminDialog.danger(
       state.type ? `Очистить корзину: ${label[state.type]}?` : 'Очистить корзину?',
       `${Fmt.num(count)} ${KPGen.plural(count, 'запись удалится', 'записи удалятся', 'записей удалятся')} окончательно — восстановить будет нельзя.`,
       'Удалить навсегда',

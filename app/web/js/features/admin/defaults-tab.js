@@ -1,12 +1,34 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
+import { FeaturesPanel, ListsPanel, TextsPanel } from './lists-panel.js';
+import { StDirty } from './settings-tools.js';
+import { LazyJs } from '../../core/lazy-js.js';
 import { Toast } from '../../core/toast.js';
 import { Debounce } from '../../core/debounce.js';
 import { DealLogistics } from '../deal/deal-logistics.js';
 import { DEF_BY, DEF_GROUPS, DEF_GROUP_HINTS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
 import { $, esc } from '../../core/util.js';
 
-/** «Значения программы»: всё, что программа подставляет и с чем считает, — по разделам, с поиском и пояснениями. */
+/**
+ * «Параметры программы»: всё, что программа подставляет и с чем считает, — по частям программы, с поиском и пояснениями;
+ * там же функции, списки выбора, тексты интерфейса и нормы станций. Значение сохраняется сразу после ввода.
+ */
 export class DefaultsTab {
+  // части «Параметров», которые не значения: [раздел, название, после какого раздела значений (иначе — в конце)]
+  static EXTRA = [
+    ['rules', 'Нормы и расчёты станций', 'st'],
+    ['features', 'Функции программы', ''],
+    ['lists', 'Списки выбора', ''],
+    ['texts', 'Тексты интерфейса', ''],
+  ];
+  static EXTRA_OPEN = {
+    rules: main =>
+      LazyJs.load('rules-doc/index.js')
+        .then(({ RulesPanel }) => new RulesPanel(main).open())
+        .catch(error => Toast.show(error.message)),
+    features: main => new FeaturesPanel(main).open(),
+    lists: main => new ListsPanel(main).open(),
+    texts: main => new TextsPanel(main).open(),
+  };
   static sec = 'kp'; // открытый раздел (запоминается, пока открыта программа)
   static query = ''; // строка поиска
   static only = false; // «Только изменённые»
@@ -78,9 +100,9 @@ export class DefaultsTab {
     return `<label class="sw df-sw" title="${opts.req ? 'Обязательное значение — всегда действует' : 'Включить / выключить'}"><input type="checkbox" data-don${enabled ? ' checked' : ''}${opts.req ? ' disabled' : ''}><span></span></label>`;
   }
 
-  static _caption(label, type, opts, program) {
+  static _caption(label, { type, opts, program, own }) {
     const limits = this._limits(type, opts);
-    return `<div class="df-l"><b>${esc(label)}</b>${opts.hint ? `<small class="muted">${esc(opts.hint)}</small>` : ''}<small class="df-pv">В программе: ${esc(program)}${limits ? ` · допустимо ${esc(limits)}` : ''}</small><small class="df-err" hidden></small></div>`;
+    return `<div class="df-l"><b>${esc(label)}</b>${own ? ' <i class="st-mod">изменено</i>' : ''}${opts.hint ? `<small class="muted">${esc(opts.hint)}</small>` : ''}<small class="df-pv">В программе: ${esc(program)}${limits ? ` · допустимо ${esc(limits)}` : ''}</small><small class="df-err" hidden></small></div>`;
   }
 
   /**
@@ -97,7 +119,7 @@ export class DefaultsTab {
     const program = this._program(type, builtin, opts);
     return `<div class="df-row${enabled ? '' : ' off'}${own ? ' own' : ''}" data-dk="${esc(key)}" data-type="${type}">
       ${this._switch(enabled, opts)}
-      ${this._caption(label, type, opts, program)}
+      ${this._caption(label, { type, opts, program, own })}
       <div class="df-v">${this._input({ key, label, type, builtin, opts }, enabled, value)}</div>
       <button type="button" class="icon df-rs" data-dreset title="Вернуть значение программы: ${esc(program)}" aria-label="Вернуть значение программы"${own ? '' : ' disabled'}>↺</button></div>`;
   }
@@ -135,12 +157,26 @@ export class DefaultsTab {
     const count = section => DEF_SCHEMA.filter(schema => DefRegistry.section(schema[1]) === section).length;
     const own = section =>
       DEF_SCHEMA.filter(schema => DefRegistry.section(schema[1]) === section && values[schema[0]]).length;
-    return sections
-      .map(
-        ([section, title]) =>
-          `<button type="button" class="df-nb${section === this.sec && !this.query ? ' on' : ''}" data-dsec="${section}">${esc(title)}<small>${count(section)}${own(section) ? ` · изменено ${own(section)}` : ''}</small></button>`,
-      )
-      .join('');
+    const button = (section, title, small) =>
+      `<button type="button" class="df-nb${section === this.sec && !this.query ? ' on' : ''}" data-dsec="${section}">${esc(title)}${small ? `<small>${small}</small>` : ''}</button>`;
+    const extra = after =>
+      this.EXTRA.filter(entry => entry[2] === after)
+        .map(([section, title]) => button(section, title, ''))
+        .join('');
+    const parts = sections.map(
+      ([section, title]) =>
+        button(section, title, `${count(section)}${own(section) ? ` · изменено ${own(section)}` : ''}`) +
+        extra(section),
+    );
+    return `${parts.join('')}<hr class="df-sep">${extra('')}`;
+  }
+
+  /**
+   * Открыт раздел-панель (функции, списки, тексты, нормы), а не значения.
+   * @returns {boolean}
+   */
+  static isExtra() {
+    return !this.query && this.EXTRA.some(([section]) => section === this.sec);
   }
 
   /**
@@ -154,18 +190,24 @@ export class DefaultsTab {
     const sections = DefRegistry.SECTIONS.filter(([section]) =>
       DEF_SCHEMA.some(schema => DefRegistry.section(schema[1]) === section),
     );
-    if (!sections.some(([section]) => section === this.sec) && sections.length) this.sec = sections[0][0];
+    const known = [...sections, ...this.EXTRA].some(([section]) => section === this.sec);
+    if (!known && sections.length) this.sec = sections[0][0];
     const current = sections.find(([section]) => section === this.sec) || [];
+    const top = `<div class="st-card df-top"><div class="df-tl"><input type="search" id="dfQ" data-nodirty placeholder="Найти параметр: например, «НДС», «страхование», «копии»" value="${esc(this.query)}" autocomplete="off">
+          <label class="ck st-own"><input type="checkbox" id="dfOwn" data-nodirty${this.only ? ' checked' : ''}> Только изменённые (${Object.keys(values).filter(key => DEF_BY[key]).length})</label></div>
+          <p class="muted">${this.query ? 'Найдено во всех разделах.' : esc(current[2] || '')} Значение сохраняется сразу, как только вы закончили ввод, — действует для новых КП и расчётов (уже созданные КП не меняются).
+          Переключатель выключен — поле остаётся пустым, решает менеджер. «↺» — вернуть значение программы.</p></div>`;
+    const body = this.isExtra()
+      ? '<div id="dfExtra"><p class="empty">Загружаю…</p></div>'
+      : `<div id="dfList">${this.list(values)}</div>`;
+    const bar = this.isExtra()
+      ? ''
+      : '<div class="df-bar"><span class="muted" id="dfSt">Изменения сохраняются сразу</span><button class="btn ghost" type="button" data-dall>Вернуть все значения программы</button></div>';
     main.innerHTML = `<div class="df-wrap">
       <nav class="df-nav" aria-label="Разделы">${this._nav(values, sections)}</nav>
-      <div class="df-main">
-        <div class="st-card df-top"><div class="df-tl"><input type="search" id="dfQ" data-nodirty placeholder="Найти значение: например, «НДС», «страхование», «копии»" value="${esc(this.query)}" autocomplete="off">
-          <label class="ck st-own"><input type="checkbox" id="dfOwn" data-nodirty${this.only ? ' checked' : ''}> Только изменённые (${Object.keys(values).filter(key => DEF_BY[key]).length})</label></div>
-          <p class="muted">${this.query ? 'Найдено во всех разделах.' : esc(current[2] || '')} Значения действуют для новых КП и расчётов — уже созданные КП не меняются.
-          Переключатель выключен — поле остаётся пустым, решает менеджер. «↺» — вернуть значение программы.</p></div>
-        <div id="dfList">${this.list(values)}</div></div></div>
-      <div class="df-bar"><span class="muted" id="dfSt">Изменений нет</span><button class="btn ghost" type="button" data-dall>Вернуть все значения программы</button><button class="btn primary" type="button" data-dsave disabled>Сохранить</button></div>`;
+      <div class="df-main">${top}${body}</div></div>${bar}`;
     this.bind(main, values);
+    if (this.isExtra()) await this.EXTRA_OPEN[this.sec](main.querySelector('#dfExtra'));
   }
 
   /**
@@ -198,9 +240,10 @@ export class DefaultsTab {
     view.find.oninput = () => timer.run(() => this._search(view));
     main.querySelector('#dfOwn').onchange = event => {
       this.only = event.target.checked;
-      this._relist(view);
+      if (this.isExtra()) this.sec = DefRegistry.SECTIONS[0][0];
+      this.render(main);
     };
-    main.onchange = event => {
+    main.querySelector('.df-wrap').addEventListener('change', event => {
       const row = event.target.closest('.df-row');
       if (!row) return;
       if (event.target.matches('[data-don]')) {
@@ -208,24 +251,70 @@ export class DefaultsTab {
         const input = row.querySelector('[data-dv]');
         if (input) input.disabled = !event.target.checked;
       }
-      this._touch(main, row);
-    };
-    main.oninput = event => {
+      this._touch(row);
+      if (this.validate(row)) this._saveRow(view, row);
+    });
+    main.querySelector('.df-wrap').addEventListener('input', event => {
       const row = event.target.closest('.df-row');
-      if (row) this._touch(main, row);
-    };
+      if (row) this._touch(row);
+    });
     main.onclick = event => this._click(view, event);
   }
 
-  static _touch(main, row) {
+  static _touch(row) {
     row.dataset.ch = '1';
     this.validate(row);
-    main.querySelector('[data-dsave]').disabled = false;
-    $('#dfSt').textContent = 'Есть несохранённые изменения';
+    const status = $('#dfSt');
+    if (status) status.textContent = 'Изменяется… сохранится, когда закончите ввод';
+  }
+
+  // одно значение — на сервер сразу; строка перерисовывается на месте (фокус остаётся в ней)
+  static async _saveRow(view, row) {
+    const key = row.dataset.dk;
+    const schema = DEF_BY[key];
+    if (!schema) return;
+    let reply;
+    try {
+      reply = await AdminApi.post('defaults', { values: { [key]: this._rowValue(row) } });
+    } catch (error) {
+      Toast.show(`Не сохранено: ${error.message || error}`);
+      return;
+    }
+    this.remember(reply.values || {});
+    view.values = DefRegistry.srv;
+    const focused = row.contains(document.activeElement) ? document.activeElement : null;
+    const which = focused && focused.matches('[data-don]') ? '[data-don]' : '[data-dv]';
+    row.outerHTML = this.row(view.values, schema);
+    if (focused) view.main.querySelector(`.df-row[data-dk="${CSS.escape(key)}"] ${which}`)?.focus();
+    const status = $('#dfSt');
+    if (status) status.textContent = `✓ Сохранено: «${schema[2]}»`;
+    if (!this.changed(view.main)) StDirty.set(false);
+  }
+
+  /**
+   * Запомнить значения администратора (и в браузере — до следующей загрузки с сервера).
+   * @param {object} values
+   */
+  static remember(values) {
+    DefRegistry.srv = values;
+    try {
+      localStorage.setItem(this.STORE, JSON.stringify(values));
+    } catch {
+      // без хранилища браузера
+    }
   }
 
   static _relist(view) {
-    view.main.querySelector('#dfList').innerHTML = this.list(view.values);
+    const list = view.main.querySelector('#dfList');
+    if (!list || this.isExtra()) {
+      this.render(view.main).then(() => {
+        const find = view.main.querySelector('#dfQ');
+        find?.focus();
+        find?.setSelectionRange(find.value.length, find.value.length);
+      });
+      return;
+    }
+    list.innerHTML = this.list(view.values);
     view.main
       .querySelectorAll('.df-nb')
       .forEach(button => button.classList.toggle('on', !this.query && button.dataset.dsec === this.sec));
@@ -256,16 +345,12 @@ export class DefaultsTab {
       await this.save(main, { [reset.closest('.df-row').dataset.dk]: null }, 'Возвращено значение программы');
       return;
     }
-    if (event.target.closest('[data-dall]')) {
-      this._resetAll(view);
-      return;
-    }
-    if (event.target.closest('[data-dsave]')) this._saveRows(main);
+    if (event.target.closest('[data-dall]')) this._resetAll(view);
   }
 
   static async _resetAll(view) {
     if (
-      !(await AdminDialog.confirm(
+      !(await AdminDialog.danger(
         'Вернуть все значения программы?',
         'Все ваши значения во всех разделах удалятся, будут действовать значения программы.',
         'Вернуть',
@@ -289,19 +374,6 @@ export class DefaultsTab {
         ? enabled === !!builtin
         : enabled === (opts.req ? true : !opts.off) && (value === String(builtin ?? '') || (!value && !enabled));
     return same ? null : { on: enabled, v: value };
-  }
-
-  static _saveRows(main) {
-    const out = {};
-    main.querySelectorAll('.df-row[data-ch]').forEach(row => {
-      if (!DEF_BY[row.dataset.dk] || !this.validate(row)) return;
-      out[row.dataset.dk] = this._rowValue(row);
-    });
-    if (main.querySelector('.df-row.bad')) {
-      Toast.show('Проверьте значения — отмечены красным');
-      return;
-    }
-    this.save(main, out, 'Значения сохранены — действуют для новых КП и расчётов');
   }
 
   /**
@@ -338,12 +410,7 @@ export class DefaultsTab {
   static async save(main, values, msg) {
     try {
       const reply = await AdminApi.post('defaults', { values });
-      DefRegistry.srv = reply.values || {};
-      try {
-        localStorage.setItem(this.STORE, JSON.stringify(DefRegistry.srv));
-      } catch {
-        // без хранилища браузера
-      }
+      this.remember(reply.values || {});
       Toast.show(msg);
       this.render(main);
     } catch (error) {

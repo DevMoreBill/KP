@@ -12,6 +12,7 @@ import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { AdminGear } from '../../core/admin-gear.js';
 
 /** Вкладка «Логистика»: по каждому поставщику — до границы, маршрут по России, груз, транспорт и разгрузка, цены, итог. */
 export class LgView {
@@ -173,7 +174,7 @@ export class LgCard {
       'Расстояние по дорогам (OSRM, карты OpenStreetMap): между точными адресами, а если адрес не уточнён — от центра города. Пока маршрут не посчитан (нет связи) — по прямой с поправкой на дороги (точность ±5–10 %). Знаете точное — впишите.',
     );
     const inp = DealLogistics.input(sup);
-    return `<div class="lg-sec lg-s-route"><h5><span class="lg-sn">${this.first + 1}</span>${title}</h5>
+    return `<div class="lg-sec lg-s-route"><h5><span class="lg-sn">${this.first + 1}</span>${title}${AdminGear.html('params:log', 'логистика')}${AdminGear.html('carriers', 'тарифы перевозчиков')}</h5>
         ${noWh}
         <div class="lg-route">
           <label class="f"><span>Откуда — ${this.ru ? 'склад поставщика' : 'СВХ / терминал'}${fromQ}</span>

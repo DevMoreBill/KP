@@ -8,11 +8,14 @@ import { AppTabs } from '../core/app-tabs.js';
 import { $ } from '../core/util.js';
 import { MgrLock } from '../features/kp/managers.js';
 import { Templates } from '../features/doc/templates.js';
+import { AdminGear } from '../core/admin-gear.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 
 /** Перерисовка формы КП: полоса шагов, открытый шаг, фокус в поле, боковая панель. */
 export class FormView {
   static NUMBER = /<h2><span class="n">\d+<\/span>/;
+  // шаги, у которых ⚙ ведёт в «Параметры → КП и документы»
+  static GEAR = ['client', 'manager', 'conds', 'price', 'cover'];
 
   /** Перерисовать форму (во время правки позиции каталога — только её карточку). */
   static render() {
@@ -28,7 +31,8 @@ export class FormView {
     const current = Steps.LIST.find(step => step.id === Steps.current) || Steps.LIST[0];
     Morph.apply($('#nav'), Steps.stepperHtml());
     const number = `<h2><span class="n">${Steps.visible().indexOf(current) + 1}</span>`;
-    Morph.apply(form, current.f().replace(this.NUMBER, number) + Steps.navHtml());
+    const gear = this.GEAR.includes(current.id) ? AdminGear.html('params:kp', 'новое КП и условия') : '';
+    Morph.apply(form, current.f().replace(this.NUMBER, number).replace('</h2>', `${gear}</h2>`) + Steps.navHtml());
     // поле осталось тем же узлом — фокус не трогаем (иначе на телефоне прыгает клавиатура)
     if (focusPath && !active.isConnected && !AppTabs.visible($('#edlg'))) this._refocus(form, focusPath);
     this._centerStep();

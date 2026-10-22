@@ -197,7 +197,7 @@ export class BitrixFlow {
     <div class="st-card"><p class="sub">По видам данных${UiKit.tip('<p>Можно задать своё направление каждому виду данных поверх общего.</p><p>Пример: общее — «в обе стороны», а «Компании и контакты» — «только из Битрикса в программу»: сделки и дела обмениваются в обе стороны, а компании в Битриксе программа не создаёт и не правит — только забирает их контакты в справочник клиентов.</p>')}</p>
       ${kinds}
       <p class="muted">Свои направления у менеджеров — в «Менеджеры» (действует и общее, и своё).</p>
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow">Сохранить</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow" data-autosave>Сохранить</button></div></div>`;
   }
 
   /** События вкладки. */
@@ -274,7 +274,7 @@ export class BitrixSend {
       ${kinds}
       ${panel.chk('id="bxCancel"', tasks.cancel !== false, 'Передавать отмену дела («Отменено — …»)')}
       ${panel.chk('id="bxOther"', tasks.other !== false, 'Загружать дела, заведённые в Битриксе вручную')}
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSend">Сохранить</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSend" data-autosave>Сохранить</button></div></div>`;
   }
 
   /**
@@ -356,7 +356,7 @@ export class BitrixSchedule {
       <div class="bx-map"><label>Записей за один обмен${UiKit.tip('<p>Сколько сделок и дел отправить за один раз. Остальное уйдёт следующим обменом. Пример: 200 — при первом включении 1 000 сделок уйдут за 5 обменов (около 8 минут при опросе раз в 90 с).</p>')}</label><input type="number" id="bxBatch" min="10" max="2000" inputmode="numeric" value="${sched.batch || this.BATCH}"></div>
       <div class="bx-map"><label>Попыток отправки записи (потом — «Не отправлено»)${UiKit.tip('<p>Битрикс недоступен или ответил ошибкой — запись пробуется снова с паузой от 1 минуты до часа. После стольких попыток она попадает в «Журнал и проверка → Не отправлено», откуда её можно повторить вручную.</p>')}</label><input type="number" id="bxTries" min="1" max="100" inputmode="numeric" value="${sched.tries || this.TRIES}"></div>
       <p class="muted">Вне часов обмена фоновый обмен ждёт; кнопки «Обменяться сейчас», «Загрузить из Битрикса», «Выгрузить сделку» работают всегда. Повтор после ошибки — с паузой от 1 минуты до часа.</p>
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSched">Сохранить</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSched" data-autosave>Сохранить</button></div></div>`;
   }
 
   /** События вкладки. */

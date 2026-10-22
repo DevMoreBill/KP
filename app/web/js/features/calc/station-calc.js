@@ -18,6 +18,7 @@ import { StationReq } from '../req/station-req.js';
 import { ReqNum } from '../req/req-num.js';
 import { StationUi } from '../station/station-ui.js';
 import { esc } from '../../core/util.js';
+import { AdminGear } from '../../core/admin-gear.js';
 
 /**
  * Расчёт модульной станции по требованиям заказчика, составу и инженерным правилам: каждый шаг — данные, формула,
@@ -106,7 +107,7 @@ export class StationCalc {
     const accept = result.errors.length
       ? `<label class="stl-chk"><input type="checkbox" data-req="${i}" data-rk="accept"${result.accept ? ' checked' : ''}> отклонения согласованы с заказчиком — КП сохраняется</label>`
       : '';
-    return `<details class="stl-air calc stl-sp"${Spoiler.attr(`calc:${station.id}`, !!(result.errors.length && !result.accept))}><summary class="stl-air-h"><b>Расчёт станции</b><span class="${cls}">${text}</span><small class="muted">формулы, коэффициенты, источники · правила ${esc(result.version)}</small></summary>
+    return `<details class="stl-air calc stl-sp"${Spoiler.attr(`calc:${station.id}`, !!(result.errors.length && !result.accept))}><summary class="stl-air-h"><b>Расчёт станции</b>${AdminGear.html('params:rules', 'нормы и расчёты станций')}<span class="${cls}">${text}</span><small class="muted">формулы, коэффициенты, источники · правила ${esc(result.version)}</small></summary>
       <div class="calc-opts"><label class="stl-chk"><input type="checkbox" data-stl="calc" data-i="${i}"${opts.calc ? ' checked' : ''}> в КП — приложение «Расчётная записка» (только по запросу заказчика: в обычном КП — без расчётов)</label>
         ${accept}</div>
       ${iss.length ? `<ul class="stl-iss">${iss.map(issue => `<li class="${issue.level}"><b>${StationCalc.LEVEL[issue.level]}:</b> ${esc(issue.text)}</li>`).join('')}</ul>` : ''}

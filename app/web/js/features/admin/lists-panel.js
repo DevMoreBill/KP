@@ -108,8 +108,8 @@ export class ListsPanel {
   }
 
   _status(own) {
-    if (this.dirty) return 'Есть несохранённые изменения';
-    return own ? 'Действует ваш список' : 'Действует встроенный список';
+    if (this.dirty) return 'Изменяется… сохранится, когда закончите ввод';
+    return `${own ? 'Действует ваш список' : 'Действует встроенный список'} · изменения сохраняются сразу`;
   }
 
   /** Показать. */
@@ -119,26 +119,21 @@ export class ListsPanel {
     const groupHint = (LISTS.groups.find(group => group.id === def.group) || {}).hint;
     const owned = [...LISTS.defs.keys()].filter(key => LISTS.isOwn(key)).length;
     this.main.innerHTML = `<div class="st-card"><p class="muted" style="margin:0">Варианты выпадающих меню и подсказок во всей программе.
-        Изменения видят все пользователи; уже созданные КП не меняются. «Вернуть встроенный» — список, как в программе.</p></div>
+        Изменения сохраняются сразу и видны всем пользователям; уже созданные КП не меняются. «Вернуть встроенный» — список, как в программе.</p></div>
       <div class="ls${ListsPanel.only ? ' st-only' : ''}"><nav class="ls-nav" aria-label="Списки"><label class="ck st-own"><input type="checkbox" data-lsonly data-nodirty${ListsPanel.only ? ' checked' : ''}> Только свои (${owned})</label>${this.navHtml()}</nav>
         <section class="ls-ed"><div class="ls-hd"><h4>${esc(def.label)}${own ? ' <i class="ls-own">свой</i>' : ''}</h4>${def.hint ? `<p class="muted">${esc(def.hint)}</p>` : ''}
           ${groupHint ? `<p class="muted ls-gh">${esc(groupHint)}</p>` : ''}</div>
           ${this.tableHtml()}
           <button type="button" class="btn ls-add" data-lsadd>+ Добавить строку</button>
           <div class="df-bar ls-bar"><span class="muted" id="lsSt">${this._status(own)}</span>
-            <button type="button" class="btn ghost" data-lsreset${own ? '' : ' disabled'}>Вернуть встроенный</button>
-            <button type="button" class="btn" data-lsundo${this.dirty ? '' : ' disabled'}>Отменить</button>
-            <button type="button" class="btn primary" data-lssave${this.dirty ? '' : ' disabled'}>Сохранить</button></div></section></div>`;
+            <button type="button" class="btn ghost" data-lsreset${own ? '' : ' disabled'}>Вернуть встроенный</button></div></section></div>`;
   }
 
   /** Есть несохранённые правки. */
   touch() {
     this.dirty = true;
     const status = $('#lsSt');
-    if (status) status.textContent = 'Есть несохранённые изменения';
-    this.main.querySelectorAll('[data-lssave],[data-lsundo]').forEach(button => {
-      button.disabled = false;
-    });
+    if (status) status.textContent = this._status(false);
   }
 
   /**
@@ -151,8 +146,13 @@ export class ListsPanel {
       const reply = await AdminApi.post('lists', { values });
       LISTS.use(reply.values || {});
       LISTS.cache();
+      const active = document.activeElement;
+      const spot =
+        active && active.dataset && active.dataset.lsf != null ? [active.dataset.lsf, active.dataset.i] : null;
       this.start();
       this.render();
+      if (spot)
+        this.main.querySelector(`[data-lsf="${CSS.escape(spot[0])}"][data-i="${CSS.escape(spot[1])}"]`)?.focus();
       Toast.show(msg);
       FormView.render();
     } catch (error) {
@@ -164,6 +164,10 @@ export class ListsPanel {
   bind() {
     const main = this.main;
     main.onchange = event => {
+      if (event.target.dataset.lsf != null) {
+        this._save();
+        return;
+      }
       if (!event.target.matches('[data-lsonly]')) return;
       ListsPanel.only = event.target.checked;
       main.querySelector('.ls').classList.toggle('st-only', ListsPanel.only);
@@ -186,15 +190,9 @@ export class ListsPanel {
     const drop = target.closest('[data-lsdel]');
     if (drop) {
       this.rows.splice(+drop.dataset.i, 1);
-      this.touch();
-      return this.render();
-    }
-    if (target.closest('[data-lsundo]')) {
-      this.start();
-      return this.render();
+      return this._save();
     }
     if (target.closest('[data-lsreset]')) return this._reset();
-    if (target.closest('[data-lssave]')) return this._save();
     return undefined;
   }
 
@@ -217,8 +215,7 @@ export class ListsPanel {
   _move(index, step) {
     const other = index + step;
     [this.rows[index], this.rows[other]] = [this.rows[other], this.rows[index]];
-    this.touch();
-    this.render();
+    this._save();
   }
 
   async _reset() {
@@ -234,6 +231,7 @@ export class ListsPanel {
   }
 
   _save() {
+    this.dirty = false;
     const def = this.def();
     const rows = this.rows.map(row => def.clean(row)).filter(row => Object.keys(row).length);
     const error = def.validate(rows);
@@ -286,7 +284,7 @@ export class TextsPanel {
     const rows = Math.min(TextsPanel.MAX_ROWS, Math.ceil(text.length / TextsPanel.LINE) + 1);
     return `<div class="tx-r" data-txk="${esc(source)}"><div class="tx-o"><small class="muted">Исходный</small><span>${esc(source)}</span></div>
             <label class="tx-n"><small class="muted">Сейчас</small><textarea rows="${rows}" data-txv aria-label="Новый текст">${esc(text)}</textarea></label>
-            <div class="tx-a"><button type="button" class="btn sm" data-txsave disabled>Сохранить</button><button type="button" class="btn ghost sm" data-txdel>Вернуть исходный</button></div></div>`;
+            <div class="tx-a"><button type="button" class="btn sm" data-txsave hidden>Сохранить</button><button type="button" class="btn ghost sm" data-txdel>Вернуть исходный</button></div></div>`;
   }
 
   /** Показать. */
@@ -335,13 +333,13 @@ export class TextsPanel {
   bind() {
     const timer = new Debounce(TextsPanel.WAIT_MS);
     this.main.oninput = event => {
-      if (event.target.id === 'txQ') {
-        const value = event.target.value;
-        timer.run(() => this._search(value));
-        return;
-      }
+      if (event.target.id !== 'txQ') return;
+      const value = event.target.value;
+      timer.run(() => this._search(value));
+    };
+    this.main.onchange = event => {
       const row = event.target.closest('.tx-r');
-      if (row) row.querySelector('[data-txsave]').disabled = false;
+      if (row && event.target.matches('[data-txv]')) this._click(row.querySelector('[data-txsave]'));
     };
     this.main.onclick = event => this._click(event.target);
   }

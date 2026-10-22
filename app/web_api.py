@@ -619,7 +619,7 @@ class CatalogController(Controller):
         data, query = self.body(), self.query
         max_mb = defaults.SrvVal.get(store(), 'kp.imgMB')
         if len(data) > max_mb * 1024 * 1024:
-            return self.text(413, f'Картинка больше {max_mb} МБ — уменьшите её (предел — «Значения программы»)')
+            return self.text(413, f'Картинка больше {max_mb} МБ — уменьшите её (предел — «Настройки → Параметры»)')
         if data[:8] == b'\x89PNG\r\n\x1a\n':
             ext = '.png'
         elif data[:3] == b'\xff\xd8\xff':

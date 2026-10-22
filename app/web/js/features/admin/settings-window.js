@@ -1,8 +1,7 @@
 import { AdminApi, AdminState } from './admin-core.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { AdminNav } from './admin-nav.js';
-import { SettingsHistoryPanel } from './settings-panels.js';
-import { SettingsSearch, StDirty, StNav } from './settings-tools.js';
+import { SettingsSearch, StAutoSave, StDirty, StNav } from './settings-tools.js';
 import { UiKit } from '../../ui/ui-kit.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { LoginForm } from '../kp/login-form.js';
@@ -111,12 +110,13 @@ export class SettingsWindow {
       AdminLogin.render(dialog, head, status);
       return;
     }
-    AdminState.tab = AdminNav.key(AdminState.tab);
+    AdminState.tab = AdminNav.route(AdminState.tab);
     dialog.innerHTML = `${head}<div class="st-b">${AdminNav.html(AdminState.tab)}
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
     dialog.querySelector('.st-nav .on')?.scrollIntoView({ block: 'nearest' });
     SettingsSearch.bind(dialog);
     StDirty.watch(dialog);
+    StAutoSave.watch(dialog);
     this.tab();
   }
 
@@ -134,7 +134,7 @@ export class SettingsWindow {
     }
   }
 
-  /** Щелчки в окне: история вкладки, вкладка, закрыть, выйти. */
+  /** Щелчки в окне: вкладка, закрыть, выйти. */
   static listen() {
     document.addEventListener('click', event => this._click(event));
   }
@@ -142,14 +142,6 @@ export class SettingsWindow {
   static async _click(event) {
     const dialog = event.target.closest('#setdlg');
     if (!dialog) return;
-    const hist = event.target.closest('[data-sthist]');
-    if (hist) {
-      if (!(await StDirty.leave())) return;
-      SettingsHistoryPanel.filter = hist.dataset.sthist;
-      StNav.select('history');
-      this.tab();
-      return;
-    }
     const tab = event.target.closest('[data-sttab]');
     if (tab) {
       await this._openTab(tab.dataset.sttab);

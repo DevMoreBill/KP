@@ -163,7 +163,7 @@ class BitrixConf:
     def api(self, opener=None) -> 'BitrixApi':
         data = self.get()
         if not data.get('url'):
-            raise BitrixError('Адрес вебхука не задан — «Настройки → Битрикс24 → Связь и включение»')
+            raise BitrixError('Адрес вебхука не задан — «Настройки → Связи → Битрикс24 → Связь и включение»')
         return BitrixApi(data['url'], opener)
 
     def poll(self) -> int:

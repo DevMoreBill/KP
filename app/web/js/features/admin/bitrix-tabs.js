@@ -51,7 +51,7 @@ export class BitrixManagers {
       ${portal.managers.map(manager => this._row(manager, ctx)).join('')}</tbody></table></div>
       <p class="muted">Не участвует — его сделки и дела не уходят в Битрикс и не приходят из него. «Только из Битрикса» — у него правки остаются в программе.</p>
       <div class="bx-map" style="margin-top:10px"><label>Новая сделка Битрикса, ответственный которой не сопоставлен${UiKit.tip('<p>Пользователь Битрикса не найден среди менеджеров программы (новый сотрудник, бот, сайт).</p><p>«Без ответственного» — сделка появится у руководителя во «Весь отдел»; «отдать: …» — сразу этому менеджеру; «не загружать» — останется только в Битриксе.</p>')}</label>${panel.sel('id="bxFb"', fallback, rules.fallback || '', 'Без сопоставленного ответственного')}</div>
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveMgr">Сохранить</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveMgr" data-autosave>Сохранить</button></div></div>`;
   }
 
   /** События вкладки. */
@@ -129,7 +129,7 @@ export class BitrixStages {
       <div class="bx-chips">${others || '<span class="muted">Других воронок нет</span>'}</div>
       <p class="muted">Воронки менеджеров («Менеджеры») загружаются всегда. У каждой воронки — своё соответствие этапов; без стадии этап не передаётся (стадия в Битриксе остаётся как есть), стадии «успех» и «провал» без пары — «Выиграно» и «Проиграно».</p></div>
     <div class="st-card">${shown.map(cat => this._block(cat, ctx)).join('<hr class="bx-hr">')}
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveCats">Сохранить</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveCats" data-autosave>Сохранить</button></div></div>`;
   }
 
   static async _load(cat) {
@@ -224,7 +224,7 @@ export class BitrixFields {
     return `<div class="st-card"><p class="sub">Поле программы ↔ поле сделки Битрикса</p>
       <div class="tzi-tw"><table class="tzi-t bx-ft"><thead><tr><th>Поле программы</th><th>Поле Битрикса</th><th>Направление</th><th>Правка с обеих сторон — главный${UiKit.tip('<p>Что делать, если поле изменили и в программе, и в Битриксе между двумя обменами.</p><p>«Последняя правка» — побеждает более поздняя; «программа» — всегда значение программы; «Битрикс» — всегда значение Битрикса.</p><p>Пример: ожидаемая дата — «последняя правка», ответственный — «Битрикс» (его меняет руководитель в Битриксе).</p>')}</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
       <p class="muted">«Своё поле программы» программа создаёт в сделках Битрикса сама при первом обмене; можно выбрать любое поле портала (в том числе ваши). Экономика и прочие поля — только в Битрикс. Сумма «→ в Битрикс»: сделка без КП берёт сумму из Битрикса; «← из Битрикса» — всегда из Битрикса.</p>
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFields">Сохранить</button><button class="btn ghost" type="button" id="bxFieldsDef">Все поля — по умолчанию</button></div></div>`;
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFields" data-autosave>Сохранить</button><button class="btn ghost" type="button" id="bxFieldsDef">Все поля — по умолчанию</button></div></div>`;
   }
 
   /** События вкладки. */
