@@ -6,6 +6,7 @@ import { JournalEcon, JournalRow } from './journal-row.js';
 import { KpDiff, KpReport } from './kp-report.js';
 import { KpFilesPanel } from './kp-files.js';
 import { KpRepeat } from './kp-repeat.js';
+import { DocsGen } from '../doc/docs-gen.js';
 import { KpTrack } from './kp-track.js';
 import { MailDlg } from './mail-dlg.js';
 import { Managers } from './managers.js';
@@ -311,6 +312,7 @@ export class Journal {
       },
     ],
     ['[data-jkf]', (ctx, button) => Journal._files(ctx, button)],
+    ['[data-jdg]', (ctx, button) => DocsGen.open(button.dataset.jdg)],
     [
       '[data-jr]',
       (ctx, button) => {
@@ -409,7 +411,7 @@ export class KpVersions {
       return;
     }
     const rows = list.length
-      ? list.map((version, index) => this._row(version, list.length - index)).join('')
+      ? list.map((version, index) => this._row(version, list.length - index, list[index + 1])).join('')
       : '<p class="empty">Прежних версий нет — КП сохранялось один раз.</p>';
     const modal = new Modal(
       `<div class="dlg-h"><h3>Версии КП № ${esc(number || id)}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
@@ -420,9 +422,13 @@ export class KpVersions {
     modal.d.onclick = event => this._click({ modal, id, number, closeJournal }, event.target);
   }
 
-  static _row(version, place) {
+  static _row(version, place, older) {
+    const pair =
+      older && FEAT.on('kpCompare')
+        ? `<button class="btn" type="button" data-vp="${older.id}:${version.id}" title="Что изменилось между версиями ${place - 1} и ${place}">С предыдущей</button>`
+        : '';
     return `<div class="st-row"><div><b>Версия ${place}</b><span class="muted">до сохранения ${esc(Fmt.dateTime(version.created))}${version.by ? ` (${esc(version.by)})` : ''}${version.sum != null ? ` · ${KPGen.money(version.sum)} ${esc(Currency.short(version.cur || 'RUB'))}` : ''}${version.client ? ` · ${esc(version.client)}` : ''}</span></div>
-      <div class="acts"><button class="btn" type="button" data-vc="${version.id}" title="Что изменилось с тех пор">Сравнить с текущей</button><button class="btn" type="button" data-vo="${version.id}">Открыть</button></div></div>`;
+      <div class="acts">${pair}<button class="btn" type="button" data-vc="${version.id}" title="Что изменилось с тех пор">Сравнить с текущей</button><button class="btn" type="button" data-vo="${version.id}">Открыть</button></div></div>`;
   }
 
   static _click(ctx, target) {
@@ -433,6 +439,12 @@ export class KpVersions {
     const compare = target.closest('[data-vc]');
     if (compare) {
       KpDiff.open(ctx.id, compare.dataset.vc, ctx.number);
+      return;
+    }
+    const pair = target.closest('[data-vp]');
+    if (pair) {
+      const [older, newer] = pair.dataset.vp.split(':');
+      KpDiff.open(ctx.id, older, ctx.number, newer);
       return;
     }
     const open = target.closest('[data-vo]');

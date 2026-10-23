@@ -74,6 +74,7 @@ from kp_templates import (
     template_file,
 )
 from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
+from our_docs import DocTemplates, OurRequisites
 from server_log import ServerLog
 from storage import Conflict, with_rev
 
@@ -2317,6 +2318,38 @@ class ServiceController(Controller):
         target = getattr(self.server, 'main_server', self.server)
         threading.Thread(target=target.shutdown, daemon=True).start()
         return None
+
+
+class OurDocsController(Controller):
+    """Счёт, спецификация, договор из КП: свои реквизиты и шаблоны Word (изменение — администратор, см. admin.guard)."""
+
+    DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+    @route(r'/api/requisites', ('GET', 'PUT'))
+    def requisites(self) -> Any:
+        own = OurRequisites(store())
+        if self.method == 'PUT':
+            with self.user_input():
+                own.save(self.json_body())
+        return self.send_json({**own.list(), 'templates': DocTemplates(store()).info()})
+
+    @route(r'/api/doctpl/(contract|spec)', ('GET', 'PUT'))
+    def template(self, kind: str) -> Any:
+        tpl = DocTemplates(store())
+        if self.method == 'PUT':
+            with self.user_input():
+                tpl.put(kind, self.body())
+            return self.send_json({'ok': True, 'templates': tpl.info()})
+        data = tpl.read(kind)
+        if data is None:
+            return self.not_found('Шаблон не загружен')
+        return self.send(200, self.DOCX, data, self.attachment(f'{kind}.docx', f'{kind}.docx'))
+
+    @route(r'/api/doctpl/(contract|spec)/remove', 'POST')
+    def template_remove(self, kind: str) -> Any:
+        tpl = DocTemplates(store())
+        tpl.remove(kind)
+        return self.send_json({'ok': True, 'templates': tpl.info()})
 
 
 ROUTER = Router()

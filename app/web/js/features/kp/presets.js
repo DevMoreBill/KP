@@ -12,6 +12,7 @@ import { KpState, S } from '../../core/state.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { KpTabs } from './kp-tabs.js';
+import { KpRepeat } from './kp-repeat.js';
 
 /** Заготовка — КП без клиента (позиции, условия, цены), общая для всех: новое КП из заготовки за один щелчок. */
 export class Presets {
@@ -137,6 +138,7 @@ export class Presets {
     S.items.forEach(item => {
       item.id = Uid.next();
     });
+    const changes = FEAT.on('presetPrices') ? KpRepeat.prices() : [];
     KpTabs.show();
     FormView.render();
     KpState.persist();
@@ -144,6 +146,8 @@ export class Presets {
     window.scrollTo({ top: 0 });
     Steps.open('client');
     Toast.show(`Новое КП по заготовке «${answer.row.title}» — укажите клиента`);
+    if (changes.length)
+      KpRepeat.show(`Заготовка «${answer.row.title}»: цены по каталогу`, 'Позиции и условия — из заготовки.', changes);
   }
 
   /**

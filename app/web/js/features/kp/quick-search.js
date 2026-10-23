@@ -337,6 +337,7 @@ export class QuickSearch {
       if (!item) return;
       Steps.open('equip');
       QuickFind.add(item);
+      Toast.show(`В КП: ${item.name} — позиций ${S.items.length}. Можно искать и добавлять дальше`);
     },
     qcat: (id, query) => {
       const item = CatFind.id(id);
@@ -355,7 +356,7 @@ export class QuickSearch {
       '[data-qkp],[data-qrep],[data-qcl],[data-qdl],[data-qcat],[data-qadd],[data-qall],[data-qcmd],[data-qback]',
     );
     if (!button) return;
-    modal.close();
+    if (!button.dataset.qadd) modal.close(); // «В КП» — окно остаётся: можно добавить ещё
     const key = Object.keys(this._ACTIONS).find(name => button.dataset[name]);
     if (key) this._ACTIONS[key](button.dataset[key], query);
     else if (button.hasAttribute('data-qall')) CatalogWindow.open({ q: query });

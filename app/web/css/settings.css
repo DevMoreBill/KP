@@ -884,3 +884,7 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .ft-how{margin-top:4px;font-size:13px}
 .ft-how>summary{cursor:pointer;color:var(--navy);font-weight:600;min-height:28px;display:inline-flex;align-items:center}
 .ft-how>p{margin:4px 0;line-height:1.45;color:var(--ink)}
+/* «Наши реквизиты»: юрлицо — раскрывающийся блок с полями в сетку */
+.od-item{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:0 0 8px}
+.od-item>summary{cursor:pointer;min-height:32px;display:flex;align-items:center;gap:8px}
+.od-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 10px;margin:6px 0}

@@ -62,7 +62,8 @@ function kpSkeleton(KP) {
     blocks: {
       coverKpis: true, coverTotal: true, coverDetailsNote: true, coverAbout: true, coverAdvantages: true, coverTrust: true,
       equipLogo: true, equipKeyParams: true, equipOptions: true, equipKit: true, equipKitCards: true, offerKit: true, coverKit: true, equipComponents: true, equipFeatures: true, equipSpecs: true, specNote: true, equipGallery: true,
-      discount: true, amountInWords: true, currencyNote: true, footer: true
+      discount: true, amountInWords: true, currencyNote: true, footer: true,
+      signImage: false, stampImage: false   // подпись и печать картинками под контактами (картинки — в «Подпись и печать»)
     },
     // правила заполнения и раскладки
     rules: {
@@ -78,6 +79,8 @@ function kpSkeleton(KP) {
       specLongValueChars: 32,     // значение длиннее — выводится текстом во всю ширину карточки
       heroPhotoHeightCm: 6.5,     // высота рамки главного фото на странице оборудования
       keyParamsMax: 6,            // плиток ключевых параметров рядом с фото
+      signWidthCm: 3.5, stampWidthCm: 4, // ширина картинок подписи и печати
+      stampX: 4, stampY: -2.2,    // печать: от левого края текста и от строки подписи, см
       keyParamMaxChars: 28,       // значения длиннее в плитки не берутся
       componentPhotoWidthCm: 4.6, componentPhotoHeightCm: 3.2,
       kitKeyParams: 3,            // характеристик элемента в таблице «Состав изделия» (полностью — в карточке элемента)
@@ -129,7 +132,7 @@ function kpSkeleton(KP) {
       currencyNote: 'Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.',
       currencyRate: ' Справочно: курс ЦБ РФ{rateDate} — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.',
       conditionsTitle: 'Условия предложения', condExtraTitle: 'Дополнительные условия', contactsTitle: 'Контактная информация',
-      closing1: 'С уважением и надеждой', closing2: 'на плодотворное сотрудничество',
+      signLine: 'Подпись:', closing1: 'С уважением и надеждой', closing2: 'на плодотворное сотрудничество',
       phone: 'Телефон', ext: ' доб. {ext}', mobile: 'Мобильный', email: 'E-mail', site: 'Сайт', hours: 'Часы работы', address: 'Адрес',
       footerText: 'Технико-коммерческое предложение для'
     },
@@ -1139,7 +1142,21 @@ function kpSkeleton(KP) {
 
   // ================================================================ КОНТАКТНАЯ ИНФОРМАЦИЯ
   // плашка по высоте текста: длинная должность или адрес не обрезаются; телефоны — одной строкой
-  function contactsXml(S, sec) {
+  // подпись и печать картинками: печать плавает поверх подписи, как на бумаге
+  function signXml(M, floats) {
+    const g = M.sign || {};
+    if (!g.sign && !g.stamp) return '';
+    const sign = g.sign ? img(g.sign.rid, cm(RULES.signWidthCm || 3.5), Math.round(cm(RULES.signWidthCm || 3.5) * g.sign.h / g.sign.w), 'Подпись') : '';
+    let stamp = '';
+    if (g.stamp) {
+      const id = ++PID, cx = cm(RULES.stampWidthCm || 4), cy = Math.round(cx * g.stamp.h / g.stamp.w);
+      floats.push({ kind: 'img', id: 'stamp', behind: false });
+      stamp = anchorRun(picXml(id, g.stamp.rid, cx, cy, 'Печать'), id, cx, cy, +RULES.stampX || 0, +RULES.stampY || 0, 'Печать', '', false);
+    }
+    return p(stamp + r(T.signLine + NB, 'contactLabel') + sign, { before: 240 });
+  }
+
+  function contactsXml(S, sec, M, floats) {
     const out = [headingFor(T.contactsTitle, sec, 520)];
     const m = S.manager || {};
     const LBL = tx => p(r(tx, 'contactLabel'), { after: 50 });
@@ -1161,6 +1178,7 @@ function kpSkeleton(KP) {
     const bh = Math.max(3420, Math.round((560 + hTop + r1 + r2) * 1.05));
     out.push(bgpara(W, bh, LIGHT, 180));
     out.push(tbl([[tc(top + grid + END, W, { va: 'top', mar: [340, 340, 200, 340] })]], [W], { heights: { 0: bh } }));
+    out.push(signXml(M, floats));
     return out.join('');
   }
 
@@ -1237,13 +1255,14 @@ function kpSkeleton(KP) {
     M.thumbs = {}; for (const k in (Min.thumbs || {})) M.thumbs[k] = reg(Min.thumbs[k]);
     for (const id in (Min.items || {})) M.items[id] = { tile: reg(Min.items[id].tile), logo: reg(Min.items[id].logo), gallery: (Min.items[id].gallery || []).map(reg).filter(Boolean), featImgs: Object.fromEntries(Object.entries(Min.items[id].featImgs || {}).map(([k, v]) => [k, reg(v)])),
       kitImgs: Object.fromEntries(Object.entries(Min.items[id].kitImgs || {}).map(([k, v]) => [k, reg(v)])) };
+    M.sign = { sign: BLK.signImage ? reg((Min.sign || {}).sign) : null, stamp: BLK.stampImage ? reg((Min.sign || {}).stamp) : null };
     const parts = {
       cover: () => coverXml(S, M),
       clients: sec => clientsXml(S, sec),
       equipment: () => equipmentXml(S, M),
       offer: sec => offerXml(S, sec),
       conditions: sec => conditionsXml(S, sec),
-      contacts: sec => contactsXml(S, sec)
+      contacts: sec => contactsXml(S, sec, M, floats)
     };
     // свои картинки и надписи шаблона: строкой в начале / конце раздела или свободно на странице (плавающий объект,
     // привязанный к крошечному абзацу на этом месте). floats — плавающие объекты по порядку (для предпросмотра)
@@ -1311,5 +1330,5 @@ function kpSkeleton(KP) {
   // features — что скелет умеет выводить сам; без 'discount' программа передаёт цены уже со скидкой,
   // 'header' — шапка из настроек, 'images' — дополнительные картинки, 'design' — пометки графического редактора,
   // 'kit' — сборки: состав изделия приходит как есть (it.kit.parts), а не разложенным в описание
-  return { defaults: DEFAULTS, build, features: ['discount', 'header', 'images', 'design', 'kit'] };
+  return { defaults: DEFAULTS, build, features: ['discount', 'header', 'images', 'design', 'kit', 'sign'] };
 }

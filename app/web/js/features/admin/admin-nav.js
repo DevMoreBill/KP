@@ -5,6 +5,7 @@ import { DangerZone } from './danger-zone.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { FeedsTab } from './feeds-tab.js';
 import { RecordsTab } from './records-tab.js';
+import { OurDocsTab } from './our-docs-tab.js';
 import { SettingsFileCard } from './settings-file.js';
 import { AccessPanel, AdminsTab, SecurityTab } from './staff-tabs.js';
 import { BackupTab } from './backup-tab.js';
@@ -168,6 +169,12 @@ export class AdminNav {
           label: 'Шаблоны КП',
           hint: 'Оформление документа КП: графический редактор, настройки шаблона, новый шаблон для другой компании.',
           open: main => TemplatesTab.render(main),
+        },
+        {
+          key: 'ourdocs',
+          label: 'Наши реквизиты',
+          hint: 'Юрлица продавца для счёта, спецификации и договора из КП; свои шаблоны Word договора и спецификации с метками.',
+          open: main => OurDocsTab.render(main),
         },
         {
           key: 'mail',

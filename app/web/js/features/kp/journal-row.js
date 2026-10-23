@@ -220,6 +220,13 @@ export class JournalRow {
             'Паспорта, сертификаты, схемы к КП — в документ КП не входят',
           )
         : '',
+      row.file && FEAT.on('docsGen')
+        ? item(
+            `data-jdg="${id}"`,
+            'Счёт, спецификация, договор…',
+            'Документы Word из КП: продавец — из «Наших реквизитов»',
+          )
+        : '',
       row.locked || !FEAT.on('deal') ? '' : item(`data-je="${id}"`, 'Экономика сделки'),
       FEAT.on('versions') ? item(`data-jv="${id}" data-jn="${esc(row.number)}"`, 'Прежние версии КП') : '',
     ];

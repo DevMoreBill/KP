@@ -214,3 +214,6 @@ dialog.st-confirm.kf-dlg{width:min(760px,calc(100vw - 32px));max-width:none}
 .dk-ce{grid-column:1/-1;justify-self:start;border:0;background:none;padding:4px 0;color:var(--navy);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .dk-ce:hover{text-decoration:underline}
 @media (max-width:760px){.ccc-a{min-height:44px}.ccc-e{min-width:44px;min-height:44px}.dk-ce{min-height:44px}}
+/* окно «Документы по КП» и «Проверьте цены» */
+.dg-btns{gap:8px;margin:10px 0;flex-wrap:wrap}
+.pg-list{margin:6px 0 12px;padding-left:20px;line-height:1.5}

@@ -1,4 +1,5 @@
 import { Currency } from './currency.js';
+import { DocsGen } from '../doc/docs-gen.js';
 import { KpFilesPanel } from './kp-files.js';
 import { KpTrack } from './kp-track.js';
 import { NewKp } from './new-kp.js';
@@ -59,7 +60,7 @@ export class KpSaved {
       : '';
     return `<section><p class="sub">Файл</p><div class="ks-b">${this._btn(`data-a="openDoc" data-id="${id}"`, remote ? 'Скачать .docx' : 'Открыть в Word')}${result.pdfOk ? this._btn(`data-a="openPdf" data-id="${id}"`, remote ? 'Скачать PDF' : 'Открыть PDF') : ''}
           ${remote && !Srv.info.docsShare ? '' : this._btn(`data-a="showDoc" data-id="${id}"`, remote ? 'Путь к файлу' : 'Показать в папке')}
-          ${files}</div></section>`;
+          ${files}${FEAT.on('docsGen') ? this._btn('data-ks="docs"', '🧾 Счёт, спецификация, договор', '', 'Документы Word из этого КП: продавец — из «Наших реквизитов»') : ''}</div></section>`;
   }
 
   static _client() {
@@ -101,6 +102,7 @@ export class KpSaved {
       modal.close();
       Presets.ask();
     },
+    docs: () => DocsGen.open(S.kpId),
     sent: (modal, button) => KpSaved._sent(button),
     remind: modal => KpSaved._remind(modal),
   };

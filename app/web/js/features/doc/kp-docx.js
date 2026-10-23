@@ -12,6 +12,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { Currency } from '../kp/currency.js';
 import { ItemLinks } from '../catalog/item-links.js';
 import { S } from '../../core/state.js';
+import { FEAT } from '../../core/features.js';
 
 /**
  * Сборка файла .docx КП: основа Word из шаблона + страницы по скелету шаблона с настройками; картинки — в пакет
@@ -84,7 +85,7 @@ export class KpDocx {
     if (features.includes('images')) media.extra = await this._extra(zip, pack, settings);
     const page = await this._page(zip, pack, settings, features);
     state.items = await this._kit(zip, state, media, features);
-    if (features.includes('sign')) media.sign = await this._sign(zip, pack, settings);
+    if (features.includes('sign') && FEAT.on('kpStamp')) media.sign = await this._sign(zip, pack, settings);
     // скелет, не умеющий показывать скидку (свой или старый), получает цены уже со скидкой — суммы сходятся
     if (!features.includes('discount')) {
       state.items = state.items.map(item => ({ ...item, price: KPGen.netPrice(item), disc: undefined }));

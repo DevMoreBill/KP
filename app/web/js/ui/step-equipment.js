@@ -196,7 +196,18 @@ export class QuickFind {
     const cached = this.HAY.get(card);
     if (cached && cached.attrs === attrs) return cached.hay;
     const hay = Str.norm(
-      [card.name, card.spec, attrs.maker, attrs.model, attrs.series, attrs.engine, attrs.alternator].join(' '),
+      [
+        card.name,
+        card.spec,
+        attrs.maker,
+        attrs.model,
+        attrs.series,
+        attrs.engine,
+        attrs.alternator,
+        card.art,
+        card.feed && card.feed.sku,
+        attrs.article,
+      ].join(' '),
     );
     this.HAY.set(card, { attrs, hay });
     return hay;

@@ -23,6 +23,12 @@ export class DocxWriter {
     'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
   static XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   static MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  static LINE = 'w:val="single" w:sz="4" w:color="000000"';
+  static FRAMES = {
+    style: '<w:tblStyle w:val="Grid"/>',
+    lines: `<w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(side => `<w:${side} ${DocxWriter.LINE}/>`).join('')}</w:tblBorders>`,
+    none: '',
+  };
 
   /**
    * @param {{title?: string, author?: string, footer?: string, margins?: number[]}} [options] title и author — свойства
@@ -167,28 +173,33 @@ export class DocxWriter {
   }
 
   /**
-   * Таблица: ширины столбцов (мм, сумма — по ширине поля), заголовки, строки (строка или куски текста в ячейке).
+   * Таблица: ширины столбцов (мм, сумма — по ширине поля), заголовки, строки. Ячейка — строка, куски текста или
+   * {text, align}. Рамки: frame 'style' — стилем документа, 'lines' — линиями в самой таблице (для чужого шаблона Word),
+   * 'none' — без рамок (строки подписей).
    * @param {number[]} cols
    * @param {Array|null} head
    * @param {Array[]} rows
+   * @param {{frame?: 'style'|'lines'|'none'}} [look]
    * @returns {DocxWriter}
    */
-  table(cols, head, rows) {
+  table(cols, head, rows, look = {}) {
     const scale = this.width / cols.reduce((sum, width) => sum + width, 0);
     const twips = cols.map(width => Math.round(width * scale * DocxWriter.TWIPS_PER_MM));
     const row = (cells, isHead) =>
       `<w:tr><w:trPr><w:cantSplit/>${isHead ? '<w:tblHeader/>' : ''}</w:trPr>${cells.map((text, j) => this._cell(text, twips[j], isHead)).join('')}</w:tr>`;
     this.body.push(
-      `<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/><w:tblW w:w="${twips.reduce((sum, width) => sum + width, 0)}" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr>` +
+      `<w:tbl><w:tblPr>${DocxWriter.FRAMES[look.frame || 'style']}<w:tblW w:w="${twips.reduce((sum, width) => sum + width, 0)}" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr>` +
         `<w:tblGrid>${twips.map(width => `<w:gridCol w:w="${width}"/>`).join('')}</w:tblGrid>${head ? row(head, true) : ''}${rows.map(cells => row(cells, false)).join('')}</w:tbl>`,
     );
     return this.para('', { after: DocxWriter.ITEM_AFTER });
   }
 
-  _cell(text, width, isHead) {
+  _cell(cell, width, isHead) {
+    const own = cell && typeof cell === 'object' && !Array.isArray(cell) ? cell : { text: cell };
+    const align = own.align ? `<w:jc w:val="${own.align}"/>` : '';
     return (
       `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${isHead ? '<w:shd w:val="clear" w:color="auto" w:fill="E8EEF5"/>' : ''}</w:tcPr>` +
-      `<w:p><w:pPr><w:spacing w:before="20" w:after="20"/>${isHead ? '<w:keepNext/>' : ''}</w:pPr>${DocxWriter.runs(text, isHead ? { b: true } : {})}</w:p></w:tc>`
+      `<w:p><w:pPr><w:spacing w:before="20" w:after="20"/>${isHead ? '<w:keepNext/>' : ''}${align}</w:pPr>${DocxWriter.runs(own.text, isHead ? { b: true } : {})}</w:p></w:tc>`
     );
   }
 

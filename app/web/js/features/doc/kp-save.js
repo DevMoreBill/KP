@@ -4,6 +4,7 @@ import { KpFile } from './kp-file.js';
 import { PdfExport } from './pdf-export.js';
 import { Templates } from './templates.js';
 import { KpSaved } from '../kp/kp-saved.js';
+import { PriceGuard } from '../kp/price-guard.js';
 import { FEAT } from '../../core/features.js';
 import { DealXlsx } from '../deal/deal-xlsx.js';
 import { DealPlan, KpLines } from '../deal/deal-side.js';
@@ -102,6 +103,7 @@ export class KpSave {
   }
 
   static async _save(button) {
+    if (!(await PriceGuard.confirm('Сохранить'))) throw this._declined('цены не проверены');
     await StationImages.syncAll(); // 3D-вид и чертёж станций — по текущему составу
     if (!StationImages.confirmSave()) throw this._declined('изображения станции не готовы');
     MgrLock.apply(); // вход по паролю: в КП — контакты вошедшего менеджера

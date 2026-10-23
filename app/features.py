@@ -43,6 +43,11 @@ FEATURES = {
     'forecast': (True, 'Прогноз месяца'),
     'callHistory': (True, 'Звонки клиенту в сделке'),
     'notify': (True, 'Уведомления в браузере'),
+    'presetPrices': (True, 'Цены заготовки из каталога'),
+    'kpCompare': (True, 'Сравнение версий КП'),
+    'priceGuard': (True, 'Проверка цен перед сохранением'),
+    'docsGen': (True, 'Счёт, спецификация и договор из КП'),
+    'kpStamp': (True, 'Подпись и печать в КП'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -62,7 +67,16 @@ NEEDS = dict.fromkeys(
     ),
     'myDay',
 )
-NEEDS.update({'stLayout': 'stations', 'carriers': 'deal', 'reminders': 'track', 'autosave': 'drafts'})
+NEEDS.update(
+    {
+        'presetPrices': 'presets',
+        'kpCompare': 'versions',
+        'stLayout': 'stations',
+        'carriers': 'deal',
+        'reminders': 'track',
+        'autosave': 'drafts',
+    }
+)
 
 # адреса функции: (метод или None — любой, шаблон пути, ключ)
 ROUTES = [
@@ -81,6 +95,7 @@ ROUTES = [
     (None, re.compile(r'^/api/crm/deal/d\d{1,9}/files(/.*)?$'), 'dealDocs'),
     (None, re.compile(r'^/api/crm/intake$'), 'intake'),
     (None, re.compile(r'^/api/crm/deal/d\d{1,9}/(remove|restore)$'), 'dealDelete'),
+    ('GET', re.compile(r'^/api/doctpl/(contract|spec)$'), 'docsGen'),
     (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]
 

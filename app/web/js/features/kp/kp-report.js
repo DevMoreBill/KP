@@ -319,14 +319,16 @@ export class KpDiff {
    * @param {string} id КП
    * @param {string|number} vid версия
    * @param {string} [number]
+   * @param {string|number} [toVid] вторая версия (пусто — сравнить с текущим КП)
    */
-  static async open(id, vid, number) {
+  static async open(id, vid, number, toVid = '') {
     let was;
     let now;
+    const base = `/api/kp/${encodeURIComponent(id)}`;
     try {
       [was, now] = await Promise.all([
-        Api.request(`/api/kp/${encodeURIComponent(id)}/versions/${vid}`),
-        Api.request(`/api/kp/${encodeURIComponent(id)}/state`),
+        Api.request(`${base}/versions/${vid}`),
+        Api.request(toVid ? `${base}/versions/${toVid}` : `${base}/state`),
       ]);
     } catch (error) {
       Toast.show(`Не удалось сравнить: ${error.message}`);
@@ -334,7 +336,7 @@ export class KpDiff {
     }
     const rows = this.rows(was, now);
     const table = rows.length
-      ? `<div class="rp-tw"><table class="rp-tb kd-tb"><thead><tr><th>Что</th><th>Было (выбранная версия)</th><th>Стало (текущее КП)</th></tr></thead><tbody>
+      ? `<div class="rp-tw"><table class="rp-tb kd-tb"><thead><tr><th>Что</th><th>Было (${toVid ? 'предыдущая версия' : 'выбранная версия'})</th><th>Стало (${toVid ? 'следующая версия' : 'текущее КП'})</th></tr></thead><tbody>
         ${rows.map(([what, before, after]) => `<tr><td>${esc(what)}</td><td class="was">${esc(before)}</td><td class="now">${esc(after)}</td></tr>`).join('')}</tbody></table></div>`
       : '<p class="empty">Отличий в позициях, ценах и условиях нет (менялось только оформление).</p>';
     const modal = new Modal(

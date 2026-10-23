@@ -7,6 +7,7 @@ import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
+import { PriceGuard } from './price-guard.js';
 import { Fmt } from '../../core/str.js';
 
 /** Письмо клиенту с файлом КП (сервер отправляет через почту из «Настройки → Почта»). */
@@ -113,6 +114,7 @@ export class MailDlg {
     }
     const button = target.closest('[data-send]');
     if (!button) return;
+    if (id === S.kpId && !(await PriceGuard.confirm('Отправить'))) return;
     const msg = modal.$('#mlMsg');
     button.disabled = true;
     button.textContent = 'Отправляю…';

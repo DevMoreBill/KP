@@ -893,6 +893,11 @@ def guard(handler, store, method, path) -> Any:
         return lambda: log(
             handler, store, 'edit_settings', 'settings', 'logistics', None, {'tariffs': True}, admin=True
         )
+    # только администратор: «Наши реквизиты» и свои шаблоны договора и спецификации
+    if path.startswith(('/api/requisites', '/api/doctpl/')) and method != 'GET':
+        if not is_admin(handler):
+            return _refuse(handler, store, 'edit_settings', 'settings', 'ourDocs')
+        return lambda: log(handler, store, 'edit_settings', 'settings', 'ourDocs', None, {'path': path}, admin=True)
     # только администратор: резервная копия ключей API (ключи целиком)
     if path == '/api/integrations/export':
         if not is_admin(handler):

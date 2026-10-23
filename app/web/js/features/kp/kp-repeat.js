@@ -32,7 +32,7 @@ export class KpRepeat {
     S.date = today();
     S.authorId = Managers.meId() || S.managerId || '';
     if (S.tender && S.tender.on) S.tender = { on: true, number: '', url: '' }; // другая закупка
-    const changes = this._prices();
+    const changes = this.prices();
     KpTabs.show();
     FormView.render();
     KpState.persist();
@@ -42,10 +42,14 @@ export class KpRepeat {
       Toast.show(`Новое КП по № ${was}: цены как в каталоге, даты — сегодняшние`);
       return;
     }
-    this._show(was, changes);
+    this.show(`Повтор КП № ${was}: цены по каталогу`, `Клиент и позиции — как в КП № ${was}, дата — сегодня.`, changes);
   }
 
-  static _prices() {
+  /**
+   * Цены позиций открытого КП — как сейчас в каталоге.
+   * @returns {object[]} изменённые: {name, now, cat, pct}
+   */
+  static prices() {
     const changes = [];
     for (const item of S.items) {
       const diff = CatPrice.diff(item);
@@ -57,7 +61,13 @@ export class KpRepeat {
     return changes;
   }
 
-  static _show(was, changes) {
+  /**
+   * Окно «какие цены изменились».
+   * @param {string} title
+   * @param {string} intro
+   * @param {object[]} changes
+   */
+  static show(title, intro, changes) {
     const rows = changes
       .map(
         change =>
@@ -65,8 +75,8 @@ export class KpRepeat {
       )
       .join('');
     const modal = new Modal(
-      `<div class="dlg-h"><h3>Повтор КП № ${esc(was)}: цены по каталогу</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <p class="muted" style="margin:0 0 8px">Клиент и позиции — как в КП № ${esc(was)}, дата — сегодня. У этих позиций цена теперь как в каталоге:</p>
+      `<div class="dlg-h"><h3>${esc(title)}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
+      <p class="muted" style="margin:0 0 8px">${esc(intro)} У этих позиций цена теперь как в каталоге:</p>
       <table class="pv-t kr-t"><thead><tr><th>Позиция</th><th class="num">Было</th><th class="num">Стало</th><th class="num">%</th></tr></thead><tbody>
       ${rows}
       </tbody></table><div class="row" style="margin-top:12px"><button class="btn primary" type="button" data-x>Понятно</button></div>`,
