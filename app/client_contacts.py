@@ -17,24 +17,25 @@ class ClientContacts:
     def __init__(self, store) -> None:
         self.store = store
 
-    def save(self, cid: str, index: Any, raw: Any, author: str) -> list[dict]:
-        """Записать контакт: `index` — номер в списке (правка) или None (новый). ValueError — понятным текстом."""
-        client = self.store.client_get(cid)
-        if not isinstance(client, dict) or not client:
-            raise LookupError('Клиент не найден в справочнике — сначала сохраните КП с этим клиентом')
-        person = self.clean(raw)
-        rows = [dict(row) for row in client.get('contacts') or [] if isinstance(row, dict)]
-        spot = self._spot(rows, index)
-        self._unique(rows, person['name'], spot)
-        if spot is None:
-            if len(rows) >= self.MAX:
-                raise ValueError(f'У клиента уже {self.MAX} контактов — исправьте один из них')
-            rows.insert(0, person)
-        else:
-            rows[spot].update(person)
-        doc = {key: value for key, value in client.items() if key != '_rev'}
-        doc['contacts'] = rows
-        self.store.client_put(cid, doc, author)
+    def save(self, cid: str, target: Any, raw: Any, author: str) -> list[dict]:
+        """Записать контакт: `target` — {was: прежнее ФИО} или номер строки (правка), None — новый. ValueError — понятно."""
+        with self.store.lock:  # прочитать и записать одним шагом: два менеджера сразу не теряют правки друг друга
+            client = self.store.client_get(cid)
+            if not isinstance(client, dict) or not client:
+                raise LookupError('Клиент не найден в справочнике — сначала сохраните КП с этим клиентом')
+            person = self.clean(raw)
+            rows = [dict(row) for row in client.get('contacts') or [] if isinstance(row, dict)]
+            spot = self._spot(rows, target)
+            self._unique(rows, person['name'], spot)
+            if spot is None:
+                if len(rows) >= self.MAX:
+                    raise ValueError(f'У клиента уже {self.MAX} контактов — исправьте один из них')
+                rows.insert(0, person)
+            else:
+                rows[spot].update(person)
+            doc = {key: value for key, value in client.items() if key != '_rev'}
+            doc['contacts'] = rows
+            self.store.client_put(cid, doc, author)
         return rows
 
     def clean(self, raw: Any) -> dict:
@@ -51,12 +52,19 @@ class ClientContacts:
             raise ValueError('Почта указана с ошибкой')
         return person
 
-    @staticmethod
-    def _spot(rows: list[dict], index: Any) -> int | None:
-        if index is None or index == '':
+    @classmethod
+    def _spot(cls, rows: list[dict], target: Any) -> int | None:
+        if isinstance(target, dict) and target.get('was'):
+            # по прежнему ФИО: коллега мог тем временем добавить контакт, и номера строк сдвинулись
+            was = cls.key(target['was'])
+            found = [pos for pos, row in enumerate(rows) if cls.key(row.get('name')) == was]
+            if not found:
+                raise ValueError('Контакт уже изменили — откройте карточку клиента заново')
+            return found[0]
+        if target is None or target == '':
             return None
         try:
-            spot = int(index)
+            spot = int(target)
         except (TypeError, ValueError):
             raise ValueError('Контакт не найден — обновите карточку клиента') from None
         if not 0 <= spot < len(rows):
@@ -64,8 +72,13 @@ class ClientContacts:
         return spot
 
     @staticmethod
-    def _unique(rows: list[dict], name: str, spot: int | None) -> None:
-        key = re.sub(r'\s+', ' ', name).strip().lower()
+    def key(name: Any) -> str:
+        """ФИО для сравнения: без лишних пробелов и регистра."""
+        return re.sub(r'\s+', ' ', str(name or '')).strip().lower()
+
+    @classmethod
+    def _unique(cls, rows: list[dict], name: str, spot: int | None) -> None:
+        key = cls.key(name)
         for pos, row in enumerate(rows):
-            if pos != spot and re.sub(r'\s+', ' ', str(row.get('name') or '')).strip().lower() == key:
+            if pos != spot and cls.key(row.get('name')) == key:
                 raise ValueError(f'Контакт «{name}» уже есть — исправьте его')

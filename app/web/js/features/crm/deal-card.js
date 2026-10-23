@@ -231,7 +231,8 @@ export class DealCard {
   // «Сделка»: клиент и контакт, сумма и дата договора, заметка, КП; редкое — под раскрытием
   static _dealTab(deal) {
     const offers = deal.kps || [];
-    return `${this._about(deal)}<section class="dk-blk dk-kps"><h4 class="dk-bh">КП по сделке${offers.length ? ` <b class="md-c">${offers.length}</b>` : ''}</h4>${this._kps(deal)}</section>${this._rare(deal)}`;
+    const head = `<h4 class="dk-bh">КП по сделке${offers.length ? ` <b class="md-c">${offers.length}</b>` : ''}</h4>`;
+    return `${this._about(deal)}<section class="dk-blk dk-kps"><div class="dk-bhr">${head}${this._kpButtons()}</div>${this._kps(deal)}</section>${this._rare(deal)}`;
   }
 
   // значки панели шапки — линиями, одного размера и толщины
@@ -374,7 +375,7 @@ export class DealCard {
       <section class="dk-blk"><h4 class="dk-bh">Деньги и сроки</h4><div class="dk-f dk-money">${this._sumField(deal)}
       <div class="dk-due"><label class="f"><span>Ожидаемая дата договора</span><input type="date" data-dkf="expected" value="${esc(deal.expected || '')}"></label>
       <div class="dk-dchips">${DateChips.html(DateChips.DEAL, 'expected', deal.expected)}</div></div></div></section>
-      <section class="dk-blk"><h4 class="dk-bh">Заметка</h4><textarea data-dkf="note" rows="3" maxlength="3000" aria-label="Заметка" placeholder="Кратко о заявке: что нужно клиенту, кто решает, бюджет, сроки">${esc(deal.note || '')}</textarea></section>`;
+      <section class="dk-blk"><h4 class="dk-bh">Заметка</h4><textarea data-dkf="note" rows="2" maxlength="3000" aria-label="Заметка" placeholder="Кратко о заявке: что нужно клиенту, кто решает, бюджет, сроки">${esc(deal.note || '')}</textarea></section>`;
   }
 
   // редкое — воронка, ответственный, наша компания — под раскрытием
@@ -436,8 +437,12 @@ export class DealCard {
   static _kps(deal) {
     const rows =
       (deal.kps || []).map(offer => this._kpRow(offer)).join('') ||
-      '<p class="empty">КП ещё нет. <button class="btn sm primary" type="button" data-dknew>＋ Создать КП</button></p>';
-    return `${rows}<div class="row dk-kb"><button class="btn" type="button" data-dknew>＋ Новое КП для сделки</button><button class="btn ghost" type="button" data-dklink title="КП этого клиента из журнала — в эту сделку">Добавить КП клиента</button></div>`;
+      '<p class="muted dk-nokp">КП ещё нет — «＋ Новое КП» справа.</p>';
+    return rows;
+  }
+
+  static _kpButtons() {
+    return `<div class="dk-kb"><button class="btn sm" type="button" data-dknew>＋ Новое КП</button><button class="btn sm ghost" type="button" data-dklink title="КП этого клиента из журнала — в эту сделку">Добавить КП клиента</button></div>`;
   }
 
   static _kpRow(offer) {

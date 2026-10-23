@@ -785,3 +785,26 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .fd-none{margin:0 0 6px;font-size:13px}
 .tf-more>summary{cursor:pointer;min-height:36px;display:flex;align-items:center;font-size:13px;color:var(--navy)}
 .tf-none{margin:4px 0;font-size:13px}
+/* вкладка «Сделка» плотнее по высоте: меньше отступов, сроки рядом с датой, КП в строку (3.192.2) */
+.dk-blk+.dk-blk{margin-top:10px;padding-top:10px}
+.dk-bh{margin-bottom:6px}
+.dk-cl{margin-top:8px;gap:6px}
+.dk-pp{padding:7px 10px;gap:1px}
+.dk-pa{min-height:24px}
+.dk-ce{grid-column:auto;align-self:center;justify-self:start}
+.dk-money{grid-template-columns:minmax(0,260px) minmax(0,1fr);max-width:900px;gap:8px 16px}
+.dk-due{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.dk-due .f{flex:0 1 190px;min-width:160px}
+.dk-due .dk-dchips{flex:none;padding-bottom:3px}
+.dk-bhr{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.dk-bhr .dk-bh{margin:0}
+.dk-kps .dk-kb{display:flex;gap:6px;margin:0;flex-wrap:wrap}
+.dk-kps .md-r{padding:6px 0}
+.dk-kps .md-r>div{display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:1px}
+.dk-kps .md-r>div>.md-st{order:1;margin:0}
+.dk-kps .md-r>div>.muted{order:2;flex-basis:100%}
+.dk-kps .empty{margin:4px 0}
+.dk-rare{margin-top:6px}
+.dk-rare>summary{min-height:30px}
+@media (max-width:760px){.dk-money{grid-template-columns:minmax(0,1fr)}.dk-due .f{flex:1 1 100%}.dk-due .dk-dchips{flex-basis:100%}.dk-ce{grid-column:1/-1}.dk-pa{min-height:44px}.dk-rare>summary{min-height:44px}}
+.dk-nokp{margin:2px 0;font-size:13px}

@@ -87,7 +87,7 @@ export class ClientContactsView {
         `<label class="f"><span>${field.label}${field.key === 'name' ? ' <em class="uf-req">*</em>' : ''}</span><input type="${field.type}" inputmode="${field.mode}" data-cccf="${field.key}" maxlength="${field.max}" value="${esc(row[field.key] || '')}" placeholder="${field.hint}"></label>`,
     ).join('');
     const title = index === 'new' ? 'Новый контакт' : 'Изменить контакт';
-    return `<div class="ccc-f" data-ccci="${index}" role="group" aria-label="${title}"><b class="ccc-t">${title}</b>${inputs}
+    return `<div class="ccc-f" data-ccci="${index}" data-cccw="${esc(row.name || '')}" role="group" aria-label="${title}"><b class="ccc-t">${title}</b>${inputs}
       <div class="row"><button class="btn" type="button" data-cccx>Отмена</button><span class="sp"></span><button class="btn primary" type="button" data-cccs>Сохранить</button></div></div>`;
   }
 
@@ -113,7 +113,7 @@ export class ClientContactsView {
       const answer = await Api.request('/api/clientcard/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({ id: ctx.client.id, index: spot === 'new' ? null : Number(spot), contact }),
+        body: JSON.stringify({ id: ctx.client.id, was: spot === 'new' ? '' : form.dataset.cccw, contact }),
       });
       ctx.client.contacts = answer.contacts || [];
       this._redraw(ctx, null);

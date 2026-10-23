@@ -1494,7 +1494,8 @@ class Scenario(UiRun):
         box = 'dialog.cc-dlg[open]'
         pg.wait_for_selector(box + ' [data-ccca]', timeout=15000)
         pg.click(box + ' [data-ccca]')
-        pg.fill(box + ' [data-cccf="name"]', 'Сидоров Пётр Ильич')
+        name = 'Сидоров Пётр (%s)' % self.mode  # режимы идут параллельно на одном стенде
+        pg.fill(box + ' [data-cccf="name"]', name)
         pg.fill(box + ' [data-cccf="phone"]', '+7 900 555-66-77')
         pg.click(box + ' [data-cccs]')
         pg.wait_for_selector(box + ' [data-ccce="0"]', timeout=10000)
@@ -1504,12 +1505,12 @@ class Scenario(UiRun):
         pg.click(box + ' [data-cccs]')
         self.wait(800)
         text = pg.locator(box + ' #ccPeople').inner_text()
-        if 'Сидоров Пётр Ильич' not in text or 'Главный механик' not in text:
+        if name not in text or 'Главный механик' not in text:
             self.errs.append(('regs', 'ERR', 'контакт не добавлен или не исправлен: %s' % text[:200]))
         self.snap('g3_contact_saved', box, wait=200)
         pg.click(box + ' [data-x]')
         self.wait(1200)
-        if 'Сидоров' not in pg.locator('dialog.deal-dlg[open] .dk-cl').inner_text():
+        if name not in pg.locator('dialog.deal-dlg[open] .dk-cl').inner_text():
             self.errs.append(('regs', 'ERR', 'новый контакт не появился в сделке'))
 
     def _regs_fill(self):

@@ -42,6 +42,13 @@ class ClientContactsTest(unittest.TestCase):
             self.book.save('inn0000000000', None, {'name': 'Б'}, 'Иванова')
         self.assertEqual(len(self.st.client_get(self.CID)['contacts']), 1, 'ошибка ввода ничего не меняет')
 
+    def test_edit_by_name_after_colleague_added(self):
+        self.book.save(self.CID, None, {'name': 'Петров Олег'}, 'Петров')
+        rows = self.book.save(self.CID, {'was': 'галкина  елена'}, {'name': 'Галкина Елена', 'post': 'снабжение'}, 'Иванова')
+        self.assertEqual([(row['name'], row.get('post', '')) for row in rows], [('Петров Олег', ''), ('Галкина Елена', 'снабжение')])
+        with self.assertRaisesRegex(ValueError, 'уже изменили'):
+            self.book.save(self.CID, {'was': 'Нет такого'}, {'name': 'Б'}, 'Иванова')
+
     def test_same_name_on_its_own_row(self):
         rows = self.book.save(self.CID, 0, {'name': 'Галкина Елена', 'phone': ''}, 'Иванова')
         self.assertEqual(rows[0]['phone'], '', 'телефон можно стереть')

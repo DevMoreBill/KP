@@ -1729,16 +1729,21 @@ class ClientCardController(Controller):
         store().client_put(cid, doc, name)
         return self.send_json({'ok': True, 'notes': notes})
 
-    @route(r'/api/clientcard/contact', 'POST')  # {id, index?: номер строки, contact: {name, post, phone, email}}
+    @route(r'/api/clientcard/contact', 'POST')  # {id, was?: прежнее ФИО | index?, contact: {name, post, phone, email}}
     def contact(self) -> Any:
         data = self.json_body()
         cid = safe_id(str(data.get('id') or '')[:64])
         try:
             rows = ClientContacts(store()).save(
-                cid, data.get('index'), data.get('contact'), admin.actor(self.handler)[1]
+                cid,
+                {'was': str(data['was'])} if data.get('was') else data.get('index'),
+                data.get('contact'),
+                admin.actor(self.handler)[1],
             )
         except LookupError as exc:
             return self.text(404, str(exc))
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from None
         return self.send_json({'ok': True, 'contacts': rows})
 
 
