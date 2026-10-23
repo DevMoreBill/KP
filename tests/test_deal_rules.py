@@ -331,6 +331,38 @@ class RegsPushTest(RegsBase):
         self.assertEqual(sum(1 for body in (b for m, b in self.fake.calls[calls:] if m == 'crm.deal.update')
                              if 'UF_TKP' in (body.get('fields') or {})), 0, 'файл КП — один раз')
 
+    def test_contact_phone_before_stage(self):
+        """Телефон и почту контакта дописали в программе после отправки — они уходят в контакт Битрикса раньше смены
+        стадии (23.10: роботы Битрикса отказывали «у контакта не заполнены поля: телефон или email»)."""
+        from bitrix import BitrixLinks, BitrixQueue, BitrixSync
+        from crm import DealBook
+        client = self.st.client_get('inn7700000001')
+        client['contacts'] = [{'name': 'Галкина Елена Викторовна'}]
+        self.st.client_put('inn7700000001', client, 'тест')
+        deal = self.deal(funnel='b5')
+        sync = BitrixSync(self.st, direct(), files=lambda kid: [])
+        BitrixQueue.touch(self.st, 'deal', deal['id'])
+        sync.run()
+        bid = BitrixLinks(self.st).get('deal', deal['id'])['bx']
+        person = self.fake.deal_people[bid][0]
+        self.assertFalse(self.fake.contacts[person].get('PHONE'))
+        fresh = DealBook(self.st).get(deal['id'])
+        self.regs().save_client(fresh, {'personPhone': '+7 912 345-67-89', 'personEmail': 'galkina@alfa.ru'}, 'тест')
+        calls = len(self.fake.calls)
+        DealBook(self.st).update(deal['id'], {'title': 'Компрессор ВК', 'stage': 'C5:TAKEN'}, 'тест')
+        BitrixQueue.touch(self.st, 'deal', deal['id'])
+        sync.run()
+        methods = [method for method, _body in self.fake.calls[calls:]]
+        self.assertIn('crm.contact.update', methods)
+        self.assertLess(methods.index('crm.contact.update'), methods.index('crm.deal.update'), 'контакт — раньше стадии')
+        contact = self.fake.contacts[person]
+        self.assertEqual([row['VALUE'] for row in contact['PHONE']], ['+7 912 345-67-89'])
+        self.assertEqual([row['VALUE'] for row in contact['EMAIL']], ['galkina@alfa.ru'])
+        calls = len(self.fake.calls)
+        BitrixQueue.touch(self.st, 'deal', deal['id'])
+        sync.run()
+        self.assertNotIn('crm.contact.update', [m for m, _b in self.fake.calls[calls:]], 'второй раз не дописывается')
+
 
 if __name__ == '__main__':
     unittest.main()

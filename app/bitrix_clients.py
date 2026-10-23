@@ -326,18 +326,54 @@ class BitrixClientOut:
             bx_id = link['bx'] if link else self._find(row) or self._add(company_id, row, manager_id)
             if not link:
                 self._join(company_id, bx_id)
-                self.remember(self.links, client, row, bx_id, company_id)
+                self.remember(self.links, client, row, bx_id, company_id, self.comm(row))
+            else:
+                self._fill_comm(client, row, link)
             out.append(str(bx_id))
         return out
+
+    @staticmethod
+    def comm(row: dict) -> dict:
+        """Телефон и почта контакта в сравнимом виде (что уже отправлено в Битрикс)."""
+        return {'phone': ContactKey.phone(row.get('phone')), 'email': ContactKey.email(row.get('email'))}
+
+    def _fill_comm(self, client: dict, row: dict, link: dict) -> None:
+        """Телефон и почту, дописанные в программе после отправки контакта, — в контакт Битрикса (чего там ещё нет)."""
+        sent = dict((link.get('sent') or {}).get('comm') or {})
+        now = self.comm(row)
+        if all(not value or sent.get(key) == value for key, value in now.items()):
+            return
+        found = self.api.call('crm.contact.get', {'id': link['bx']}) or {}
+        have = {
+            'phone': {
+                ContactKey.phone(item.get('VALUE')) for item in found.get('PHONE') or [] if isinstance(item, dict)
+            },
+            'email': {
+                ContactKey.email(item.get('VALUE')) for item in found.get('EMAIL') or [] if isinstance(item, dict)
+            },
+        }
+        fields = {
+            kind: [{'VALUE': str(row.get(key) or '').strip(), 'VALUE_TYPE': 'WORK'}]
+            for key, kind in (('phone', 'PHONE'), ('email', 'EMAIL'))
+            if now[key] and now[key] not in have[key]
+        }
+        if fields:
+            self.api.call('crm.contact.update', {'id': link['bx'], 'fields': fields})
+        self.links.put(
+            'file', self.person_key(client, row), link['bx'], dict(link.get('sent') or {}, comm={**sent, **now})
+        )
 
     @staticmethod
     def person_key(client: dict, row: dict) -> str:
         return 'person|{}|{}'.format(client.get('id') or '', ' '.join(ContactKey.words(row.get('name'))))
 
     @classmethod
-    def remember(cls, links, client: dict, row: dict, bx_id: Any, company_id: Any) -> None:
+    def remember(cls, links, client: dict, row: dict, bx_id: Any, company_id: Any, comm: dict | None = None) -> None:
         """Контакт уже есть в Битриксе (создан с компанией или найден) — повторно не создаётся."""
-        links.put('file', cls.person_key(client, row), str(bx_id), {'company': str(company_id)})
+        data: dict[str, Any] = {'company': str(company_id)}
+        if comm:
+            data['comm'] = comm
+        links.put('file', cls.person_key(client, row), str(bx_id), data)
 
     def _find(self, row: dict) -> str:
         for kind, value in (('PHONE', row.get('phone')), ('EMAIL', row.get('email'))):

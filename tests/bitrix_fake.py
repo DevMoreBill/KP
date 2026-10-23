@@ -160,6 +160,11 @@ class FakeBitrix:
             return {'result': [{'CONTACT_ID': cid} for cid in links.get(str(b['id']), [])]}
         if m == 'crm.contact.get':
             return {'result': self.contacts[str(b['id'])]}
+        if m == 'crm.contact.update':
+            c = self.contacts[str(b['id'])]
+            for k, v in f.items():
+                c[k] = (c.get(k) or []) + v if k in ('PHONE', 'EMAIL') else v
+            return {'result': True}
         if m == 'crm.contact.add':
             i = self._id()
             self.contacts[i] = dict(f, ID=i)

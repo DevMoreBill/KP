@@ -951,7 +951,7 @@ class BitrixSync:
                     }
                 },
             )
-            BitrixClientOut.remember(self.links, client, x, person_id, cid)
+            BitrixClientOut.remember(self.links, client, x, person_id, cid, BitrixClientOut.comm(x))
         return cid
 
     def _preset(self) -> Any:
@@ -1213,6 +1213,9 @@ class BitrixSync:
                     mid=mid,
                 )
             if fields:
+                self._regs_people(
+                    deal, cid, bid
+                )  # контакт и его телефон — до смены стадии: её проверяют роботы Битрикса
                 self.api.call('crm.deal.update', {'id': bid, 'fields': fields, 'params': {'REGISTER_SONET_EVENT': 'N'}})
             if back:
                 self._apply(deal, back, bx_deal, link['sent'])
@@ -1250,6 +1253,15 @@ class BitrixSync:
             out.tkp(deal, bid, kps, DealFields(self.store).by_code().get(code) if code else None)
         except BitrixError as exc:
             self.log.add(f'Сделка № {deal.get("number")}: клиент и файл КП в Битрикс24 не отправлены — {exc}', 'warn')
+
+    def _regs_people(self, deal: dict, cid: str | None, bid: str) -> None:
+        """Телефон и почта компании, контакт сделки — в Битрикс (повтор после обновления сделки ничего не отправит)."""
+        if DealRegs(self.store).conf().get('on', True) is False:
+            return
+        try:
+            BitrixClientOut(self).push(deal, cid, bid)
+        except BitrixError as exc:
+            self.log.add(f'Сделка № {deal.get("number")}: контакт в Битрикс24 не отправлен — {exc}', 'warn')
 
     def _my_company(self, deal: dict, link: dict | None) -> str:
         """Наша компания сделки (MYCOMPANY_ID) — что отправить или пусто (не менять).
