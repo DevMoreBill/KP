@@ -23,13 +23,13 @@ import { DealCard } from '../crm/deal-card.js';
 import { Fmt, Str } from '../../core/str.js';
 import { CopyText } from '../../core/files.js';
 import { ClientFeed } from './client-feed.js';
+import { ClientContactsView } from './client-contacts.js';
 
 /**
  * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.
  * Сервер — ClientCardController. Открывается из раздела «Клиент», журнала, кабинета.
  */
 export class ClientCard {
-  static CONTACTS = 8;
   static OBJECTS = 6;
   static MANAGERS = 3;
   static PERCENT = 100;
@@ -195,14 +195,6 @@ export class ClientCard {
   }
 
   // телефон и почта — нажатием: звонок, письмо
-  static _reach(row) {
-    const phone = row.phone
-      ? `<a href="tel:${esc(String(row.phone).replace(/[^\d+]/g, ''))}">${esc(row.phone)}</a>`
-      : '';
-    const mail = row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : '';
-    return [esc(row.post || ''), phone, mail].filter(Boolean).join(' · ');
-  }
-
   static _kps({ answer, kps }) {
     const managers =
       answer.managers && answer.managers.length
@@ -225,14 +217,7 @@ export class ClientCard {
   }
 
   static _side({ answer, client, myId }) {
-    const contacts = (client.contacts || []).filter(row => row && row.name);
     const objects = (client.objects || []).filter(row => row && (row.purpose || row.address));
-    const people = contacts.length
-      ? contacts
-          .slice(0, this.CONTACTS)
-          .map(row => `<div class="cc-c"><b>${esc(row.name)}</b><span class="muted">${this._reach(row)}</span></div>`)
-          .join('')
-      : '<p class="empty">Контакты появятся после сохранения КП с контактным лицом.</p>';
     const places = objects.length
       ? `<section><p class="sub">Объекты</p>${objects
           .slice(0, this.OBJECTS)
@@ -246,7 +231,7 @@ export class ClientCard {
       ? '<div class="cc-add"><textarea id="ccN" rows="2" maxlength="2000" placeholder="Заметка о клиенте — видна всем менеджерам"></textarea><button class="btn" type="button" data-ccna>Добавить</button></div>'
       : '<p class="muted" style="margin:0 0 6px;font-size:13px">Клиента нет в справочнике — заметки появятся после сохранения КП.</p>';
     return `<div class="cc-side">
-          <section><p class="sub">Контакты</p>${people}</section>
+          ${ClientContactsView.html(client)}
           ${places}
           <section><p class="sub">Заметки</p>${add}
             <div id="ccNotes">${this.notesHtml(answer.notes || [], myId)}</div></section>
@@ -304,6 +289,7 @@ export class ClientCard {
   ];
 
   static _click(ctx, target) {
+    if (ClientContactsView.click(ctx, target)) return;
     for (const [selector, act] of this._ACTIONS) {
       const button = target.closest(selector);
       if (button) {

@@ -27,6 +27,7 @@ from ai_profile import CategoryProfile, ModelFacts
 from bitrix import BitrixConf, BitrixQueue, BitrixSync, EconXlsx
 from bitrix_my import MyCompanies
 from cbr import cbr_key_rate, cbr_rates
+from client_contacts import ClientContacts
 from config import (
     APP_DIR,
     DATA_DIR,
@@ -1727,6 +1728,18 @@ class ClientCardController(Controller):
         doc['notes'] = notes
         store().client_put(cid, doc, name)
         return self.send_json({'ok': True, 'notes': notes})
+
+    @route(r'/api/clientcard/contact', 'POST')  # {id, index?: номер строки, contact: {name, post, phone, email}}
+    def contact(self) -> Any:
+        data = self.json_body()
+        cid = safe_id(str(data.get('id') or '')[:64])
+        try:
+            rows = ClientContacts(store()).save(
+                cid, data.get('index'), data.get('contact'), admin.actor(self.handler)[1]
+            )
+        except LookupError as exc:
+            return self.text(404, str(exc))
+        return self.send_json({'ok': True, 'contacts': rows})
 
 
 class CrmController(Controller):

@@ -53,7 +53,7 @@ class FuzzTest(unittest.TestCase):
                 '/api/admin/history/%s/rollback', '/api/admin/update', '/api/admin/system', '/api/admin/attention', '/api/admin/log',
                 '/api/admin/log/download', '/api/admin/alerts', '/api/admin/alerts/test', '/api/reminders', '/api/report?from=%s&to=%s',
                 '/api/drafts', '/api/drafts/dfz1', '/api/drafts/dfz1/delete', '/api/presets', '/api/presets/pfz1',
-                '/api/presets/pfz1/delete', '/api/clientcard', '/api/clientcard?inn=%s', '/api/clientcard?id=%s&name=%s', '/api/clientcard/note',
+                '/api/presets/pfz1/delete', '/api/clientcard', '/api/clientcard?inn=%s', '/api/clientcard?id=%s&name=%s', '/api/clientcard/note', '/api/clientcard/contact',
                 '/api/features', '/api/catalog/sync?since=%s&epoch=%s', '/api/catalog/search?q=%s', '/api/me/prefs',
                 '/api/ai/profile?cat=%s&maker=%s&model=%s']
 

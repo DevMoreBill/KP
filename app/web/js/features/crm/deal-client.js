@@ -1,4 +1,5 @@
 import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 /**
  * Клиент в карточке сделки: контакты из справочника (позвонить, написать одним нажатием), пометка «без ИНН» и выбор
  * компании, если клиент из Битрикс24 совпал по контакту с несколькими клиентами программы.
@@ -13,7 +14,7 @@ export class DealClient {
    */
   static html(deal) {
     if ((deal.clientPick || []).length) return this._pick(deal.clientPick);
-    return deal.clientCard ? this._card(deal.clientCard) : '';
+    return deal.clientCard ? this._card(deal.clientCard, deal) : '';
   }
 
   static _pick(rows) {
@@ -26,7 +27,7 @@ export class DealClient {
     return `<div class="dk-wide dk-pks"><p class="msg warn">Клиент из Битрикс24 совпал по контакту с несколькими компаниями — выберите, чья это сделка:</p><div class="dk-pkl">${tiles}</div></div>`;
   }
 
-  static _card(card) {
+  static _card(card, deal) {
     const people = card.contacts || [];
     const rows = people
       .slice(0, this.SHOWN)
@@ -37,8 +38,12 @@ export class DealClient {
     const flag = card.noInn
       ? '<span class="dk-noinn" title="Реквизитов нет — укажите ИНН в карточке клиента">без ИНН</span>'
       : '';
-    const empty = people.length ? '' : '<span class="muted">Контактов нет — добавьте в карточке клиента.</span>';
-    return `<div class="dk-wide dk-cl">${flag}${rows}${more}${empty}</div>`;
+    const empty = people.length ? '' : '<span class="muted">Контактов нет.</span>';
+    const data = esc(JSON.stringify({ id: deal.clientId || '', inn: deal.clientInn || '', name: deal.client || '' }));
+    const edit = FEAT.on('clientCard')
+      ? `<button class="dk-ce" type="button" data-cc="${data}" title="Открыть карточку клиента: изменить контакт или добавить новый">✎ Изменить или добавить контакт</button>`
+      : '';
+    return `<div class="dk-wide dk-cl">${flag}${rows}${more}${empty}${edit}</div>`;
   }
 
   static _person(person) {

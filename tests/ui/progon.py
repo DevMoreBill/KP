@@ -1464,6 +1464,7 @@ class Scenario(UiRun):
         if self.ev("DealCard.deal && DealCard.deal.fstage") != 'C5:TAKEN':
             self.errs.append(('regs', 'ERR', 'после «Заполните» сделка не на «Взято в работу»: %s' % self.ev("DealCard.deal && DealCard.deal.fstage")))
         self.snap('g3_regs_taken', 'dialog.deal-dlg[open]', wait=300)
+        self._contacts()
         pg.click('dialog.deal-dlg[open] [data-dks="lost"]')
         pg.wait_for_selector('dialog.dk-lost-dlg[open]', timeout=10000)
         pg.check('dialog.dk-lost-dlg[open] input[value="C5:DUP"]')
@@ -1485,6 +1486,31 @@ class Scenario(UiRun):
         pg.wait_for_selector('dialog.dk-new-dlg[open] [data-dnsrc]', timeout=10000)
         self.snap('g5_regs_new', 'dialog.dk-new-dlg[open]', wait=300)
         self.closeall()
+
+    def _contacts(self):
+        """Карточка клиента из сделки: добавить контакт и исправить его — сделка показывает новый контакт."""
+        pg = self.pg
+        pg.click('dialog.deal-dlg[open] .dk-ce')
+        box = 'dialog.cc-dlg[open]'
+        pg.wait_for_selector(box + ' [data-ccca]', timeout=15000)
+        pg.click(box + ' [data-ccca]')
+        pg.fill(box + ' [data-cccf="name"]', 'Сидоров Пётр Ильич')
+        pg.fill(box + ' [data-cccf="phone"]', '+7 900 555-66-77')
+        pg.click(box + ' [data-cccs]')
+        pg.wait_for_selector(box + ' [data-ccce="0"]', timeout=10000)
+        pg.click(box + ' [data-ccce="0"]')
+        pg.fill(box + ' [data-cccf="post"]', 'Главный механик')
+        self.snap('g3_contact_edit', box, wait=200)
+        pg.click(box + ' [data-cccs]')
+        self.wait(800)
+        text = pg.locator(box + ' #ccPeople').inner_text()
+        if 'Сидоров Пётр Ильич' not in text or 'Главный механик' not in text:
+            self.errs.append(('regs', 'ERR', 'контакт не добавлен или не исправлен: %s' % text[:200]))
+        self.snap('g3_contact_saved', box, wait=200)
+        pg.click(box + ' [data-x]')
+        self.wait(1200)
+        if 'Сидоров' not in pg.locator('dialog.deal-dlg[open] .dk-cl').inner_text():
+            self.errs.append(('regs', 'ERR', 'новый контакт не появился в сделке'))
 
     def _regs_fill(self):
         """Окно «Заполните»: списки — первым вариантом, строки и заметка — текстом, клиент — вымышленным."""
