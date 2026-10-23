@@ -2177,7 +2177,7 @@ class AdminApi:
                 )
                 return self.ok(res)
             if sub == 'maint/mirror/check' and method == 'POST':
-                return self.ok(mirror.check(self.data().get('path')))
+                return self.ok(mirror.check_any(self.data()))
             if sub == 'maint/mirror/run' and method == 'POST':
                 res = mirror.start()
                 self.log('backup_db', 'db', 'mirror', None, {'path': res.get('path')})

@@ -49,8 +49,19 @@ export class CabToday {
       !CrmData.board.me && !CrmData.all()
         ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>'
         : '';
+    if (this._phone())
+      return `${who}${this._tiles()}${this._todo()}${this._reminders()}${this._drafts()}${this._phoneMore()}`;
     return `${who}${CabGuide.tip()}${BrowserNotify.offer()}${this._tiles()}<div class="td-g"><div class="td-l">${this._todo()}${this._reminders()}</div>
       <aside class="td-r">${CabTodaySide.html()}${this._drafts()}${this._more()}</aside></div>`;
+  }
+
+  // телефон: только то, что делать сейчас; неделя, месяц, воронка и советы — под раскрытием внизу
+  static _phone() {
+    return FEAT.on('phoneToday') && document.documentElement.classList.contains('mob');
+  }
+
+  static _phoneMore() {
+    return `<details class="td-more"><summary>Неделя, месяц, воронка</summary>${CabTodaySide.html()}${this._more()}${CabGuide.tip()}${BrowserNotify.offer()}</details>`;
   }
 
   static _sum(deals) {

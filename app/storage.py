@@ -348,6 +348,17 @@ MIGRATIONS = [
     ),
     # телефоны клиентов, поставщиков и менеджеров — в одном виде (app/phone.py), строка поиска клиента — заново
     ('2027-21-phones', '', ''),
+    # скорость кабинета при тысячах сделок: дела отдела (открытые и закрытые за 14 дней), сделки по дате изменения
+    (
+        '2027-22-speed',
+        """
+     CREATE INDEX IF NOT EXISTS crm_tasks_state ON crm_tasks(state, done_at);
+     CREATE INDEX IF NOT EXISTS deals_updated ON deals(updated);
+     """,
+        """
+     DROP INDEX IF EXISTS deals_updated; DROP INDEX IF EXISTS crm_tasks_state;
+     """,
+    ),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё

@@ -965,6 +965,14 @@ class BitrixSync:
         self.conf.mark(preset=pid)
         return pid
 
+    def bx_user(self, mid: str | None) -> Any:
+        """Пользователь Битрикса менеджера программы (None — не сопоставлен)."""
+        return self._user_of(mid)
+
+    def bx_stage(self, deal: dict, cat) -> str:
+        """Стадия Битрикса, в которой сделка должна стоять по программе."""
+        return self._bx_stage(deal, cat)
+
     def _user_of(self, mid: str | None) -> Any:
         return (self.conf.get().get('users') or {}).get(str(mid or ''))
 
@@ -2263,6 +2271,25 @@ class BitrixDesk:
             myCompanies=MyCompanies(store).all(),
         )
 
+    def _diff(self, method, sub) -> None:
+        from bitrix_diff import BitrixDiff
+        from features import FeatureAccess
+
+        if not FeatureAccess(self.store).is_on('bxDiff'):
+            return self.text(403, 'Функция «Расхождения с Битрикс24» выключена')
+        diff = BitrixDiff(self.store, BitrixSync(self.store, self.opener))
+        try:
+            if sub == 'bitrix/diff' and method == 'POST':
+                return self.send(diff.report())
+            if sub == 'bitrix/diff/align' and method == 'POST':
+                did = str(self.body().get('deal') or '')[:40]
+                diff.align(did)
+                self.log_fn('edit_settings', 'deal', did, None, {'Битрикс24': 'выровнять по программе'})
+                return self.send({'ok': True})
+        except (BitrixError, LookupError) as exc:
+            return self.text(422, str(exc))
+        return self.text(404, 'Нет такого действия')
+
     def route(self, method, sub, author: str) -> None:
         store = self.store
         if sub == 'bitrix' and method == 'GET':
@@ -2296,6 +2323,8 @@ class BitrixDesk:
                 for (did,) in store.all("SELECT id FROM deals WHERE stage NOT IN ('won', 'lost')"):
                     BitrixQueue.touch(store, 'deal', did)
             return self.send(self.view())
+        if sub.startswith('bitrix/diff'):  # расхождения стадии, суммы, ответственного (bitrix_diff.py)
+            return self._diff(method, sub)
         if sub == 'bitrix/regs' and method == 'GET':
             return self.send(DealRegs(store).view())
         if sub == 'bitrix/regs' and method == 'POST':

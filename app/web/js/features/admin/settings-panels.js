@@ -533,12 +533,31 @@ export class MirrorCard {
         <label class="sw"><input type="checkbox" id="mbOn"${state.on ? ' checked' : ''} data-nodirty><span>${state.on ? 'включена' : 'выключена'}</span></label></div>
       <p class="muted">Копии в data\\backup лежат на том же диске, что и база: откажет диск — пропадёт всё. Укажите вторую папку на другом устройстве: сетевой диск (\\\\сервер\\копии), флешку или папку Яндекс Диска / OneDrive. Каждый день после обычной копии архив базы (ZIP) копируется туда и проверяется.</p>
       ${note ? `<p class="msg${note.err ? ' err' : ''}" style="text-align:left">${esc(note.t)}</p>` : ''}
-      <div class="grid g2"><label class="f"><span>Папка</span><input type="text" id="mbPath" value="${esc(state.path || '')}" placeholder="D:\\Копии КП или \\\\сервер\\копии" autocomplete="off"></label>
-        <label class="f"><span>Хранить копий (последних дней)</span><input type="number" id="mbKeep" min="1" max="365" value="${esc(state.keep || MirrorCard.KEEP)}"></label></div>
-      <label class="ck"><input type="checkbox" id="mbImg"${state.images ? ' checked' : ''}> Копировать туда и изображения каталога (только новые и изменённые)</label>
+      ${FEAT.on('davBackup') ? `<div class="seg" role="radiogroup" aria-label="Куда копировать">${this._kindBtn('folder', 'Папка (сетевой диск, флешка)')}${this._kindBtn('dav', 'Яндекс Диск')}</div>` : ''}
+      ${this._where()}
       <p>Последняя копия: ${state.running ? '<b>идёт копирование…</b>' : this._last()}${state.copies ? ` · в папке копий: ${state.copies} (${Fmt.size(state.copiesBytes)})` : ''}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-mb="save">Сохранить</button><button class="btn" type="button" data-mb="check">Проверить папку</button>
         <button class="btn" type="button" data-mb="run"${state.on && !state.running ? '' : ' disabled'}>Копировать сейчас</button></div>`;
+  }
+
+  _kindBtn(kind, label) {
+    const chosen = (this.state.kind || 'folder') === kind;
+    return `<button type="button" role="radio" aria-checked="${chosen}" class="${chosen ? 'on' : ''}" data-mbkind="${kind}">${label}</button>`;
+  }
+
+  _where() {
+    const state = this.state;
+    const keep = `<label class="f"><span>Хранить копий (последних дней)</span><input type="number" id="mbKeep" min="1" max="365" value="${esc(state.keep || MirrorCard.KEEP)}"></label>`;
+    if (state.kind === 'dav' && FEAT.on('davBackup')) {
+      const dav = state.dav || {};
+      return `<p class="muted">Логин Яндекса и <b>пароль приложения</b> (id.yandex.ru → Безопасность → Пароли приложений → «Файлы»). На диск копируется архив базы (ZIP), размер сверяется после загрузки; изображения и документы — только в папку.</p>
+      <div class="grid g2"><label class="f"><span>Логин Яндекса</span><input type="text" id="mbLogin" value="${esc(dav.login || '')}" autocomplete="off"></label>
+        <label class="f"><span>Пароль приложения</span><input type="password" id="mbPass" value="${esc(dav.password || '')}" autocomplete="new-password"></label>
+        <label class="f"><span>Папка на диске</span><input type="text" id="mbFolder" value="${esc(dav.folder || 'Копии КП')}"></label>${keep}</div>`;
+    }
+    return `<div class="grid g2"><label class="f"><span>Папка</span><input type="text" id="mbPath" value="${esc(state.path || '')}" placeholder="D:\\Копии КП или \\\\сервер\\копии" autocomplete="off"></label>
+        ${keep}</div>
+      <label class="ck"><input type="checkbox" id="mbImg"${state.images ? ' checked' : ''}> Копировать туда и изображения каталога (только новые и изменённые)</label>`;
   }
 
   /**
@@ -546,11 +565,19 @@ export class MirrorCard {
    * @returns {object}
    */
   body() {
+    const value = id => ($(id) ? $(id).value.trim() : '');
+    const dav = {
+      login: value('#mbLogin'),
+      password: $('#mbPass') ? $('#mbPass').value : '',
+      folder: value('#mbFolder'),
+    };
     return {
       on: $('#mbOn').checked,
-      path: $('#mbPath').value.trim(),
+      kind: FEAT.on('davBackup') ? this.state.kind || 'folder' : 'folder',
+      path: value('#mbPath'),
       keep: +$('#mbKeep').value || MirrorCard.KEEP,
-      images: $('#mbImg').checked,
+      images: !!($('#mbImg') && $('#mbImg').checked),
+      dav,
     };
   }
 
@@ -593,6 +620,12 @@ export class MirrorCard {
   }
 
   async _click(event) {
+    const kind = event.target.closest('[data-mbkind]');
+    if (kind) {
+      this.state = { ...this.state, kind: kind.dataset.mbkind };
+      this.render();
+      return;
+    }
     const button = event.target.closest('[data-mb]');
     if (!button) return;
     const action = button.dataset.mb;
@@ -602,9 +635,9 @@ export class MirrorCard {
         this.render({ t: 'Сохранено. Копия будет делаться каждый день.' });
       }
       if (action === 'check') {
-        const reply = await AdminApi.post('maint/mirror/check', { path: $('#mbPath').value.trim() });
+        const reply = await AdminApi.post('maint/mirror/check', this.body());
         this.render({
-          t: `Папка доступна для записи${reply.free != null ? `, свободно ${Fmt.size(reply.free)}` : ''}.`,
+          t: `${this.state.kind === 'dav' ? 'Яндекс Диск доступен' : 'Папка доступна для записи'}${reply.free != null ? `, свободно ${Fmt.size(reply.free)}` : ''}.`,
         });
       }
       if (action === 'run') {

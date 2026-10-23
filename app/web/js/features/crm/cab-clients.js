@@ -4,6 +4,7 @@ import { Cabinet } from './cabinet.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
 import { Str } from '../../core/str.js';
+import { CompanyCardView } from './company-card.js';
 
 /** «Клиенты»: клиенты из сделок — в работе, сумма, выиграно, ближайшее дело. */
 export class CabClients {
@@ -68,7 +69,7 @@ export class CabClients {
     const body = list.length
       ? `<div class="cab-cls">${list.map(client => this._card(client)).join('')}</div>`
       : `<p class="empty">${empty}</p>`;
-    return `<div class="cab-bar">${Cabinet.search('Клиент или ИНН')}<span class="muted cab-tot">Клиентов: <b>${list.length}</b></span></div>${body}`;
+    return `<div class="cab-bar">${Cabinet.search('Клиент или ИНН')}<span class="muted cab-tot">Клиентов: <b>${list.length}</b></span>${CompanyCardView.button()}</div>${body}`;
   }
 
   static _card(client) {

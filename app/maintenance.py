@@ -362,6 +362,12 @@ class DbHealthRun:
 
         return DbHealth(store, config.DATA_DIR, config.DOCS_DIR).weekly()
 
+    @staticmethod
+    def nightly(store, data_dir: str) -> dict | None:
+        from db_health import NightCheck
+
+        return NightCheck.scheduled(store, data_dir)
+
 
 class Background:
     """Фоновые задачи сервера: плановое обслуживание базы (при запуске и раз в сутки) и задачи по расписанию."""
@@ -386,6 +392,7 @@ class Background:
                 ('документы КП, удалённых навсегда', lambda: KpFiles(store, data_dir).purge()),
                 ('обслуживание базы', lambda: db_maintenance(store)),
                 ('проверка базы', lambda: DbHealthRun.weekly(store)),
+                ('ночная проверка базы', lambda: DbHealthRun.nightly(store, data_dir)),
             ):
                 try:
                     func()

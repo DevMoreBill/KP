@@ -1755,6 +1755,30 @@ class ClientCardController(Controller):
             raise BadRequest(str(exc)) from None
         return self.send_json({'ok': True, 'contacts': rows})
 
+    @route(r'/api/companycard/parse', 'POST')
+    def company_parse(self) -> Any:
+        """Карточка предприятия: JSON {text} или файл (?name=…: PDF, Word, Excel, TXT) → реквизиты и сверка с ФНС."""
+        if self._too_big('Файл'):
+            return None
+        from company_card import CompanyCard
+
+        card = CompanyCard(store())
+        with self.user_input():
+            if 'json' in str(self.handler.headers.get('Content-Type') or ''):
+                text = str(self.json_body().get('text') or '')
+            else:
+                text = card.read(str(self.query.get('name') or ''), self.body())
+            return self.send_json(card.parse(text))
+
+    @route(r'/api/companycard/create', 'POST')
+    def company_create(self) -> Any:
+        """Новый клиент по проверенным реквизитам карточки (есть с этим ИНН — дописываются пустые поля)."""
+        from company_card import CompanyCard
+
+        with self.user_input():
+            doc = CompanyCard(store()).create(self.json_body(), admin.actor(self.handler)[1])
+        return self.send_json({'ok': True, 'client': doc})
+
 
 class CrmController(Controller):
     """Кабинет: свои сделки и дела — каждому, коллег и отдел — администратору и праву «КП других»; не удаляются."""
@@ -1929,6 +1953,17 @@ class CrmController(Controller):
             report.xlsx(),
             self.attachment(report.file_name(), 'report.xlsx'),
         )
+
+    @route(r'/api/crm/regs/audit', 'GET')
+    def reg_audit(self) -> Any:
+        """«Отдел» → регламент: незаполненное для текущей стадии по менеджерам — тем, кому виден весь отдел."""
+        try:
+            self._scope('all')
+        except PermissionError as exc:
+            return self.text(403, str(exc))
+        from deal_reg_audit import RegAudit
+
+        return self.send_json(RegAudit(store()).report())
 
     @route(r'/api/crm/pick', 'GET')
     def pick(self) -> Any:

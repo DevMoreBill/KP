@@ -892,3 +892,10 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .pay-t:hover{text-decoration:underline}
 .pay-late .pay-r{grid-template-columns:96px 18px minmax(0,1.2fr) minmax(0,1fr) auto auto}
 @media (max-width:640px){.pay-late .pay-r{grid-template-columns:80px 14px minmax(0,1fr) auto}.pay-late [data-premind]{grid-column:1/-1;justify-self:end}}
+.cc-dlg{width:min(760px,96vw)}
+.cc-dlg textarea{width:100%;margin:8px 0}
+.cc-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;margin:8px 0}
+.cc-r .msg{margin:4px 0}
+@media (max-width:600px){.cc-g{grid-template-columns:1fr}}
+.td-more{margin-top:10px;border-top:1px solid var(--line)}
+.td-more>summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer}

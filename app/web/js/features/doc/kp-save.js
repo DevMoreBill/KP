@@ -29,6 +29,7 @@ import { Problems } from '../../ui/side-panel.js';
 import { $, esc } from '../../core/util.js';
 import { StationImages } from '../station/station-images.js';
 import { KpState, S } from '../../core/state.js';
+import { OfflineSave } from './offline-save.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
@@ -90,9 +91,11 @@ export class KpSave {
     try {
       await this._save(button);
     } catch (error) {
-      message.className = 'msg err';
-      message.textContent =
-        this.ERRORS.get(error && error.code) || `Не удалось собрать файл: ${(error && error.message) || error}`;
+      const held = OfflineSave.hold(() => this.run());
+      message.className = held ? 'msg' : 'msg err';
+      message.textContent = held
+        ? 'Нет связи — КП сохранится само, когда связь вернётся'
+        : this.ERRORS.get(error && error.code) || `Не удалось собрать файл: ${(error && error.message) || error}`;
     }
     Drafts.paused = false;
     this.busy = false;

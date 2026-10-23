@@ -92,6 +92,7 @@ class Attention:
             self._login,
             self._trash,
             self._health,
+            self._night,
             self._feedback,
             self._feeds,
         ):
@@ -391,6 +392,14 @@ class Attention:
         from db_health import DbHealth
 
         return DbHealth(self.store).attention()
+
+    def _night(self):
+        from db_health import NightCheck
+        from features import FeatureAccess
+
+        return (
+            NightCheck(self.store, self.cfg.DATA_DIR).attention() if FeatureAccess(self.store).is_on('dbNight') else []
+        )
 
     def _trash(self):
         count = len(self.store.trash_list())

@@ -4,6 +4,7 @@ import { Money } from '../../core/money.js';
 import { Fmt } from '../../core/str.js';
 import { UiKit } from '../../ui/ui-kit.js';
 import { esc } from '../../core/util.js';
+import { BitrixDiffCard } from './bitrix-diff.js';
 
 /** «Менеджеры»: менеджер программы ↔ пользователь Битрикса, участие, своё направление и воронка. */
 export class BitrixManagers {
@@ -298,7 +299,7 @@ export class BitrixLog {
     const panel = BitrixPanel;
     const state = panel.state;
     const managers = state.managers || [];
-    return `<div class="st-card"><div class="row"><p class="sub" style="margin:0">Пробный прогон</p><span class="sp"></span><button class="btn" type="button" id="bxDry"${state.on ? '' : ' disabled'}>Проверить без записи</button></div>
+    return `${BitrixDiffCard.html(state.on)}<div class="st-card"><div class="row"><p class="sub" style="margin:0">Пробный прогон</p><span class="sp"></span><button class="btn" type="button" id="bxDry"${state.on ? '' : ' disabled'}>Проверить без записи</button></div>
       <p class="muted">Обмен по текущим правилам на копии базы: что изменилось бы в Битриксе и в программе. Ничего не записывается, очередь не трогается.</p>
       ${this._dry(panel.dry)}</div>
     ${this._failed(state.failed || [])}
@@ -326,6 +327,9 @@ export class BitrixLog {
       panel.render();
     };
     panel.one('#bxDry').onclick = event => this._runDry(event.target);
+    panel.all('[data-bxdiff]').forEach(button => {
+      button.onclick = event => BitrixDiffCard.click(event, () => panel.render());
+    });
     panel.all('[data-bxre]').forEach(button => {
       button.onclick = () => {
         const [kind, id] = button.dataset.bxre.split('|');

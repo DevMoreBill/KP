@@ -7,6 +7,15 @@ export class ServerLink {
   static PING = '/api/version';
   static timer = 0;
   static lost = false;
+  static waiting = [];
+
+  /**
+   * Сделать, когда сервер снова ответит (один раз).
+   * @param {() => void} done
+   */
+  static onBack(done) {
+    this.waiting.push(done);
+  }
 
   /** Запрос не дошёл до сервера. */
   static gone() {
@@ -22,6 +31,8 @@ export class ServerLink {
     this.lost = false;
     clearTimeout(this.timer);
     this._bar().hidden = true;
+    const waiting = this.waiting.splice(0);
+    waiting.forEach(done => done());
   }
 
   static _retry() {

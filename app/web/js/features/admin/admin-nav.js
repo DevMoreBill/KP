@@ -145,6 +145,7 @@ export class AdminNav {
         },
         {
           key: 'users',
+          rare: true,
           label: 'Администраторы',
           hint: 'Кто входит в «Настройки»: добавить, изменить; смена своего пароля.',
           parts: [
@@ -247,6 +248,7 @@ export class AdminNav {
         },
         {
           key: 'carriers',
+          rare: true,
           label: 'Перевозчики и тарифы',
           hint: 'Ставки перевозки по России (машины, расстояния, разгрузка, страхование) и доставка из Китая для таможенной стоимости.',
           parts: [
@@ -283,6 +285,7 @@ export class AdminNav {
         },
         {
           key: 'changes',
+          rare: true,
           label: 'Файл и история настроек',
           hint: 'Сохранить все настройки в файл и загрузить из файла; что отличается от встроенного; история изменений с откатом.',
           parts: [
@@ -293,12 +296,14 @@ export class AdminNav {
         },
         {
           key: 'system',
+          rare: true,
           label: 'Система',
           hint: 'Версия, режим работы, адрес, папки, место на диске; перезапуск программы.',
           open: main => AdminSystem.system(main),
         },
         {
           key: 'danger',
+          rare: true,
           label: 'Опасная зона',
           hint: 'Необратимое в одном месте: заменить базу, очистить корзину, вернуть все параметры, удалить позиции фида — только после ввода слова «УДАЛИТЬ».',
           open: main => DangerZone.render(main),
@@ -355,6 +360,7 @@ export class AdminNav {
   };
 
   static START = 'home';
+  static NARROW = '(max-width: 900px)';
   static TRASH_DAYS = 30;
 
   /**
@@ -428,15 +434,30 @@ export class AdminNav {
    * @returns {string}
    */
   static html(current) {
-    const groups = this.GROUPS.map(group =>
-      group.tabs.length === 1
-        ? this.btn({ ...group.tabs[0], label: `${group.icon} ${group.title}` }, current).replace(
-            'type="button" class="',
-            'type="button" class="st-n1 ',
-          )
-        : `<span class="st-ng" title="${esc(group.desc || '')}">${esc(`${group.icon} ${group.title}`)}</span>${group.tabs.map(tab => this.btn(tab, current)).join('')}`,
-    ).join('');
-    return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, current)}${groups}</nav>`;
+    const groups = this.GROUPS.map(group => this._groupHtml(group, current)).join('');
+    return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, current)}${groups}${this._rare(current)}</nav>`;
+  }
+
+  static _groupHtml(group, current) {
+    const tabs = group.tabs.filter(tab => !tab.rare);
+    if (group.tabs.length === 1) {
+      return this.btn({ ...tabs[0], label: `${group.icon} ${group.title}` }, current).replace(
+        'type="button" class="',
+        'type="button" class="st-n1 ',
+      );
+    }
+    return `<span class="st-ng" title="${esc(group.desc || '')}">${esc(`${group.icon} ${group.title}`)}</span>${tabs.map(tab => this.btn(tab, current)).join('')}`;
+  }
+
+  // редкое (администраторы, тарифы, файл настроек, система, опасная зона) — под «Дополнительно», раскрыто, если открыто оттуда
+  static _rare(current) {
+    const rare = this.GROUPS.flatMap(group =>
+      group.tabs.filter(tab => tab.rare).map(tab => ({ ...tab, label: `${group.icon} ${tab.label}` })),
+    );
+    const buttons = rare.map(tab => this.btn(tab, current)).join('');
+    if (window.matchMedia(this.NARROW).matches || document.documentElement.classList.contains('mob')) return buttons; // узкое меню — строкой, раскрывашки там нет
+    const open = rare.some(tab => tab.key === current) ? ' open' : '';
+    return `<details class="st-more"${open}><summary class="st-ng" title="Нужно редко: администраторы, тарифы перевозки, файл и история настроек, система, опасная зона">Дополнительно (${rare.length})</summary>${buttons}</details>`;
   }
 
   /**

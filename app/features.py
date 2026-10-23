@@ -56,6 +56,13 @@ FEATURES = {
     'receivables': (True, 'Просроченные оплаты клиентов'),
     'rateDiff': (True, 'Курс в сделке'),
     'onec': (True, 'Оплаты из 1С'),
+    'bxDiff': (True, 'Расхождения с Битрикс24'),
+    'regAudit': (True, 'Проверка регламента по отделу'),
+    'dbNight': (True, 'Ночная проверка базы'),
+    'davBackup': (True, 'Копии базы на Яндекс Диск'),
+    'reqParse': (True, 'Клиент из карточки предприятия'),
+    'offlineSave': (True, 'Сохранить КП, когда вернётся связь'),
+    'phoneToday': (True, '«Сегодня» для телефона'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -75,6 +82,8 @@ NEEDS = dict.fromkeys(
         'payCalendar',
         'receivables',
         'rateDiff',
+        'regAudit',
+        'phoneToday',
     ),
     'myDay',
 )
@@ -110,6 +119,8 @@ ROUTES = [
     ('GET', re.compile(r'^/api/crm/pay$'), 'payCalendar'),
     ('POST', re.compile(r'^/api/crm/deal/d\d{1,9}/remind$'), 'receivables'),
     (None, re.compile(r'^/api/onec(/.*)?$'), 'onec'),
+    ('GET', re.compile(r'^/api/crm/regs/audit$'), 'regAudit'),
+    (None, re.compile(r'^/api/companycard/.*$'), 'reqParse'),
     (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]
 

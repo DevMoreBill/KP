@@ -6,6 +6,7 @@ import { Api } from '../../core/net.js';
 import { Morph } from '../../core/morph.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
+import { TeamRegs } from './team-regs.js';
 
 /** «Отдел»: утренняя сводка «кому нужно внимание», воронка по стадиям, итоги месяца по менеджерам (руководителю и администратору). */
 export class CabTeam {
@@ -34,7 +35,7 @@ export class CabTeam {
     return `<div class="cab-team">${this._attention(deals)}<section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p>${CrmFunnel.switcher(deals, CrmData.funnel())}<span class="muted">${open.length} в работе · ${CrmFmt.short(this._sum(open))}</span></div><div class="fn">${this._funnel(open)}</div></section>
       <section class="md-s"><div class="md-h"><p class="sub">Менеджеры</p><span class="muted">итоги месяца — с 1-го числа; имя — открыть кабинет менеджера</span></div>
       <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th><th>Заявки ждут</th></tr></thead><tbody>${this._rows(deals)}</tbody></table></div></section>
-      ${TeamTime.html()}</div>`;
+      ${TeamRegs.html()}${TeamTime.html()}</div>`;
   }
 
   // утренняя сводка: у кого что горит — по каждому менеджеру, самые проблемные сверху

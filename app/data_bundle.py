@@ -134,6 +134,40 @@ class DataBundle:
         return count
 
 
+class SettingsSecrets:
+    """Секреты внутри настройки «settings»: пароль Яндекс Диска второй папки — никогда в файл, ключ нейросети — только «с ключами»."""
+
+    @staticmethod
+    def strip(value: dict, with_keys: bool) -> dict:
+        out = dict(value)
+        mirror = out.get('backup2')
+        if isinstance(mirror, dict) and isinstance(mirror.get('dav'), dict):
+            out['backup2'] = dict(mirror, dav={key: val for key, val in mirror['dav'].items() if key != 'password'})
+        if not with_keys and isinstance(out.get('ai'), dict):
+            out['ai'] = {key: val for key, val in out['ai'].items() if key != 'key'}
+        return out
+
+    @staticmethod
+    def keep(value: dict, cur: object) -> dict:
+        """Загрузка: пароль диска и ключ нейросети, которых нет в файле, — из текущей базы."""
+        cur = cur if isinstance(cur, dict) else {}
+        out = dict(value)
+        ai_cur, ai_new = cur.get('ai'), out.get('ai')
+        if isinstance(ai_new, dict) and 'key' not in ai_new and isinstance(ai_cur, dict) and ai_cur.get('key'):
+            out['ai'] = dict(ai_new, key=ai_cur['key'])
+        dav_cur = (cur.get('backup2') or {}).get('dav') if isinstance(cur.get('backup2'), dict) else None
+        mirror = picked if isinstance(picked := out.get('backup2'), dict) else {}
+        dav_new = mirror.get('dav')
+        if (
+            isinstance(dav_new, dict)
+            and 'password' not in dav_new
+            and isinstance(dav_cur, dict)
+            and dav_cur.get('password')
+        ):
+            out['backup2'] = dict(mirror, dav=dict(dav_new, password=dav_cur['password']))
+        return out
+
+
 class ProgramSettings:
     """Раздел «Настройки программы»."""
 
@@ -149,6 +183,8 @@ class ProgramSettings:
             v = self.store.kv_get(k)
             if isinstance(v, dict) and k in self.SECRET:
                 v = {key: val for key, val in v.items() if key not in self.SECRET[k]}
+            if isinstance(v, dict) and k == 'settings':
+                v = SettingsSecrets.strip(v, with_keys=False)
             if v is not None:
                 out[k] = v
         return out
@@ -169,6 +205,8 @@ class ProgramSettings:
                     {key: val for key, val in v.items() if key not in self.SECRET[k]},
                     **{key: cur[key] for key in self.SECRET[k] if isinstance(cur, dict) and key in cur},
                 )
+            if isinstance(v, dict) and k == 'settings':
+                v = SettingsSecrets.keep(v, self.store.kv_get(k))
             self.store.kv_set(k, v)
             count += 1
         self.store.touch_data('types', 'settings')
@@ -254,8 +292,8 @@ class SettingsFile:
             v = {key: val for key, val in v.items() if key != 'password'}
         if k == 'bitrix' and isinstance(v, dict):  # служебное (время опроса, поля созданы) — не настройка
             v = {key: val for key, val in v.items() if key in self.BITRIX_KEYS and (keys is Keys.WITH or key != 'url')}
-        if k == 'settings' and isinstance(v, dict) and isinstance(v.get('ai'), dict) and keys is Keys.WITHOUT:
-            v = dict(v, ai={key: val for key, val in v['ai'].items() if key != 'key'})
+        if k == 'settings' and isinstance(v, dict):
+            v = SettingsSecrets.strip(v, with_keys=keys is Keys.WITH)
         if k == 'update' and isinstance(v, dict):
             v = {key: v[key] for key in self.UPDATE_KEYS if key in v} or None
         return v
@@ -366,11 +404,8 @@ class SettingsFile:
         cur = store.kv_get(k)
         if k == 'mail' and isinstance(v, dict) and isinstance(cur, dict) and 'password' in cur:
             v = dict(v, password=cur['password'])
-        if k == 'settings' and isinstance(v, dict) and isinstance(cur, dict):
-            ai_cur = got_value if isinstance(got_value := cur.get('ai'), dict) else {}
-            ai_new = v.get('ai')
-            if isinstance(ai_new, dict) and 'key' not in ai_new and ai_cur.get('key'):
-                v = dict(v, ai=dict(ai_new, key=ai_cur['key']))
+        if k == 'settings' and isinstance(v, dict):
+            v = SettingsSecrets.keep(v, cur)
         if k == 'update':
             v = dict(
                 cur if isinstance(cur, dict) else {},

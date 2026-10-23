@@ -7,14 +7,19 @@ import uuid
 from datetime import date, datetime
 
 import maintenance
+from backup_webdav import WebDavStore
 from deal_files import DealFiles
 from defaults import SrvVal
 from kp_files import KpFiles
+from net import Net
 from storage import DbZip
 
 
 class MirrorBackup:
     KEEP = 14  # копий во второй папке по умолчанию
+    FOLDER = 'folder'
+    DAV = 'dav'  # Яндекс Диск или другой WebDAV
+    MASK = '••••••'
     KEEP_MAX = 365
     _lock = threading.Lock()  # одна копия за раз (по расписанию и кнопкой)
 
@@ -24,19 +29,34 @@ class MirrorBackup:
     # ---------- настройка ----------
     def config(self) -> dict:
         conf = (self.store.kv_get('settings') or {}).get('backup2') or {}
+        dav = picked if isinstance(picked := conf.get('dav'), dict) else {}
         return {
             'on': bool(conf.get('on')),
+            'kind': self.DAV if conf.get('kind') == self.DAV else self.FOLDER,
             'path': str(conf.get('path') or ''),
             'keep': int(conf.get('keep') or self.KEEP),
             'images': bool(conf.get('images')),
+            'dav': dav,
         }
+
+    def public(self) -> dict:
+        """Настройка для «Настроек»: пароль диска наружу не уходит."""
+        conf = self.config()
+        dav = dict(conf['dav'])
+        dav['password'] = self.MASK if dav.get('password') else ''
+        return dict(conf, dav=dav)
 
     def state(self) -> dict:
         return maintenance.state(self.store).get('backup2') or {}
 
     def status(self) -> dict:
-        conf, state = self.config(), self.state()
-        copies = self._copies(conf['path']) if conf['on'] and conf['path'] and os.path.isdir(conf['path']) else []
+        conf, state = self.public(), self.state()
+        dav = conf['kind'] == self.DAV
+        copies = (
+            self._copies(conf['path'])
+            if not dav and conf['on'] and conf['path'] and os.path.isdir(conf['path'])
+            else []
+        )
         return dict(
             conf,
             last=state,
@@ -57,16 +77,38 @@ class MirrorBackup:
         return dict(self.status(), running=True)
 
     def save(self, dst: dict, author: str = '') -> dict:
-        path = self._norm(dst.get('path'))
-        enabled = bool(dst.get('on')) and bool(path)
-        if enabled:
-            self.check(path)
         keep = max(1, min(self.KEEP_MAX, int(dst.get('keep') or self.KEEP)))
+        if dst.get('kind') == self.DAV:
+            self._dav_allowed()
+            dav = WebDavStore.clean(dict(dst.get('dav') or {}, password=self._password(dst)), self.config()['dav'])
+            enabled = bool(dst.get('on'))
+            if enabled:
+                self._dav_check(dav)
+            entry = {'on': enabled, 'kind': self.DAV, 'path': '', 'keep': keep, 'images': False, 'dav': dav}
+        else:
+            path = self._norm(dst.get('path'))
+            enabled = bool(dst.get('on')) and bool(path)
+            if enabled:
+                self.check(path)
+            entry = {'on': enabled, 'kind': self.FOLDER, 'path': path, 'keep': keep, 'images': bool(dst.get('images'))}
         settings = self.store.kv_get('settings') or {}
-        settings['backup2'] = {'on': enabled, 'path': path, 'keep': keep, 'images': bool(dst.get('images'))}
+        settings['backup2'] = entry
         settings['backup2At'], settings['backup2By'] = datetime.now().isoformat(timespec='seconds'), author
         self.store.kv_set('settings', settings)
         return self.status()
+
+    def _dav_on(self) -> bool:
+        from features import FeatureAccess
+
+        return FeatureAccess(self.store).is_on('davBackup')
+
+    def _dav_allowed(self) -> None:
+        if not self._dav_on():
+            raise ValueError('Копии на Яндекс Диск выключены («Параметры» → «Функции программы»)')
+
+    def _password(self, dst: dict) -> str:
+        password = str((dst.get('dav') or {}).get('password') or '')
+        return '' if password == self.MASK else password
 
     def _norm(self, path) -> str:
         path = str(path or '').strip().strip('"')
@@ -83,6 +125,22 @@ class MirrorBackup:
                 'Вторая папка не должна быть внутри папки данных программы — выберите другой диск или сетевую папку'
             )
         return path
+
+    def check_any(self, dst: dict) -> dict:
+        """«Проверить»: папку или Яндекс Диск из формы (пароль не задан — сохранённый)."""
+        if dst.get('kind') != self.DAV:
+            return self.check(dst.get('path'))
+        self._dav_allowed()
+        dav = WebDavStore.clean(dict(dst.get('dav') or {}, password=self._password(dst)), self.config()['dav'])
+        self._dav_check(dav)
+        return {'ok': True, 'path': 'Яндекс Диск: ' + dav['folder'], 'free': None}
+
+    @staticmethod
+    def _dav_check(dav: dict) -> None:
+        try:
+            WebDavStore(dav).check()
+        except Exception as exc:
+            raise ValueError('Яндекс Диск недоступен: ' + Net.why(exc)) from exc
 
     def check(self, path: str | None = None) -> dict:
         """Папка доступна и в неё можно писать → {ok, free}. ValueError — понятным текстом."""
@@ -123,7 +181,9 @@ class MirrorBackup:
 
     def _locked(self, source) -> dict | None:
         conf = self.config()
-        if not conf['on'] or not conf['path']:
+        if not conf['on'] or not (conf['path'] or conf['kind'] == self.DAV):
+            return None
+        if conf['kind'] == self.DAV and not self._dav_on():
             return None
         if not self._lock.acquire(blocking=False):
             return None
@@ -143,7 +203,30 @@ class MirrorBackup:
         maintenance.DbCopy.now(self.store, self.data_dir)
         return self._today(auto, today)
 
+    def _run_dav(self, conf: dict, source) -> dict:
+        """Копия на Яндекс Диск: архив проверяется здесь, загружается, размер на диске сверяется; лишние старые удаляются."""
+        today = date.today().isoformat()
+        rec = {
+            'at': datetime.now().isoformat(timespec='seconds'),
+            'path': 'Яндекс Диск: ' + conf['dav'].get('folder', ''),
+        }
+        try:
+            src = source(maintenance.auto_dir(self.data_dir), today)
+            if not src or not DbZip.is_zip(src):
+                raise RuntimeError('нет сегодняшнего архива базы в data\\backup\\auto')
+            self._verify_zip(src)
+            disk = WebDavStore(conf['dav'])
+            disk.ensure()
+            rec.update(ok=True, file=os.path.basename(src), bytes=disk.put(src))
+            disk.prune(conf['keep'])
+        except Exception as exc:
+            rec.update(ok=False, error=Net.why(exc) if not isinstance(exc, RuntimeError) else str(exc)[:300])
+        maintenance._save(self.store, backup2=rec)
+        return rec
+
     def _run(self, conf: dict, source) -> dict:
+        if conf['kind'] == self.DAV:
+            return self._run_dav(conf, source)
         today = date.today().isoformat()
         rec = {'at': datetime.now().isoformat(timespec='seconds'), 'path': conf['path']}
         try:

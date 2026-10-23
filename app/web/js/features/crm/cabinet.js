@@ -7,6 +7,7 @@ import { CabToday } from './cab-today.js';
 import { CabDeals } from './cab-deals.js';
 import { CabGantt } from './cab-gantt.js';
 import { CabClients } from './cab-clients.js';
+import { CompanyCardView } from './company-card.js';
 import { CabTeam, MonthXlsx } from './cab-team.js';
 import { CabGuide } from './cab-guide.js';
 import { DealCard } from './deal-card.js';
@@ -344,6 +345,7 @@ export class Cabinet {
       ['[data-dstep]', el => CrmTask.quick(el.dataset.dstep, () => this.reload())],
       ['[data-deal]', el => DealCard.open(el.dataset.deal, { list: this._dealIds(el) })],
       ['[data-cc]', el => ClientCard.open(JSON.parse(el.dataset.cc))],
+      ['[data-ccard]', () => CompanyCardView.open(() => this.reload())],
       ['[data-cldeals]', el => this._clientDeals(el.dataset.cldeals)],
       ['[data-tmgr]', el => this._manager(el.dataset.tmgr)],
       ['[data-cabmonth]', el => MonthXlsx.save(el)],

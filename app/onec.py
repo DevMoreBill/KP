@@ -53,6 +53,7 @@ class OneCConf:
         if url and not self.URL.match(url):
             raise ValueError('Адрес публикации 1С — вида http://сервер/база (как в браузере)')
         password = str(data.get('password') or '')
+        prev_url, prev_login = conf.get('url'), conf.get('login')
         days = data.get('days', conf['days'])
         if not isinstance(days, int) or not 1 <= days <= self.DAYS_MAX:
             raise ValueError(f'Глубина загрузки — от 1 до {self.DAYS_MAX} дней')
@@ -63,8 +64,11 @@ class OneCConf:
             auto=bool(data.get('auto')),
             days=days,
         )
+        moved = (conf.get('url'), conf.get('login')) != (prev_url, prev_login)
         if password and password != self.MASK:
             conf['password'] = password[: self.TEXT_MAX]
+        elif moved and conf.get('password'):
+            raise ValueError('Адрес или логин 1С изменились — введите пароль заново')
         self.store.kv_set(self.KEY, conf)
         return self.public()
 
