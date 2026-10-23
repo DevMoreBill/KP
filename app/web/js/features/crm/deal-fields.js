@@ -34,26 +34,42 @@ export class DealFieldsView {
   static NUMBER = new Set(['double', 'integer']);
 
   /**
-   * Поля для раздела карточки: нужные по регламенту — сразу (пустые сверху), остальные — «Ещё поля Битрикс24 (N)».
-   * Без регламента — все поля группами.
-   * @param {object} deal ответ /api/crm/deal (fields, users, uf)
+   * Вкладка «Поля Битрикс24»: сверху — чего не хватает для следующей стадии (по регламенту), ниже — заполненные, остальное —
+   * под «Все поля Битрикс24 (N)».
+   * @param {object} deal ответ /api/crm/deal (fields, users, uf, regsNext)
    * @returns {string} пусто — у воронки нет полей Битрикса
    */
   static body(deal) {
     const fields = deal.fields || [];
     if (!fields.length) return '';
+    const values = deal.uf || {};
+    const now = this.wanted(deal);
+    const filled = fields.filter(field => !now.includes(field) && this._filled(values[field.code]));
+    const rest = fields.filter(field => !now.includes(field) && !filled.includes(field));
     const auto = Object.keys(deal.ufAuto || {}).length
       ? '<p class="muted dk-ufnote"><em class="uf-auto">из КП</em> — заполнено программой, можно изменить</p>'
       : '';
-    const needed = this.needed(deal);
-    if (!needed.length) return `${auto}${this._groupsHtml(fields, deal)}`;
-    const values = deal.uf || {};
-    const sorted = needed.slice().sort((one, two) => this._filled(values[one.code]) - this._filled(values[two.code]));
-    const rest = fields.filter(field => !needed.includes(field));
+    const block = (title, list, cls = '') =>
+      list.length
+        ? `<section class="dk-ufs${cls}"><p class="sub">${title}</p><div class="dk-f dk-uf">${list.map(field => this._field(field, deal)).join('')}</div></section>`
+        : '';
+    const next = deal.regsNext;
+    const need = next ? block(`Нужно для «${esc(next.label)}»`, now, ' need') : '';
     const more = rest.length
-      ? `<details class="dk-ufmore"><summary>Ещё поля Битрикс24 <span class="muted">(${rest.length})</span></summary>${this._groupsHtml(rest, deal)}</details>`
+      ? `<details class="dk-ufmore"><summary>Все поля Битрикс24 <span class="muted">(${rest.length})</span></summary>${this._groupsHtml(rest, deal)}</details>`
       : '';
-    return `${auto}<div class="dk-f dk-uf">${sorted.map(field => this._field(field, deal)).join('')}</div>${more}`;
+    const empty = !need && !filled.length ? '<p class="muted">Поля пока не заполнены.</p>' : '';
+    return `${need}${block('Заполнено', filled)}${empty}${auto}${more}`;
+  }
+
+  /**
+   * Поля, которых не хватает для следующей стадии и которые можно заполнить в программе.
+   * @param {object} deal
+   * @returns {object[]}
+   */
+  static wanted(deal) {
+    const codes = new Set((deal.regsNext && deal.regsNext.codes) || []);
+    return (deal.fields || []).filter(field => codes.has(field.code) && this.fillable(field, deal.users));
   }
 
   /**

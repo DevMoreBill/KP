@@ -1,4 +1,3 @@
-import { DealParts } from './deal-parts.js';
 import { KpDate } from '../kp/kp-date.js';
 import { KpFilesPanel } from '../kp/kp-files.js';
 import { ShortName } from '../kp/journal-row.js';
@@ -22,25 +21,24 @@ export class DealDocs {
    * @param {object} deal ответ /api/crm/deal
    * @returns {string}
    */
-  static part(deal) {
-    const due = !!deal.closingDue;
-    return DealParts.part({
-      key: 'docs',
-      title: 'Документы',
-      note: this._note(deal),
-      body: this._body(deal),
-      open: due,
-      tone: due ? 'warn' : '',
-    });
+  /**
+   * Содержимое вкладки «Документы».
+   * @param {object} deal
+   * @returns {string}
+   */
+  static body(deal) {
+    return this._body(deal);
   }
 
-  // итог в заголовке: какие виды есть; нет закрывающих, когда пора, — так и сказано
-  static _note(deal) {
-    const files = deal.files || [];
-    const names = deal.fileKinds || {};
-    const have = this.ORDER.filter(kind => files.some(file => file.kind === kind)).map(kind => names[kind]);
-    const missing = deal.closingDue ? ['<b class="warn-t">нет акта или УПД</b>'] : [];
-    return [...have.map(esc), ...missing].join(' · ') || 'нет';
+  /**
+   * Сколько документов (для вкладки) и тон: пора закрывающие, а их нет — «warn».
+   * @param {object} deal
+   * @returns {{badge: string, tone: string}}
+   */
+  static badge(deal) {
+    if (deal.closingDue) return { badge: '!', tone: 'warn' };
+    const count = (deal.files || []).length;
+    return { badge: count ? String(count) : '', tone: '' };
   }
 
   static _body(deal) {

@@ -660,3 +660,44 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .wt-x{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
 .wt-x label{display:flex;align-items:center;gap:8px;font-size:13.5px}
 .wt-x input{width:auto}
+/* ---------- карточка сделки: сводка, вкладки слева, дела справа (3.191) ---------- */
+.dk-sum{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px 8px;margin:0 0 12px}
+.dk-sum .dk-st{margin:0 0 6px}
+.dk-sum .dk-facts{margin:6px 0 0}
+.dk-sum .dk-stl .f{margin:0}
+.dk-stk{font-size:12px;color:var(--muted)}
+.dk-bar{display:flex;gap:3px;margin:4px 0 2px}
+.dk-bar i{flex:1;height:6px;border-radius:999px;background:var(--line)}
+.dk-bar i.past{background:color-mix(in srgb,var(--navy) 45%,var(--line))}
+.dk-bar i.now{background:var(--navy)}
+.dk-cols{grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr)}
+.dk-tabs{display:flex;gap:2px;padding:0 6px;border:1px solid var(--line);border-radius:14px 14px 0 0;position:sticky;top:-12px;z-index:2;background:var(--card);overflow-x:auto;scrollbar-width:none}
+.dk-tabs::-webkit-scrollbar{display:none}
+.dk-tab{flex:none;display:inline-flex;align-items:center;gap:6px;border:0;border-bottom:3px solid transparent;background:none;color:var(--muted);font:inherit;font-weight:600;font-size:14px;padding:10px 12px 8px;min-height:44px;cursor:pointer;white-space:nowrap;touch-action:manipulation}
+.dk-tab:hover{color:var(--ink)}
+.dk-tab.on{color:var(--navy);border-bottom-color:var(--navy)}
+.dk-tb{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--soft);color:var(--ink);font-size:12px;font-weight:700}
+.dk-tb.warn{background:var(--warn-bg);color:var(--warn-ink)}
+.dk-tb.bad{background:var(--danger);color:#fff}
+.dk-panel{background:var(--card);border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;padding:14px}
+.dk-panel>.dk-f:first-child{margin-top:0}
+.dk-kps{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.dk-kps>.sub{margin:0 0 6px}
+.dk-ufs{margin:0 0 14px}
+.dk-ufs>.sub{margin:0 0 6px}
+.dk-ufs.need{border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:12px;padding:10px 12px}
+.dk-ufs.need>.sub{color:var(--warn-ink)}
+.dk-panel .ex-ask{background:var(--soft);border-color:var(--line)}
+.dk-side .dk-feed{position:sticky;top:0}
+@media (max-width:1100px){.dk-cols{grid-template-columns:minmax(0,1fr)}}
+.mob .dk-sum{padding:8px 10px;border-radius:12px}
+.mob .dk-tab{padding:10px 10px 8px;font-size:13.5px}
+.mob .dk-panel{padding:12px 10px}
+.md-r .md-st{border:0;padding:0;border-radius:0}
+.dk-kps .md-r:first-of-type{border-top:0}
+.dk-kps .dk-kb{justify-content:flex-start}
+.dk-main{gap:0}
+.mob .dk-sum .dk-stk{display:none}
+.mob .dk-sum .dk-facts{gap:2px 14px;font-size:13px}
+.mob .dk-sum .dk-fa{white-space:nowrap}
+.ex-kp{display:flex;align-items:center;gap:6px;margin:0 0 6px}

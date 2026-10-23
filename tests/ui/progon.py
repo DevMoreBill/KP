@@ -1169,6 +1169,7 @@ class Scenario(UiRun):
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
         self.snap('f_deal_card', 'dialog.deal-dlg[open]', wait=800)
         title = 'Позвонить главному инженеру (прогон, %s)' % self.mode  # режимы — на одном стенде: без дубля дела
+        self._part('feed')
         pg.click('dialog.deal-dlg[open] [data-feedmode="task"]')
         pg.fill('dialog.deal-dlg[open] form.tq input[name=title]', title)
         pg.click('dialog.deal-dlg[open] form.tq [data-dchip][data-day]:nth-child(2)')
@@ -1191,10 +1192,10 @@ class Scenario(UiRun):
             self.errs.append(('cabinet', 'ERR', 'Esc не закрыл карточку сделки'))
 
     def _part(self, key):
-        """Раскрыть раздел карточки сделки (раздел-раскрывашка: «Исполнение», «Поля Битрикс24»…)."""
-        loc = self.pg.locator('dialog.deal-dlg[open] details[data-dkpart="%s"]' % key)
-        if loc.count() and not loc.evaluate('d => d.open'):
-            loc.locator(':scope > summary').click()
+        """Открыть вкладку карточки сделки («Исполнение», «Поля Битрикс24», «Документы», на телефоне — «Дела»)."""
+        tab = self.pg.locator('dialog.deal-dlg[open] [data-dktab="%s"]' % key)
+        if tab.count() and tab.get_attribute('aria-selected') != 'true':
+            tab.click()
             self.wait(300)
 
     PLAN = {'start': '', 'ready': 30, 'delivery': 40, 'end': 45, 'pnr': None, 'pays': [{'d': 0, 'p': 50, 't': 'Аванс 50 %'}],
@@ -1210,20 +1211,25 @@ class Scenario(UiRun):
           const d = b.deals.find(x => (x.kps || []).length && !x.execSum && !['won', 'lost'].includes(x.stage)); if (!d) return '';
           const kid = d.kps[0].id, m = await Api.request(`/api/kp/${kid}/meta`); m.plan = plan;
           await Api.request(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'}, body: JSON.stringify(m)});
+          const cur = await Api.request(`/api/crm/deal/${d.id}`);
+          await Api.request(`/api/crm/deal/${d.id}`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8',
+            'X-KP-Rev': String(cur.rev)}, body: JSON.stringify({stage: 'contract'})});
           return d.id; }""", self.PLAN)
         if not did:
             self.errs.append(('cabinet', 'ERR', 'нет сделки с КП для исполнения'))
             return
         self.ev("id => DealCard.open(id)", did)
-        pg.wait_for_selector('dialog.deal-dlg[open] [data-dkpart="exec"]', timeout=15000)
+        pg.wait_for_selector('dialog.deal-dlg[open] [data-dktab="exec"]', timeout=15000)
         self._part('exec')
         self.snap('f_deal_exec0', 'dialog.deal-dlg[open]', wait=800)
         pg.click('dialog.deal-dlg[open] [data-exsign]')
         pg.wait_for_selector('dialog.deal-dlg[open] .ex-r.ex-done', timeout=15000)
         self.wait(500)
+        self._part('feed')
         text = pg.locator('dialog.deal-dlg[open]').inner_text()
         if 'Оплатить поставщику' not in text:
             self.errs.append(('cabinet', 'ERR', 'после «Договор подписан» не появилось дело «Оплатить поставщику»'))
+        self._part('exec')
         pg.locator('dialog.deal-dlg[open] [data-exmark]').first.click()
         self.wait(1200)
         if self.ev("DealCard.deal.exec.paid") != 450000:
@@ -1257,6 +1263,7 @@ class Scenario(UiRun):
     def _call_check(self, title):
         """Галочка у открытого звонка сделки по началу названия → окно «Итог звонка»."""
         pg = self.pg
+        self._part('feed')
         tid = self.ev("""t => ((DealCard.deal.tasks || []).find(x => x.kind === 'call' && x.state === 'open'
           && String(x.title).startsWith(t)) || {}).id""", title)
         if not tid:
@@ -1276,13 +1283,16 @@ class Scenario(UiRun):
         pg.fill('dialog.cr-dlg[open] textarea[name="note"]', 'Ждут бюджет (прогон)')
         self.snap('f_call_result', 'dialog.cr-dlg[open]', wait=200)
         day = pg.locator('dialog.cr-dlg[open] input[name="due"]').input_value()
+        # режимы прогона работают с одной сделкой стенда параллельно: считается прирост, а не общее число звонков
+        again = """() => (DealCard.deal.tasks || []).filter(t => t.state === 'open' && t.title === 'Перезвонить: клиент думает').length"""
+        before = self.ev(again)
         pg.click('dialog.cr-dlg[open] button[type="submit"]')
         self.wait(2500)
         got = self.ev("""id => { const d = DealCard.deal, all = d.tasks || [];
           return {done: (all.find(t => t.id === id) || {}).state,
             again: all.filter(t => t.state === 'open' && t.title === 'Перезвонить: клиент думает').map(t => t.due),
             said: (d.comments || []).some(c => String(c.text).includes('Ждут бюджет (прогон)'))}; }""", tid)
-        if got != {'done': 'done', 'again': [day], 'said': True}:
+        if got['done'] != 'done' or not got['said'] or day not in got['again'] or len(got['again']) > before + 1:
             self.errs.append(('cabinet', 'ERR', 'итог «Думает»: %s, ждали звонок на %s' % (got, day)))
         if not self._call_check('Перезвонить: клиент думает'):
             return
@@ -1363,6 +1373,7 @@ class Scenario(UiRun):
         pg.click('dialog.dk-new-dlg[open] button[type=submit]')
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
         self.wait(800)
+        self._part('feed')
         text = pg.locator('dialog.deal-dlg[open]').inner_text()
         if 'Уточнить потребность (прогон)' not in text:
             self.errs.append(('cabinet', 'ERR', 'первое дело новой сделки не добавилось'))
@@ -1411,7 +1422,7 @@ class Scenario(UiRun):
             self.errs.append(('mirror', 'ERR', 'колонки доски: %s' % cols))
         self.snap('e1_board', '#cabWin', wait=300)
         pg.locator('#cabWin .kb-c .dc').first.click()
-        pg.wait_for_selector('dialog.deal-dlg[open] [data-dkpart="fields"]', timeout=20000)
+        pg.wait_for_selector('dialog.deal-dlg[open] [data-dktab="fields"]', timeout=20000)
         self._part('fields')
         self.snap('e2_card', 'dialog.deal-dlg[open]', wait=300)
         sel = pg.locator('dialog.deal-dlg[open] select[data-uf="UF_CRM_REGION"]')
