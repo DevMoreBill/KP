@@ -165,6 +165,7 @@ class DealRegs:
 
     @staticmethod
     def _match(item: RegItem, defs: dict) -> str:
+        """Поле портала для пункта: по названию; из нескольких похожих — не служебное и чаще заполняемое в сделках."""
         pattern = item.pattern()
         found = [
             row
@@ -172,7 +173,11 @@ class DealRegs:
             if pattern.search(row.get('label') or '') or pattern.search(row.get('title') or '')
         ]
         found.sort(
-            key=lambda row: (DealFields.SERVICE.search(row.get('title') or '') is not None, len(row.get('title') or ''))
+            key=lambda row: (
+                DealFields.SERVICE.search(row.get('title') or '') is not None,
+                -max((row.get('fill') or {}).values(), default=0),
+                len(row.get('title') or ''),
+            )
         )
         return found[0]['code'] if found else ''
 

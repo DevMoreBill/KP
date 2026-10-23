@@ -144,6 +144,16 @@ class RegsTest(RegsBase):
         self.assertNotIn('region', keys, 'вид поля, который программа не заполняет')
         self.assertIn('topic', keys)
 
+    def test_region_by_fill(self):
+        """Два поля «Регион» (23.10: «Регион» на 12 значений и «Регион1» на 189) — берётся то, что заполняют в сделках."""
+        from deal_rules import DealRegs
+        item = next(row for row in DealRegs.ITEMS if row.key == 'region')
+        defs = {'UF_A': {'code': 'UF_A', 'title': 'Регион', 'label': 'Регион', 'fill': {}},
+                'UF_B': {'code': 'UF_B', 'title': 'Регион1', 'label': 'Регион', 'fill': {'b0': 0.5}}}
+        self.assertEqual(DealRegs._match(item, defs), 'UF_B')
+        defs['UF_B']['fill'] = {}
+        self.assertEqual(DealRegs._match(item, defs), 'UF_A', 'без данных о заполнении — короче название')
+
     def test_choices_from_userfield_list(self):
         """Варианты, которых нет в crm.deal.fields, — из crm.deal.userfield.list (статусы по ENTITY_TYPE, список значений);
         «элемент списка» без доступа к спискам портала — только просмотр."""

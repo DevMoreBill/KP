@@ -24,6 +24,8 @@ class MirrorStructure:
     USERS_MAX = 5000
     SEM = {'S': Funnels.WON, 'F': Funnels.LOST, 'success': Funnels.WON, 'failure': Funnels.LOST}
     CHOICE = ('enumeration', 'crm_status')
+    # где лежат универсальные списки портала (списки CRM, процессы, списки групп)
+    IBLOCK_TYPES = ('lists', 'bitrix_processes', 'lists_socnet')
 
     def __init__(self, store, opener=None) -> None:
         self.store = store
@@ -159,14 +161,17 @@ class MirrorStructure:
         block = str(settings.get('IBLOCK_ID') or '') if isinstance(settings, dict) else ''
         if not block.isdigit():
             return None
-        try:
-            rows = self.sync.api.list('lists.element.get', {'IBLOCK_TYPE_ID': 'lists', 'IBLOCK_ID': int(block)})
-        except BitrixError:
-            return None
-        items = [
-            {'id': str(row.get('ID')), 'value': str(row.get('NAME') or '')} for row in rows if isinstance(row, dict)
-        ]
-        return items or None
+        for kind in self.IBLOCK_TYPES:
+            try:
+                rows = self.sync.api.list('lists.element.get', {'IBLOCK_TYPE_ID': kind, 'IBLOCK_ID': int(block)})
+            except BitrixError:
+                continue
+            items = [
+                {'id': str(row.get('ID')), 'value': str(row.get('NAME') or '')} for row in rows if isinstance(row, dict)
+            ]
+            if items:
+                return items
+        return None
 
     def _fill(self, cat: str, fields: list[dict]) -> dict:
         """Доля сделок воронки за год, где поле заполнено: {код: доля}."""
