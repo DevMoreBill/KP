@@ -1214,9 +1214,13 @@ class Scenario(UiRun):
           const kid = d.kps[0].id, m = await Api.request(`/api/kp/${kid}/meta`); m.plan = plan;
           await Api.request(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'}, body: JSON.stringify(m)});
           const cur = await Api.request(`/api/crm/deal/${d.id}`);
-          await Api.request(`/api/crm/deal/${d.id}`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8',
-            'X-KP-Rev': String(cur.rev)}, body: JSON.stringify({stage: 'contract'})});
+          try { await Api.request(`/api/crm/deal/${d.id}`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8',
+            'X-KP-Rev': String(cur.rev)}, body: JSON.stringify({stage: 'contract'})}); }
+          catch (e) { return /регламент/.test(e.message) ? 'regs' : Promise.reject(e); }
           return d.id; }""", self.PLAN)
+        if did == 'regs':  # режимы идут параллельно: этап regs другого режима включил регламент на общем стенде
+            self.errs.append(('cabinet', 'NOTE', 'исполнение не проверено — на стенде в это время включён регламент Битрикс24'))
+            return
         if not did:
             self.errs.append(('cabinet', 'ERR', 'нет сделки с КП для исполнения'))
             return

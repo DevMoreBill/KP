@@ -24,7 +24,6 @@ PERMS = [  # ключ, подпись, по умолчанию
     ('export', 'Выгружать каталог и клиентов в файл (без закупки)', False),
 ]
 PERM_KEYS = [perm[0] for perm in PERMS]
-STRICT = ('catDelete', 'catSelfMod', 'export')
 LOCK = threading.Lock()
 
 

@@ -138,12 +138,12 @@ class UnitTest(unittest.TestCase):
         from crm import CrmBoard, DealBook
         self.st.client_put('inn7700000001', {'name': 'ООО «Пример Кому»', 'inn': '7700000001',
                                              'contacts': [{'name': 'Петров П. П.', 'post': 'гл. инженер',
-                                                           'phone': '+7 900 000-00-01', 'email': 'p@example.ru'}]})
+                                                           'phone': '+7 (900) 000-00-01', 'email': 'p@example.ru'}]})
         did = DealBook(self.st).create({'title': 'Насос', 'client': 'ООО «Пример Кому»', 'clientInn': '7700000001'},
                                        'm1', 'Иванов', 'И')['id']
         deal = next(row for row in CrmBoard(self.st).build(['m1'])['deals'] if row['id'] == did)
         self.assertEqual(deal['who']['company'], 'ООО «Пример Кому»')
-        self.assertEqual((deal['who']['name'], deal['who']['phone']), ('Петров П. П.', '+7 900 000-00-01'))
+        self.assertEqual((deal['who']['name'], deal['who']['phone']), ('Петров П. П.', '+7 (900) 000-00-01'))
 
 
 class ApiTest(unittest.TestCase):

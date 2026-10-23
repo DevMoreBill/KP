@@ -6,12 +6,6 @@ import { FEAT } from '../../core/features.js';
 /** Кабинет менеджера — первый экран при запуске («Показывать при запуске» — настройка этого браузера). */
 export class MyDay {
   static KEY = 'kp.myday.off';
-  static GREETINGS = [
-    [5, 'Доброй ночи'],
-    [12, 'Доброе утро'],
-    [18, 'Добрый день'],
-    [24, 'Добрый вечер'],
-  ];
 
   /**
    * Кабинет включён в «Функциях».
@@ -59,15 +53,6 @@ export class MyDay {
    */
   static myName() {
     return (Auth.state.user && Auth.state.user.name) || Managers.meName() || '';
-  }
-
-  /**
-   * Приветствие по времени суток.
-   * @returns {string}
-   */
-  static hello() {
-    const hour = new Date().getHours();
-    return this.GREETINGS.find(([until]) => hour < until)[1];
   }
 
   /**

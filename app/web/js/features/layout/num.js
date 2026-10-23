@@ -21,16 +21,6 @@ export class Num {
   }
 
   /**
-   * Вверх до кратного step.
-   * @param {number} value
-   * @param {number} step
-   * @returns {number}
-   */
-  static ceilTo(value, step) {
-    return Math.ceil(value / step) * step;
-  }
-
-  /**
    * Сумма списка.
    * @param {number[]} list
    * @returns {number}

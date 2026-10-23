@@ -92,16 +92,7 @@ dialog.newkp-dlg .nk-top{justify-content:flex-start;margin-bottom:14px}
 .dr-l,.nk-l{max-height:min(52vh,460px);overflow:auto}
 .dr-l .st-row>div:first-child,.nk-l .st-row>div:first-child{display:grid;gap:2px;flex:1;min-width:0}
 .dr-l .st-row .acts,.nk-l .st-row .acts{flex:none;display:flex;gap:6px}
-
-/* «Мой день» */
-dialog.st-confirm.myday-dlg{width:min(980px,calc(100vw - 32px));max-width:none}
-.myday-dlg .md-date{display:block;font-size:13.5px;text-transform:none}
-.myday-dlg .md-date::first-letter{text-transform:uppercase}
 .md-q{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 16px}
-.myday-dlg .dlg-h>div{flex:1;min-width:0}
-.md-g{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;align-items:start}
-.md-col{display:grid;gap:14px;min-width:0}
-.md-col:empty{display:none}
 .md-st{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:3px}
 .md-st .jst{font-size:12px;padding:1px 9px}
 .md-st .jfu,.md-st .jsent{font-size:12px}
@@ -120,7 +111,6 @@ dialog.st-confirm.myday-dlg{width:min(980px,calc(100vw - 32px));max-width:none}
 .md-s .empty{margin:6px 0;padding:0;font-size:13.5px}
 .md-start{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--muted)}
 .md-r .jst{flex:none}
-@media (max-width:760px){.md-g{grid-template-columns:minmax(0,1fr)}}
 
 /* окно «КП сохранено» */
 dialog.st-confirm.ks-dlg{width:min(640px,calc(100vw - 32px));max-width:none}

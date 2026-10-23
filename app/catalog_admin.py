@@ -13,7 +13,7 @@ from admin import AUTO_KEYS, LABELS, AdminSessions, _loads, actor, diff, is_admi
 
 
 def power(handler, key, method='GET') -> bool:
-    """Особое право (auth_users.STRICT): администратор — всегда; менеджер — только вошедший по паролю и с этим правом."""
+    """Особое право («Удалять товары», «Без модерации», «Выгрузка»): администратор — всегда; менеджер — только вошедший по паролю и с этим правом."""
     if AdminSessions.allows(handler, method):
         return True
     u = getattr(handler, '_kp_user', None)

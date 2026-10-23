@@ -12,11 +12,11 @@ export class DealNeed {
   static HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
   static FOCUS_MS = 50;
   static CLIENT_INPUT = {
-    companyPhone: 'type="tel" inputmode="tel" placeholder="+7 …"',
+    companyPhone: 'type="tel" inputmode="tel" placeholder="+7 (900) 123-45-67"',
     companyEmail: 'type="email" inputmode="email" placeholder="info@…"',
     inn: 'type="text" inputmode="numeric" maxlength="12" placeholder="10 или 12 цифр"',
     person: 'type="text" maxlength="120" placeholder="Фамилия Имя Отчество"',
-    personPhone: 'type="tel" inputmode="tel" placeholder="+7 …"',
+    personPhone: 'type="tel" inputmode="tel" placeholder="+7 (900) 123-45-67"',
     personEmail: 'type="email" inputmode="email" placeholder="name@…"',
   };
 

@@ -166,7 +166,7 @@ export class ClientStep {
     return `<div class="csec"><p class="sub">Контактное лицо <span class="muted">необязательно</span></p>
    ${contacts.length ? `<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее:</span>${chips}</div>` : ''}
    <div class="grid g2">${UiKit.field('ФИО', 'contact.name', { ph: 'Иванов Иван Иванович' })}${UiKit.field('Должность', 'contact.post', { ph: 'Главный энергетик' })}</div>
-   <details class="more-lite"${S.contact.phone || S.contact.email ? ' open' : ''}><summary>Телефон и e-mail</summary><div class="grid g2" style="margin-top:8px">${UiKit.field('Телефон', 'contact.phone', { ph: '+7 …' })}${UiKit.field('E-mail', 'contact.email')}</div></details></div>`;
+   <details class="more-lite"${S.contact.phone || S.contact.email ? ' open' : ''}><summary>Телефон и e-mail</summary><div class="grid g2" style="margin-top:8px">${UiKit.field('Телефон', 'contact.phone', { type: 'tel', ph: '+7 (900) 123-45-67' })}${UiKit.field('E-mail', 'contact.email')}</div></details></div>`;
   }
 
   static _object(client) {

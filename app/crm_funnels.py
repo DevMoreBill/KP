@@ -22,7 +22,6 @@ class Funnels:
     LOST = 'lost'
     CLOSED = (WON, LOST)
     TRACK = ('lead', 'sent', 'talks', 'contract')
-    STAGE_RE = re.compile(r'^[A-Za-z0-9_:-]{1,60}$')
     ID_RE = re.compile(r'^b\d{1,6}$')
     NAME_MAX = 80
     COLOR_RE = re.compile(r'^#[0-9A-Fa-f]{6}$')

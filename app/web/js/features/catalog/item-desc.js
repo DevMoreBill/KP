@@ -2,7 +2,6 @@ import { ImageFiles } from './images.js';
 import { Logos } from './image-slots.js';
 import { ImageDrop } from './item-blocks.js';
 import { ItemLinks } from './item-links.js';
-import { PageImages } from './page-images.js';
 import { DrawPic } from '../kit/draw-pic.js';
 import { StationBrief } from '../station/station-doc.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -201,15 +200,5 @@ export class DescTab {
    ${brief}
    ${feats}
    ${gallery}${DrawPic.forItem(item, i)}`;
-  }
-
-  /**
-   * Фото со страницы (автозаполнение).
-   * @param {number} i
-   * @param {string[]} imgs
-   * @returns {string}
-   */
-  static pageImgs(i, imgs) {
-    return PageImages.html(i, imgs, 'ai');
   }
 }

@@ -82,3 +82,9 @@ html dialog.tabwin.dealwin>.dlg-h h3{min-width:0;overflow:hidden;text-overflow:e
 /* окна с собственной прокруткой внутри (экономика, каталог, журнал) — сама вкладка не прокручивается, шапка окна всегда видна */
 html dialog.tabwin:is(.dealwin,.catwin,.jrnwin){overflow:hidden}
 html dialog.tabwin>.dlg-h{position:sticky;top:0;z-index:6;background:var(--card)}
+/* ПК и планшет: вкладки сжимаются (название — с многоточием, целиком — в подсказке), а не уходят под кнопки шапки (3.193.0) */
+.top .apt-t{flex:0 1 auto;min-width:48px}
+.top .apt-t>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.top .apt-kp{max-width:220px}
+@media (max-width:1280px){.top .find-l{display:none}.top:has(.apt-add) #btnNew{display:none}}
+.mob .top .apt-t{flex:1 1 0;min-width:58px;max-width:none}

@@ -54,7 +54,7 @@ class RegsBase(unittest.TestCase):
         self.st = st = TempStore(self).store
         st.manager_put('m1', json.dumps({'name': 'Иванова Анна', 'email': 'ivanova@example.com'}, ensure_ascii=False), 'тест')
         st.client_put('inn7700000001', {'id': 'inn7700000001', 'name': 'ООО «Альфа»', 'inn': '7700000001', 'address': 'г. Москва',
-                                        'contacts': [{'name': 'Сидоров Пётр', 'phone': '+7 900 111-22-33', 'email': 's@alfa.ru'}]}, 'тест')
+                                        'contacts': [{'name': 'Сидоров Пётр', 'phone': '+7 (900) 111-22-33', 'email': 's@alfa.ru'}]}, 'тест')
         from bitrix import BitrixConf
         BitrixConf(st).save({'url': fake.url, 'category': '5', 'on': True, 'users': {'m1': '7'},
                              'stages': {'lead': 'C5:TAKEN', 'sent': 'C5:TKP', 'talks': 'C5:AGREE', 'contract': 'C5:SIGNED',
@@ -185,7 +185,7 @@ class RegsTest(RegsBase):
         from crm import DealBook
         deal = self.deal(source='ad')
         regs = self.regs()
-        deal = regs.save_client(deal, {'companyPhone': '+7 495 100-20-30', 'companyEmail': 'info@alfa.ru'}, 'тест')
+        deal = regs.save_client(deal, {'companyPhone': '+7 (495) 100-20-30', 'companyEmail': 'info@alfa.ru'}, 'тест')
         uf = {'UF_TOPIC': 'Винтовой компрессор', 'UF_CTYPE': '31', 'UF_REGION': '41', 'UF_EQ': '51', 'UF_ASKB': 'Remeza',
               'UF_ASKG': 'ВК-30'}
         deal = DealBook(self.st).update(deal['id'], {'uf': uf, 'note': 'Нужен компрессор на завод'}, 'тест')
@@ -193,7 +193,7 @@ class RegsTest(RegsBase):
         moved = DealBook(self.st).update(deal['id'], {'stage': 'C5:TAKEN'}, 'тест')
         self.assertEqual(moved['stage'], 'C5:TAKEN')
         client = self.st.client_get('inn7700000001')
-        self.assertEqual((client['phone'], client['email']), ('+7 495 100-20-30', 'info@alfa.ru'))
+        self.assertEqual((client['phone'], client['email']), ('+7 (495) 100-20-30', 'info@alfa.ru'))
         with self.assertRaises(ValueError):
             regs.save_client(deal, {'companyEmail': 'не почта'}, 'тест')
         with self.assertRaises(ValueError):
@@ -233,10 +233,10 @@ class RegsTest(RegsBase):
         """ИНН клиента, который уже есть в справочнике, — карточка дополняется, контакты и реквизиты не теряются."""
         from crm import DealBook
         deal = DealBook(self.st).create({'title': 'Насос', 'client': 'Альфа', 'funnel': 'b5'}, 'm1', 'Иванова Анна', 'тест')
-        filled = self.regs().save_client(deal, {'inn': '7700000001', 'companyPhone': '+7 495 100-20-30'}, 'тест')
+        filled = self.regs().save_client(deal, {'inn': '7700000001', 'companyPhone': '+7 (495) 100-20-30'}, 'тест')
         client = self.st.client_get('inn7700000001')
         self.assertEqual(filled['clientId'], 'inn7700000001')
-        self.assertEqual((client['name'], client['address'], client['phone']), ('ООО «Альфа»', 'г. Москва', '+7 495 100-20-30'))
+        self.assertEqual((client['name'], client['address'], client['phone']), ('ООО «Альфа»', 'г. Москва', '+7 (495) 100-20-30'))
         self.assertEqual(client['contacts'][0]['name'], 'Сидоров Пётр')
 
     def test_lost_needs(self):
@@ -307,7 +307,7 @@ class RegsPushTest(RegsBase):
         from crm import DealBook
         deal = self.deal(funnel='b5')
         self.kp('26-0102', deal['id'])
-        self.regs().save_client(deal, {'companyPhone': '+7 495 100-20-30', 'companyEmail': 'info@alfa.ru'}, 'тест')
+        self.regs().save_client(deal, {'companyPhone': '+7 (495) 100-20-30', 'companyEmail': 'info@alfa.ru'}, 'тест')
         files = {'26-0102': [('КП 26-0102.docx', b'PK-docx', 'КП (Word)'), ('КП 26-0102.pdf', b'%PDF-1', 'КП (PDF)')]}
         sync = BitrixSync(self.st, direct(), files=lambda kid: files.get(kid, []))
         BitrixQueue.touch(self.st, 'deal', deal['id'])
@@ -317,7 +317,7 @@ class RegsPushTest(RegsBase):
         bx = self.fake.deals[bid]
         self.assertEqual(bx['UF_TKP']['fileData'][0], 'КП 26-0102.pdf', 'в «ТКП / счёт» — PDF последнего КП')
         company = self.fake.companies[str(bx['COMPANY_ID'])]
-        self.assertEqual([row['VALUE'] for row in company['PHONE']][:1], ['+7 495 100-20-30'])
+        self.assertEqual([row['VALUE'] for row in company['PHONE']][:1], ['+7 (495) 100-20-30'])
         people = self.fake.deal_people.get(bid)
         self.assertEqual(len(people or []), 1, 'контакт привязан к сделке')
         self.assertEqual(str(self.fake.contacts[people[0]]['COMPANY_ID']), str(company['ID']), 'и к компании')
@@ -347,7 +347,7 @@ class RegsPushTest(RegsBase):
         person = self.fake.deal_people[bid][0]
         self.assertFalse(self.fake.contacts[person].get('PHONE'))
         fresh = DealBook(self.st).get(deal['id'])
-        self.regs().save_client(fresh, {'personPhone': '+7 912 345-67-89', 'personEmail': 'galkina@alfa.ru'}, 'тест')
+        self.regs().save_client(fresh, {'personPhone': '+7 (912) 345-67-89', 'personEmail': 'galkina@alfa.ru'}, 'тест')
         calls = len(self.fake.calls)
         DealBook(self.st).update(deal['id'], {'title': 'Компрессор ВК', 'stage': 'C5:TAKEN'}, 'тест')
         BitrixQueue.touch(self.st, 'deal', deal['id'])
@@ -356,7 +356,7 @@ class RegsPushTest(RegsBase):
         self.assertIn('crm.contact.update', methods)
         self.assertLess(methods.index('crm.contact.update'), methods.index('crm.deal.update'), 'контакт — раньше стадии')
         contact = self.fake.contacts[person]
-        self.assertEqual([row['VALUE'] for row in contact['PHONE']], ['+7 912 345-67-89'])
+        self.assertEqual([row['VALUE'] for row in contact['PHONE']], ['+7 (912) 345-67-89'])
         self.assertEqual([row['VALUE'] for row in contact['EMAIL']], ['galkina@alfa.ru'])
         calls = len(self.fake.calls)
         BitrixQueue.touch(self.st, 'deal', deal['id'])

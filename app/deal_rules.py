@@ -9,6 +9,7 @@ from typing import Any
 from client_match import ContactKey
 from crm_funnels import DealFields, Funnels
 from kp_track import Val
+from phone import Phone
 
 
 class Close(Enum):
@@ -69,7 +70,6 @@ class DealRegs:
     KEY = 'crm.dealRegs'
     TAKEN = r'взят[оа]? в работ'
     OFFER = r'ткп|кп отправ|предложени'
-    TALKS = r'согласовани'
     SIGNED = r'договор подписан|подписан'
     FIRST_PAY = r'перв\w* оплат'
     SERVICE = r'сервис'
@@ -358,6 +358,7 @@ class DealRegs:
             digits = re.sub(r'\D', '', text)
             if not self.PHONE_MIN <= len(digits) <= self.PHONE_MAX:
                 raise ValueError(f'Телефон «{text}» — от {self.PHONE_MIN} до {self.PHONE_MAX} цифр')
+            return Phone.format(text)
         if field == 'email' and not Val.email(text):
             raise ValueError(f'Почта «{text}» указана с ошибкой')
         return text

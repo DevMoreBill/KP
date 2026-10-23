@@ -29,7 +29,7 @@ class ClientSearchTest(unittest.TestCase):
 
     def test_by_phone_email_name(self):
         self.assertEqual(self.names('89161234567'), ['АО «Лютик»', 'ООО «Ромашка»'], 'один телефон — две компании, выбор')
-        self.assertEqual(self.names('+7 916 123-45-67'), ['АО «Лютик»', 'ООО «Ромашка»'])
+        self.assertEqual(self.names('+7 (916) 123-45-67'), ['АО «Лютик»', 'ООО «Ромашка»'])
         self.assertEqual(self.names('IVANOV@romashka.ru'), ['ООО «Ромашка»'])
         self.assertEqual(self.names('Иванов И'), ['ООО «Ромашка»'])
         self.assertEqual(self.names('Иванов'), ['АО «Лютик»', 'ООО «Ромашка»'])
@@ -42,10 +42,10 @@ class ClientSearchTest(unittest.TestCase):
         """телефон с добавочным — это телефон, а не ФИО; короткий городской номер контакта тоже находится"""
         self.st.client_put('inn7703000003', {'id': 'inn7703000003', 'name': 'ООО «Василёк»', 'inn': '7703000003', 'contacts': [
             {'name': 'Сидоров', 'phone': '+7 (495) 765-43-21 доб. 105'}, {'name': 'Склад', 'phone': '98-76-50'}]})
-        self.assertEqual(self.names('+7 495 765-43-21 доб. 105'), ['ООО «Василёк»'])
+        self.assertEqual(self.names('+7 (495) 765-43-21 доб. 105'), ['ООО «Василёк»'])
         self.assertEqual(self.names('84957654321'), ['ООО «Василёк»'])
         self.assertEqual(self.names('987650'), ['ООО «Василёк»'])
-        self.assertEqual(self.st.clients_search('+7 495 765-43-21, доб.: 7', 10)['items'][0]['match']['by'], 'телефон')
+        self.assertEqual(self.st.clients_search('+7 (495) 765-43-21, доб.: 7', 10)['items'][0]['match']['by'], 'телефон')
 
     def test_match_and_refill(self):
         from client_match import ClientMatch
@@ -72,7 +72,7 @@ class BitrixClientsTest(SyncBase):
         return BitrixClients(self.sync())
 
     def test_by_inn_keeps_legal_data(self):
-        self.company('501', 'Альфа (Битрикс)', '7700000001', PHONE=[{'VALUE': '+7 495 000-00-01'}])
+        self.company('501', 'Альфа (Битрикс)', '7700000001', PHONE=[{'VALUE': '+7 (495) 000-00-01'}])
         self.person('601', 'Кузнецова', 'Мария', '8 (916) 555-44-33', company='501')
         out = self.clients().of_company('501')
         self.assertEqual((out['clientId'], out['name']), ('inn7700000001', 'ООО «Альфа»'), 'название — из базы программы')
@@ -81,7 +81,7 @@ class BitrixClientsTest(SyncBase):
         names = [row.get('name') for row in doc['contacts']]
         self.assertEqual(names[0], 'Сидоров Пётр')
         self.assertIn('Кузнецова Мария', names)
-        self.assertTrue(any(row.get('phone') == '+7 495 000-00-01' for row in doc['contacts']), 'телефон компании')
+        self.assertTrue(any(row.get('phone') == '+7 (495) 000-00-01' for row in doc['contacts']), 'телефон компании')
         self.clients().of_company('501')
         self.assertEqual(len(self.st.client_get('inn7700000001')['contacts']), len(doc['contacts']), 'без повторов')
 
@@ -105,7 +105,7 @@ class BitrixClientsTest(SyncBase):
     def test_deal_and_linked_contacts(self):
         """Контакты сделки и связанные с компанией списком связей (без «основной компании») — в карточку клиента."""
         self.company('505', 'Промстрой', '7700000005')
-        self.person('605', 'Ким', 'Игорь', '+7 900 555-00-01')  # к сделке
+        self.person('605', 'Ким', 'Игорь', '+7 (900) 555-00-01')  # к сделке
         self.person('606', 'Ли', 'Анна', email='li@prom.ru')  # к компании списком связей
         self.fake.company_people['505'] = ['606']
         bx_id = self.fake.new_deal(TITLE='Мотопомпа', COMPANY_ID='505', CONTACT_ID='605')
@@ -120,7 +120,7 @@ class BitrixClientsTest(SyncBase):
         from crm import DealBook
         self.company('507', 'Промстрой', '7700000007')
         did = DealBook(self.st).create({'title': 'Мотопомпа', 'client': 'Промстрой', 'clientInn': '7700000007'}, 'm1', 'И', 'И')['id']
-        self.person('607', 'Ким', 'Игорь', '+7 900 555-00-07')
+        self.person('607', 'Ким', 'Игорь', '+7 (900) 555-00-07')
         bx_id = self.fake.new_deal(TITLE='Мотопомпа', COMPANY_ID='507', CONTACT_ID='607')
         BitrixLinks(self.st).put('deal', did, bx_id)
         self.assertEqual(self.sync().people(did), 1)
@@ -133,7 +133,7 @@ class BitrixClientsTest(SyncBase):
         from crm import DealBook
         self.company('508', 'Техмаш', '7700000008')
         did = DealBook(self.st).create({'title': 'Компрессор', 'client': 'Техмаш', 'clientInn': '7700000008'}, 'm1', 'И', 'И')['id']
-        self.person('608', 'Орлов', 'Олег', '+7 900 555-00-08')
+        self.person('608', 'Орлов', 'Олег', '+7 (900) 555-00-08')
         BitrixLinks(self.st).put('deal', did, self.fake.new_deal(TITLE='Компрессор', COMPANY_ID='508', CONTACT_ID='608'))
         self.assertEqual(self.sync().people_sweep(), 1)
         self.assertEqual(len(self.st.client_get('inn7700000008')['contacts']), 1)

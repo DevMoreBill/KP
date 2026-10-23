@@ -515,14 +515,6 @@ tr.re-on{background:var(--soft)}
 .mob .ml-row{flex-direction:row;flex-wrap:wrap;align-items:center}
 .mob .ml-row>.acts{flex:1 1 100%}
 .ml-pic img{max-width:90px;max-height:34px;object-fit:contain}
-.st-home{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
-.st-hg>.sub{margin:0 0 2px}
-.st-hg>.muted{margin:0 0 8px;font-size:13px}
-.st-hg ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.st-hg li{display:grid;gap:1px}
-.st-hg li .lnk{justify-self:start;font-weight:600;font-size:14px;text-align:left}
-.st-hg li small{font-size:12px;line-height:1.35}
-
 
 /* перевозчики: включение и адреса API (вкладка «Ключи API») */
 .ca-row{ border-top:1px solid var(--line); padding:10px 0; }
@@ -560,8 +552,6 @@ tr.re-on{background:var(--soft)}
 .fd-sec>summary .muted{font-size:13px}
 .fd-secb{padding:2px 0 6px}
 .fd-secb .fd-form{margin-top:0}
-.se-row{gap:8px;flex-wrap:wrap;align-items:center}
-.se-row select{min-width:0;flex:1 1 260px;max-width:420px}
 .st-more>summary{cursor:pointer}
 .st-more>.st-card{margin-top:10px}
 .ac-ck{display:flex;justify-content:center;align-items:center;min-height:36px;cursor:pointer}   /* вся ячейка права нажимается (телефон — 44 px, mobile.css) */

@@ -58,13 +58,10 @@ dialog.st-confirm.cg-dlg{width:min(620px,calc(100vw - 32px));max-width:none}
 .cab-k small{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cab-k.bad{border-color:var(--danger)}
 .cab-k.ok b{color:var(--ok)}
-.cab-g{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
 .cab-rl{display:grid;gap:1px;flex:1;min-width:0;border:0;background:none;padding:0;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
 .cab-rl b,.cab-rl .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cab-rl:hover b{color:var(--navy);text-decoration:underline}
 .cab-all{margin:4px 0 2px;font-size:13px}
-.md-col .tk-g{margin-top:12px}
-.md-col .tk-g:first-of-type{margin-top:2px}
 .tk-later>summary{cursor:pointer;list-style:none}
 .tk-later>summary::-webkit-details-marker{display:none}
 .tk-later>summary::before{content:'▸ ';}
@@ -253,8 +250,6 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 @keyframes dk-in{from{transform:translateX(40px);opacity:.4}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){dialog.deal-dlg[open]{animation:none}}
 .dk-in{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 20px 24px}
-.dk-top{flex:none;display:flex;align-items:flex-start;gap:10px;padding:12px 20px 10px;background:var(--card);border-bottom:1px solid var(--line)}
-.dk-hd{flex:1;min-width:0;display:grid;gap:3px}
 .dk-saved{color:var(--ok);font-weight:600;opacity:0;transition:opacity .2s}
 .dk-saved.on{opacity:1}
 .dk-title{font-weight:700;font-size:20px;line-height:1.3;border:1px solid transparent;border-radius:8px;padding:3px 6px;margin-left:-7px;background:transparent;color:var(--ink);width:100%}
@@ -280,13 +275,9 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 .dk-f .f em{font-style:normal;font-weight:400;font-size:12px}
 .dk-f .dk-wide{grid-column:1/-1}
 .dk-dchips{margin-top:-4px}
-.dk-about .md-h .muted{font-size:12px}
-.dk-next .tq{margin-top:8px}
 .dk-open .tk:first-child{background:color-mix(in srgb,var(--navy) 6%,var(--card));border-radius:8px;padding-left:6px}
 .dk-none{margin:4px 0 0}
 .dk-kb{margin-top:10px;flex-wrap:wrap;gap:8px}
-.dk-h summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
-.dk-hr{font-size:13px;padding:4px 0;border-top:1px solid var(--line)}
 .dk-lr{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;margin-bottom:12px;max-height:min(52dvh,420px);overflow:auto;overscroll-behavior:contain}
 .dk-lo{display:flex;align-items:center;gap:8px;min-height:34px;padding:4px 8px;border:1px solid transparent;border-radius:8px;font-size:14px;line-height:1.25;cursor:pointer}
 .dk-lo:hover{background:var(--soft)}
@@ -326,7 +317,6 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
   .cab-fabm{position:absolute;right:0;bottom:68px;display:grid;gap:8px;min-width:170px}
   .cab-fabm[hidden]{display:none}
   .cab-fabm .btn{justify-content:flex-start;min-height:48px;box-shadow:0 6px 16px rgba(8,25,60,.2)}
-  .cab-g,.dk-g{grid-template-columns:minmax(0,1fr)}
   .cab-kpi{gap:6px;margin-bottom:10px}
   .cab-k{padding:7px 10px}
   .cab-k b{font-size:19px}
@@ -358,7 +348,7 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
   .lr-c,.lr-d,.lr-k{display:none}
   .cab-lt{grid-template-columns:minmax(0,1fr) auto!important;border-radius:10px;border:1px solid var(--line)}
   .cab-lt .lr-sum{grid-column:2!important}
-  .cab-lr,.cab-lr.lr-all{grid-template-columns:minmax(0,1fr) auto!important;gap:2px 10px;border:1px solid var(--line);border-left:4px solid var(--tc,var(--cs2));border-radius:10px;background:var(--card);padding:10px 12px}
+  .cab-lr{grid-template-columns:minmax(0,1fr) auto!important;gap:2px 10px;border:1px solid var(--line);border-left:4px solid var(--tc,var(--cs2));border-radius:10px;background:var(--card);padding:10px 12px}
   .lr-n{grid-column:1}.lr-sum{grid-column:2;grid-row:1}
   .lr-s{grid-column:1;font-size:12.5px}.lr-e{grid-column:2;grid-row:2;font-size:12.5px;text-align:right}
   .lr-x{display:block;grid-column:1/-1}.lr-m{display:block;grid-column:1/-1;font-size:12px}
@@ -383,13 +373,11 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
   .fn-r{grid-template-columns:96px minmax(0,1fr) 108px;gap:6px;font-size:12.5px}
   .cab-cls{grid-template-columns:minmax(0,1fr)}
 }
-.dk-bx{font-size:12.5px;color:var(--muted)}
-@media (max-width:760px){.dk-bx a{display:inline-block;padding:13px 0;margin:-13px 0}}
 .dc-f{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .dc-new{color:var(--ok);font-weight:600}
 .dc-bx{margin-left:auto;font-size:12px;font-weight:600;color:var(--navy);text-decoration:none;padding:2px 6px;border:1px solid var(--line);border-radius:6px}
 .dc-bx:hover{background:var(--soft)}
-@media (max-width:760px){.dc-bx{padding:12px 12px;margin:-8px 0}.dc-add+.dc-f{margin-top:10px}.dk-hd .dk-bx{padding-top:12px}}
+@media (max-width:760px){.dc-bx{padding:12px 12px;margin:-8px 0}.dc-add+.dc-f{margin-top:10px}}
 .cab-sort{width:auto;max-width:220px}
 @media (max-width:760px){.cab-sort{flex:1 1 100%;max-width:none}}
 
@@ -438,11 +426,6 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
 .ex-r.ex-overdue .ex-t b{color:var(--danger)}
 .ex-fact{width:140px;min-height:32px;padding:4px 8px;font-size:13px}
 .ex-r>.ex-fact+.icon{margin-left:-6px}
-.dk-cl{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:-4px;font-size:13px}
-.dk-pp{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}
-.dk-pp b{font-weight:600}
-.dk-pp a{color:var(--navy);text-decoration:none}
-.dk-pp a:hover{text-decoration:underline}
 .dk-noinn{font-size:12px;font-weight:600;color:var(--warn-ink,var(--danger));border:1px solid var(--warn-line,var(--line));border-radius:6px;padding:1px 6px}
 .dk-pks .msg{margin:0 0 6px}
 .dk-pkl{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px}
@@ -520,11 +503,8 @@ html.mob .dk-src .chip{min-height:44px;padding-inline:14px}
 /* карточка сделки 3.0: цифры строкой, «Что сделать сейчас», разделы-раскрывашки с итогом */
 .dk-facts{display:flex;flex-wrap:wrap;gap:4px 20px;margin:2px 0 10px;font-size:13.5px}
 .dk-fa b{font-size:14.5px}.dk-fa.ok b{color:var(--ok-ink,var(--ink))}.dk-fa.bad b{color:var(--danger)}
-.dk-now{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 12px;padding:12px 14px;border-radius:12px;border:1px solid color-mix(in srgb,var(--navy) 35%,transparent);background:color-mix(in srgb,var(--navy) 7%,transparent)}
 .dk-now.warn{border-color:color-mix(in srgb,var(--warn-ink,#b45309) 40%,transparent);background:color-mix(in srgb,var(--warn-ink,#b45309) 8%,transparent)}
 .dk-now.bad{border-color:color-mix(in srgb,var(--danger) 45%,transparent);background:color-mix(in srgb,var(--danger) 7%,transparent)}
-.dk-nk{font-weight:700}
-.dk-na{display:flex;gap:8px;flex-wrap:wrap}
 .dk-part{padding:0}
 .dk-part>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:11px 14px;min-height:44px;flex-wrap:wrap}
 .dk-part>summary::-webkit-details-marker{display:none}
@@ -535,7 +515,6 @@ html.mob .dk-src .chip{min-height:44px;padding-inline:14px}
 .dk-part.warn>summary .dk-pn{color:var(--warn-ink,var(--danger))}
 .dk-pb{padding:0 14px 14px}
 .dk-main>.dk-part+.dk-part{margin-top:10px}
-.dk-auto{margin:0 0 6px;font-size:12.5px}
 .dk-rare,.dk-ufmore{margin-top:10px}
 .dk-rare>summary,.dk-ufmore>summary{cursor:pointer;font-size:13px;color:var(--navy);min-height:36px;display:flex;align-items:center;gap:6px}
 .ex-kp{margin:0 0 6px;font-size:12.5px}
@@ -588,10 +567,8 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .cr-f .ck{margin-top:6px}
 .cr-dlg .row .btn{white-space:nowrap}
 @media (max-width:768px){.cr-o .chip{min-height:44px}}
-.dd-box{border:1px dashed var(--line);border-radius:10px;padding:10px;display:grid;gap:8px}
 .dd-box.over{border-color:var(--sky);background:var(--soft)}
 .dd-k{display:flex;flex-wrap:wrap;gap:6px}
-.dd-add{align-items:center;gap:10px;flex-wrap:wrap}
 .dd-kind{font-weight:600}
 @media (max-width:768px){.dd-k .chip{min-height:44px}}
 .dk-mail{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:0 0 10px}
@@ -675,7 +652,6 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .mob .dk-panel{padding:12px 10px}
 .md-r .md-st{border:0;padding:0;border-radius:0}
 .dk-kps .md-r:first-of-type{border-top:0}
-.dk-kps .dk-kb{justify-content:flex-start}
 .dk-main{gap:0}
 .mob .dk-sum .dk-stk{display:none}
 .mob .dk-sum .dk-facts{gap:2px 14px;font-size:13px}
@@ -691,8 +667,8 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .dk-chev>.dk-s:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
 .dk-st .dk-won,.dk-st .dk-lost{flex:none;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* шапка карточки сделки одной строкой: номер, название, Битрикс24, ответственный и дата; справа — панель кнопок (3.191.3) */
-.dk-top{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 20px}
-.dk-hd{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
+.dk-top{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 20px;background:var(--card);border-bottom:1px solid var(--line)}
+.dk-hd{flex:1;min-width:0;display:flex;gap:10px;align-items:center}
 .dk-no{flex:none;display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:7px;background:color-mix(in srgb,var(--navy) 10%,transparent);color:var(--navy);font-size:13px;font-weight:700;white-space:nowrap}
 .dk-title{flex:1 1 160px;min-width:180px}
 .dk-saved:empty{display:none}
@@ -728,8 +704,6 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 /* вкладки карточки сделки: колонки не растягиваются сверх меры, блоки с заголовками, явные поля и контакты (3.191.5) */
 .dk-cols{grid-template-columns:minmax(0,1.5fr) minmax(360px,1fr)}
 @media (max-width:1100px){.dk-cols{grid-template-columns:minmax(0,1fr)}}
-.dk-blk+.dk-blk{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
-.dk-bh{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
 .dk-panel .f>span{color:var(--ink);font-weight:600}
 .dk-panel input:not([type=radio]):not([type=checkbox]),.dk-panel select,.dk-panel textarea{border-color:color-mix(in srgb,var(--ink) 20%,var(--line));background:var(--field)}
 .dk-panel input:focus,.dk-panel select:focus,.dk-panel textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
@@ -738,18 +712,15 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .dk-money{grid-template-columns:repeat(2,minmax(0,340px));align-items:start;gap:10px 16px}
 .dk-due{display:grid;gap:6px}
 .dk-due .dk-dchips{margin:0}
-.dk-cl{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:10px;align-items:stretch}
 .dk-cl>.dk-noinn{justify-self:start;align-self:center}
 .dk-cl>.muted{align-self:center}
-.dk-pp{display:grid;align-content:start;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--soft);min-width:0}
 .dk-ppn{display:grid;gap:1px;min-width:0}
 .dk-ppn b{font-weight:700;font-size:14px}
 .dk-ppn .muted{font-size:12.5px;overflow-wrap:anywhere}
 .dk-pa{display:inline-flex;align-items:center;gap:7px;min-height:28px;color:var(--navy);font-weight:600;font-size:13.5px;text-decoration:none;overflow-wrap:anywhere}
 .dk-pa>span{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--navy) 12%,transparent);font-size:12px}
 .dk-pa:hover{text-decoration:underline}
-.dk-kps .dk-kb{margin-top:10px}
-.dd-box{border:0;padding:0;gap:12px}
+.dd-box{border:0;border-radius:10px;padding:0;display:grid;gap:12px}
 .dd-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .dd-q{font-size:13px;font-weight:600}
 .dd-drop{display:grid;place-items:center;gap:4px;width:100%;min-height:96px;padding:16px;border:2px dashed color-mix(in srgb,var(--navy) 35%,var(--line));border-radius:14px;background:color-mix(in srgb,var(--navy) 4%,transparent);color:var(--ink);font:inherit;cursor:pointer;text-align:center}
@@ -765,13 +736,13 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
   .dd-drop{min-height:80px}
 }
 /* «Что сделать сейчас» одной строкой: вид, что сделать, когда, кнопки (3.192.1) */
-.dk-now{flex-wrap:nowrap;gap:10px;padding:8px 10px 8px 12px;margin:0 0 12px}
-.dk-nk{flex:none;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:color-mix(in srgb,var(--navy) 14%,transparent);color:var(--navy);font-size:11.5px;letter-spacing:.02em}
+.dk-now{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;margin:0 0 12px;padding:8px 10px 8px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--navy) 35%,transparent);background:color-mix(in srgb,var(--navy) 7%,transparent)}
+.dk-nk{font-weight:700;flex:none;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:color-mix(in srgb,var(--navy) 14%,transparent);color:var(--navy);font-size:11.5px;letter-spacing:.02em}
 .dk-now.warn .dk-nk{background:color-mix(in srgb,var(--warn-ink,#b45309) 16%,transparent);color:var(--warn-ink,#b45309)}
 .dk-now.bad .dk-nk{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
 .dk-nb{flex:0 1 auto;min-width:0;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dk-nh{flex:1 1 0;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dk-na{flex:none;flex-wrap:nowrap;gap:6px}
+.dk-na{display:flex;gap:6px;flex-wrap:nowrap;flex:none}
 .dk-na .btn{white-space:nowrap}
 @media (max-width:760px){
   .dk-now{flex-wrap:wrap;row-gap:6px}
@@ -786,10 +757,10 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .tf-more>summary{cursor:pointer;min-height:36px;display:flex;align-items:center;font-size:13px;color:var(--navy)}
 .tf-none{margin:4px 0;font-size:13px}
 /* вкладка «Сделка» плотнее по высоте: меньше отступов, сроки рядом с датой, КП в строку (3.192.2) */
-.dk-blk+.dk-blk{margin-top:10px;padding-top:10px}
-.dk-bh{margin-bottom:6px}
-.dk-cl{margin-top:8px;gap:6px}
-.dk-pp{padding:7px 10px;gap:1px}
+.dk-blk+.dk-blk{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.dk-bh{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.dk-cl{display:grid;gap:6px;align-items:stretch;margin-top:8px;font-size:13px;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.dk-pp{display:grid;gap:1px;align-items:baseline;align-content:start;padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:var(--soft);min-width:0}
 .dk-pa{min-height:24px}
 .dk-ce{grid-column:auto;align-self:center;justify-self:start}
 .dk-money{grid-template-columns:minmax(0,260px) minmax(0,1fr);max-width:900px;gap:8px 16px}
@@ -798,7 +769,7 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .dk-due .dk-dchips{flex:none;padding-bottom:3px}
 .dk-bhr{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px}
 .dk-bhr .dk-bh{margin:0}
-.dk-kps .dk-kb{display:flex;gap:6px;margin:0;flex-wrap:wrap}
+.dk-kps .dk-kb{display:flex;justify-content:flex-start;gap:6px;margin:0;flex-wrap:wrap}
 .dk-kps .md-r{padding:6px 0}
 .dk-kps .md-r>div{display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:1px}
 .dk-kps .md-r>div>.md-st{order:1;margin:0}

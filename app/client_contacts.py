@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from kp_track import Val
+from phone import Phone
 
 
 class ClientContacts:
@@ -48,6 +49,7 @@ class ClientContacts:
         digits = re.sub(r'\D', '', person['phone'])
         if person['phone'] and not self.PHONE_MIN <= len(digits) <= self.PHONE_MAX:
             raise ValueError(f'Телефон — от {self.PHONE_MIN} до {self.PHONE_MAX} цифр')
+        person['phone'] = Phone.format(person['phone'])
         if person['email'] and not Val.email(person['email']):
             raise ValueError('Почта указана с ошибкой')
         return person

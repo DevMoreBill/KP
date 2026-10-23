@@ -39,7 +39,6 @@ class BitrixApi:
         r'^https?://[A-Za-z0-9.-]{1,200}(:\d{1,5})?(/[A-Za-z0-9._~%-]{1,100}){0,3}/rest/\d{1,9}/[A-Za-z0-9]{6,64}/?$'
     )
     TIMEOUT = 30
-    PAGE = 50
 
     PORTAL = re.compile(r'^(https?://[^/]+)')
 

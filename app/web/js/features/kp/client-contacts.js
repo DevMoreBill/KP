@@ -12,7 +12,7 @@ export class ClientContactsView {
   static FIELDS = [
     { key: 'name', label: 'ФИО', type: 'text', mode: 'text', hint: 'Иванов Иван Иванович', max: 120 },
     { key: 'post', label: 'Должность', type: 'text', mode: 'text', hint: 'Главный механик', max: 120 },
-    { key: 'phone', label: 'Телефон', type: 'tel', mode: 'tel', hint: '+7 900 123-45-67', max: 40 },
+    { key: 'phone', label: 'Телефон', type: 'tel', mode: 'tel', hint: '+7 (900) 123-45-67', max: 40 },
     { key: 'email', label: 'Почта', type: 'email', mode: 'email', hint: 'name@company.ru', max: 200 },
   ];
 

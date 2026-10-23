@@ -759,12 +759,6 @@ class TzParse:
 class TzReview:
     """Анкета по ТЗ: found / default / missing / conflict по каждому параметру и вопросы заказчику."""
 
-    STATUS = {
-        'found': 'найдено в ТЗ',
-        'default': 'принято по умолчанию',
-        'missing': 'отсутствует',
-        'conflict': 'противоречие',
-    }
     NEED = {'comp': ('flow', 'pressure'), 'dgu': ('kw',), 'pump': ('q', 'head')}
     # ключ, подпись, значение по умолчанию (None — нет: отсутствует), почему так, вопрос заказчику (None — не спрашивать)
     COMMON_T = [

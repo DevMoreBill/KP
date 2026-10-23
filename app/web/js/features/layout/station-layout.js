@@ -135,9 +135,6 @@ export class StationLayout {
   static get MAX_L() {
     return StationMatrix.fit().maxL;
   }
-  static get _PIPE_PAD() {
-    return StationMatrix.grp('pipe').pad;
-  }
   /** Отступ воздушной магистрали от стены, мм. */
   static get AIR_Y() {
     return StationMatrix.grp('pipe').airY;

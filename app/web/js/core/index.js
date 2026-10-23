@@ -13,6 +13,7 @@ import { ImgMiss, LazyJs } from './lazy-js.js';
 import { DblClickGuard, Modal } from './modal.js';
 import { Money } from './money.js';
 import { Morph } from './morph.js';
+import { Phone } from './phone.js';
 import { AdminSession, Api, ImgUpload, RemoteResult, Srv } from './net.js';
 import { SpecValues } from './spec-values.js';
 import { Fmt, ObjPath, Price, Str } from './str.js';
@@ -45,6 +46,7 @@ export const CORE = {
   Money,
   Morph,
   ObjPath,
+  Phone,
   Price,
   RemoteResult,
   SpecValues,
@@ -59,3 +61,4 @@ export const CORE = {
 DblClickGuard.listen();
 ImgMiss.listen();
 DimInput.listen();
+Phone.listen();

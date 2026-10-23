@@ -26,7 +26,7 @@ class SyncBase(unittest.TestCase):
         st.manager_put('m1', json.dumps({'name': 'Иванова Анна', 'email': 'Ivanova@example.com'}, ensure_ascii=False), 'тест')
         st.manager_put('m2', json.dumps({'name': 'Петров Олег', 'email': 'petrov@example.com'}, ensure_ascii=False), 'тест')
         st.client_put('inn7700000001', {'id': 'inn7700000001', 'name': 'ООО «Альфа»', 'inn': '7700000001', 'kpp': '770001001', 'address': 'г. Москва',
-                                        'contacts': [{'name': 'Сидоров Пётр', 'post': 'Главный инженер', 'phone': '+7 900 111-22-33', 'email': 's@alfa.ru'}]}, 'тест')
+                                        'contacts': [{'name': 'Сидоров Пётр', 'post': 'Главный инженер', 'phone': '+7 (900) 111-22-33', 'email': 's@alfa.ru'}]}, 'тест')
         from bitrix import BitrixConf
         BitrixConf(st).save({'url': self.fake.url, 'category': '3', 'on': True,
                              'stages': {'lead': 'C3:NEW', 'sent': 'C3:PREPARATION', 'talks': 'C3:EXECUTING', 'contract': 'C3:FINAL_INVOICE', 'won': 'C3:WON', 'lost': 'C3:LOSE'},
@@ -171,7 +171,7 @@ class SyncTest(SyncBase):
         self.assertEqual((d['stage'], d['lostReason']), ('lost', 'Проиграно в Битрикс24'))
         # новая сделка воронки (после включения связи) — в кабинете у ответственного; сделки другой воронки — нет
         time.sleep(1.1)
-        cid = self.fake.handle('crm.company.add', {'fields': {'TITLE': 'ООО «Бета»', 'PHONE': [{'VALUE': '+7 911 000-00-00'}]}})['result']
+        cid = self.fake.handle('crm.company.add', {'fields': {'TITLE': 'ООО «Бета»', 'PHONE': [{'VALUE': '+7 (911) 000-00-00'}]}})['result']
         self.fake.handle('crm.requisite.add', {'fields': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': cid, 'RQ_INN': '7800000002'}})
         nb = self.fake.new_deal(TITLE='Компрессор для цеха', COMPANY_ID=str(cid), OPPORTUNITY='250000.00', ASSIGNED_BY_ID='8')
         self.fake.new_deal(TITLE='Чужая воронка', CATEGORY_ID='0', STAGE_ID='NEW')
@@ -181,7 +181,7 @@ class SyncTest(SyncBase):
         self.assertEqual(len(mine), 1)
         self.assertTrue(mine[0].get('bxNew'), 'новая из Битрикса — отмечена для кабинета')
         self.assertEqual((mine[0]['client'], mine[0]['clientInn'], mine[0]['sum'], mine[0]['stage']), ('ООО «Бета»', '7800000002', 25000000, 'lead'))
-        self.assertEqual(self.st.client_get('inn7800000002')['contacts'][0]['phone'], '+7 911 000-00-00', 'телефон компании — в справочник')
+        self.assertEqual(self.st.client_get('inn7800000002')['contacts'][0]['phone'], '+7 (911) 000-00-00', 'телефон компании — в справочник')
         # повторный опрос не создаёт дублей и не отправляет пришедшее обратно
         n = len(self.fake.deals)
         self.sync().run()

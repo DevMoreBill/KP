@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 from client_match import ClientMatch, ContactKey
 from defaults import SrvVal
+from phone import Phone
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS catalog (id TEXT PRIMARY KEY, doc TEXT NOT NULL, light TEXT NOT NULL, name TEXT, cat TEXT, maker TEXT, updated TEXT);
@@ -345,6 +346,8 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS deal_files_deal; DROP TABLE IF EXISTS deal_files;
      """,
     ),
+    # телефоны клиентов, поставщиков и менеджеров — в одном виде (app/phone.py), строка поиска клиента — заново
+    ('2027-21-phones', '', ''),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
@@ -577,6 +580,20 @@ def _fill_client_search(store, conn) -> None:
         conn.execute('UPDATE clients SET name=?, inn=?, used_at=?, search=? WHERE id=?', (*client_cols(data), cid))
 
 
+def _fill_phones(store, conn) -> None:
+    """Миграция 2027-21-phones: телефоны справочников — «+7 (900) 123-45-67»; КП и сделки не меняются."""
+    for table in ('clients', 'suppliers', 'managers'):  # имена таблиц — только из этого списка
+        for rid, doc in conn.execute(f'SELECT id, doc FROM {table}').fetchall():
+            try:
+                data = json.loads(doc)
+            except ValueError:
+                continue
+            fixed = Phone.doc(data)
+            if fixed != data:
+                conn.execute(f'UPDATE {table} SET doc=? WHERE id=?', (json.dumps(fixed, ensure_ascii=False), rid))
+    _fill_client_search(store, conn)
+
+
 def _fill_columns(store, conn) -> None:
     """Миграция 2027-01-db: заполнить новые столбцы контрагентов и журнала КП из сохранённых документов."""
     for cid, doc in conn.execute('SELECT id, doc FROM clients').fetchall():
@@ -697,6 +714,7 @@ MIGRATION_FILL = {
     '2027-16-client-contacts': _fill_client_search,
     '2027-18-client-phones': _fill_client_search,
     '2027-19-funnel-closed': _fill_funnel_closed,
+    '2027-21-phones': _fill_phones,
 }
 
 
@@ -1388,7 +1406,7 @@ class Store:
         if base_rev is None and doc.get('_rev') is not None:
             base_rev = doc.get('_rev')
         doc = {k: v for k, v in doc.items() if k != '_rev'}
-        doc = dict(doc, id=sid, name=str(doc['name']).strip()[:200], updatedAt=_now())
+        doc = dict(Phone.doc(doc), id=sid, name=str(doc['name']).strip()[:200], updatedAt=_now())
         with self.lock:
             conn = self.conn()
             rev = self._next_rev(conn, 'suppliers', sid, base_rev)
@@ -1516,7 +1534,7 @@ class Store:
         for k, field in self.MANAGER_FIELDS.items():
             if len(str(doc.get(k) or '')) > field:
                 raise ValueError(f'Карточка менеджера: поле «{k}» — не длиннее {field} знаков')
-        doc = {k: str(doc[k]) for k in self.MANAGER_FIELDS if doc.get(k) is not None}
+        doc = Phone.doc({k: str(doc[k]) for k in self.MANAGER_FIELDS if doc.get(k) is not None})
         dup = self.manager_dup(mid, doc)
         if dup:
             raise ValueError(
@@ -1890,7 +1908,7 @@ class Store:
         return dict(json.loads(row[0]), _rev=row[1] or 0) if row else None
 
     def client_put(self, cid, doc, author: str = '', base_rev=None) -> int:
-        doc = {k: v for k, v in doc.items() if k != '_rev'} if isinstance(doc, dict) else doc
+        doc = Phone.doc({k: v for k, v in doc.items() if k != '_rev'}) if isinstance(doc, dict) else doc
         with self.lock:
             conn = self.conn()
             rev = self._next_rev(conn, 'clients', cid, base_rev)

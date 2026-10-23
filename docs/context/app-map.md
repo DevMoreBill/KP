@@ -244,6 +244,7 @@
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.193.0** (23.10) — телефоны в одном виде: `Phone` (`app/phone.py`, `core/phone.js`), миграция `2027-21-phones`; `tests/test_controls.py`; чистка CSS и мёртвого кода.
 - **3.192.2** (23.10) — «Сделка» плотнее (`.dk-bhr`, `.dk-due` в строку); `ClientContacts.save` — по прежнему ФИО (`was`) под `store.lock`, ValueError → 400.
 - **3.192.1** (23.10) — `DealNow` одной строкой (`kind`, «✓ Сделано» → `CrmTask.done`), `DealFeed` главное / вся лента (`KEY_SHOWN`, `ROBOTS`), воронка «Сегодня» без пустых стадий.
 - **3.192.0** (23.10) — контакты клиента: `ClientContacts` (`app/client_contacts.py`, `POST /api/clientcard/contact`), `ClientContactsView` (`features/kp/client-contacts.js`); в сделке — `.dk-ce`.
