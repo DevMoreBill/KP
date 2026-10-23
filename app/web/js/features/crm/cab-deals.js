@@ -7,7 +7,9 @@ import { Cabinet } from './cabinet.js';
 import { DealBulk } from './deal-bulk.js';
 import { CabList } from './cab-list.js';
 import { CabGantt } from './cab-gantt.js';
+import { CabPay } from './cab-pay.js';
 import { Toast } from '../../core/toast.js';
+import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Mobile } from '../../ui/mobile.js';
 import { esc, today } from '../../core/util.js';
@@ -56,6 +58,7 @@ export class CabDeals {
   static html() {
     this._restore();
     if (this.view === 'gantt') return CabGantt.html(this._views());
+    if (this.view === 'pay') return this._pay();
     const deals = this.deals();
     const open = deals.filter(deal => !CrmData.closed(deal));
     const empty =
@@ -71,7 +74,8 @@ export class CabDeals {
   static _restore() {
     if (this.sort === null) this.sort = this._stored(this.SORT_KEY, Object.keys(this.SORTS), 'exp');
     if (this.view === null)
-      this.view = this._stored(this.VIEW_KEY, ['board', 'list', 'gantt'], Mobile.isPhone() ? 'list' : 'board');
+      this.view = this._stored(this.VIEW_KEY, ['board', 'list', 'gantt', 'pay'], Mobile.isPhone() ? 'list' : 'board');
+    if (this.view === 'pay' && !FEAT.on('payCalendar')) this.view = 'board';
   }
 
   static _stored(key, allowed, fallback) {
@@ -112,6 +116,7 @@ export class CabDeals {
       ['board', '▦ Доска'],
       ['list', '☰ Список'],
       ['gantt', '▤ График'],
+      ...(FEAT.on('payCalendar') ? [['pay', '₽ Оплаты']] : []),
     ];
     const buttons = views
       .map(
@@ -120,6 +125,10 @@ export class CabDeals {
       )
       .join('');
     return `<div class="seg cab-view" role="radiogroup" aria-label="Вид">${buttons}</div>`;
+  }
+
+  static _pay() {
+    return `<div class="cab-bar">${this._views()}${Cabinet.search('Сделка или клиент')}</div>${CabPay.html()}`;
   }
 
   static _sortSelect() {
@@ -379,6 +388,7 @@ export class CabDeals {
       )
     )
       return true;
+    if (this.view === 'pay' && CabPay.click(event)) return true;
     if (CabList.click(event)) {
       Cabinet.renderBody();
       return true;

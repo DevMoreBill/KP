@@ -529,6 +529,9 @@ def main() -> int:
         from crm_auto import AutoTasks  # кабинет: дела сами (после отправки КП, без движения, кончается срок КП)
 
         maintenance.Background.every(3600, lambda: AutoTasks(store()).sweep(), 'дела сами')
+        from onec import OneCSync  # 1С: оплаты клиентов → «оплачено» в сделке (если включена автозагрузка)
+
+        maintenance.Background.every(6 * 3600, lambda: OneCSync.scheduled(store()), 'оплаты из 1С')
         import config
         from admin_alerts import AdminAlerts
 

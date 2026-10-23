@@ -52,6 +52,10 @@ FEATURES = {
     'analogs': (True, 'Аналоги других производителей'),
     'leadTime': (True, 'Срок поставки из каталога в условия'),
     'stLibrary': (True, 'Типовые станции'),
+    'payCalendar': (True, 'Платёжный календарь'),
+    'receivables': (True, 'Просроченные оплаты клиентов'),
+    'rateDiff': (True, 'Курс в сделке'),
+    'onec': (True, 'Оплаты из 1С'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -68,6 +72,9 @@ NEEDS = dict.fromkeys(
         'forecast',
         'callHistory',
         'notify',
+        'payCalendar',
+        'receivables',
+        'rateDiff',
     ),
     'myDay',
 )
@@ -100,6 +107,9 @@ ROUTES = [
     (None, re.compile(r'^/api/crm/intake$'), 'intake'),
     (None, re.compile(r'^/api/crm/deal/d\d{1,9}/(remove|restore)$'), 'dealDelete'),
     ('GET', re.compile(r'^/api/doctpl/(contract|spec)$'), 'docsGen'),
+    ('GET', re.compile(r'^/api/crm/pay$'), 'payCalendar'),
+    ('POST', re.compile(r'^/api/crm/deal/d\d{1,9}/remind$'), 'receivables'),
+    (None, re.compile(r'^/api/onec(/.*)?$'), 'onec'),
     (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]
 

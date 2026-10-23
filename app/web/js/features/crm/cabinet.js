@@ -1,3 +1,5 @@
+import { KpRate } from './kp-rate.js';
+import { CabPay } from './cab-pay.js';
 import { CrmData } from './crm-data.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { CrmTask } from './crm-task.js';
@@ -86,6 +88,8 @@ export class Cabinet {
       return;
     }
     if (this.tab === 'team' && !CrmData.board.canAll) this.tab = 'today';
+    CabPay.reset();
+    KpRate.load();
     await this._extras();
     this.render();
     this._announce();

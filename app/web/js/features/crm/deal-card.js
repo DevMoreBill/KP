@@ -1,3 +1,4 @@
+import { KpRate } from './kp-rate.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
@@ -438,10 +439,8 @@ export class DealCard {
   }
 
   static _kps(deal) {
-    const rows =
-      (deal.kps || []).map(offer => this._kpRow(offer)).join('') ||
-      '<p class="muted dk-nokp">КП ещё нет — «＋ Новое КП» справа.</p>';
-    return rows;
+    const rows = (deal.kps || []).map(offer => this._kpRow(offer)).join('');
+    return rows || '<p class="muted dk-nokp">КП ещё нет — «＋ Новое КП» справа.</p>';
   }
 
   static _kpButtons() {
@@ -454,7 +453,7 @@ export class DealCard {
     const status = FEAT.on('track')
       ? `<span class="md-st"><span class="jst st-${esc(offer.status)}">${esc(KpTrack.STATUS[offer.status] || offer.status)}</span></span>`
       : '';
-    return `<div class="md-r"><span class="md-n">№ ${esc(offer.number)}</span><div><b>${esc(KpDate.ddmm(offer.date))} · ${CrmFmt.rub(offer.sum)}</b><span class="muted">${items}${valid}</span>${status}</div><button class="btn sm" type="button" data-dko="${esc(offer.id)}">Открыть</button></div>`;
+    return `<div class="md-r"><span class="md-n">№ ${esc(offer.number)}</span><div><b>${esc(KpDate.ddmm(offer.date))} · ${CrmFmt.rub(offer.sum)}</b><span class="muted">${items}${valid}</span>${KpRate.line(offer)}${status}</div><button class="btn sm" type="button" data-dko="${esc(offer.id)}">Открыть</button></div>`;
   }
 
   /**

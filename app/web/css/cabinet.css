@@ -875,3 +875,20 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .dk-calls li>span:last-child{overflow-wrap:anywhere}
 @media (max-width:760px){.cab-bulk{bottom:calc(var(--tbh,0px) + 8px)}.cab-bulk select{flex:1 1 100%}}
 .td-ntf{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--navy) 7%,var(--card));border:1px solid color-mix(in srgb,var(--navy) 22%,var(--line));font-size:13px}
+/* «Сделки → ₽ Оплаты»: платёжный календарь и просроченные оплаты */
+.pay-m,.pay-late{margin:0 0 12px}
+.pay-late{border:1px solid var(--danger);border-radius:10px;padding:6px 10px}
+.pay-r{display:grid;grid-template-columns:96px 18px minmax(0,1.2fr) minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.pay-r .pay-t{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pay-r .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pay-r.done{opacity:.6}
+.pay-r.late .pay-d{color:var(--danger);font-weight:600}
+.pay-k.in,.pay-in{color:var(--ok)}
+.pay-k.out,.pay-out{color:var(--danger)}
+.pay-s{text-align:right;white-space:nowrap}
+.dk-rate{display:block;font-size:12px}
+@media (max-width:640px){.pay-r{grid-template-columns:80px 14px minmax(0,1fr) auto}.pay-r>.muted{display:none}}
+.pay-t{border:0;background:none;padding:0;font:inherit;color:var(--navy);cursor:pointer;min-height:28px}
+.pay-t:hover{text-decoration:underline}
+.pay-late .pay-r{grid-template-columns:96px 18px minmax(0,1.2fr) minmax(0,1fr) auto auto}
+@media (max-width:640px){.pay-late .pay-r{grid-template-columns:80px 14px minmax(0,1fr) auto}.pay-late [data-premind]{grid-column:1/-1;justify-self:end}}

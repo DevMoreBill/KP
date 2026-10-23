@@ -893,6 +893,12 @@ def guard(handler, store, method, path) -> Any:
         return lambda: log(
             handler, store, 'edit_settings', 'settings', 'logistics', None, {'tariffs': True}, admin=True
         )
+    # только администратор: подключение к 1С (адрес, логин, пароль) и загрузка оплат
+    if path.startswith('/api/onec'):
+        if not AdminSessions.allows(handler, method):
+            return _refuse(handler, store, 'edit_settings' if method != 'GET' else None, 'settings', 'onec')
+        if method != 'GET':
+            return lambda: log(handler, store, 'edit_settings', 'settings', 'onec', None, {'path': path}, admin=True)
     # только администратор: «Наши реквизиты» и свои шаблоны договора и спецификации
     if path.startswith(('/api/requisites', '/api/doctpl/')) and method != 'GET':
         if not is_admin(handler):

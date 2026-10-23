@@ -51,6 +51,7 @@ from crm import CrmBoard, DealBook, DealLinks, Stages, TaskBook
 from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
+from crm_money import PayCalendar, PayReminder
 from deal_files import DealClosing, DealFiles
 from deal_intake import DealIntake
 from deal_rules import ClientByInn, DealRegs
@@ -74,6 +75,8 @@ from kp_templates import (
     template_file,
 )
 from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
+from net import Net
+from onec import OneCApi, OneCConf, OneCSync
 from our_docs import DocTemplates, OurRequisites
 from server_log import ServerLog
 from storage import Conflict, with_rev
@@ -1871,6 +1874,31 @@ class CrmController(Controller):
         res.update(me=uid, meName=name, canAll=everyone, managers=CrmBoard(store()).managers() if everyone else [])
         return self.send_json(res)
 
+    @route(r'/api/crm/pay', 'GET')
+    def pay_calendar(self) -> Any:
+        """Платёжный календарь: оплаты клиентов и платежи поставщикам по плану исполнения сделок; просроченные оплаты."""
+        try:
+            scope = self._scope(self.query.get('manager'))
+        except PermissionError as exc:
+            return self.text(403, str(exc))
+        rows = PayCalendar(store()).rows(scope, self._money)
+        return self.send_json({'rows': rows, 'overdue': PayCalendar.overdue(rows)})
+
+    @route(r'/api/crm/deal/(d\d{1,9})/remind', 'POST')
+    def pay_remind(self, did: str) -> Any:
+        """Дело «Напомнить об оплате» по точке оплаты клиента."""
+        deal = self._deal(did)
+        if deal is None:
+            return None
+        key = str(self.json_body().get('key') or '')[:80]
+        deal['kps'] = DealBook(store()).kps([did])[did]
+        step = next((row for row in ExecPlan(deal).raw() if row['key'] == key and row['kind'] == 'cust'), None)
+        if not step:
+            return self.text(400, 'Нет такой оплаты клиента — обновите окно')
+        task = PayReminder(store()).add(deal, step['label'], admin.actor(self.handler)[1])
+        self.bitrix_on(task['id'], 'task')
+        return self.send_json(task)
+
     @route(r'/api/crm/time', 'GET')
     def deal_time(self) -> Any:
         """«Где тратится время» — по отделу, без имён: только тем, кому виден весь отдел."""
@@ -2350,6 +2378,35 @@ class OurDocsController(Controller):
         tpl = DocTemplates(store())
         tpl.remove(kind)
         return self.send_json({'ok': True, 'templates': tpl.info()})
+
+
+class OneCController(Controller):
+    """1С по OData: подключение, проверка связи, загрузка оплат — только администратор (см. admin.guard)."""
+
+    @route(r'/api/onec', ('GET', 'PUT'))
+    def conf(self) -> Any:
+        conf = OneCConf(store())
+        if self.method == 'PUT':
+            with self.user_input():
+                return self.send_json(conf.save(self.json_body()))
+        return self.send_json(conf.public())
+
+    @route(r'/api/onec/check', 'POST')
+    def check(self) -> Any:
+        try:
+            OneCApi(OneCConf(store()).get()).check()
+        except Exception as exc:  # причина — словами, без адреса и пароля
+            return self.send_json({'ok': False, 'message': Net.why(exc)})
+        return self.send_json({'ok': True, 'message': 'Связь с 1С есть'})
+
+    @route(r'/api/onec/sync', 'POST')
+    def sync(self) -> Any:
+        try:
+            return self.send_json({'ok': True, **OneCSync(store()).run()})
+        except ValueError as exc:
+            return self.text(400, str(exc))
+        except Exception as exc:
+            return self.send_json({'ok': False, 'message': Net.why(exc)})
 
 
 ROUTER = Router()

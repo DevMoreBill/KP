@@ -6,6 +6,7 @@ import { DefaultsTab } from './defaults-tab.js';
 import { FeedsTab } from './feeds-tab.js';
 import { RecordsTab } from './records-tab.js';
 import { OurDocsTab } from './our-docs-tab.js';
+import { OneCPanel } from './onec-panel.js';
 import { SettingsFileCard } from './settings-file.js';
 import { AccessPanel, AdminsTab, SecurityTab } from './staff-tabs.js';
 import { BackupTab } from './backup-tab.js';
@@ -236,11 +237,12 @@ export class AdminNav {
         {
           key: 'services',
           label: 'Сервисы и ключи',
-          hint: 'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть.',
+          hint: 'Проверка всех внешних сервисов одной кнопкой, ключи API (контрагенты, перевозчики, PDF), нейросеть, 1С (оплаты клиентов).',
           parts: [
             ['', main => new ConnectionsPanel(main).open()],
             ['Ключи API', main => ApiKeys.form(main)],
             ['Нейросеть', main => AiTab.render(main)],
+            ['1С: оплаты клиентов', main => OneCPanel.render(main)],
           ],
         },
         {
