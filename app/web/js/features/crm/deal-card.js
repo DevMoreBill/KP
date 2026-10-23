@@ -248,15 +248,14 @@ export class DealCard {
     return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${this.ICONS[name]}</svg>`;
   }
 
-  // шапка: номер, ответственный, дата; название крупно; метка Битрикс24 — слева; панель кнопок одного вида — справа
+  // шапка одной строкой: номер, название, Битрикс24, ответственный и дата — слева; панель кнопок одного вида — справа
   static _top(deal) {
     const created = KpDate.ddmm(String(deal.created || '').slice(0, 10));
-    const who = deal.manager
-      ? `<span class="dk-who">${this._icon('client')}${esc(ShortName.of(deal.manager))}</span>`
-      : '';
+    const who = deal.manager ? `${this._icon('client')}<b>${esc(ShortName.of(deal.manager))}</b> · ` : '';
     return `<header class="dk-top"><div class="dk-hd">
-      <div class="dk-meta"><span class="dk-no">Сделка № ${esc(deal.number)}</span>${who}<span class="muted">создана ${esc(created)}</span><span class="dk-saved" aria-live="polite"></span></div>
-      <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">${this._bx(deal)}</div>
+      <span class="dk-no">Сделка № ${esc(deal.number)}</span>
+      <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">
+      <span class="dk-saved" aria-live="polite"></span>${this._bx(deal)}<span class="dk-who" title="Ответственный · дата создания">${who}${esc(created)}</span></div>
       <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button><button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
   }
 
@@ -278,14 +277,15 @@ export class DealCard {
     const link = deal.bx;
     if (!link) return '';
     if (!link.id) {
-      const text = link.error ? `не отправлено — ${esc(link.error)}` : 'ждёт отправки';
-      return `<div class="dk-links"><span class="dk-bxc${link.error ? ' bad' : ''}">Битрикс24: ${text}</span></div>`;
+      const text = link.error ? 'не отправлено' : 'ждёт отправки';
+      const hint = link.error ? `Битрикс24: не отправлено — ${link.error}` : 'Битрикс24: сделка ещё не отправлена';
+      return `<span class="dk-bxc${link.error ? ' bad' : ''}" title="${esc(hint)}">Б24 · ${text}</span>`;
     }
-    const name = `Битрикс24 · сделка ${esc(link.id)}`;
-    const chip = link.url
-      ? `<a class="dk-bxc" href="${esc(link.url)}" target="_blank" rel="noopener" title="Открыть сделку в Битрикс24">${name} ↗</a>`
-      : `<span class="dk-bxc">${name}</span>`;
-    return `<div class="dk-links">${chip}<span class="muted">синхронизировано ${esc(Fmt.dateTime(link.at))}</span></div>`;
+    const hint = esc(`Сделка ${link.id} в Битрикс24 · синхронизировано ${Fmt.dateTime(link.at)}`);
+    const name = `Б24 · ${esc(link.id)}`;
+    return link.url
+      ? `<a class="dk-bxc" href="${esc(link.url)}" target="_blank" rel="noopener" title="${hint} — открыть">${name} ↗</a>`
+      : `<span class="dk-bxc" title="${hint}">${name}</span>`;
   }
 
   static _stageLabel(stages, key, fallback) {

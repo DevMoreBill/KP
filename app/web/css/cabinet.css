@@ -689,39 +689,38 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .dk-chev>.dk-s:not(.on):hover{background:color-mix(in srgb,var(--tc,var(--navy)) 22%,var(--soft));filter:none}
 .dk-chev>.dk-s:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
 .dk-st .dk-won,.dk-st .dk-lost{flex:none;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* шапка карточки сделки: слева номер, ответственный, дата, название и Битрикс24; справа — панель кнопок одного вида (3.191.2) */
-.dk-top{display:flex;align-items:flex-start;gap:16px;padding:14px 20px 12px}
-.dk-hd{flex:1;min-width:0;display:grid;gap:4px}
-.dk-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;min-height:24px}
-.dk-no{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;background:color-mix(in srgb,var(--navy) 10%,transparent);color:var(--navy);font-weight:700;letter-spacing:.2px}
-.dk-who{display:inline-flex;align-items:center;gap:5px;color:var(--ink);font-weight:600}
-.dk-who svg{width:14px;height:14px;color:var(--muted)}
-.dk-title{font-size:21px;font-weight:700;line-height:1.25;margin:0 0 0 -7px;padding:4px 6px;border:1px solid transparent;border-radius:8px;background:transparent;width:calc(100% + 7px)}
-.dk-title:hover{border-color:var(--line)}
-.dk-title:focus{border-color:var(--navy);background:var(--field);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
-.dk-links{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;font-size:12.5px}
-.dk-bxc{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;border:1px solid color-mix(in srgb,#2fc6f6 55%,var(--line));background:color-mix(in srgb,#2fc6f6 10%,transparent);color:var(--ink);font-weight:600;text-decoration:none;white-space:nowrap}
+/* шапка карточки сделки одной строкой: номер, название, Битрикс24, ответственный и дата; справа — панель кнопок (3.191.3) */
+.dk-top{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 20px}
+.dk-hd{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
+.dk-no{flex:none;display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:7px;background:color-mix(in srgb,var(--navy) 10%,transparent);color:var(--navy);font-size:13px;font-weight:700;white-space:nowrap}
+.dk-title{flex:1 1 160px;min-width:180px}
+.dk-saved:empty{display:none}
+.dk-saved{flex:none;font-size:12.5px;white-space:nowrap}
+.dk-who{flex:0 1000 auto;min-width:0;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dk-who b{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.dk-who svg{flex:none;width:14px;height:14px}
+.dk-bxc{flex:none;display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;border:1px solid color-mix(in srgb,#2fc6f6 55%,var(--line));background:color-mix(in srgb,#2fc6f6 10%,transparent);color:var(--ink);font-size:12.5px;font-weight:600;text-decoration:none;white-space:nowrap}
 a.dk-bxc:hover{background:color-mix(in srgb,#2fc6f6 20%,transparent)}
 .dk-bxc.bad{border-color:color-mix(in srgb,var(--danger) 50%,transparent);background:color-mix(in srgb,var(--danger) 8%,transparent);color:var(--danger)}
-.dk-acts{display:flex;align-items:center;gap:6px;flex:none;padding:3px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
-.dk-nav{display:flex;align-items:center;gap:2px;padding-right:6px;margin-right:2px;border-right:1px solid var(--line)}
+.dk-acts{display:flex;align-items:center;gap:4px;flex:none;padding:3px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.dk-nav{display:flex;align-items:center;gap:2px;padding-right:4px;margin-right:2px;border-right:1px solid var(--line)}
 .dk-pos{font-size:12.5px;color:var(--muted);min-width:46px;text-align:center;white-space:nowrap}
-.dk-ib{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:36px;height:36px;padding:0 8px;border:0;border-radius:9px;background:none;color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;touch-action:manipulation}
+.dk-ib{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;height:34px;padding:0 8px;border:0;border-radius:9px;background:none;color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;touch-action:manipulation}
 .dk-ib:hover:not(:disabled){background:var(--soft)}
 .dk-ib:disabled{opacity:.35;cursor:default}
 .dk-ib:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
 .dk-ccb{color:var(--navy)}
 .dk-x:hover{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+@media (max-width:1100px){.dk-cct,.dk-who{display:none}}
 @media (max-width:760px){
-  .dk-top{flex-wrap:wrap;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 12px 10px}
+  .dk-top{flex-wrap:wrap;gap:6px;padding:calc(6px + env(safe-area-inset-top)) 12px 8px}
   .dk-acts{order:1;flex:1 1 100%;justify-content:space-between;border:0;padding:0}
   .dk-nav{border:0;margin-right:auto}
-  .dk-hd{order:2;flex:1 1 100%}
-  .dk-title{font-size:18px}
-  .dk-cct{display:none}
+  .dk-hd{order:2;flex:1 1 100%;gap:8px}
+  .dk-who{display:none}
   .dk-ib{min-width:44px;height:44px}
 }
-dialog.deal-dlg header.dk-top input.dk-title{font-size:21px;font-weight:700;line-height:1.25;height:auto;min-height:0;padding:4px 6px;border:1px solid transparent;border-radius:8px;background:transparent;box-shadow:none;color:var(--ink)}
+dialog.deal-dlg header.dk-top input.dk-title{font-size:19px;font-weight:700;line-height:1.25;height:36px;min-height:0;padding:0 8px;border:1px solid transparent;border-radius:8px;background:transparent;box-shadow:none;color:var(--ink)}
 dialog.deal-dlg header.dk-top input.dk-title:hover{border-color:var(--line)}
 dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);background:var(--field);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
-@media (max-width:760px){dialog.deal-dlg header.dk-top input.dk-title{font-size:18px}}
+@media (max-width:760px){dialog.deal-dlg header.dk-top input.dk-title{font-size:17px;height:40px}}
