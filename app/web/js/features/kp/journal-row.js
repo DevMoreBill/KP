@@ -1,9 +1,10 @@
 import { ClientCard } from './client-card.js';
+import { KpDate } from './kp-date.js';
 import { Currency } from './currency.js';
 import { KpTrack } from './kp-track.js';
 import { Srv } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
-import { esc } from '../../core/util.js';
+import { esc, today } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
 
 /** «Иванов И. П.» из полного ФИО. */
@@ -102,11 +103,13 @@ export class JournalEcon {
 }
 
 /**
- * Строка журнала КП: частые действия — «Открыть» и «Копия», остальные (файл, письмо, экономика, версии) — в меню «⋯»,
- * чтобы в длинном списке не рябило от кнопок.
+ * Строка журнала КП — одной строкой таблицы: № и дата, клиент и позиция, менеджер, сделка и следующий шаг, срок действия,
+ * сумма с маржой, статус; «Открыть» — кнопкой, остальное (копия, файл, письмо, экономика, версии) — в меню «⋯».
  */
 export class JournalRow {
   static MENU_GAP = 8;
+  static DAY_MS = 86400000;
+  static SOON_DAYS = 7;
 
   /**
    * Тендер: номер закупки и ссылка на неё (только http(s)).
@@ -121,16 +124,28 @@ export class JournalRow {
   }
 
   /**
+   * Заголовок таблицы журнала.
+   * @returns {string}
+   */
+  static head() {
+    return '<div class="jr jr-h" aria-hidden="true"><span>КП</span><span>Клиент и позиция</span><span>Менеджер</span><span>Сделка · следующий шаг</span><span>Действует</span><span class="r">Сумма</span><span>Статус</span><span></span></div>';
+  }
+
+  /**
    * Строка журнала.
    * @param {object} row
    * @param {object} econ JournalEcon.of
    * @returns {string}
    */
   static html(row, econ) {
-    return `<div class="jr${row.tender && row.tender.number ? ' tnd' : ''}">${this._number(row)}
-      ${this._client(row)}
-      <div class="jr-e"><div class="jr-sum"><b>${econ.sum}</b><span class="jr-st">${KpTrack.chip(row)}</span></div><span>${econ.line}</span></div>
-      <div class="acts"><button class="btn" type="button" data-jo="${esc(row.id)}" title="Открыть КП для просмотра и правки">Открыть</button><button class="btn" type="button" data-jc="${esc(row.id)}" title="Новое КП на основе этого: позиции, цены и условия — те же, получатель — новый">Копия</button>${this.menu(row)}</div></div>`;
+    const author = row.manager
+      ? `<span class="jr-a" title="${esc([row.manager, row.managerPost].filter(Boolean).join(', '))}">${esc(ShortName.of(row.manager))}</span>`
+      : '<span class="muted">—</span>';
+    return `<div class="jr${row.tender && row.tender.number ? ' tnd' : ''}">${this._number(row)}${this._client(row)}
+      <div class="jr-w">${author}</div>${this._deal(row)}${this._until(row)}
+      <div class="jr-e"><b>${econ.sum}</b><span class="muted">${econ.line}</span></div>
+      <div class="jr-st">${KpTrack.chip(row)}</div>
+      <div class="acts"><button class="btn" type="button" data-jo="${esc(row.id)}" title="Открыть КП для просмотра и правки">Открыть</button>${this.menu(row)}</div></div>`;
   }
 
   static _number(row) {
@@ -138,20 +153,41 @@ export class JournalRow {
       row.files && FEAT.on('kpFiles')
         ? `<button type="button" class="jr-f" data-jkf="${esc(row.id)}" data-jn="${esc(row.number)}" title="Справочные документы: ${esc(String(row.files))}" aria-label="Справочные документы КП № ${esc(row.number)}: ${esc(String(row.files))}">📎 ${esc(String(row.files))}</button>`
         : '';
-    const saved = row.savedAt
-      ? `<span class="muted" title="Последнее сохранение">сохр. ${esc(Fmt.dateTime(row.savedAt))}</span>`
-      : '';
-    return `<div class="jr-n"><span class="n">№ ${esc(row.number)}</span><span class="muted">от ${esc(KPGen.ruDate(row.date))}</span>${this.tender(row)}${files}${saved}</div>`;
+    const saved = row.savedAt ? ` · сохранено ${Fmt.dateTime(row.savedAt)}` : '';
+    return `<div class="jr-n"><span class="n" title="КП № ${esc(row.number)} от ${esc(KPGen.ruDate(row.date))}${esc(saved)}">№ ${esc(row.number)}</span><span class="muted">${esc(KpDate.ddmm(row.date))}</span>${this.tender(row)}${files}</div>`;
   }
 
   static _client(row) {
     const first =
       row.items && row.items[0] ? esc(row.items[0]) + (row.positions > 1 ? ` и ещё ${row.positions - 1}` : '') : '';
-    const author = row.manager
-      ? `<span class="jr-a" title="${esc([row.manager, row.managerPost].filter(Boolean).join(', '))}">Автор: ${esc(ShortName.of(row.manager))}</span>`
-      : '';
     const link = ClientCard.link({ inn: String(row.clientInn || '').replace(/\D/g, ''), name: row.client }, row.client);
-    return `<div class="jr-m"><b>${link}</b><span class="muted">${first}</span>${author}</div>`;
+    return `<div class="jr-m"><b>${link}</b><span class="muted" title="${first}">${first}</span></div>`;
+  }
+
+  // сделка КП: стадия и ближайшее дело — нажатие открывает карточку сделки
+  static _deal(row) {
+    const link = row.crm;
+    if (!link || !FEAT.on('myDay')) return '<div class="jr-d none"><span class="muted">—</span></div>';
+    const tone = { won: ' ok', lost: ' bad' }[link.closed] || '';
+    const task = link.task
+      ? `<span class="muted${link.task.due < today() ? ' late' : ''}" title="${esc(link.task.title)}">${esc(KpDate.ddmm(link.task.due).slice(0, 5))} · ${esc(link.task.title)}</span>`
+      : `<span class="muted">${link.closed ? '' : 'дел нет'}</span>`;
+    return `<div class="jr-d"><button type="button" class="lnk jr-dl${tone}" data-jd="${esc(link.id)}" title="Открыть сделку № ${esc(link.number)}">${esc(link.stage)}</button>${task}</div>`;
+  }
+
+  // срок действия КП: скоро кончится — жёлтым, кончился — красным (у выигранных и проигранных — без отметки)
+  static _until(row) {
+    const until = String(row.validUntil || '').slice(0, 10);
+    if (!until) return '<div class="jr-u none"><span class="muted">—</span></div>';
+    const days = Math.round((new Date(until) - new Date(today())) / this.DAY_MS);
+    const done = ['won', 'lost'].includes((row.track || {}).status);
+    const mark = done ? { tone: '', left: '' } : this._left(days);
+    return `<div class="jr-u${mark.tone}"><span>до ${esc(KpDate.ddmm(until).slice(0, 5))}</span><span class="muted">${mark.left}</span></div>`;
+  }
+
+  static _left(days) {
+    if (days < 0) return { tone: ' bad', left: 'истекло' };
+    return { tone: days <= this.SOON_DAYS ? ' warn' : '', left: `${days} дн.` };
   }
 
   static _item(attrs, text, title) {
@@ -167,6 +203,7 @@ export class JournalRow {
     const id = esc(row.id);
     const item = (attrs, text, title) => this._item(attrs, text, title);
     const items = [
+      item(`data-jc="${id}"`, 'Копия', 'Новое КП на основе этого: позиции, цены и условия — те же, получатель — новый'),
       item(
         `data-jr="${id}"`,
         'Повторить КП',

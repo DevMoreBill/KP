@@ -169,10 +169,24 @@ export class ClientStep {
    <details class="more-lite"${S.contact.phone || S.contact.email ? ' open' : ''}><summary>Телефон и e-mail</summary><div class="grid g2" style="margin-top:8px">${UiKit.field('Телефон', 'contact.phone', { type: 'tel', ph: '+7 (900) 123-45-67' })}${UiKit.field('E-mail', 'contact.email')}</div></details></div>`;
   }
 
+  /**
+   * Адреса доставки клиента для списка: объекты из прошлых КП, затем юридический адрес — без повторов.
+   * @param {object|null} client
+   * @returns {string[]}
+   */
+  static places(client) {
+    const all = [...(client?.objects || []).map(place => place.address), client?.address];
+    const seen = new Set();
+    return all
+      .map(text => String(text || '').trim())
+      .filter(text => text && !seen.has(Str.norm(text)) && seen.add(Str.norm(text)));
+  }
+
   static _object(client) {
     const same = place =>
       Str.norm(place.purpose) === Str.norm(S.object.purpose) && Str.norm(place.address) === Str.norm(S.object.address);
     const objects = (client?.objects || []).filter(place => (place.purpose || place.address) && !same(place));
+    const places = this.places(client);
     const chips = objects
       .slice(0, this.CHIPS)
       .map(
@@ -184,7 +198,8 @@ export class ClientStep {
       .join('');
     return `<div class="csec"><p class="sub">Объект <span class="muted">необязательно</span></p>
    ${objects.length ? `<div class="chips" style="margin-bottom:8px"><span class="muted" style="font-size:13px">Ранее у клиента:</span>${chips}</div>` : ''}
-   <div class="grid g2">${UiKit.field('Назначение', 'object.purpose', { ph: 'Например: резервное электроснабжение котельной', list: 'purposeList' })}${UiKit.field('Адрес объекта', 'object.address', { ph: 'Город, улица, дом' })}</div>
-   <datalist id="purposeList">${ClientFields.PURPOSES.map(purpose => `<option value="${esc(purpose)}">`).join('')}</datalist></div>`;
+   <div class="grid g2">${UiKit.field('Назначение', 'object.purpose', { ph: 'Например: резервное электроснабжение котельной', list: 'purposeList' })}${UiKit.field('Адрес объекта (доставки)', 'object.address', { ph: places.length ? 'Выберите из списка или впишите новый' : 'Город, улица, дом', list: 'addrList' })}</div>
+   <datalist id="purposeList">${ClientFields.PURPOSES.map(purpose => `<option value="${esc(purpose)}">`).join('')}</datalist>
+   <datalist id="addrList">${places.map(place => `<option value="${esc(place)}">`).join('')}</datalist></div>`;
   }
 }

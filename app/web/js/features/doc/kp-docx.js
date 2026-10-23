@@ -1,3 +1,4 @@
+import { KpConditions } from '../../core/conditions.js';
 import { DocImages } from './doc-images.js';
 import { DocxPage, DocxSettings, DocxTypes } from './docx-parts.js';
 import { DocxRoots } from './docx-roots.js';
@@ -35,6 +36,7 @@ export class KpDocx {
       date: S.pricing.rateDate || '',
     };
     out.items = S.items.map(item => this._item(item));
+    out.conditions = KpConditions.forDoc(out.conditions, (S.object || {}).address);
     return out;
   }
 

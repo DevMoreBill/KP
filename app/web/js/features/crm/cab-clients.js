@@ -74,11 +74,11 @@ export class CabClients {
   static _card(client) {
     const name = ClientCard.enabled()
       ? `<button type="button" class="lnk cab-cln" data-cc="${esc(JSON.stringify({ id: client.id, inn: client.inn, name: client.name }))}" title="Карточка клиента">${esc(client.name)}</button>`
-      : `<b>${esc(client.name)}</b>`;
+      : `<b class="cab-cln">${esc(client.name)}</b>`;
     const num = (label, count, sum) =>
-      `<span><small>${label}</small><b>${count}</b>${count ? `<em>${CrmFmt.short(sum)}</em>` : ''}</span>`;
+      `<span><b>${count}${count && sum ? ` <em>${CrmFmt.short(sum)}</em>` : ''}</b><small>${label}</small></span>`;
     return `<article class="cab-cl"><div class="cab-cl-h">${name}${client.inn ? `<span class="muted">ИНН ${esc(client.inn)}</span>` : ''}</div>${this._who(client.who)}
-      <div class="cab-cl-n">${num('В работе', client.open, client.sum)}${num('Выиграно', client.won, client.wonSum)}<span><small>Последнее</small><b>${esc(CrmFmt.day(client.last))}</b></span></div>
+      <div class="cab-cl-n">${num('в работе', client.open, client.sum)}${num('выиграно', client.won, client.wonSum)}<span><b>${esc(CrmFmt.day(client.last))}</b><small>последнее</small></span></div>
       <div class="cab-cl-f">${this._next(client)}<button class="btn sm" type="button" data-cldeals="${esc(client.name)}">Сделки (${client.deals.length})</button></div></article>`;
   }
 
@@ -88,12 +88,14 @@ export class CabClients {
 
   // контакт клиента: позвонить или написать одним нажатием
   static _who(who) {
-    if (!who) return '';
+    if (!who) return '<div class="cab-cl-w"><span class="muted">Контакта нет</span></div>';
     const phone = who.phone
-      ? `<a href="tel:${esc(String(who.phone).replace(/[^\d+]/g, ''))}">☎ ${esc(who.phone)}</a>`
+      ? `<a class="cab-cl-a" href="tel:${esc(String(who.phone).replace(/[^\d+]/g, ''))}" title="Позвонить"><i aria-hidden="true">☎</i>${esc(who.phone)}</a>`
       : '';
-    const mail = who.email ? `<a href="mailto:${esc(who.email)}">✉ ${esc(who.email)}</a>` : '';
-    return `<div class="cab-cl-w"><span>${esc(who.name || '')}</span>${phone}${mail}</div>`;
+    const mail = who.email
+      ? `<a class="cab-cl-a" href="mailto:${esc(who.email)}" title="Написать"><i aria-hidden="true">✉</i>${esc(who.email)}</a>`
+      : '';
+    return `<div class="cab-cl-w"><b>${esc(who.name || 'Контакт')}</b><div>${phone}${mail}</div></div>`;
   }
 
   static _next(client) {

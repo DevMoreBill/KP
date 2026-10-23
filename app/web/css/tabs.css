@@ -88,3 +88,30 @@ html dialog.tabwin>.dlg-h{position:sticky;top:0;z-index:6;background:var(--card)
 .top .apt-kp{max-width:220px}
 @media (max-width:1280px){.top .find-l{display:none}.top:has(.apt-add) #btnNew{display:none}}
 .mob .top .apt-t{flex:1 1 0;min-width:58px;max-width:none}
+/* журнал КП — таблица: одна строка на КП (3.194.0) */
+.jr{grid-template-columns:minmax(84px,104px) minmax(200px,2.4fr) minmax(86px,.7fr) minmax(150px,1.5fr) minmax(64px,84px) minmax(130px,1fr) minmax(104px,124px) 124px;gap:4px 14px;padding:5px 8px;align-items:center}
+.jr.tnd{border-left:0;padding-left:8px;box-shadow:inset 3px 0 0 #f59e0b}
+html dialog.tabwin.jrnwin .jr.tnd{box-shadow:inset 3px 0 0 #f59e0b,inset 0 -1px 0 var(--line)}
+.jr>div{gap:1px}
+.jr .muted,.jr-a{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jr-m b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jr-n .n{font-size:13.5px}
+.jr-n .jr-t,.jr-n .jr-f{font-size:11px;padding:0 6px}
+.jr-h{padding:2px 8px 4px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
+.jr-h .r,.jr-e{text-align:right}
+html dialog.tabwin.jrnwin .jr-h:hover{background:none}
+.jr-e b{font-size:13.5px;white-space:nowrap}
+.jr-e .muted{white-space:normal;line-height:1.3}
+.jr .jr-st{justify-content:flex-start;margin:0}
+.jr-d{min-width:0}
+.jr-dl{justify-self:start;align-self:flex-start;max-width:100%;font-size:12.5px;font-weight:600;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jr-dl.ok{color:var(--ok)}
+.jr-dl.bad{color:var(--danger)}
+.jr-d .late{color:var(--danger)}
+.jr-u{font-size:12.5px;white-space:nowrap}
+.jr-u.warn>span:first-child{color:var(--warn-ink,#8a4b00);font-weight:700}
+.jr-u.bad>span{color:var(--danger);font-weight:700}
+.jr .acts{flex-wrap:nowrap;justify-content:flex-end}
+@media (max-width:1250px){.jr{grid-template-columns:minmax(84px,100px) minmax(180px,2fr) minmax(140px,1.4fr) minmax(64px,80px) minmax(120px,1fr) minmax(100px,120px) 124px}.jr-w,.jr-h>span:nth-child(3){display:none}}
+@media (max-width:1000px){.jr .none{display:none}.jr-h{display:none}.jr{grid-template-columns:1fr}.jr.tnd{box-shadow:inset 3px 0 0 #f59e0b}.jr-e,.jr-h .r{text-align:left}.jr .muted{white-space:normal}}
+.mob .jr-h,.mob .jr .none{display:none}

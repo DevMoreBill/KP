@@ -243,16 +243,22 @@ export class CabDeals {
   static card(deal) {
     const closed = CrmData.closed(deal);
     const drag = this.drag && !closed ? ' draggable="true"' : '';
-    const client = deal.client && deal.client !== deal.title ? `<span class="dc-c">${esc(deal.client)}</span>` : '';
+    const title = deal.title || deal.client || `Сделка № ${deal.number}`;
+    const client = deal.client && deal.client !== deal.title ? esc(deal.client) : '';
+    const count = (deal.kps || []).length;
+    const link = deal.bxUrl
+      ? `<a class="dc-bx" href="${esc(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24">Б24 ↗</a>`
+      : '';
     return `<article class="dc t-${CrmData.toneOf(deal)}" data-deal="${esc(deal.id)}"${drag} tabindex="0">
-      <b class="dc-t">${esc(deal.title || deal.client || `Сделка № ${deal.number}`)}</b>${client}
-      <div class="dc-r"><b>${CrmFmt.short(deal.sum)}</b>${this._expected(deal)}</div>${this._next(deal)}${this.exec(deal)}${this._foot(deal)}</article>`;
+      <div class="dc-r"><b class="dc-t" title="${esc(title)}">${esc(title)}</b>${link}</div>
+      <div class="dc-r"><span class="dc-c" title="${client}">${client || '&nbsp;'}</span><span class="dc-s"><span class="muted">${count ? `КП ${count}` : 'без КП'} · </span><b>${CrmFmt.short(deal.sum)}</b></span></div>
+      <div class="dc-r">${this._next(deal)}${this._expected(deal)}</div>${this.exec(deal)}${this._foot(deal)}</article>`;
   }
 
   static _expected(deal) {
     if (!deal.expected) return '';
     const late = deal.expected < today() && !CrmData.closed(deal);
-    return `<span class="${late ? 'bad-t' : 'muted'}" title="Ожидаемая дата">${late ? 'срок прошёл · ' : 'до '}${esc(CrmFmt.day(deal.expected))}</span>`;
+    return `<span class="dc-d ${late ? 'bad-t' : 'muted'}" title="${late ? 'Ожидаемая дата прошла' : 'Ожидаемая дата'}">${late ? '⚠ ' : 'до '}${esc(CrmFmt.day(deal.expected))}</span>`;
   }
 
   static _next(deal) {
@@ -281,17 +287,13 @@ export class CabDeals {
     return `<span class="dc-x${late}" title="Исполнение: сделано ${sum.done} из ${sum.total}"><i class="dc-xb"><i style="width:${width}%"></i></i>${sum.done}/${sum.total}${step}</span>`;
   }
 
+  // низ карточки — только когда есть что сказать: новая заявка Битрикс24, ответственный (в «Весь отдел»)
   static _foot(deal) {
-    const count = (deal.kps || []).length;
     const parts = [
       deal.bxNew ? '<b class="dc-new">Новая из Битрикс24</b>' : '',
-      count ? `КП ${count}` : 'без КП',
       CrmData.all() ? esc(CrmData.mgrShort(deal)) : '',
     ].filter(Boolean);
-    const link = deal.bxUrl
-      ? `<a class="dc-bx" href="${esc(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24">Б24 ↗</a>`
-      : '';
-    return `<span class="dc-f muted">${parts.join(' · ')}${link}</span>`;
+    return parts.length ? `<span class="dc-f muted">${parts.join(' · ')}</span>` : '';
   }
 
   static _list(deals) {

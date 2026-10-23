@@ -10,6 +10,7 @@
 .cvthumb .docx-wrapper{padding:0!important;background:none!important;display:block!important}
 .cvthumb section.docx{box-shadow:none!important;margin:0!important}
 .cv-empty{padding:30px 16px;text-align:center}
+.cvthumb .cv-empty{color:#5e6984}
 .dl.pv{margin-top:14px;padding:10px 16px}
 .dl.pv+.dl{margin-top:8px}
 .pdftoo{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:8px;font-size:13px;color:var(--muted);cursor:pointer}

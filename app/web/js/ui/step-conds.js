@@ -106,7 +106,17 @@ export class CondsStep {
     return `<div class="f"><span>${esc(cond.label)}${same ? ' <em class="cond-auto" title="Подставлено из «Экономики сделки» и обновляется при её изменении. Впишите своё — останется ваше.">из экономики сделки</em>' : ''}</span><div class="cpick">
         <input type="text" data-p="conditions.${j}.value" value="${esc(cond.value || '')}" placeholder="Не выводить" autocomplete="off">
         ${this._picker('data-cset', j, options, own)}</div>
-        ${sync}</div>`;
+        ${sync}${this._place(cond)}</div>`;
+  }
+
+  // доставка до объекта: что попадёт в КП, или подсказка указать адрес
+  static _place(cond) {
+    if (cond.label !== KpConditions.DELIVERY || !KpConditions.TO_PLACE.test(String(cond.value || ''))) return '';
+    const address = String((S.object || {}).address || '').trim();
+    if (!address) {
+      return '<span class="muted cond-place">Адрес доставки не указан — впишите «Адрес объекта» в разделе «Клиент», и он добавится в КП</span>';
+    }
+    return `<span class="muted cond-place">В КП: «${esc(KpConditions.deliveryText(cond, address))}»</span>`;
   }
 
   static _bar(last, any) {

@@ -66,6 +66,33 @@ export class KpConditions {
     ],
   ];
 
+  static DELIVERY = 'Доставка';
+  // доставка до места заказчика: в документе к условию дописывается адрес объекта
+  static TO_PLACE = /до\s+(?:объекта|адреса|места|склада\s+покупателя|покупателя)/i;
+
+  /**
+   * Условие «Доставка» в документе: доставка до объекта и адрес известен — «…, по адресу: …».
+   * @param {{label: string, value: string}} cond
+   * @param {string} address адрес объекта КП
+   * @returns {string}
+   */
+  static deliveryText(cond, address) {
+    const value = String(cond.value || '').trim();
+    const place = String(address || '').trim();
+    if (cond.label !== this.DELIVERY || !place || !this.TO_PLACE.test(value) || value.includes(place)) return value;
+    return `${value.replace(/[.;,\s]+$/, '')} по адресу: ${place}`;
+  }
+
+  /**
+   * Условия для документа КП: адрес доставки — в условии «Доставка».
+   * @param {Array<{label: string, value: string}>} conditions
+   * @param {string} address
+   * @returns {Array<{label: string, value: string}>}
+   */
+  static forDoc(conditions, address) {
+    return (conditions || []).map(cond => ({ ...cond, value: this.deliveryText(cond, address) }));
+  }
+
   // типовые оговорки для «Дополнительных условий» (добавляются строкой)
 
   static EXTRA = [

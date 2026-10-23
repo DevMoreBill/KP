@@ -1041,3 +1041,52 @@ class CrmBoard:
             }
             for deal in rows
         ]
+
+
+class DealLinks:
+    """Сделка каждого КП журнала: номер, стадия и ближайшее открытое дело — одной выборкой на страницу журнала."""
+
+    COLS = ', '.join(f'd.{col.strip()}' for col in DealBook.COLS.split(','))
+
+    def __init__(self, store) -> None:
+        self.store = store
+
+    def for_kps(self, kids: list[str]) -> dict[str, dict]:
+        """{номер КП: {id, number, stage, closed, task: {title, due, time}}} — только КП, привязанные к сделке."""
+        kids = [str(kid) for kid in kids if kid]
+        if not kids:
+            return {}
+        marks = ','.join('?' * len(kids))
+        rows = self.store.all(
+            f'SELECT l.kp_id, {self.COLS} FROM deal_kp l JOIN deals d ON d.id = l.deal_id WHERE l.kp_id IN ({marks})',
+            tuple(kids),
+        )
+        deals = {row[0]: DealBook._out(row[1:]) for row in rows}
+        tasks = self._next_tasks({deal['id'] for deal in deals.values()})
+        funnels = Funnels(self.store)
+        return {kid: self._link(deal, funnels, tasks.get(deal['id'])) for kid, deal in deals.items()}
+
+    def _next_tasks(self, ids: set) -> dict[str, dict]:
+        if not ids:
+            return {}
+        marks = ','.join('?' * len(ids))
+        found: dict[str, dict] = {}
+        for did, title, due, clock in self.store.all(
+            f"SELECT deal_id, title, due, time FROM crm_tasks WHERE state='open' AND deal_id IN ({marks}) "
+            'ORDER BY due, time',
+            tuple(ids),
+        ):
+            found.setdefault(did, {'title': title or '', 'due': due or '', 'time': clock or ''})
+        return found
+
+    @staticmethod
+    def _link(deal: dict, funnels: Funnels, task: dict | None) -> dict:
+        closed = deal['stage'] in ('won', 'lost')
+        label = funnels.label(deal['funnel'], deal.get('fstage') or deal['stage'])
+        return {
+            'id': deal['id'],
+            'number': deal.get('number') or '',
+            'stage': label,
+            'closed': deal['stage'] if closed else '',
+            'task': None if closed else task,
+        }

@@ -47,7 +47,7 @@ from config import (
     store,
     write_bytes,
 )
-from crm import CrmBoard, DealBook, Stages, TaskBook
+from crm import CrmBoard, DealBook, DealLinks, Stages, TaskBook
 from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
@@ -700,9 +700,14 @@ class KpController(Controller):
         ):  # постранично, с поиском и итогами по всему отбору; files — число справочных документов КП
             res = admin.KpJournal.page(self.handler, store(), self.query)
             count = KpFiles.of(store()).counts([rec.get('id') for rec in res['items'] if isinstance(rec, dict)])
+            links = DealLinks(store()).for_kps(
+                [str(rec.get('id') or '') for rec in res['items'] if isinstance(rec, dict)]
+            )
             for rec in res['items']:
                 if isinstance(rec, dict) and count.get(rec.get('id')):
                     rec['files'] = count[rec['id']]
+                if isinstance(rec, dict) and str(rec.get('id') or '') in links:
+                    rec['crm'] = links[str(rec['id'])]
             return self.send_json(res)
         return self.send_json(admin.KpJournal.out(self.handler, store().kp_list()))
 
