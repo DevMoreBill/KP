@@ -40,7 +40,6 @@ import { Modal } from '../../core/modal.js';
  * история. Всё сохраняется сразу при изменении (номер правки — X-KP-Rev), «‹ ›» — соседняя сделка списка.
  */
 export class DealCard {
-  static MANY = 8;
   static SAVED_MS = 2000;
   static CLIENTS_SHOWN = 50;
   static KOPECKS = 100;
@@ -284,7 +283,7 @@ export class DealCard {
   static _steps(deal) {
     const stages = CrmFunnel.columns(deal.funnel);
     const open = stages.filter(stage => !stage.closed);
-    if (open.length > this.MANY || Mobile.isPhone()) return this._stepList(deal, open, stages);
+    if (Mobile.isPhone()) return this._stepList(deal, open, stages);
     const index = open.findIndex(stage => stage.key === deal.stage);
     const closed = CrmFunnel.closed(deal);
     const chevrons = open
@@ -295,7 +294,7 @@ export class DealCard {
         return `<button type="button" role="radio" aria-checked="${now}" class="dk-s${now ? ' on' : ''}${past ? ' past' : ''}${tone}" data-dks="${esc(stage.key)}" title="${esc(stage.label)}">${esc(stage.label)}</button>`;
       })
       .join('');
-    return `<div class="dk-st" role="radiogroup" aria-label="Стадия сделки">${chevrons}${this._closers(deal, stages)}</div>${this._why(deal)}`;
+    return `<div class="dk-st"><div class="dk-chev" role="radiogroup" aria-label="Стадия сделки — нажмите, чтобы перевести">${chevrons}</div>${this._closers(deal, stages)}</div>${this._why(deal)}`;
   }
 
   static _stepList(deal, open, stages) {

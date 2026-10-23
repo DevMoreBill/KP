@@ -701,3 +701,12 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .mob .dk-sum .dk-facts{gap:2px 14px;font-size:13px}
 .mob .dk-sum .dk-fa{white-space:nowrap}
 .ex-kp{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+/* полоса стадий как в Битрикс24: все стадии в одну строку, нажатие — перевести на стадию */
+.dk-st:has(>.dk-chev){flex-wrap:nowrap;gap:8px}
+.dk-chev{flex:1 1 auto;min-width:0;display:flex;gap:3px}
+.dk-chev~.dk-sp{display:none}
+.dk-chev>.dk-s{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:10px 14px 10px 20px;min-height:40px;transition:background .12s}
+.dk-chev>.dk-s:first-child{clip-path:polygon(0 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,0 100%);padding-left:14px;border-radius:8px 0 0 8px}
+.dk-chev>.dk-s:not(.on):hover{background:color-mix(in srgb,var(--tc,var(--navy)) 22%,var(--soft));filter:none}
+.dk-chev>.dk-s:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
+.dk-st .dk-won,.dk-st .dk-lost{flex:none;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
