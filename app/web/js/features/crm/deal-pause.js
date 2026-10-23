@@ -55,7 +55,7 @@ export class DealPause {
    */
   static button() {
     if (!FEAT.on('dealPause')) return '';
-    return '<button class="dk-ib dk-pause" type="button" data-dkpause aria-label="Отложить сделку" title="Отложить сделку до даты">⏸</button>';
+    return '<button class="dk-ib dk-pause" type="button" data-dkpause aria-label="Отложить сделку" title="Отложить сделку до даты"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg></button>';
   }
 
   /**

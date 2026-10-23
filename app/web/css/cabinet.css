@@ -709,7 +709,9 @@ a.dk-bxc:hover{background:color-mix(in srgb,#2fc6f6 20%,transparent)}
   .dk-top{flex-wrap:wrap;gap:6px;padding:calc(6px + env(safe-area-inset-top)) 12px 8px}
   .dk-acts{order:1;flex:1 1 100%;justify-content:space-between;border:0;padding:0}
   .dk-nav{border:0;margin-right:auto}
-  .dk-hd{order:2;flex:1 1 100%;gap:8px}
+  .dk-hd{order:2;flex:1 1 100%;gap:6px 8px;flex-wrap:wrap}
+  .dk-hd .dk-title{flex:1 1 60%;min-width:0}
+  .dk-bxc{max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .dk-who{display:none}
   .dk-ib{min-width:44px;height:44px}
 }

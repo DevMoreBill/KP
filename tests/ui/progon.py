@@ -981,6 +981,7 @@ class Scenario(UiRun):
 
     def _settings_tab(self, t):
         pg = self.pg
+        pg.evaluate("t => { const b = document.querySelector('#setdlg nav [data-sttab=\"' + t + '\"]'); const more = b && b.closest('details'); if (more) more.open = true; }", t)
         if self.phone and not pg.locator('#setdlg [data-sttab="%s"]' % t).first.is_visible():
             self.ev("t=>document.querySelector('#setdlg [data-sttab=\"'+t+'\"]').click()", t)
         else:
