@@ -210,6 +210,7 @@ export class AuditLabels {
     delete_catalog: 'Удаление товара',
     delete_manager: 'Удаление менеджера',
     delete_client: 'Удаление клиента',
+    delete_deal: 'Удаление сделки',
     restore: 'Восстановление из корзины',
     purge_trash: 'Очистка корзины',
     export_db: 'Экспорт базы',

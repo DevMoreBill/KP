@@ -351,7 +351,14 @@ MIGRATIONS = [
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё
-TRASH_TABLES = {'kp': 'kp', 'catalog': 'catalog', 'manager': 'managers', 'client': 'clients', 'supplier': 'suppliers'}
+TRASH_TABLES = {
+    'kp': 'kp',
+    'catalog': 'catalog',
+    'manager': 'managers',
+    'client': 'clients',
+    'supplier': 'suppliers',
+    'deal': 'deals',
+}
 
 # поля позиции, которые нужны списку каталога, фильтрам и быстрому поиску (без характеристик, описаний и галереи)
 LIGHT_KEYS = (
@@ -1272,6 +1279,7 @@ class Store:
             return None
         self.write('DELETE FROM trash WHERE id=?', (tid,))
         self._kp_orphans()
+        self._deal_orphans()
         return {'entityType': row[0], 'entityId': row[1], 'title': row[2]}
 
     def trash_clear(self, etype=None) -> int:
@@ -1281,6 +1289,7 @@ class Store:
         if count:
             self.write('DELETE FROM trash ' + where, args)
             self._kp_orphans()
+            self._deal_orphans()
         return count
 
     def trash_purge(self, days) -> int:
@@ -1292,6 +1301,7 @@ class Store:
         if count:
             self.write('DELETE FROM trash WHERE deleted_at < ?', (edge,))
             self._kp_orphans()
+            self._deal_orphans()
         return count
 
     def _kp_orphans(self) -> None:
@@ -1300,6 +1310,23 @@ class Store:
             'DELETE FROM kp_versions WHERE kp_id NOT IN (SELECT id FROM kp) '
             "AND kp_id NOT IN (SELECT entity_id FROM trash WHERE entity_type='kp')"
         )
+
+    DEAL_GONE = (
+        "deal_id <> '' AND deal_id NOT IN (SELECT id FROM deals) "
+        "AND deal_id NOT IN (SELECT entity_id FROM trash WHERE entity_type='deal')"
+    )
+    DEAL_ID = re.compile(r'^d\d{1,9}$')
+
+    def _deal_orphans(self) -> None:
+        """Сделка удалена навсегда: её дела и документы (с файлами) — тоже. Связь КП со сделкой остаётся — иначе КП сразу
+        разложились бы по новым сделкам; сохранят такое КП снова — у него будет новая сделка."""
+        gone = [row[0] for row in self.all('SELECT DISTINCT deal_id FROM deal_files WHERE ' + self.DEAL_GONE)]
+        self.write('DELETE FROM crm_tasks WHERE ' + self.DEAL_GONE)
+        self.write('DELETE FROM deal_files WHERE ' + self.DEAL_GONE)
+        folder = os.path.join(os.path.dirname(os.path.abspath(self.path)), 'deal_files')
+        for did in gone:
+            if self.DEAL_ID.match(str(did)):
+                shutil.rmtree(os.path.join(folder, did), ignore_errors=True)
 
     PENDING_COLS = (
         'id',

@@ -3,6 +3,7 @@ import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { KpDate } from '../kp/kp-date.js';
 import { UiKit } from '../../ui/ui-kit.js';
+import { WorkCalendar } from '../../ui/date-picker.js';
 import { esc, today } from '../../core/util.js';
 
 /**
@@ -13,6 +14,7 @@ export class CabTodaySide {
   static WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
   static PERCENT = 100;
   static BAR_MIN = 4;
+  static FULL = 3;
 
   /**
    * Колонка.
@@ -25,6 +27,7 @@ export class CabTodaySide {
   // неделя вперёд: сколько дел и ожидаемых договоров на каждый день
   static _week() {
     const now = today();
+    WorkCalendar.year(+now.slice(0, 4));
     const tasks = CrmData.openTasks();
     const deals = CrmData.openDeals();
     const over = tasks.filter(task => task.due < now).length;
@@ -32,13 +35,16 @@ export class CabTodaySide {
       const day = KpDate.addDays(now, shift);
       const count = tasks.filter(task => task.due === day).length;
       const expect = deals.filter(deal => deal.expected === day).length;
-      const name = shift === 0 ? 'сегодня' : this.WEEKDAYS[new Date(`${day}T12:00:00`).getDay()];
-      const busy = count ? ` busy${count > 3 ? ' full' : ''}` : '';
-      const hint = `${CrmFmt.day(day)}: дел ${count}${expect ? `, ожидается договоров ${expect}` : ''}`;
-      return `<div class="tw-d${shift === 0 ? ' now' : ''}${busy}" title="${esc(hint)}"><span>${name}</span><b>${count || '·'}</b><small>${CrmFmt.day(day).slice(0, 5)}</small>${expect ? `<i class="tw-e" aria-label="ожидается договоров: ${expect}">${expect}</i>` : ''}</div>`;
+      const date = new Date(`${day}T12:00:00`);
+      const name = shift === 0 ? 'сегодня' : this.WEEKDAYS[date.getDay()];
+      const kind = WorkCalendar.day(date);
+      const busy = count ? ` busy${count > this.FULL ? ' full' : ''}` : '';
+      const rest = kind.off ? ` off ${kind.cls}` : '';
+      const hint = `${CrmFmt.day(day)}${kind.t ? ` — ${kind.t}` : ''}: дел ${count}${expect ? `, ожидается договоров ${expect}` : ''}`;
+      return `<div class="tw-d${shift === 0 ? ' now' : ''}${busy}${rest}" title="${esc(hint)}"><span>${name}</span><b>${count || '·'}</b><small>${CrmFmt.day(day).slice(0, 5)}</small>${expect ? `<i class="tw-e" aria-label="ожидается договоров: ${expect}">${expect}</i>` : ''}</div>`;
     }).join('');
     const late = over ? `<span class="bad-t">просрочено ${over}</span>` : '<span class="muted">без просрочек</span>';
-    return `<section class="md-s ts"><div class="md-h"><p class="sub">Неделя${UiKit.tip('<p>Сколько дел на каждый день недели. Синяя метка в углу — в этот день ожидается договор по сделке.</p>')}</p>${late}</div><div class="tw">${cells}</div></section>`;
+    return `<section class="md-s ts"><div class="md-h"><p class="sub">Неделя${UiKit.tip('<p>Сколько дел на каждый день недели: чем больше дел, тем темнее день. Выходные и праздники — красным. Синяя метка в углу — в этот день ожидается договор по сделке.</p>')}</p>${late}</div><div class="tw">${cells}</div></section>`;
   }
 
   // месяц: что ждём и что уже выиграно

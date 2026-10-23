@@ -3,41 +3,14 @@ import { Managers } from './managers.js';
 import { Cabinet } from '../crm/cabinet.js';
 import { FEAT } from '../../core/features.js';
 
-/** Кабинет менеджера — первый экран при запуске («Показывать при запуске» — настройка этого браузера). */
+/** Кабинет менеджера — главный экран: открывается при запуске (иное — «Мои настройки → Стартовый экран»). */
 export class MyDay {
-  static KEY = 'kp.myday.off';
-
   /**
    * Кабинет включён в «Функциях».
    * @returns {boolean}
    */
   static enabled() {
     return FEAT.on('myDay');
-  }
-
-  /**
-   * Открывать кабинет при запуске (этот браузер).
-   * @returns {boolean}
-   */
-  static atStart() {
-    try {
-      return localStorage.getItem(this.KEY) !== '1';
-    } catch {
-      return true;
-    }
-  }
-
-  /**
-   * Запомнить «открывать при запуске».
-   * @param {boolean} value
-   */
-  static setAtStart(value) {
-    try {
-      if (value) localStorage.removeItem(this.KEY);
-      else localStorage.setItem(this.KEY, '1');
-    } catch {
-      // без хранилища — каждый раз как по умолчанию
-    }
   }
 
   /** Кнопки кабинета — только когда функция включена. */
@@ -77,7 +50,7 @@ export class MyDay {
    */
   static start() {
     this.badge();
-    if (this.enabled() && this.atStart()) {
+    if (this.enabled()) {
       this.open();
       return true;
     }

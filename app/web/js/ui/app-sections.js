@@ -11,25 +11,12 @@ import { DealState } from '../features/deal/deal-state.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { Mobile } from './mobile.js';
 
-/** Разделы программы во вкладках: постоянные (КП — по вкладке на каждое открытое, Кабинет, Каталог, Журнал) и открытые «по месту». */
+/** Разделы программы во вкладках: постоянные (Кабинет — главный экран, Каталог, Журнал, КП — по вкладке на каждое открытое) и открытые «по месту». */
 export class AppSections {
   /** Зарегистрировать разделы (после ответа сервера: каталог и журнал есть только с ним). */
   static register() {
     document.body.classList.add('has-tabs');
     const server = () => Srv.on;
-    AppTabs.register(AppTabs.HOME, {
-      label: () => (S.number ? `КП № ${S.number}` : 'КП'),
-      short: 'КП',
-      icon: '▤',
-      fixed: true,
-      many: () => KpTabs.items(),
-      pick: uid => KpTabs.pick(uid),
-      drop: uid => KpTabs.close(uid),
-      add: () => NewKp.tab(),
-      roomy: () => KpTabs.roomy(),
-      menu: () => KpTabs.menu(),
-    });
-    document.addEventListener('kp:new-tab', () => NewKp.tab());
     AppTabs.register('cab', {
       label: 'Кабинет',
       icon: '◫',
@@ -45,6 +32,19 @@ export class AppSections {
       shown: server,
     });
     AppTabs.register('jrn', { label: 'Журнал КП', icon: '☰', fixed: true, open: () => Journal.open(), shown: server });
+    AppTabs.register(AppTabs.HOME, {
+      label: () => (S.number ? `КП № ${S.number}` : 'КП'),
+      short: 'КП',
+      icon: '▤',
+      fixed: true,
+      many: () => KpTabs.items(),
+      pick: uid => KpTabs.pick(uid),
+      drop: uid => KpTabs.close(uid),
+      add: () => NewKp.tab(),
+      roomy: () => KpTabs.roomy(),
+      menu: () => KpTabs.menu(),
+    });
+    document.addEventListener('kp:new-tab', () => NewKp.tab());
     AppTabs.register('deal', { label: 'Экономика', icon: '₽', open: () => DealState.open() });
     AppTabs.register('item', { label: 'Позиция', icon: '✎' });
     AppTabs.register('set', { label: 'Настройки', icon: '⚙', open: () => SettingsWindow.open() });

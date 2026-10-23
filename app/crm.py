@@ -419,6 +419,16 @@ class DealBook:
             new.pop('lostReason', None)
         self._log(new, author, what='stage', **{'from': cur.get('fstage') or cur['stage'], 'to': exact})
 
+    def remove(self, did: str, author: str) -> dict:
+        """Сделка — в корзину «Настроек» (восстановит администратор). Дела, документы и связи с КП остаются в базе и
+        возвращаются вместе со сделкой; пока она в корзине, её дела не видны. → удалённая сделка."""
+        deal = self._require(did)
+        title = ' — '.join(
+            part for part in (f'Сделка № {deal.get("number") or did}', deal.get('title'), deal.get('client')) if part
+        )
+        self.store.trash_put('deal', did, title[:300], author)
+        return deal
+
     def deal_of(self, kid: str) -> str | None:
         row = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
         return row[0] if row else None
@@ -466,6 +476,8 @@ class DealBook:
             if want and want not in ('new', cur) and self.get(want):
                 self.link(want, kid, author)
                 return want
+            if cur and not self.get(cur) and not self._in_trash(cur):
+                cur = None  # сделку удалили навсегда — КП снова в работе: новая сделка
             did = cur or self._from_kp(
                 conn,
                 kid,
@@ -514,6 +526,9 @@ class DealBook:
             'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, when or Val.now())
         )
         return did
+
+    def _in_trash(self, did: str) -> bool:
+        return bool(self.store.one("SELECT 1 FROM trash WHERE entity_type='deal' AND entity_id=?", (did,)))
 
     def _kp_stage(self, funnel, status) -> str:
         """Стадия новой сделки по ходу КП: этап хода КП или ближайший ниже, у которого есть стадия воронки."""
@@ -827,7 +842,11 @@ class TaskBook:
             rows = self.store.all(f'SELECT {self.COLS} FROM crm_tasks WHERE deal_id=? ORDER BY due, time, id', (deal,))
             return [self._out(row) for row in rows]
         since = (date.today() - timedelta(days=days)).isoformat()
-        sql, args = f"SELECT {self.COLS} FROM crm_tasks WHERE (state = 'open' OR done_at >= ?)", [since]
+        sql, args = (
+            f"SELECT {self.COLS} FROM crm_tasks WHERE (state = 'open' OR done_at >= ?) "
+            "AND (deal_id IS NULL OR deal_id = '' OR deal_id IN (SELECT id FROM deals))",  # дела сделки в корзине не видны
+            [since],
+        )
         if managers is not None:
             sql += ' AND manager_id IN ({})'.format(','.join('?' * len(managers))) if managers else ' AND 0'
             args += list(managers)

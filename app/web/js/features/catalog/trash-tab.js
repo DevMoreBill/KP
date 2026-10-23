@@ -18,6 +18,7 @@ export class TrashTab {
     ['catalog', 'Товары'],
     ['kp', 'КП'],
     ['client', 'Клиенты'],
+    ['deal', 'Сделки'],
     ['supplier', 'Поставщики'],
     ['manager', 'Менеджеры'],
   ];

@@ -20,6 +20,7 @@ import { InnClient } from './inn-client.js';
 import { SentCall } from './sent-call.js';
 import { DealDocs } from './deal-docs.js';
 import { DealTabs } from './deal-tabs.js';
+import { DealRemove } from './deal-remove.js';
 import { KpTrack } from '../kp/kp-track.js';
 import { MailDlg } from '../kp/mail-dlg.js';
 import { FEAT } from '../../core/features.js';
@@ -243,6 +244,7 @@ export class DealCard {
     print: '<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
     keys: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   };
 
   static _icon(name) {
@@ -258,7 +260,7 @@ export class DealCard {
       <span class="dk-no">Сделка № ${esc(deal.number)}</span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">
       <span class="dk-saved" aria-live="polite"></span>${this._bx(deal)}<span class="dk-who" title="Ответственный · дата создания">${who}${esc(created)}</span></div>
-      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button><button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
+      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button><button class="dk-ib dk-del" type="button" data-dkdel aria-label="Удалить сделку" title="Удалить сделку (в корзину)">${this._icon('trash')}</button><button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
   }
 
   static _card(deal) {
@@ -745,6 +747,7 @@ export class DealCard {
       ['[data-dknew]', () => DealKp.newKp(this.deal)],
       ['[data-dkprint]', () => DealPrint.open(this.deal, item => this.hist(item))],
       ['[data-dkkeys]', () => DealKeys.help()],
+      ['[data-dkdel]', () => DealRemove.ask(this.deal, () => this.close())],
       ['[data-dklink]', () => DealKp.link(this.deal, () => this.reload())],
       ['[data-cc]', el => ClientCard.open(JSON.parse(el.dataset.cc))],
     ];

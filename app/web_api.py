@@ -2179,6 +2179,24 @@ class CrmController(Controller):
         admin.log(self.handler, store(), 'delete_deal_file', 'deal', did, {'name': rec['name'], 'author': True}, None)
         return self._card(did, DealBook(store()).get(did) or {})
 
+    @route(r'/api/crm/deal/(d\d{1,9})/remove', 'POST')
+    def deal_remove(self, did: str) -> Any:
+        """Удалить сделку в корзину: ответственный — свою, руководитель и администратор — любую."""
+        deal = self._deal(did)
+        if deal is None:
+            return None
+        DealBook(store()).remove(did, admin.actor(self.handler)[1])
+        admin.log(
+            self.handler,
+            store(),
+            'delete_deal',
+            'deal',
+            did,
+            {'title': deal.get('title'), 'client': deal.get('client')},
+            None,
+        )
+        return self.send_json({'ok': True, 'id': did})
+
     @route(r'/api/crm/deal/(d\d{1,9})/exec', 'PUT')
     def exec_mark(self, did) -> Any:
         """Отметка точки исполнения: {key, at} — at пусто снимает отметку."""

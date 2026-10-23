@@ -115,3 +115,18 @@ html dialog.tabwin.jrnwin .jr-h:hover{background:none}
 @media (max-width:1250px){.jr{grid-template-columns:minmax(84px,100px) minmax(180px,2fr) minmax(140px,1.4fr) minmax(64px,80px) minmax(120px,1fr) minmax(100px,120px) 124px}.jr-w,.jr-h>span:nth-child(3){display:none}}
 @media (max-width:1000px){.jr .none{display:none}.jr-h{display:none}.jr{grid-template-columns:1fr}.jr.tnd{box-shadow:inset 3px 0 0 #f59e0b}.jr-e,.jr-h .r{text-align:left}.jr .muted{white-space:normal}}
 .mob .jr-h,.mob .jr .none{display:none}
+/* вкладки на ПК — контрастнее: открытая — заливкой, остальные — чёткой подписью в рамке-«таблетке» (3.195.0) */
+.top .apptabs{align-self:center;align-items:center;gap:4px;margin:0;padding:4px;border-radius:12px;background:color-mix(in srgb,var(--navy) 7%,var(--card));border:1px solid color-mix(in srgb,var(--navy) 14%,var(--line))}
+.top .apt-t{min-height:36px;border:0;border-radius:9px;color:var(--ink);padding:0 12px}
+.top .apt-t i{opacity:1;color:var(--navy)}
+.top .apt-t:hover{background:var(--card);box-shadow:0 1px 3px rgba(8,25,60,.12)}
+.top .apt-t.on{background:var(--navy);color:var(--on-navy,#fff);box-shadow:0 2px 8px color-mix(in srgb,var(--navy) 35%,transparent)}
+.top .apt-t.on i{color:inherit}
+.top .apt-t.on .apt-n:not(.bad){background:var(--on-navy,#fff);color:var(--navy)}
+.top .apt-t.on .apt-x{color:inherit}
+.top .apt-t.on .apt-x:hover{background:color-mix(in srgb,var(--on-navy,#fff) 22%,transparent)}
+.top .apt-kp.kp-on:not(.on){color:var(--ink);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--navy) 40%,var(--line))}
+.top .apt-add{margin:0 2px;height:32px;width:32px;background:var(--card)}
+.mob .apt-t{color:var(--muted)}
+.mob .apt-t.on{color:var(--navy);background:color-mix(in srgb,var(--navy) 9%,transparent)}
+.mob .apt-t.on i{transform:scale(1.08)}

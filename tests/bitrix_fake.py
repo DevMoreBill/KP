@@ -208,8 +208,17 @@ class FakeBitrix:
             self.activities[i] = dict(f, ID=i, OWNER_ID=str(f['OWNER_ID']), OWNER_TYPE_ID=str(f['OWNER_TYPE_ID']), TYPE_ID=str(f['TYPE_ID']),
                                       DEADLINE=f['DEADLINE'] + '+03:00', LAST_UPDATED=self.now())
             return {'result': int(i)}
+        if m == 'crm.activity.todo.updateDeadline':
+            a = self.activities[str(b['id'])]
+            if a.get('TYPE_ID') != '6':
+                raise ValueError('NOT_FOUND')
+            a['DEADLINE'] = b['value'] + ('' if '+' in b['value'] else '+03:00')
+            a['LAST_UPDATED'] = self.now()
+            return {'result': {'id': int(b['id'])}}
         if m == 'crm.activity.update':
             a = self.activities[str(b['id'])]
+            if a.get('TYPE_ID') == '6':  # универсальное дело: срок меняет только crm.activity.todo.updateDeadline
+                f = {k: v for k, v in f.items() if k not in ('DEADLINE', 'END_TIME')}
             a.update(f)
             if 'DEADLINE' in f and '+' not in f['DEADLINE']:
                 a['DEADLINE'] = f['DEADLINE'] + '+03:00'

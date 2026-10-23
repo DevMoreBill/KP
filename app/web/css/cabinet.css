@@ -50,14 +50,18 @@ dialog.st-confirm.cg-dlg{width:min(620px,calc(100vw - 32px));max-width:none}
 .cg-k{font-size:13px;margin:0 0 12px}
 
 /* «Сегодня» */
-.cab-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
-.cab-k{border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--card);display:grid;gap:2px;min-width:0;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.cab-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.cab-k{border:1px solid var(--line);border-left:4px solid var(--kc,var(--navy));border-radius:10px;padding:6px 12px;background:var(--card);display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:12px;min-width:0;min-height:52px;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.cab-kt{display:grid;min-width:0;gap:1px}
 .cab-k:hover,.cab-k:focus-visible{border-color:var(--sky,var(--navy));box-shadow:0 4px 14px rgba(8,25,60,.10);outline:0}
-.cab-k span{font-size:12.5px;color:var(--muted)}
-.cab-k b{font-size:24px;line-height:1.15;color:var(--ink)}
+.cab-kt>span{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cab-k>b{font-size:24px;line-height:1;color:var(--ink);min-width:28px;text-align:center}
 .cab-k small{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cab-k.bad{border-color:var(--danger)}
-.cab-k.ok b{color:var(--ok)}
+.cab-k.bad{--kc:var(--danger)}
+.cab-k.bad>b{color:var(--danger)}
+.cab-k.warn{--kc:var(--warn)}
+.cab-k.ok{--kc:var(--ok)}
+.cab-k.ok>b{color:var(--ok)}
 .cab-rl{display:grid;gap:1px;flex:1;min-width:0;border:0;background:none;padding:0;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
 .cab-rl b,.cab-rl .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cab-rl:hover b{color:var(--navy);text-decoration:underline}
@@ -319,8 +323,8 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
   .cab-fabm .btn{justify-content:flex-start;min-height:48px;box-shadow:0 6px 16px rgba(8,25,60,.2)}
   .cab-kpi{gap:6px;margin-bottom:10px}
   .cab-k{padding:7px 10px}
-  .cab-k b{font-size:19px}
-  .cab-k span,.cab-k small{font-size:11.5px}
+  .cab-k>b{font-size:19px}
+  .cab-kt>span,.cab-k small{font-size:11.5px}
   .cab-tip{padding:8px 10px;align-items:flex-start;flex-wrap:wrap}
   .cab-tip .btn{margin-left:auto}
   .cab-s{max-width:none;flex-basis:100%}
@@ -531,9 +535,20 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .tw-d{position:relative;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 2px;border-radius:9px;border:1px solid var(--line);background:var(--card);font-size:11.5px;color:var(--muted)}
 .tw-d>b{font-size:16px;color:var(--ink)}
 .tw-d>small{font-size:10.5px}
-.tw-d.now{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
-.tw-d.busy{background:color-mix(in srgb,var(--navy) 8%,var(--card))}
-.tw-d.full{background:color-mix(in srgb,var(--navy) 16%,var(--card))}
+.tw-d.now{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy),0 0 0 2px color-mix(in srgb,var(--navy) 25%,transparent)}
+.tw-d.busy{background:color-mix(in srgb,var(--navy) 14%,var(--card));border-color:color-mix(in srgb,var(--navy) 30%,var(--line))}
+.tw-d.busy>b{color:var(--navy)}
+.tw-d.full{background:var(--navy);border-color:var(--navy);color:var(--on-navy,#fff)}
+.tw-d.full>b,.tw-d.full>span,.tw-d.full>small{color:var(--on-navy,#fff)}
+.tw-d:not(.busy)>b{color:var(--muted);font-weight:400}
+/* выходные и праздники (производственный календарь) — красным, как в календаре дат */
+.tw-d.off{background:color-mix(in srgb,var(--danger) 7%,var(--card));border-color:color-mix(in srgb,var(--danger) 30%,var(--line))}
+.tw-d.off>span,.tw-d.off>small{color:var(--danger);font-weight:600}
+.tw-d.off.busy{background:color-mix(in srgb,var(--danger) 16%,var(--card))}
+.tw-d.off.full{background:var(--danger);border-color:var(--danger)}
+.tw-d.off.full>span,.tw-d.off.full>small,.tw-d.off.full>b{color:var(--on-navy,#fff)}
+.tw-d>span{font-weight:600}
+.tw-d.full .tw-e{background:var(--on-navy,#fff);color:var(--navy)}
 .tw-e{position:absolute;top:3px;right:4px;font-style:normal;font-size:10px;font-weight:700;min-width:15px;height:15px;line-height:15px;border-radius:8px;background:var(--navy);color:#fff;text-align:center}
 .tm-bar{height:8px;border-radius:4px;background:var(--soft);overflow:hidden;margin:2px 0 8px}
 .tm-bar>i{display:block;height:100%;background:var(--ok);border-radius:4px}
@@ -661,11 +676,12 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .dk-st:has(>.dk-chev){flex-wrap:nowrap;gap:8px}
 .dk-chev{flex:1 1 auto;min-width:0;display:flex;gap:3px}
 .dk-chev~.dk-sp{display:none}
-.dk-chev>.dk-s{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:10px 14px 10px 20px;min-height:40px;transition:background .12s}
+.dk-chev>.dk-s{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;padding:4px 12px 4px 18px;min-height:30px;font-size:12.5px;transition:background .12s}
+.dk-chev>.dk-s.on{flex:0 0 auto;max-width:34%}
 .dk-chev>.dk-s:first-child{clip-path:polygon(0 0,calc(100% - 10px) 0,100% 50%,calc(100% - 10px) 100%,0 100%);padding-left:14px;border-radius:8px 0 0 8px}
 .dk-chev>.dk-s:not(.on):hover{background:color-mix(in srgb,var(--tc,var(--navy)) 22%,var(--soft));filter:none}
 .dk-chev>.dk-s:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
-.dk-st .dk-won,.dk-st .dk-lost{flex:none;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dk-st .dk-won,.dk-st .dk-lost{flex:none;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:30px;padding:4px 12px;font-size:12.5px}
 /* шапка карточки сделки одной строкой: номер, название, Битрикс24, ответственный и дата; справа — панель кнопок (3.191.3) */
 .dk-top{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 20px;background:var(--card);border-bottom:1px solid var(--line)}
 .dk-hd{flex:1;min-width:0;display:flex;gap:10px;align-items:center}
@@ -684,6 +700,7 @@ a.dk-bxc:hover{background:color-mix(in srgb,#2fc6f6 20%,transparent)}
 .dk-pos{font-size:12.5px;color:var(--muted);min-width:46px;text-align:center;white-space:nowrap}
 .dk-ib{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;height:34px;padding:0 8px;border:0;border-radius:9px;background:none;color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;touch-action:manipulation}
 .dk-ib:hover:not(:disabled){background:var(--soft)}
+.dk-ib.dk-del:hover{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
 .dk-ib:disabled{opacity:.35;cursor:default}
 .dk-ib:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
 .dk-ccb{color:var(--navy)}
@@ -783,6 +800,12 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .kb{gap:4px}
 .kb-c{padding:4px;border-radius:10px}
 .kb-h{gap:4px;padding:0 0 6px}
+/* шапки стадий — сплошной цепочкой стрелок, как в Битрикс24: лента шире колонки, острие заходит в выемку соседней (3.195.0) */
+@media (min-width:761px){
+.kb-rb{position:relative;margin:0 -12px 0 -4px;padding-left:16px;border-radius:0;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,0 100%,10px 50%)}
+.kb>.kb-c:first-child .kb-rb{padding-left:10px;border-radius:8px 0 0 8px;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,0 100%)}
+.kb>.kb-c:last-child .kb-rb{margin-right:-4px}
+}
 .kb-sum{font-size:14px;padding:0}
 .kb-l{gap:5px}
 .dc{gap:2px;padding:6px 8px;border-radius:8px}

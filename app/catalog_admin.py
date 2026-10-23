@@ -159,7 +159,7 @@ class ModerationDesk:
 
 
 class TrashBin:
-    TYPES = ('kp', 'catalog', 'manager', 'client', 'supplier')
+    TYPES = ('kp', 'catalog', 'manager', 'client', 'supplier', 'deal')
 
     def __init__(self, store, log_fn) -> None:
         self.store, self.log = store, log_fn

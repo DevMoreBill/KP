@@ -374,10 +374,6 @@ export class Cabinet {
         CrmData.who = target.value;
         this.reload();
       },
-      mdStart: () => {
-        MyDay.setAtStart(target.checked);
-        Toast.show(target.checked ? 'Кабинет будет открываться при запуске' : 'Кабинет — в меню «⋯»');
-      },
     };
     if (changes[target.id]) changes[target.id]();
     else if (CabDeals.change(target) || CabGantt.change(target)) this.render();

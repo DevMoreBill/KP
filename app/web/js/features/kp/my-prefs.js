@@ -19,7 +19,7 @@ export class MyPrefs {
   static prefs = {};
   static uid = '';
   static START = [
-    ['auto', 'Как в программе (кабинет или каталог)'],
+    ['auto', 'Как в программе (кабинет; без кабинета — каталог)'],
     ['myday', 'Кабинет менеджера'],
     ['catalog', 'Каталог'],
     ['journal', 'Журнал КП'],

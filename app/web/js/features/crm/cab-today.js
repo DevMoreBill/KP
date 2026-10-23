@@ -47,8 +47,7 @@ export class CabToday {
         ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>'
         : '';
     return `${who}${CabGuide.tip()}${this._tiles()}<div class="td-g"><div class="td-l">${this._todo()}${this._reminders()}</div>
-      <aside class="td-r">${CabTodaySide.html()}${this._drafts()}${this._more()}</aside></div>
-      <label class="md-start"><input type="checkbox" id="mdStart"${MyDay.atStart() ? ' checked' : ''}> Открывать кабинет при запуске программы</label>`;
+      <aside class="td-r">${CabTodaySide.html()}${this._drafts()}${this._more()}</aside></div>`;
   }
 
   static _sum(deals) {
@@ -60,12 +59,16 @@ export class CabToday {
     const now = today();
     const tasks = CrmData.openTasks();
     const over = tasks.filter(task => task.due < now).length;
-    const due = over + tasks.filter(task => task.due === now).length;
+    const todays = tasks.filter(task => task.due === now).length;
+    const due = over + todays;
     const done = CrmData.tasks().filter(
       task => task.state === 'done' && String(task.doneAt || '').slice(0, 10) === now,
     ).length;
     const open = CrmData.openDeals();
-    const free = open.filter(deal => !deal.next).length;
+    const freeDeals = open.filter(deal => !deal.next);
+    const free = freeDeals.length;
+    const month = now.slice(0, 7);
+    const soon = open.filter(deal => deal.expected && String(deal.expected).slice(0, 7) <= month).length;
     const fresh = this.bxNew();
     const waiting = fresh.filter(deal => this._late(deal)).length;
     const tiles = [
@@ -73,15 +76,20 @@ export class CabToday {
         key: 'tasks',
         label: 'Дела на сегодня',
         value: due,
-        note: over ? `<span class="bad-t">просрочено ${over}</span> · сделано ${done}` : `сделано ${done}`,
+        note: this._taskNote(over, todays, done),
         tone: over ? 'bad' : '',
       },
-      { key: 'deals', label: 'Сделки в работе', value: open.length, note: CrmFmt.short(this._sum(open)) },
+      {
+        key: 'deals',
+        label: 'Сделки в работе',
+        value: open.length,
+        note: `${CrmFmt.short(this._sum(open))}${soon ? ` · договор в этом месяце ${soon}` : ''}`,
+      },
       {
         key: 'free',
         label: 'Без следующего шага',
         value: free,
-        note: free ? 'запланируйте звонок' : 'у всех есть шаг',
+        note: free ? `на ${CrmFmt.short(this._sum(freeDeals))} — поставьте дело` : 'у всех есть шаг',
         tone: free ? 'warn' : 'ok',
       },
       {
@@ -95,8 +103,13 @@ export class CabToday {
     return `<div class="cab-kpi">${tiles.map(tile => this._tile(tile)).join('')}</div>`;
   }
 
+  static _taskNote(over, todays, done) {
+    const late = over ? `<span class="bad-t">просрочено ${over}</span>` : '';
+    return [late, todays && over ? `на сегодня ${todays}` : '', `сделано ${done}`].filter(Boolean).join(' · ');
+  }
+
   static _tile({ key, label, value, note, tone = '' }) {
-    return `<button type="button" class="cab-k${tone ? ` ${tone}` : ''}" data-kpi="${key}"><span>${label}</span><b>${value}</b><small>${note}</small></button>`;
+    return `<button type="button" class="cab-k${tone ? ` ${tone}` : ''}" data-kpi="${key}"><b>${value}</b><span class="cab-kt"><span>${label}</span><small>${note}</small></span></button>`;
   }
 
   /**

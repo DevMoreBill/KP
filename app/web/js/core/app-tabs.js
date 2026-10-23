@@ -1,12 +1,13 @@
 import { esc } from './util.js';
 
 /**
- * Вкладки разделов сверху экрана (на телефоне — нижняя панель): постоянные (КП, Кабинет, Каталог, Журнал) и «по месту»
+ * Вкладки разделов сверху экрана (на телефоне — нижняя панель): постоянные (Кабинет, Каталог, Журнал, КП) и «по месту»
  * (Экономика сделки, позиция или станция, Настройки — пока открыты). Окно раздела — страница под полосой вкладок: при
  * переключении оно прячется, а не закрывается, поэтому набранное и открытое в нём остаётся.
  */
 export class AppTabs {
   static HOME = 'kp';
+  static MAIN = 'cab';
   static OVERLAY = 'authWrap';
   static KEYS = 9;
   static specs = new Map();
@@ -108,12 +109,17 @@ export class AppTabs {
     this.titles.delete(key);
     this.trail = this.trail.filter(one => one !== key);
     if (this.active === key) {
-      const back = [...this.trail].reverse().find(one => one === this.HOME || this._isOpen(one)) || this.HOME;
+      const back = [...this.trail].reverse().find(one => one === this.HOME || this._isOpen(one)) || this._main();
       this.active = '';
       this._activate(back);
       return;
     }
     this.render();
+  }
+
+  // главный экран — кабинет, если он открыт; иначе КП
+  static _main() {
+    return this._isOpen(this.MAIN) ? this.MAIN : this.HOME;
   }
 
   static _tabs() {

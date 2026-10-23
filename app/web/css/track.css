@@ -109,7 +109,6 @@ dialog.newkp-dlg .nk-top{justify-content:flex-start;margin-bottom:14px}
 .md-r.over b{color:var(--danger)}
 .md-n{font-weight:600;font-size:13px;flex:none;color:var(--muted)}
 .md-s .empty{margin:6px 0;padding:0;font-size:13.5px}
-.md-start{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--muted)}
 .md-r .jst{flex:none}
 
 /* окно «КП сохранено» */

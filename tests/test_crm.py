@@ -145,6 +145,33 @@ class UnitTest(unittest.TestCase):
         self.assertEqual(deal['who']['company'], 'ООО «Пример Кому»')
         self.assertEqual((deal['who']['name'], deal['who']['phone']), ('Петров П. П.', '+7 (900) 000-00-01'))
 
+    def test_remove_to_trash(self):
+        """Удаление сделки: в корзину, дела не видны; восстановление — сделка с делами и КП; навсегда — дела и документы
+        удаляются, а КП, сохранённое снова, получает новую сделку."""
+        from crm import DealBook, TaskBook
+        from catalog_admin import TrashBin
+        book, tasks = DealBook(self.st), TaskBook(self.st)
+        self.put('71', meta('71', 'ООО «Удаляемая»', '7700000071', 'm1', 'Иванова', date.today().isoformat(), 50000))
+        did = book.on_kp('71', meta('71', 'ООО «Удаляемая»', '7700000071', 'm1', 'Иванова', date.today().isoformat(), 50000), 'И')
+        tasks.add({'kind': 'call', 'due': date.today().isoformat()}, 'm1', 'И', did)
+        book.remove(did, 'Иванова')
+        self.assertIsNone(book.get(did))
+        self.assertEqual([t for t in tasks.list(['m1']) if t['deal'] == did], [], 'дела удалённой сделки не видны')
+        self.assertEqual(book.adopt(), 0, 'КП удалённой сделки не раскладывается в новую сделку')
+        bin_ = TrashBin(self.st, lambda *a: None)
+        row = next(x for x in bin_.items('deal')['items'] if x['entityId'] == did)
+        self.assertIn('ООО «Удаляемая»', row['title'])
+        bin_.restore(row['id'])
+        self.assertEqual(book.get(did)['client'], 'ООО «Удаляемая»')
+        self.assertEqual(len([t for t in tasks.list(['m1']) if t['deal'] == did]), 1, 'дела вернулись со сделкой')
+        self.assertEqual(book.deal_of('71'), did)
+        book.remove(did, 'Иванова')
+        bin_.drop(next(x for x in bin_.items('deal')['items'] if x['entityId'] == did)['id'])
+        self.assertEqual(tasks.list(deal=did), [], 'дела удалены навсегда')
+        again = book.on_kp('71', meta('71', 'ООО «Удаляемая»', '7700000071', 'm1', 'Иванова', date.today().isoformat(), 50000), 'И')
+        self.assertNotEqual(again, did)
+        self.assertIsNotNone(book.get(again))
+
 
 class ApiTest(unittest.TestCase):
     @classmethod
@@ -254,6 +281,15 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(st, 200, b)
         self.assertEqual(Http.js(b)['managerId'], 'mgr-petrov')
         self.assertEqual(self.h.req('PUT', '/api/crm/deal/' + mine['id'], {'managerId': 'mgr-ivanova'}, cookie=c1)[0], 403)
+        # удаление: чужую — нет, свою — в корзину
+        self.assertEqual(self.h.req('POST', '/api/crm/deal/%s/remove' % petrov[0], {}, cookie=c1)[0], 403)
+        st, b, _ = self.h.req('POST', '/api/crm/deal', {'title': 'Удалить потом', 'client': 'ООО «Пример 2»'}, cookie=c1)
+        own = Http.js(b)['id']
+        st, b, _ = self.h.req('POST', '/api/crm/deal/%s/remove' % own, {}, cookie=c1)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(self.h.req('GET', '/api/crm/deal/' + own, cookie=c1)[0], 404)
+        st, b, _ = self.h.req('GET', '/api/admin/trash', cookie=adm, headers=A)
+        self.assertIn(own, [x['entityId'] for x in Http.js(b)['items']])
 
 
 if __name__ == '__main__':

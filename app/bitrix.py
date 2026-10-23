@@ -72,7 +72,7 @@ class BitrixApi:
         return self.call_raw(method, params).get('result')
 
     def call_raw(self, method, params=None) -> dict:
-        if not re.match(r'^[a-z][a-z0-9_.]{2,80}$', method):
+        if not re.match(r'^[a-z][A-Za-z0-9_.]{2,80}$', method):
             raise BitrixError('Неверный метод')
         body = json.dumps(params or {}, ensure_ascii=False).encode('utf-8')
         req = urllib.request.Request(
@@ -1564,6 +1564,8 @@ class BitrixSync:
         if link:
             if link['sent'] == sent or (task['state'] == 'cancel' and not task_rules['cancel']):
                 return
+            if link['sent'].get('when') != when and link['sent'].get('done') != 'Y':
+                self._move_todo(link['bx'], bid, when)
             self.api.call(
                 'crm.activity.update',
                 {
@@ -1619,6 +1621,17 @@ class BitrixSync:
         if done == 'Y':
             self.api.call('crm.activity.update', {'id': aid, 'fields': {'COMPLETED': 'Y'}})
         self.links.put('task', tid, aid, sent)
+
+    def _move_todo(self, aid: str | int, bid: str | int, when: str) -> None:
+        """Срок универсального дела Битрикс меняет только своим методом: crm.activity.update его не трогает, и следующий
+        опрос вернул бы в программу прежнюю дату. Звонок или встреча старого вида — ошибка метода, срок меняет update."""
+        try:
+            self.api.call(
+                'crm.activity.todo.updateDeadline',
+                {'id': int(aid), 'ownerTypeId': 2, 'ownerId': int(bid), 'value': when},
+            )
+        except BitrixError:
+            return
 
     def pull(self) -> dict:
         conf = self.conf.get()

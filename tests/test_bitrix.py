@@ -219,6 +219,25 @@ class SyncTest(SyncBase):
         self.assertEqual(tb.get(got[0]['id'])['state'], 'done')
         self.assertEqual(len([x for x in tb.list(deal=did)]), 2, 'своё дело не вернулось дублем')
 
+    def test_task_moved_stays(self):
+        """«+1 день» у дела, ушедшего в Битрикс универсальным делом: срок уходит своим методом, опрос не возвращает старый."""
+        from crm import TaskBook
+        from bitrix import BitrixQueue
+        did = self.kp('26-0007')
+        tb = TaskBook(self.st)
+        t = tb.add({'kind': 'call', 'due': '2026-10-25', 'title': 'Обратная связь по КП'}, 'm1', 'И', did)
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        act = list(self.fake.activities.values())[0]
+        time.sleep(1.1)
+        tb.update(t['id'], {'due': '2026-10-26'})
+        BitrixQueue.touch(self.st, 'task', t['id'])
+        self.sync().run()
+        self.assertTrue(act['DEADLINE'].startswith('2026-10-26'), act['DEADLINE'])
+        time.sleep(1.1)
+        self.sync().run()
+        self.assertEqual(tb.get(t['id'])['due'], '2026-10-26', 'опрос вернул прежний срок')
+
     def test_old_bitrix_without_todo(self):
         from crm import TaskBook
         from bitrix import BitrixQueue
