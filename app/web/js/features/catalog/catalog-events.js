@@ -252,6 +252,7 @@ export class CatalogChanges {
     cwSort: (win, field) => CatalogChanges._sort(win, field),
     cwPriced: (win, field) => CatalogChanges._toggle(win, 'priced', field),
     cwStock: (win, field) => CatalogChanges._toggle(win, 'stock', field),
+    cwOld: (win, field) => CatalogChanges._toggle(win, 'old', field),
     cwAll: (win, field) => CatalogChanges._all(win, field),
   };
 

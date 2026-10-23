@@ -20,6 +20,7 @@ import { Mm } from '../layout/mm.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { StationLibrary } from './station-library.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе
@@ -88,13 +89,26 @@ export class NewStation {
     const fields = (StationQuick.KEYS[kind] || []).map(row => this._field(row, need)).join('');
     const pickLabel = this.ready() ? 'Взять в КП' : 'Подобрать станцию';
     return `<p class="muted nw-lead">Что нужно заказчику (* — обязательно) — программа подберёт оборудование из каталога, контейнер, компоновку и изображения для КП. Всё можно поправить в карточке станции.</p>
-      <div class="ns-g">${fields}</div>
+      ${StationLibrary.html(kind)}<div class="ns-g">${fields}</div>
       <div class="ns-c"><span class="muted">Контейнер:</span> <span>${esc(this.cont())}</span> <button class="link" type="button" data-nw="nsCont">${this.state.cont ? 'скрыть' : 'другой'}</button></div>
       ${this.state.cont ? this._contFields() : ''}
       <div class="ns-pv" id="nsPv">${this.pvHtml(type)}</div>
       <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${busy ? ' disabled' : ''}>${busy ? 'Подбираю…' : pickLabel}</button>
         ${where === 'kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
       <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((type.station.mainLabel || 'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>`;
+  }
+
+  /**
+   * Выбрана типовая станция: её требования — в поля, затем подбор для предпросмотра.
+   * @param {object} type категория станции
+   * @param {number} index
+   */
+  static library(type, index) {
+    const req = StationLibrary.req(this.kind(type), index);
+    if (!req) return;
+    Object.assign(this.state.req, req);
+    EquipWizard.draw();
+    this.later();
   }
 
   static _field([key, label, hint, mode = 'decimal'], need) {

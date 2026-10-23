@@ -1,6 +1,9 @@
+import { FEAT } from '../../core/features.js';
+import { DefRegistry } from '../../core/defaults.js';
 import { CatalogFilter } from './catalog-filter.js';
 import { CatalogIndex } from './catalog-index.js';
 import { CatSections } from './cat-sections.js';
+import { PriceAge } from './price-age.js';
 import { Morph } from '../../core/morph.js';
 import { $, esc } from '../../core/util.js';
 import { Fmt, Str } from '../../core/str.js';
@@ -157,7 +160,13 @@ export class CatalogNav {
 
   static _toggles(filter) {
     return `<div class="cw-togs"><label class="cw-tog${filter.priced ? ' on' : ''}"><input type="checkbox" id="cwPriced" ${filter.priced ? 'checked' : ''}> С ценой</label>
-         <label class="cw-tog${filter.stock ? ' on' : ''}" title="Есть на складе поставщика (по фиду или файлу остатков)"><input type="checkbox" id="cwStock" ${filter.stock ? 'checked' : ''}> В наличии</label></div>`;
+         <label class="cw-tog${filter.stock ? ' on' : ''}" title="Есть на складе поставщика (по фиду или файлу остатков)"><input type="checkbox" id="cwStock" ${filter.stock ? 'checked' : ''}> В наличии</label>${this._oldToggle(filter)}</div>`;
+  }
+
+  static _oldToggle(filter) {
+    if (!FEAT.on('priceAge')) return '';
+    const days = DefRegistry.num('cat.priceDays', PriceAge.DAYS);
+    return `<label class="cw-tog${filter.old ? ' on' : ''}" title="Цена не менялась и не подтверждалась фидом дольше ${days} дн."><input type="checkbox" id="cwOld" ${filter.old ? 'checked' : ''}> Цена устарела</label>`;
   }
 
   /**
@@ -216,6 +225,7 @@ export class CatalogNav {
     }
     if (filter.priced) chip('priced', 'С ценой');
     if (filter.stock) chip('stock', 'В наличии');
+    if (filter.old) chip('old', 'Цена устарела');
     return out;
   }
 

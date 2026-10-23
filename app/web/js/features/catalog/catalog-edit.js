@@ -104,6 +104,7 @@ export class CatalogEditor {
       priceCur: item.priceCur || 'RUB',
       cost: item.cost || 0,
       costCur: item.costCur || 'RUB',
+      lead: String(item.lead || '').trim(),
     };
   }
 
@@ -301,8 +302,9 @@ export class CatalogPrice {
     const costText = card._costText ?? (card.cost ? KPGen.money(card.cost) : '');
     return `<div class="ed-sec"><p class="sub">Цена в каталоге</p><div class="cprice">
       <label class="f"><span>Цена продажи</span><input type="text" inputmode="decimal" class="num" data-cprice="price" value="${esc(priceText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта</span>${this._cur(card, 'priceCur')}</label>
-      <label class="f"><span>Закупка</span><input type="text" inputmode="decimal" class="num" data-cprice="cost" value="${esc(costText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта закупки</span>${this._cur(card, 'costCur')}</label></div>
-    <p class="muted" style="margin:6px 0 0">Цена подставляется в новые КП. При сохранении КП цена позиции в каталоге обновляется сама.${this._disc(card)}</p></div>`;
+      <label class="f"><span>Закупка</span><input type="text" inputmode="decimal" class="num" data-cprice="cost" value="${esc(costText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта закупки</span>${this._cur(card, 'costCur')}</label>
+      <label class="f"><span>Срок поставки</span><input type="text" data-clead value="${esc(card.lead || '')}" maxlength="80" placeholder="под заказ 6–8 недель" autocomplete="off"></label></div>
+    <p class="muted" style="margin:6px 0 0">Цена подставляется в новые КП. При сохранении КП цена позиции в каталоге обновляется сама. Срок поставки — в «Условия» КП, если позиции нет в наличии (пусто — по поставщику).${this._disc(card)}</p></div>`;
   }
 
   static _input(field) {
@@ -327,6 +329,7 @@ export class CatalogPrice {
   static listen() {
     document.addEventListener('input', event => {
       if (event.target.dataset.cprice != null && CatalogEditor.session) this._input(event.target);
+      if (event.target.dataset.clead != null && CatalogEditor.session) S.items[0].lead = event.target.value;
     });
     document.addEventListener('focusout', event => {
       if (event.target.dataset.cprice != null && CatalogEditor.session) this._blur(event.target);

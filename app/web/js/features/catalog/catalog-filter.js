@@ -1,3 +1,4 @@
+import { PriceAge } from './price-age.js';
 import { CatalogIndex } from './catalog-index.js';
 import { CatalogSearch } from './catalog-cache.js';
 import { Str } from '../../core/str.js';
@@ -38,6 +39,7 @@ export class CatalogFilter {
       rng: {},
       priced: false,
       stock: false,
+      old: false,
       sort: 'best',
       dir: 1,
     });
@@ -88,6 +90,7 @@ export class CatalogFilter {
       rng: {},
       priced: false,
       stock: false,
+      old: false,
       q: '',
     });
   }
@@ -118,7 +121,9 @@ export class CatalogFilter {
    */
   count() {
     return (
-      [this.maker, this.series, this.sup, this.priced, this.stock, String(this.q || '').trim()].filter(Boolean).length +
+      [this.maker, this.series, this.sup, this.priced, this.stock, this.old, String(this.q || '').trim()].filter(
+        Boolean,
+      ).length +
       Object.values(this.f).filter(Boolean).length +
       Object.values(this.rng).filter(CatalogFilter.rngOn).length
     );
@@ -161,6 +166,7 @@ export class CatalogFilter {
       return false;
     if (this.priced && !card.price) return false;
     if (this.stock && !CatalogIndex.inStock(card)) return false;
+    if (this.old && !PriceAge.stale(card)) return false;
     return !(this.q && !this.qHit(card));
   }
 

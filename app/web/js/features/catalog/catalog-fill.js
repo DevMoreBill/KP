@@ -1,3 +1,5 @@
+import { KpLead } from '../kp/kp-lead.js';
+import { PriceAge } from './price-age.js';
 import { CatalogCache } from './catalog-cache.js';
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { Logos } from './image-slots.js';
@@ -65,6 +67,9 @@ export class CatalogFill {
     if (!item.logo) Logos.auto(item); // логотип производителя из каталога, если у модели его нет
     item.page = !!(item.photo || item.groups.length || item.features.some(feat => feat.text));
     CoverSync.run();
+    KpLead.take(item, card);
+    const old = PriceAge.note(card);
+    if (old) Toast.show(`«${card.name}»: ${old} — уточните цену у поставщика`);
   }
 
   // сборка из каталога — со своим составом

@@ -1,3 +1,4 @@
+import { CatalogAnalogs } from './catalog-analogs.js';
 import { AiChat, AiDirect, AiFileText, AiSource } from './ai-chat.js';
 import { AiFill } from './ai-fill.js';
 import { AiParse, SpecPaste } from './ai-parse.js';
@@ -6,6 +7,7 @@ import { AiPrompt } from './ai-prompt.js';
 import { AiTab } from './ai-tab.js';
 import { AttrChoices, AttrsBlock, DimRow } from './attr-choices.js';
 import { CatSections } from './cat-sections.js';
+import { PriceAge } from './price-age.js';
 import { CatalogActions } from './catalog-actions.js';
 import { CatalogCache, CatalogSearch } from './catalog-cache.js';
 import { CatalogCard } from './catalog-card.js';
@@ -113,6 +115,8 @@ export const CATALOG = {
 // «Значения программы» — в прежнем порядке разделов
 DefRegistry.add(...Catalog.DEFAULTS);
 DefRegistry.add(...CatSections.DEFAULTS);
+DefRegistry.add(...PriceAge.DEFAULTS);
+DefRegistry.add(...CatalogAnalogs.DEFAULTS);
 DefRegistry.add(...ImgPrep.DEFAULTS);
 DefRegistry.add(...AiSource.DEFAULTS);
 

@@ -14,6 +14,7 @@ class SupplierScope:
         'priceCur',
         'priceSrc',
         'priceLink',
+        'priceAt',
         'rrc',
         'cost',
         'costCur',
@@ -208,7 +209,7 @@ class CatalogFilter:
 
     NO_CAT = '__none__'  # «Без категории» в списке (пустое значение — «Все категории»)
     GROUPS = {
-        'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'margin', 'mmode'),
+        'price': ('price', 'prices', 'priceCur', 'priceSrc', 'priceLink', 'priceAt', 'margin', 'mmode'),
         'rrc': ('rrc',),
         'cost': ('cost', 'costCur', 'costSrc', 'costDisc', 'costAt'),
         'stock': ('stock',),

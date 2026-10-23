@@ -1,3 +1,6 @@
+import { FEAT } from '../../core/features.js';
+import { CatalogAnalogs } from './catalog-analogs.js';
+import { PriceAge } from './price-age.js';
 import { CatalogIndex } from './catalog-index.js';
 import { FeedBadge } from './feed-badge.js';
 import { Attrs } from '../../core/item-attrs.js';
@@ -154,7 +157,7 @@ export class CatalogCard {
       ? `${KPGen.money(card.price)} ${Currency.short(card.priceCur || 'RUB')}`
       : 'Цена не указана';
     const tip = card.stock && !card.stock.gone && FeedBadge.stockTip(card.stock);
-    return `<div class="pv-price"><b>${price}</b>${this._cost(card)}${FeedBadge.html(card)}</div>
+    return `<div class="pv-price"><b>${price}</b>${this._cost(card)}${FeedBadge.html(card)}${this._age(card)}</div>
       ${tip ? `<p class="pv-stock">${esc(FeedBadge.stockTip(card.stock))}</p>` : ''}
       ${this._feed(card)}`;
   }
@@ -206,6 +209,19 @@ export class CatalogCard {
     return '<button class="btn ghost" type="button" data-pv="similar" title="Та же категория, близкие параметры, в наличии и с ценой">Похожие в наличии</button>';
   }
 
+  static _age(card) {
+    const note = PriceAge.note(card);
+    return note ? `<span class="bad-t" title="Уточните цену у поставщика">${esc(note)}</span>` : '';
+  }
+
+  static _analogs(card) {
+    if (!FEAT.on('analogs')) return '';
+    const count = CatalogAnalogs.of(card).length;
+    return count
+      ? `<button class="btn ghost" type="button" data-pv="analogs" title="Та же категория, другие производители, близкие главные параметры">Аналоги (${count})</button>`
+      : '';
+  }
+
   static _acts(win, card) {
     const main = win.optFor == null;
     const dup = main
@@ -217,7 +233,7 @@ export class CatalogCard {
         : '';
     const wide = win.dlg().classList.contains('pvwide') ? 'Свернуть карточку' : '⤢ Крупно';
     return `<div class="pv-acts"><div class="pv-main"><button class="btn primary" type="button" data-pv="add">${win.addLabelLong(card.id)}</button><button class="btn" type="button" data-pv="edit">Редактировать</button></div>
-      <div class="pv-sub">${this._similar(card)}${dup}${trash}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${wide}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
+      <div class="pv-sub">${this._similar(card)}${this._analogs(card)}${dup}${trash}<span class="sp"></span><button class="btn ghost pv-w" type="button" data-pv="wide" title="Карточка крупно, на месте списка (двойной щелчок по позиции). Esc — назад к списку">${wide}</button><button class="btn ghost pv-x" type="button" data-pv="close">Закрыть карточку</button></div></div>`;
   }
 
   /**

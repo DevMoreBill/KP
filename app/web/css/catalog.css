@@ -345,3 +345,4 @@ dialog.st-confirm.cmp-dlg{width:min(1000px,calc(100vw - 32px));max-width:none}
 .cmp-t tr.cmp-d td{background:var(--warn-bg);color:var(--ink)}
 .sim-l{display:grid;gap:6px}
 .sim-r{width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);padding:8px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;min-height:44px}
+.ns-lib{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 2px}

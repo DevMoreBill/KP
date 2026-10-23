@@ -307,6 +307,11 @@ export class EquipWizard {
       this._addFound(Catalog.cache.find(card => card.id === hit.dataset.nwadd));
       return;
     }
+    const lib = target.closest('[data-nslib]');
+    if (lib) {
+      NewStation.library(EquipTypes.byId(this.state.cat), +lib.dataset.nslib);
+      return;
+    }
     const fillHow = target.closest('[data-nwgo]');
     if (fillHow) {
       this._readName();

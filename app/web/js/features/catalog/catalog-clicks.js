@@ -1,3 +1,4 @@
+import { CatalogAnalogs } from './catalog-analogs.js';
 import { CatalogCompare, CatalogSimilar } from './catalog-compare.js';
 import { CatalogActions } from './catalog-actions.js';
 import { CatalogTree } from './catalog-nav.js';
@@ -29,6 +30,7 @@ export class CatalogClicks {
     edit: (win, id) => CatalogActions.edit(win, id),
     dup: (win, id) => CatalogActions.dup(win, id),
     similar: (win, id) => CatalogSimilar.open(win.doc(id), other => win.activate(other)),
+    analogs: (win, id) => CatalogAnalogs.open(win.doc(id), other => win.activate(other)),
     trash: (win, id) => CatalogActions.trash(win, [id]),
     wide: (win, id, dialog) => (dialog.classList.contains('pvwide') ? win.collapse() : win.expand()),
     close: (win, id, dialog) => {
@@ -98,6 +100,9 @@ export class CatalogClicks {
     },
     stock: (win, filter) => {
       filter.stock = false;
+    },
+    old: (win, filter) => {
+      filter.old = false;
     },
   };
 

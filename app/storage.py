@@ -384,6 +384,8 @@ LIGHT_KEYS = (
     'priceSrc',
     'costSrc',
     'costDisc',
+    'priceAt',
+    'lead',
 )
 
 
@@ -725,6 +727,21 @@ MIGRATION_FILL = {
 }
 
 
+class PriceStamp:
+    """Дата цены позиции каталога (priceAt): ставится, когда цена или её валюта изменилась, иначе остаётся прежней."""
+
+    @staticmethod
+    def put(doc: dict, old: dict | None) -> None:
+        price = (doc.get('price') or 0, doc.get('priceCur') or 'RUB')
+        before = (old.get('price') or 0, old.get('priceCur') or 'RUB') if old else None
+        if not price[0]:
+            doc.pop('priceAt', None)
+        elif price != before:
+            doc['priceAt'] = _now()
+        elif old and old.get('priceAt'):
+            doc['priceAt'] = old['priceAt']
+
+
 def light_of(doc) -> dict:
     data = {k: doc[k] for k in LIGHT_KEYS if k in doc}
     if isinstance(data.get('prices'), list):
@@ -947,6 +964,8 @@ class Store:
         doc = json.loads(text)
         doc['id'] = cid
         doc.pop('_rev', None)
+        old = conn.execute('SELECT doc FROM catalog WHERE id=?', (cid,)).fetchone()
+        PriceStamp.put(doc, json.loads(old[0]) if old else None)
         attrs = picked if isinstance(picked := doc.get('attrs'), dict) else {}
         rev = self._next_rev(conn, 'catalog', cid, base_rev)
         seq = self._cat_seq(conn)

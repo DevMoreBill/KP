@@ -122,11 +122,18 @@ export class DealConds {
     const suggested = DealConds.suggest(calc);
     S.condAuto = S.condAuto || {};
     let changed = false;
-    for (const label of DealConds.LABELS) changed = DealConds._apply(label, suggested[label] || '') || changed;
+    for (const label of DealConds.LABELS) changed = DealConds.apply(label, suggested[label] || '') || changed;
     return changed;
   }
 
-  static _apply(label, value) {
+  /**
+   * Условие — подстановкой: пока поле пустое или в нём прежняя подстановка; вписанное вручную не меняется.
+   * @param {string} label
+   * @param {string} value
+   * @returns {boolean} изменилось
+   */
+  static apply(label, value) {
+    S.condAuto = S.condAuto || {};
     let cond = S.conditions.find(row => row.label === label);
     if (!cond) {
       if (!value) return false;
