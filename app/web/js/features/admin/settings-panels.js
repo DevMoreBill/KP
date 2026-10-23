@@ -536,7 +536,7 @@ export class MirrorCard {
       ${FEAT.on('davBackup') ? `<div class="seg" role="radiogroup" aria-label="Куда копировать">${this._kindBtn('folder', 'Папка (сетевой диск, флешка)')}${this._kindBtn('dav', 'Яндекс Диск')}</div>` : ''}
       ${this._where()}
       <p>Последняя копия: ${state.running ? '<b>идёт копирование…</b>' : this._last()}${state.copies ? ` · в папке копий: ${state.copies} (${Fmt.size(state.copiesBytes)})` : ''}</p>
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-mb="save">Сохранить</button><button class="btn" type="button" data-mb="check">Проверить папку</button>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-mb="save">Сохранить</button><button class="btn" type="button" data-mb="check">${state.kind === 'dav' ? 'Проверить диск' : 'Проверить папку'}</button>
         <button class="btn" type="button" data-mb="run"${state.on && !state.running ? '' : ' disabled'}>Копировать сейчас</button></div>`;
   }
 

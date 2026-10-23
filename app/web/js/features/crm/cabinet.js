@@ -371,9 +371,10 @@ export class Cabinet {
     this.show('deals');
   }
 
+  // имя менеджера в «Отделе» — его сделки; «Показать весь отдел» — остаться в «Отделе»
   static _manager(id) {
     CrmData.who = id;
-    this.tab = 'deals';
+    if (id !== 'all') this.tab = 'deals';
     this.reload();
   }
 

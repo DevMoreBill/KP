@@ -179,30 +179,39 @@ class OneCSync:
         amount = float(pay.get('СуммаДокумента') or 0)
         for deal in deals:
             deal['kps'] = kps.get(deal['id'], [])
-            step = self._step(deal, purpose, amount)
-            if step:
+        deals.sort(key=lambda deal: not self._named(deal, purpose))  # сначала сделка, чей номер КП в назначении
+        for deal in deals:
+            steps = self._steps(deal, amount)
+            if steps:
                 day = str(pay.get('Date') or '')[:10] or date.today().isoformat()
-                ExecBook(self.store).mark(deal['id'], step['key'], day, self.AUTHOR)
-                return {'deal': deal['id'], 'title': deal.get('title') or '', 'step': step['label']}
+                for step in steps:
+                    ExecBook(self.store).mark(deal['id'], step['key'], day, self.AUTHOR)
+                labels = ', '.join(step['label'] for step in steps)
+                return {'deal': deal['id'], 'title': deal.get('title') or '', 'step': labels}
         return None
 
-    def _step(self, deal: dict, purpose: str, amount: float) -> dict | None:
+    @staticmethod
+    def _named(deal: dict, purpose: str) -> bool:
+        numbers = [offer.get('number') for offer in deal['kps'] if offer.get('number')]
+        return any(re.search(r'(?<![\w-])' + re.escape(str(num)) + r'(?![\w-])', purpose) for num in numbers)
+
+    def _steps(self, deal: dict, amount: float) -> list[dict]:
+        """Оплаты по плану, которые закрывает платёж: одна с суммой ±0,5 % или несколько подряд на всю сумму; частичный — нет."""
         open_steps = [
             step for step in ExecPlan(deal).steps(Sums.SALES) if step['kind'] == 'cust' and step['state'] != 'done'
         ]
-        if not open_steps:
-            return None
-        numbers = [offer.get('number') for offer in deal['kps'] if offer.get('number')]
-        if any(re.search(r'(?<![\w-])' + re.escape(str(num)) + r'(?![\w-])', purpose) for num in numbers):
-            return open_steps[0]
-        return next(
-            (
-                step
-                for step in open_steps
-                if step.get('amount') and abs(step['amount'] - amount) <= step['amount'] * self.TOLERANCE
-            ),
-            None,
-        )
+        single = next((step for step in open_steps if self._same(step.get('amount'), amount)), None)
+        if single:
+            return [single]
+        total = 0.0
+        for count, step in enumerate(open_steps, 1):
+            total += step.get('amount') or 0
+            if count > 1 and self._same(total, amount):
+                return open_steps[:count]
+        return []
+
+    def _same(self, plan: float | None, amount: float) -> bool:
+        return plan is not None and plan > 0 and abs(plan - amount) <= plan * self.TOLERANCE
 
     @staticmethod
     def _brief(pay: dict, inns: dict, hit: dict | None) -> dict[str, Any]:

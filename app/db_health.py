@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
+from defaults import SrvVal
 from storage import DbZip
 
 
@@ -137,8 +138,7 @@ class NightCheck:
 
     KV_KEY = 'nightCheck'
     HISTORY = 30
-    GROWTH_WARN = 0.2  # база выросла за сутки больше чем на 20 %
-    COPY_DAYS = 2  # копии нет дольше — тревога
+    PERCENT = 100
     MEGABYTE = 1024 * 1024
 
     def __init__(self, store, data_dir: str) -> None:
@@ -153,9 +153,10 @@ class NightCheck:
         import maintenance
 
         history = self.history()
-        size = maintenance.db_size(self.store)
+        size = os.path.getsize(self.store.path)  # без файла -wal: его колебания — не рост базы
         copies = maintenance.DbCopy.listing(maintenance.auto_dir(self.data_dir))
-        prev = history[0]['bytes'] if history else 0
+        today = datetime.now().date().isoformat()
+        prev = next((row['bytes'] for row in history if str(row.get('at') or '')[:10] < today), 0)
         res = {
             'at': datetime.now().isoformat(timespec='seconds'),
             'bytes': size,
@@ -176,10 +177,10 @@ class NightCheck:
         out = []
         if last.get('integrity') not in (None, 'ok'):
             out.append('файл базы повреждён — восстановите последнюю копию')
-        if (last.get('growth') or 0) > self.GROWTH_WARN:
+        if (last.get('growth') or 0) * self.PERCENT > SrvVal.get(self.store, 'srv.dbGrowthPct'):
             out.append(f'база выросла за сутки на {round(last["growth"] * 100)} %')
         copy_day = str(last.get('lastCopy') or '')
-        stale = (datetime.now() - timedelta(days=self.COPY_DAYS)).date().isoformat()
+        stale = (datetime.now() - timedelta(days=SrvVal.get(self.store, 'srv.backupStaleDays'))).date().isoformat()
         if not copy_day or copy_day < stale:
             out.append('свежей копии нет' + (f' (последняя {copy_day})' if copy_day else ''))
         return out

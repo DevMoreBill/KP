@@ -45,7 +45,7 @@ export class CatalogAnalogs {
     const attrs = CatalogIndex.attrs(card);
     return EquipTypes.byId(attrs.cat)
       .fields.filter(field => field.kpi)
-      .map(field => ({ key: field.key, value: parseFloat(attrs[field.key]) }))
+      .map(field => ({ key: field.key, value: Str.num(attrs[field.key]) ?? NaN }))
       .filter(row => row.value > 0)
       .slice(0, this.KEYS);
   }
@@ -76,7 +76,7 @@ export class CatalogAnalogs {
     const attrs = CatalogIndex.attrs(other);
     let gap = 0;
     for (const { key, value } of own) {
-      const theirs = parseFloat(attrs[key]);
+      const theirs = Str.num(attrs[key]) ?? NaN;
       if (!(theirs > 0)) return null;
       const diff = Math.abs(theirs - value) / value;
       if (diff > limit) return null;

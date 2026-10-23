@@ -125,6 +125,18 @@ export class KpEconomics {
     return { qty: +item.qty || 0, price: item.price || 0, disc: item.disc, options };
   }
 
+  /**
+   * Закупка единицы позиции в валюте КП, как в экономике (с НДС поставщика при «закупке без НДС»); нет закупки — null.
+   * @param {object} item позиция КП
+   * @param {object} [state] состояние КП
+   * @returns {number | null}
+   */
+  static unitCost(item, state = S) {
+    const pricing = state.pricing || {};
+    const rate = code => this._rate(pricing, code);
+    return this._unitCost(item, { pricing, rate, cur: pricing.cur || 'RUB' });
+  }
+
   static _unitCost(item, { pricing, rate, cur }) {
     if (!item.cost) return null;
     const value = (item.cost * rate(item.costCur || 'RUB')) / rate(cur);

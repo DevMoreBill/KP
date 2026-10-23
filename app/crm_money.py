@@ -60,8 +60,8 @@ class PayCalendar:
 
     @staticmethod
     def overdue(rows: list[dict]) -> list[dict]:
-        """Просроченные оплаты клиентов (дебиторка)."""
-        return [row for row in rows if row['dir'] == INCOME and row['state'] == 'overdue']
+        """Просроченные оплаты клиентов (дебиторка) — только по подписанному договору (примерные даты «≈» — не долг)."""
+        return [row for row in rows if row['dir'] == INCOME and row['state'] == 'overdue' and not row.get('approx')]
 
 
 class PayReminder:

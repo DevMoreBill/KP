@@ -138,12 +138,12 @@ class SettingsSecrets:
     """Секреты внутри настройки «settings»: пароль Яндекс Диска второй папки — никогда в файл, ключ нейросети — только «с ключами»."""
 
     @staticmethod
-    def strip(value: dict, with_keys: bool) -> dict:
+    def strip(value: dict, keys: 'Keys') -> dict:
         out = dict(value)
         mirror = out.get('backup2')
         if isinstance(mirror, dict) and isinstance(mirror.get('dav'), dict):
             out['backup2'] = dict(mirror, dav={key: val for key, val in mirror['dav'].items() if key != 'password'})
-        if not with_keys and isinstance(out.get('ai'), dict):
+        if keys is not Keys.WITH and isinstance(out.get('ai'), dict):
             out['ai'] = {key: val for key, val in out['ai'].items() if key != 'key'}
         return out
 
@@ -184,7 +184,7 @@ class ProgramSettings:
             if isinstance(v, dict) and k in self.SECRET:
                 v = {key: val for key, val in v.items() if key not in self.SECRET[k]}
             if isinstance(v, dict) and k == 'settings':
-                v = SettingsSecrets.strip(v, with_keys=False)
+                v = SettingsSecrets.strip(v, Keys.WITHOUT)
             if v is not None:
                 out[k] = v
         return out
@@ -293,7 +293,7 @@ class SettingsFile:
         if k == 'bitrix' and isinstance(v, dict):  # служебное (время опроса, поля созданы) — не настройка
             v = {key: val for key, val in v.items() if key in self.BITRIX_KEYS and (keys is Keys.WITH or key != 'url')}
         if k == 'settings' and isinstance(v, dict):
-            v = SettingsSecrets.strip(v, with_keys=keys is Keys.WITH)
+            v = SettingsSecrets.strip(v, keys)
         if k == 'update' and isinstance(v, dict):
             v = {key: v[key] for key in self.UPDATE_KEYS if key in v} or None
         return v

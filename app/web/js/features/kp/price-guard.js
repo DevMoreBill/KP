@@ -6,6 +6,8 @@ import { FEAT } from '../../core/features.js';
 import { Modal } from '../../core/modal.js';
 import { esc, isoDay } from '../../core/util.js';
 import { S } from '../../core/state.js';
+import { KpEconomics } from './price-calc.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /** Проверка цен перед сохранением и отправкой КП: ниже закупки, маржа ниже красного порога, курс ЦБ старше суток. */
 export class PriceGuard {
@@ -40,18 +42,27 @@ export class PriceGuard {
     if (!card || !(card.cost > 0)) return null;
     const cur = card.costCur || 'RUB';
     const kpCur = Currency.current();
-    if (cur === kpCur) return card.cost;
-    const from = Currency.rate(cur);
-    const rateTo = Currency.rate(kpCur);
-    return from > 0 && rateTo > 0 ? Math.round((card.cost * from) / rateTo) : null;
+    const value = cur === kpCur ? card.cost : this._convert(card.cost, cur, kpCur);
+    return value == null ? null : Math.round(S.pricing.costNoVat ? value * (1 + this._supVat()) : value);
   }
 
+  static _convert(amount, from, into) {
+    const rateFrom = Currency.rate(from);
+    const rateTo = Currency.rate(into);
+    return rateFrom > 0 && rateTo > 0 ? (amount * rateFrom) / rateTo : null;
+  }
+
+  static _supVat() {
+    return DefRegistry.num('deal.supVat', KpEconomics.SUP_VAT) / KpEconomics.PERCENT;
+  }
+
+  // закупка — как в экономике (позиция КП), иначе из карточки каталога; цена — после скидки позиции
   static _belowCost() {
     return S.items
       .filter(item => item.price > 0)
       .filter(item => {
-        const cost = this._cost(item);
-        return cost != null && item.price < cost;
+        const cost = KpEconomics.unitCost(item) || this._cost(item);
+        return cost != null && KPGen.netPrice(item) < cost;
       })
       .map(item => `«${item.name || 'позиция'}» — цена ниже закупки`);
   }

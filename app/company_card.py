@@ -12,6 +12,7 @@ class CompanyCard:
     """Распознать реквизиты правилами и создать клиента (ничего не выдумывается: не нашлось — поле пустое)."""
 
     TEXT_MAX = 40000
+    OFFLINE = 'ФНС сейчас не ответила — ИНН проверен по контрольной сумме, название сверьте вручную'
     VALUE_MAX = 300
     PATTERNS = {
         'inn': r'ИНН(?:\s*/\s*КПП)?\D{0,12}?(\d{12}|\d{10})(?!\d)',
@@ -89,7 +90,7 @@ class CompanyCard:
         except Exception:
             found = {'error': 'сервис недоступен'}
         if found.get('error'):
-            return {}, [f'ФНС: {found["error"]}'[: self.VALUE_MAX]]
+            return {}, [self.OFFLINE]
         fns = {
             key: found.get(key) or ''
             for key in ('short', 'full', 'kpp', 'ogrn', 'address', 'director', 'status', 'source')

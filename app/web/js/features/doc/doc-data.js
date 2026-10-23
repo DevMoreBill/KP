@@ -48,7 +48,7 @@ export class DocData {
         .filter(option => option.name)
         .map(option => ({ qty: +option.qty || 0, price: option.price || 0 })),
     }));
-    return KPGen.totals(items, this.noVat() ? 0 : +this.state.vat || 0);
+    return KPGen.totals(items, this.rate());
   }
 
   /**
@@ -56,7 +56,18 @@ export class DocData {
    * @returns {boolean}
    */
   noVat() {
-    return this.seller.vat === DocData.NO_VAT;
+    return this.rate() === 0;
+  }
+
+  /**
+   * Ставка НДС документа: своя у продавца («Наши реквизиты»), иначе — как в КП; «без НДС» — 0.
+   * @returns {number}
+   */
+  rate() {
+    const own = this.seller.vat;
+    if (own === DocData.NO_VAT) return 0;
+    const fixed = own === undefined || own === null || own === '' ? NaN : Number(own);
+    return Number.isFinite(fixed) ? fixed : +this.state.vat || 0;
   }
 
   /**
@@ -81,7 +92,7 @@ export class DocData {
    * @returns {string}
    */
   vatLine() {
-    return this.noVat() ? 'Без налога (НДС)' : `В том числе НДС ${this.state.vat} %: ${this.money(this.totals().vat)}`;
+    return this.noVat() ? 'Без налога (НДС)' : `В том числе НДС ${this.rate()} %: ${this.money(this.totals().vat)}`;
   }
 
   /**
@@ -146,7 +157,7 @@ export class DocData {
       сумма: this.money(total.sum),
       сумма_прописью: KPGen.words(total.sum, this.cur()),
       ндс: this.noVat() ? DocData.NO_VAT : this.money(total.vat),
-      ставка_ндс: this.noVat() ? DocData.NO_VAT : `${offer.vat} %`,
+      ставка_ндс: this.noVat() ? DocData.NO_VAT : `${this.rate()} %`,
       валюта: this.cur(),
       срок_поставки: this.cond(DocData.COND.delivery),
       оплата: this.cond(DocData.COND.payment),

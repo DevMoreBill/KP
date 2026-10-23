@@ -35,8 +35,12 @@ class PayCalendarTest(MoneyBase):
         self.assertTrue(all(row['approx'] for row in rows), 'договор не подписан — даты примерные')
         rows = PayCalendar(self.st).rows(None, lambda deal: True)
         self.assertEqual(sorted(row['dir'] for row in rows), ['in', 'in', 'out', 'out'])
+        self.assertEqual(PayCalendar.overdue(rows), [], 'договор не подписан — примерные даты не долг')
+        from crm_exec import ExecBook
+        ExecBook(self.st).mark(self.did, 'sign', day(-60), 'тест')
+        rows = PayCalendar(self.st).rows(None, lambda deal: True)
         late = PayCalendar.overdue(rows)
-        self.assertEqual(len(late), 2, 'обе оплаты клиента по плану в прошлом')
+        self.assertEqual(len(late), 2, 'договор подписан — обе оплаты клиента по плану в прошлом')
         self.assertEqual(late[0]['amount'], 500000)
         self.assertEqual(PayCalendar(self.st).rows(['someone-else'], lambda deal: True), [])
 
@@ -102,6 +106,15 @@ class OneCTest(MoneyBase):
         self.assertEqual(res['checked'], 0, 'учтённое поступление второй раз не берётся')
         res, _calls = self.sync([self.pay('a3', 500000.0, 'Окончательный расчёт')])
         self.assertEqual(res['matched'][0]['step'], 'Окончательный расчёт 50 %', 'без номера — по сумме')
+
+    def test_partial_and_whole(self):
+        from crm_exec import ExecBook
+        res, _calls = self.sync([self.pay('b1', 10000.0, 'Оплата по КП 2026-001')])
+        self.assertEqual(res['matched'], [], 'частичный платёж с номером КП не закрывает аванс')
+        res, _calls = self.sync([self.pay('b2', 1000000.0, 'Оплата по КП 2026-001 полностью')])
+        self.assertEqual(len(res['matched']), 1)
+        done = ExecBook(self.st).deal(self.did)['exec']['done']
+        self.assertEqual(sorted(done), ['p:c1', 'p:c2'], 'платёж на всю сумму закрывает обе оплаты')
 
 
 class OneCRoutesTest(unittest.TestCase):

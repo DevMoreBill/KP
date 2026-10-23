@@ -94,6 +94,7 @@ class SrvVal:
         'srv.backupMonthly': (12, 0, 120),
         'srv.backupStaleDays': (2, 1, 30),
         'srv.mirrorStaleDays': (2, 1, 30),
+        'srv.dbGrowthPct': (20, 5, 500),
         # журналы и хранение
         'srv.trashDays': (30, 1, 365),
         'srv.kpVersions': (30, 5, 500),
