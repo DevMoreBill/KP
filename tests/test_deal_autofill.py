@@ -44,6 +44,16 @@ FIELDS = [
      'items': items((80, 'Дизельные мотопомпы'), (81, 'Компрессорное оборудование'))},
     {'code': 'UF_SIZE', 'title': 'Размер партии', 'label': 'Размер партии', 'type': 'enumeration', 'on': ON,
      'items': items((90, 'Опт'), (91, 'Розница'))},
+    {'code': 'UF_CHANCE', 'title': 'Вероятность Успеха', 'label': 'Вероятность Успеха', 'type': 'enumeration', 'on': ON,
+     'items': items((100, '10% - Первичный контакт'), (101, '20% - Подготовка и отправка ТКП'))},
+    {'code': 'UF_CHIEF', 'title': 'Руководитель Ответственного', 'label': 'Руководитель Ответственного по Сделке',
+     'type': 'enumeration', 'on': ON, 'items': items((110, 'Касицын Александр'), (111, 'Петров Пётр'))},
+    {'code': 'UF_ADS', 'title': 'Реклама', 'label': 'Реклама', 'type': 'enumeration', 'on': ON,
+     'items': items((120, 'Нет'), (121, 'Яндекс'))},
+    {'code': 'UF_NOTE', 'title': 'Рабочий комментарий', 'label': 'Рабочий комментарий к сделке', 'type': 'string', 'on': ON},
+    {'code': 'UF_NOTEDAY', 'title': 'Дата рабочего комментария', 'label': 'Дата рабочего комментария', 'type': 'date', 'on': ON},
+    {'code': 'UF_WORK', 'title': 'Описание работ', 'label': 'Описание работ/неисправности для модели №1', 'type': 'string',
+     'on': ON},
 ]
 
 
@@ -131,6 +141,35 @@ class AutoFillTest(unittest.TestCase):
         DealBook(self.st).update(did, {'uf': {'UF_CTYPE': '20'}}, 'Иванова')
         other = self.kp('2026-300')
         self.assertEqual(self.deal(other)['uf'].get('UF_CTYPE'), '20', 'тип компании — как у прежней сделки клиента')
+
+    def test_context_fields(self):
+        """Не из КП: вероятность — как на этой стадии, руководитель — как у менеджера, реклама — как при том же источнике,
+        дата рабочего комментария — по правке комментария; «Описание работ» товаром не заполняется."""
+        from crm import DealBook
+        book = DealBook(self.st)
+        for n in range(3):
+            did = self.kp(f'2026-4{n}', inn=f'770000002{n}')
+            book.update(did, {'uf': {'UF_CHANCE': '101', 'UF_CHIEF': '110', 'UF_SRC': '2', 'UF_ADS': '120'}}, 'Иванова')
+        did = self.kp('2026-500', inn='7700000098')
+        uf = self.deal(did)['uf']
+        self.assertEqual(uf.get('UF_CHANCE'), '101', 'на этой стадии трижды ставили «20%»')
+        self.assertEqual(uf.get('UF_CHIEF'), '110', 'руководитель — как у прежних сделок менеджера')
+        self.assertNotIn('UF_ADS', uf, 'источник не выбран — реклама не угадывается')
+        self.assertNotIn('UF_WORK', uf, 'описание работ — не товар')
+        book.update(did, {'uf': {'UF_SRC': '2', 'UF_NOTE': 'Перезвонить в пятницу'}}, 'Иванова')
+        book.autofill(did, 'Иванова')
+        uf = self.deal(did)['uf']
+        self.assertEqual(uf.get('UF_ADS'), '120', 'при источнике «Звонок» реклама — «Нет», как раньше')
+        self.assertEqual(len(uf.get('UF_NOTEDAY') or ''), 10, 'дата рабочего комментария — день правки')
+        deal = self.deal(did)
+        book.update(did, {'uf': {'UF_WORK': 'Мотопомпа'}}, 'Иванова')
+        with self.st.lock:
+            fixed = dict(book.get(did), ufAuto=dict(deal['ufAuto'], UF_WORK='Мотопомпа'))
+            conn = self.st.conn()
+            book._save(conn, did, fixed, 'тест')
+            conn.commit()
+        book.autofill(did, 'Иванова')
+        self.assertNotIn('UF_WORK', self.deal(did)['uf'], 'ошибочное прежнее автозаполнение снято')
 
     def test_card_fills_old_deal(self):
         from crm import DealBook

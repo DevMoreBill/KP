@@ -37,6 +37,7 @@ export class CabDeals {
   static PERCENT = 100;
   static LIST_LIMIT = 100;
   static LIGHT = 150;
+  static PERCENT_LABEL = /^(\d{1,3})\s*%\s*[-–—:]?\s*(.*)$/;
   static closed = false;
   static filter = '';
   static stage = '';
@@ -188,9 +189,16 @@ export class CabDeals {
       ? ''
       : `<button type="button" class="kb-add" data-kbadd="${esc(stage.key)}" title="Быстрая сделка на этой стадии" aria-label="Быстрая сделка: ${esc(stage.label)}">＋</button>`;
     return `<section class="kb-c" data-kbs="${esc(stage.key)}" aria-label="${esc(stage.label)}"><header class="kb-h t-${CrmFunnel.tone(funnel, stage.key)}"${paint}>
-      <div class="kb-rb"><b title="${esc(stage.label)}">${esc(stage.label)}</b><span class="kb-n">${list.length}</span></div>
+      <div class="kb-rb" title="${esc(stage.label)}">${this._stageName(stage.label)}<span class="kb-n">${list.length}</span></div>
       <div class="kb-sum">${CrmFmt.short(sum)}</div>${add}</header>
       <div class="kb-l">${this.adding === stage.key ? this._quick(stage) : ''}${shown.map(deal => this.card(deal)).join('') || (this.adding === stage.key ? '' : empty)}${more}</div></section>`;
+  }
+
+  // «40% - ТКП» → метка «40%» и название в одну строку (полное — в подсказке шапки)
+  static _stageName(label) {
+    const found = String(label).match(this.PERCENT_LABEL);
+    if (!found) return `<b>${esc(label)}</b>`;
+    return `<i class="kb-pc">${esc(found[1])}%</i><b>${esc(found[2] || label)}</b>`;
   }
 
   // цвет надписи на шапке стадии: тёмный на светлой заливке, белый — на тёмной
@@ -247,12 +255,18 @@ export class CabDeals {
     const client = deal.client && deal.client !== deal.title ? esc(deal.client) : '';
     const count = (deal.kps || []).length;
     const link = deal.bxUrl
-      ? `<a class="dc-bx" href="${esc(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24">Б24 ↗</a>`
+      ? `<a class="dc-bx" href="${esc(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24" aria-label="Открыть в Битрикс24">Б24</a>`
       : '';
+    const kps = this._kps(count);
     return `<article class="dc t-${CrmData.toneOf(deal)}" data-deal="${esc(deal.id)}"${drag} tabindex="0">
-      <div class="dc-r"><b class="dc-t" title="${esc(title)}">${esc(title)}</b>${link}</div>
-      <div class="dc-r"><span class="dc-c" title="${client}">${client || '&nbsp;'}</span><span class="dc-s"><span class="muted">${count ? `КП ${count}` : 'без КП'} · </span><b>${CrmFmt.short(deal.sum)}</b></span></div>
-      <div class="dc-r">${this._next(deal)}${this._expected(deal)}</div>${this.exec(deal)}${this._foot(deal)}</article>`;
+      <div class="dc-h"><b class="dc-t" title="${esc(title)}">${esc(title)}</b>${link}</div>${client ? `<span class="dc-c">${client}</span>` : ''}
+      <div class="dc-m">${kps}${this._expected(deal)}<b class="dc-s">${CrmFmt.short(deal.sum)}</b></div>
+      <div class="dc-nx">${this._next(deal)}</div>${this.exec(deal)}${this._foot(deal)}</article>`;
+  }
+
+  static _kps(count) {
+    if (!count) return '<i class="dc-k none" title="КП ещё нет">без КП</i>';
+    return `<i class="dc-k" title="КП по сделке: ${count}">КП ${count}</i>`;
   }
 
   static _expected(deal) {

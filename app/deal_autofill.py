@@ -3,6 +3,7 @@
 import json
 import re
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -68,7 +69,9 @@ class FieldKind:
     """Вид поля Битрикса по названию — каким правилом заполнять (порядок важен: первое совпадение)."""
 
     SKIP = re.compile(
-        r'запрош|источник|реклам|обращени|причин|стади|ответствен|коммент|дата|телефон|почт|e-?mail|ссылк|вероятн', re.I
+        r'запрош|источник|реклам|обращени|причин|стади|ответствен|коммент|дата|телефон|почт|e-?mail|ссылк|вероятн|'
+        r'описани|неисправ',
+        re.I,
     )
     RULES = (
         ('brand', re.compile(r'бренд|марк[аи]|производител', re.I)),
@@ -104,8 +107,12 @@ class DealHistory:
     def rows(self) -> list[dict]:
         if self._rows is None:
             self._rows = [
-                dict(_obj(doc), id=did, clientInn=inn or '')
-                for did, doc, inn in self.store.all('SELECT id, doc, inn FROM deals', ())
+                dict(
+                    _obj(doc), id=did, clientInn=inn or '', managerId=mid or '', stage=stage or '', funnel=funnel or ''
+                )
+                for did, doc, inn, mid, stage, funnel in self.store.all(
+                    'SELECT id, doc, inn, manager_id, stage, funnel FROM deals', ()
+                )
             ]
         return self._rows
 
@@ -120,6 +127,15 @@ class DealHistory:
         counts: Counter = Counter()
         for deal in self.rows():
             if deal['id'] == skip or cat not in (deal.get('kpCats') or []) or self._auto(deal, code):
+                continue
+            counts.update(self._values((deal.get('uf') or {}).get(code)))
+        return self._strong(counts, self.STRONG_COUNT)
+
+    def by_where(self, code: str, test: Callable[[dict], bool], skip: str) -> str:
+        """Значение, которое почти всегда ставили сделкам, подходящим под условие (не своё автозаполнение)."""
+        counts: Counter = Counter()
+        for deal in self.rows():
+            if deal['id'] == skip or self._auto(deal, code) or not test(deal):
                 continue
             counts.update(self._values((deal.get('uf') or {}).get(code)))
         return self._strong(counts, self.STRONG_COUNT)
@@ -197,6 +213,94 @@ class ListMatch:
         return scored[0][2] if len(scored) == 1 or scored[0][:2] != scored[1][:2] else ''
 
 
+class ContextFill:
+    """Поля, которые не следуют из КП, но известны по самой сделке: вероятность успеха — как обычно ставили на этой
+    стадии, руководитель ответственного — как у прежних сделок того же менеджера, реклама — как при том же источнике,
+    «Источник (дополнительно)» — как у прежних сделок клиента, дата рабочего комментария — по последней правке заметки,
+    рабочего комментария или по комментарию в ленте. Нет уверенного ответа — поле остаётся пустым."""
+
+    RULES = (
+        ('chance', re.compile(r'вероятн', re.I)),
+        ('noteDay', re.compile(r'дата.*коммент', re.I)),
+        ('chief', re.compile(r'руководител', re.I)),
+        ('ads', re.compile(r'реклам', re.I)),
+        ('sourceMore', re.compile(r'источник.*дополн', re.I)),
+    )
+    SOURCE = re.compile(r'источник', re.I)
+    COMMENT = re.compile(r'коммент', re.I)
+    MORE = re.compile(r'дополн|дата', re.I)
+    LISTS = frozenset({'enumeration', 'crm_status', 'iblock_element', 'employee'})
+
+    def __init__(self, history: DealHistory, deal: dict, fields: list[dict]) -> None:
+        self.history, self.deal, self.fields = history, deal, fields
+
+    @classmethod
+    def kind(cls, row: dict) -> str:
+        label = str(row.get('label') or row.get('title') or '')
+        return next((kind for kind, pattern in cls.RULES if pattern.search(label)), '')
+
+    def value(self, row: dict) -> Any:
+        kind = self.kind(row)
+        rules = {
+            'chance': self._chance,
+            'noteDay': self._note_day,
+            'chief': self._chief,
+            'ads': self._ads,
+            'sourceMore': self._source_more,
+        }
+        return rules[kind](row) if kind in rules else None
+
+    def _learned(self, row: dict, test: Callable[[dict], bool]) -> Any:
+        if row.get('type') not in self.LISTS:
+            return None
+        found = self.history.by_where(row['code'], test, self.deal.get('id', ''))
+        return ([found] if row.get('multiple') else found) if found else None
+
+    def _chance(self, row: dict) -> Any:
+        stage, funnel = self.deal.get('fstage') or self.deal.get('stage'), self.deal.get('funnel')
+        return self._learned(
+            row, lambda other: (other.get('fstage') or other.get('stage')) == stage and other.get('funnel') == funnel
+        )
+
+    def _chief(self, row: dict) -> Any:
+        mid = self.deal.get('managerId')
+        return self._learned(row, lambda other: bool(mid) and other.get('managerId') == mid) if mid else None
+
+    def _ads(self, row: dict) -> Any:
+        source = next(
+            (
+                one['code']
+                for one in self.fields
+                if self.SOURCE.search(str(one.get('label') or '')) and not self.MORE.search(str(one.get('label') or ''))
+            ),
+            '',
+        )
+        value = (self.deal.get('uf') or {}).get(source) if source else None
+        if value in (None, '', []):
+            return None
+        return self._learned(row, lambda other: (other.get('uf') or {}).get(source) == value)
+
+    def _source_more(self, row: dict) -> Any:
+        inn = re.sub(r'\D', '', str(self.deal.get('clientInn') or ''))
+        return self.history.by_client(row['code'], inn, self.deal.get('id', '')) or None
+
+    def _note_day(self, row: dict) -> Any:
+        codes = {
+            one['code']
+            for one in self.fields
+            if self.COMMENT.search(str(one.get('label') or '')) and not self.MORE.search(str(one.get('label') or ''))
+        }
+        days = [str(one.get('at') or '') for one in self.deal.get('comments') or [] if isinstance(one, dict)]
+        for entry in self.deal.get('history') or []:
+            fields = set(entry.get('fields') or []) if isinstance(entry, dict) else set()
+            if 'note' in fields or fields & codes:
+                days.append(str(entry.get('at') or ''))
+        day = max((one[:10] for one in days if one), default='')
+        if not day:
+            return None
+        return day if row.get('type') in ('date', 'datetime') else '.'.join(reversed(day.split('-')))
+
+
 class DealAutoFill:
     """Пустые поля Битрикс24 сделки — из КП (позиции, производители, категории, сумма), клиента и прошлых сделок.
 
@@ -225,16 +329,28 @@ class DealAutoFill:
         changed = []
         regs = {code: key for key, code in DealRegs(self.store).codes().items()}
         reg_fill = RegFill(self, deal, kp_ids, facts)
-        for row in DealFields(self.store).shown(deal.get('funnel') or Funnels.MAIN):
+        shown = DealFields(self.store).shown(deal.get('funnel') or Funnels.MAIN)
+        context = ContextFill(self.history, deal, shown)
+        for row in shown:
             code = row['code']
             if code in auto and values.get(code) != auto[code]:
                 continue  # менеджер изменил или стёр — его выбор
             if code not in auto and values.get(code) not in (None, '', [], '0'):
                 continue
             key = regs.get(code, '')
-            if not kp_ids and key not in RegFill.KINDS:
+            if code in auto and self._stale(row, key):
+                values.pop(
+                    code, None
+                )  # прежняя версия заполняла это поле ошибочно (например, «Описание работ» товаром)
+                auto.pop(code, None)
+                changed.append(code)
+                continue
+            if ContextFill.kind(row) and key not in RegFill.KINDS:
+                value = context.value(row)
+            elif not kp_ids and key not in RegFill.KINDS:
                 continue  # без КП — только то, что известно о самой сделке (источник, сумма)
-            value = reg_fill.value(key, row) if key in RegFill.KINDS else self.value(row, facts, deal)
+            else:
+                value = reg_fill.value(key, row) if key in RegFill.KINDS else self.value(row, facts, deal)
             if value in (None, '', []) or value == values.get(code):
                 continue
             values[code] = auto[code] = value
@@ -242,6 +358,11 @@ class DealAutoFill:
         if changed:
             deal.update(uf=values, ufAuto=auto)
         return changed
+
+    @staticmethod
+    def _stale(row: dict, key: str) -> bool:
+        """Поле, которое программа больше не заполняет ни одним правилом."""
+        return key not in RegFill.KINDS and not ContextFill.kind(row) and not FieldKind.of(row)
 
     def facts(self, deal: dict, kp_ids: list[str]) -> KpFacts:
         facts = KpFacts(inn=re.sub(r'\D', '', str(deal.get('clientInn') or '')), sum_rub=self._rub(deal))

@@ -1170,7 +1170,7 @@ class Scenario(UiRun):
         card.click()
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=15000)
         self.snap('f_deal_card', 'dialog.deal-dlg[open]', wait=800)
-        title = 'Позвонить главному инженеру (прогон, %s)' % self.mode  # режимы — на одном стенде: без дубля дела
+        title = 'Позвонить главному инженеру (прогон, %s)' % self.mode  # своё имя у режима — по нему ищется в ленте
         self._part('feed')
         pg.click('dialog.deal-dlg[open] [data-feedmode="task"]')
         pg.fill('dialog.deal-dlg[open] form.tq input[name=title]', title)
@@ -1498,7 +1498,7 @@ class Scenario(UiRun):
         box = 'dialog.cc-dlg[open]'
         pg.wait_for_selector(box + ' [data-ccca]', timeout=15000)
         pg.click(box + ' [data-ccca]')
-        name = 'Сидоров Пётр (%s)' % self.mode  # режимы идут параллельно на одном стенде
+        name = 'Сидоров Пётр (%s)' % self.mode  # своё имя у режима — по нему ищется в карточке
         pg.fill(box + ' [data-cccf="name"]', name)
         pg.fill(box + ' [data-cccf="phone"]', '+7 900 555-66-77')
         pg.click(box + ' [data-cccs]')
@@ -1627,7 +1627,7 @@ class Report:
 
 
 class Progon:
-    """Запуск: стенд → по процессу на режим → сводка."""
+    """Запуск: по стенду и процессу на режим → сводка."""
 
     def __init__(self, argv):
         a = argparse.ArgumentParser(description='Прогон интерфейса в браузере (ПК, телефон, светлая и тёмная тема)')
@@ -1662,24 +1662,27 @@ class Progon:
         if self.a.worker:
             return self.worker()
         os.makedirs(self.out, exist_ok=True)
-        stand = UiStand(self.a.db or None)
+        stands, procs = [], {}
         try:
-            cfg = stand.start()
-            path = os.path.join(self.out, 'stand.json')
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(cfg, f)
-            print('Стенд: http://127.0.0.1:%d — %s; итог — %s' % (cfg['port'], 'копия базы' if self.a.db else 'вымышленные данные', self.out), flush=True)
-            procs = {}
-            for m in self.modes:
+            for m in self.modes:  # у каждого режима свой стенд: режимы не меняют сделки и дела друг друга
+                stand = UiStand(self.a.db or None)
+                stands.append(stand)
+                cfg = stand.start()
+                path = os.path.join(self.out, 'stand_%s.json' % m)
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(cfg, f)
+                print('Стенд %s: http://127.0.0.1:%d — %s' % (m, cfg['port'], 'копия базы' if self.a.db else 'вымышленные данные'), flush=True)
                 cmd = [sys.executable, os.path.abspath(__file__), '--worker', m, '--cfg', path, '--out', self.out]
                 if self.stages:
                     cmd += ['--stages', ','.join(self.stages)]
                 procs[m] = subprocess.Popen(cmd, stdout=open(os.path.join(self.out, 'log_%s.txt' % m), 'w'), stderr=subprocess.STDOUT)
+            print('Итог — %s' % self.out, flush=True)
             for m, pr in procs.items():
                 pr.wait()
                 print('режим %s: %s' % (m, 'готово' if pr.returncode == 0 else 'сбой (код %s, см. log_%s.txt)' % (pr.returncode, m)), flush=True)
         finally:
-            stand.close()
+            for stand in stands:
+                stand.close()
         return self.summary(procs)
 
     def summary(self, procs):

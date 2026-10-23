@@ -14,6 +14,18 @@ export class DealFieldsView {
     ],
   ];
   static OTHER = 'Прочее';
+  // заполненные поля — блоками по смыслу; «Служебное» свёрнуто
+  static SECTIONS = [
+    ['Клиент и источник', /источник|реклам|форма органи|тип компан|регион|город|отдел|обращени/i],
+    ['Запрос клиента', /запрош|тема|оборудован/i],
+    ['Предложение (из КП)', /бренд|товар|сумм|марж|ткп|сч[её]т|договор|оплат/i],
+    ['Служебное', /стади|вероятн|заполняем|дата|время|руководител|ответствен|коммент/i],
+  ];
+  static SERVICE = 'Служебное';
+  // меняет только Битрикс24 — текстом, без поля ввода
+  static SYSTEM = /\(сист|заполняем|дата начала|время начала/i;
+  static MONEY = /сумм|марж/i;
+  static FRACTION = 2;
   static EDIT = new Set([
     'string',
     'double',
@@ -44,7 +56,10 @@ export class DealFieldsView {
     if (!fields.length) return '';
     const values = deal.uf || {};
     const now = this.wanted(deal);
-    const filled = fields.filter(field => !now.includes(field) && this._filled(values[field.code]));
+    const twins = this._twins(fields, values);
+    const filled = fields.filter(
+      field => !now.includes(field) && !twins.has(field) && this._filled(values[field.code]),
+    );
     const rest = fields.filter(field => !now.includes(field) && !filled.includes(field));
     const auto = Object.keys(deal.ufAuto || {}).length
       ? '<p class="muted dk-ufnote"><em class="uf-auto">из КП</em> — заполнено программой, можно изменить</p>'
@@ -59,7 +74,54 @@ export class DealFieldsView {
       ? `<details class="dk-ufmore"><summary>Все поля Битрикс24 <span class="muted">(${rest.length})</span></summary>${this._groupsHtml(rest, deal)}</details>`
       : '';
     const empty = !need && !filled.length ? '<p class="muted">Поля пока не заполнены.</p>' : '';
-    return `${need}${block('Заполнено', filled)}${empty}${auto}${more}`;
+    return `${need}${this._sections(filled, deal)}${empty}${auto}${more}`;
+  }
+
+  // заполненные — блоками: «Клиент и источник», «Запрос клиента», «Предложение (из КП)», прочее; «Служебное» — свёрнуто
+  static _sections(fields, deal) {
+    const groups = new Map();
+    for (const field of fields) {
+      const found = this.SECTIONS.find(([, pattern]) => pattern.test(field.label || field.title || ''));
+      const title = found ? found[0] : this.OTHER;
+      if (!groups.has(title)) groups.set(title, []);
+      groups.get(title).push(field);
+    }
+    const order = [...this.SECTIONS.map(([title]) => title).filter(title => title !== this.SERVICE), this.OTHER];
+    const open = order
+      .filter(title => groups.has(title))
+      .map(
+        title =>
+          `<section class="dk-ufs"><p class="sub">${esc(title)}</p><div class="dk-f dk-uf">${groups
+            .get(title)
+            .map(field => this._field(field, deal))
+            .join('')}</div></section>`,
+      )
+      .join('');
+    const service = groups.get(this.SERVICE) || [];
+    const folded = service.length
+      ? `<details class="dk-ufs dk-ufsv"><summary class="sub">${this.SERVICE} <span class="muted">(${service.length})</span></summary><div class="dk-f dk-uf">${service.map(field => this._field(field, deal)).join('')}</div></details>`
+      : '';
+    return `${open}${folded}`;
+  }
+
+  // одинаковые по названию поля портала («Бренд по Сделке» списком и строкой): на виду — одно, второе — в «Все поля»
+  static _twins(fields, values) {
+    const seen = new Map();
+    const out = new Set();
+    for (const field of fields) {
+      const key = String(field.label || field.title || '')
+        .trim()
+        .toLowerCase();
+      const other = seen.get(key);
+      if (!other) {
+        seen.set(key, field);
+        continue;
+      }
+      const keepOther = this.LISTS.has(other.type) || !this._filled(values[field.code]);
+      out.add(keepOther ? field : other);
+      if (!keepOther) seen.set(key, field);
+    }
+    return out;
   }
 
   /**
@@ -147,17 +209,22 @@ export class DealFieldsView {
   static _field(field, deal) {
     const value = (deal.uf || {})[field.code];
     const users = deal.users || {};
-    const mark = this._auto(deal, field.code, value)
-      ? ' <em class="uf-auto" title="Заполнено программой по КП — можно изменить">из КП</em>'
-      : '';
-    const need = this._need(deal.regsNext, field.code);
-    const label = `<span>${esc(field.label || field.title || field.code)}${need}${mark}</span>`;
+    const label = this._label(field, deal, value);
     const state = this._filled(value) ? '' : ' uf-empty';
-    if (!this.fillable(field, users))
+    if (!this.fillable(field, users) || this.SYSTEM.test(field.label || field.title || ''))
       return `<div class="f dk-ro" title="Это поле заполняется в Битрикс24">${label}<b>${this._text(field, value, users)}</b></div>`;
     if (field.multiple && this.LISTS.has(field.type)) return this._multi(field, value, users, label, state);
     const attrs = `data-uf="${esc(field.code)}" aria-label="${esc(field.label || field.code)}"`;
     return `<label class="f${this._wide(field, value) ? ' dk-wide' : ''}${state}">${label}${this._input(field, value, users, attrs)}</label>`;
+  }
+
+  // подпись: название, «₽» у денег, «*» — нужно для следующей стадии, «из КП» — заполнено программой
+  static _label(field, deal, value) {
+    const mark = this._auto(deal, field.code, value)
+      ? ' <em class="uf-auto" title="Заполнено программой по КП — можно изменить">из КП</em>'
+      : '';
+    const unit = this._isMoney(field) ? ', ₽' : '';
+    return `<span>${esc(field.label || field.title || field.code)}${unit}${this._need(deal.regsNext, field.code)}${mark}</span>`;
   }
 
   // поле нужно по регламенту для следующей стадии
@@ -243,13 +310,31 @@ export class DealFieldsView {
       boolean: () => `<input type="checkbox" ${attrs}${String(value) === '1' ? ' checked' : ''}>`,
       date: () => `<input type="date" ${attrs} value="${esc(value || '')}">`,
       datetime: () => `<input type="datetime-local" ${attrs} value="${esc(value || '')}">`,
-      money: () => `<input type="text" inputmode="decimal" ${attrs} value="${esc(String(value || '').split('|')[0])}">`,
+      money: () =>
+        `<input type="text" inputmode="decimal" ${attrs} value="${esc(this._amount(String(value || '').split('|')[0]))}">`,
     };
     if (render[field.type]) return render[field.type]();
-    if (this.NUMBER.has(field.type))
-      return `<input type="text" inputmode="decimal" ${attrs} value="${esc(value || '')}">`;
+    if (this.NUMBER.has(field.type)) {
+      const shown = this._isMoney(field) ? this._amount(value) : value || '';
+      return `<input type="text" inputmode="decimal" ${attrs} value="${esc(shown)}">`;
+    }
     if (this._wide(field, value)) return `<textarea rows="2" maxlength="3000" ${attrs}>${esc(value || '')}</textarea>`;
     return `<input type="${field.type === 'url' ? 'url' : 'text'}" maxlength="3000" ${attrs} value="${esc(Array.isArray(value) ? value.join(', ') : value || '')}">`;
+  }
+
+  // деньги — «670 757» (без копеек, если их нет); при сохранении пробелы убираются
+  static _isMoney(field) {
+    return (field.type === 'money' || this.NUMBER.has(field.type)) && this.MONEY.test(field.label || field.title || '');
+  }
+
+  static _amount(raw) {
+    const number = Number(
+      String(raw ?? '')
+        .replace(/\s/g, '')
+        .replace(',', '.'),
+    );
+    if (raw === '' || raw == null || !Number.isFinite(number)) return String(raw ?? '');
+    return number.toLocaleString('ru-RU', { maximumFractionDigits: this.FRACTION }).replace(/\s/g, ' ');
   }
 
   static _people(users) {

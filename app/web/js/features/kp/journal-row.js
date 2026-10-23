@@ -120,7 +120,7 @@ export class JournalRow {
     const tender = row.tender;
     if (!tender || !tender.number) return '';
     const url = /^https?:\/\//i.test(tender.url || '') ? tender.url : '';
-    return `<span class="jr-t" title="КП для тендера${url ? `: ${esc(url)}` : ''}">Тендер № ${esc(tender.number)}${url ? ` <a href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>` : ''}</span>`;
+    return `<span class="jr-t" title="КП для тендера № ${esc(tender.number)}${url ? `: ${esc(url)}` : ''}"><span class="jr-tn">Тендер № ${esc(tender.number)}</span>${url ? ` <a href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть закупку на площадке">↗</a>` : ''}</span>`;
   }
 
   /**

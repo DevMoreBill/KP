@@ -89,7 +89,7 @@ html dialog.tabwin>.dlg-h{position:sticky;top:0;z-index:6;background:var(--card)
 @media (max-width:1280px){.top .find-l{display:none}.top:has(.apt-add) #btnNew{display:none}}
 .mob .top .apt-t{flex:1 1 0;min-width:58px;max-width:none}
 /* журнал КП — таблица: одна строка на КП (3.194.0) */
-.jr{grid-template-columns:minmax(84px,104px) minmax(200px,2.4fr) minmax(86px,.7fr) minmax(150px,1.5fr) minmax(64px,84px) minmax(130px,1fr) minmax(104px,124px) 124px;gap:4px 14px;padding:5px 8px;align-items:center}
+.jr{grid-template-columns:minmax(100px,120px) minmax(200px,2.4fr) minmax(86px,.7fr) minmax(150px,1.5fr) minmax(64px,84px) minmax(130px,1fr) minmax(104px,124px) 124px;gap:4px 14px;padding:5px 8px;align-items:center}
 .jr.tnd{border-left:0;padding-left:8px;box-shadow:inset 3px 0 0 #f59e0b}
 html dialog.tabwin.jrnwin .jr.tnd{box-shadow:inset 3px 0 0 #f59e0b,inset 0 -1px 0 var(--line)}
 .jr>div{gap:1px}
@@ -97,6 +97,10 @@ html dialog.tabwin.jrnwin .jr.tnd{box-shadow:inset 3px 0 0 #f59e0b,inset 0 -1px 
 .jr-m b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .jr-n .n{font-size:13.5px}
 .jr-n .jr-t,.jr-n .jr-f{font-size:11px;padding:0 6px}
+/* метка тендера не шире столбца «№»: длинный номер — с многоточием, целиком — в подсказке (3.196.0) */
+.jr-n{min-width:0}
+.jr-n .jr-t{max-width:100%;min-width:0}
+.jr-tn{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .jr-h{padding:2px 8px 4px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
 .jr-h .r,.jr-e{text-align:right}
 html dialog.tabwin.jrnwin .jr-h:hover{background:none}

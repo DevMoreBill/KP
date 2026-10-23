@@ -129,7 +129,6 @@ dialog.st-confirm.tk-dlg{width:min(520px,calc(100vw - 32px))}
 .dc.drag{opacity:.5}
 .dc-t{font-size:14px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .dc-c{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dc-r{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 8px;font-size:13px;align-items:baseline}
 .dc-n{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dc-n .tk-i{width:20px;height:20px;font-size:11px}
 .dc-f{font-size:12px}
@@ -808,16 +807,21 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 }
 .kb-sum{font-size:14px;padding:0}
 .kb-l{gap:5px}
-.dc{gap:2px;padding:6px 8px;border-radius:8px}
-.dc-r{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0;flex-wrap:nowrap;font-size:12.5px}
-.dc-t{flex:1;min-width:0;font-size:13.5px;line-height:1.3;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dc-c{flex:1;min-width:0;font-size:12px}
-.dc-s{flex:none;white-space:nowrap}
-.dc-s .muted{font-size:11.5px}
-.dc-r>.dc-n{flex:1;min-width:0}
-.dc-r>.dc-add{padding:1px 6px;font-size:12px}
+.dc{gap:3px;padding:7px 9px;border-radius:9px}
+/* карточка доски: название в 2 строки, клиент целиком, «КП N · до даты — сумма», следующее дело (3.196.0) */
+.dc-h{display:flex;align-items:flex-start;gap:6px;min-width:0}
+.dc-t{flex:1;min-width:0;font-size:13.5px;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;white-space:normal}
+.dc-c{font-size:12.5px;line-height:1.25;color:var(--muted);overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dc-m{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px}
+.dc-s{margin-left:auto;flex:none;white-space:nowrap;font-size:14.5px;color:var(--ink)}
+.dc-k{flex:none;font-style:normal;font-size:11px;font-weight:700;line-height:18px;padding:0 6px;border-radius:6px;background:color-mix(in srgb,var(--navy) 10%,transparent);color:var(--navy)}
+.dc-k.none{background:var(--soft);color:var(--muted);font-weight:600}
 .dc-d{flex:none;font-size:11.5px;white-space:nowrap}
-.dc-bx{flex:none;margin-left:0;font-size:11px;padding:0 5px}
+.dc-nx{min-width:0;border-top:1px dashed var(--line);padding-top:4px}
+.dc-nx .dc-n{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow:hidden;font-size:12px;line-height:1.3}
+.dc-nx .dc-add{padding:1px 6px;font-size:12px}
+.dc-nx:empty{display:none}
+.dc-bx{flex:none;margin:0;font-size:10.5px;line-height:16px;padding:0 5px;border-radius:5px;border:1px solid color-mix(in srgb,#2fc6f6 55%,var(--line));color:var(--navy)}
 .dc-f{font-size:11.5px}
 /* карточки клиентов кабинета: ровная сетка, контакт кнопками, итоги одной строкой (3.194.0) */
 .cab-cl{grid-template-rows:auto 1fr auto auto;gap:8px;padding:12px 14px}
@@ -834,7 +838,23 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .cab-cl-n{gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0}
 .cab-cl-n span{display:grid;gap:0;background:none;border-radius:0;padding:0 8px;border-left:1px solid var(--line);min-width:0}
 .cab-cl-n span:first-child{border-left:0;padding-left:0}
-.cab-cl-n b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cab-cl-n em{font-style:normal;font-size:12px;font-weight:600;color:var(--muted)}
+.cab-cl-n b{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cab-cl-n em{font-style:normal;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.cab-cl-n span.zero b{color:var(--muted);font-weight:600}
 .cab-cl-n small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:760px){.cab-cl-a{min-height:44px}}
+/* шапка стадии — одна строка 30 px: «40%» меткой, название с многоточием, число справа (3.196.0) */
+.kb-rb{min-height:30px;padding-top:2px;padding-bottom:2px;gap:5px}
+.kb-rb b{display:block;white-space:nowrap;text-overflow:ellipsis;-webkit-line-clamp:unset;font-size:12.5px}
+.kb-pc{flex:none;font-style:normal;font-size:10.5px;font-weight:800;line-height:16px;padding:0 4px;border-radius:5px;background:color-mix(in srgb,currentColor 18%,transparent)}
+.kb-sum{font-size:13px}
+/* поля Битрикс24 — блоками с заголовками, «Служебное» свёрнуто (3.196.0) */
+.dk-ufs:not(.need)+.dk-ufs:not(.need){border-top:1px solid var(--line);padding-top:10px}
+.dk-ufs>.sub{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
+.dk-ufsv>summary{cursor:pointer;display:flex;align-items:center;gap:6px;min-height:32px;list-style:none}
+.dk-ufsv>summary::before{content:'▸';font-size:11px}
+.dk-ufsv[open]>summary::before{content:'▾'}
+.dk-ufsv>summary::-webkit-details-marker{display:none}
+.dk-uf .dk-ro b{padding:6px 0;font-weight:600}
+/* единые метки программы: «из КП», «КП N», «Б24», «40%», «Тендер №», «Сделка №» — одна высота, радиус и шрифт */
+.uf-auto,.dc-k,.dc-bx,.kb-pc,.jr-n .jr-t,.jr-n .jr-f{display:inline-flex;align-items:center;height:18px;line-height:18px;border-radius:6px;font-size:11px;font-weight:700;padding:0 6px;white-space:nowrap}
