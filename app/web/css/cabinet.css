@@ -287,8 +287,13 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 .dk-kb{margin-top:10px;flex-wrap:wrap;gap:8px}
 .dk-h summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
 .dk-hr{font-size:13px;padding:4px 0;border-top:1px solid var(--line)}
-.dk-lr{display:grid;gap:6px;margin-bottom:12px}
-.dk-lr .ck{display:flex;align-items:center;gap:8px;font-size:14px}
+.dk-lr{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;margin-bottom:12px;max-height:min(52dvh,420px);overflow:auto;overscroll-behavior:contain}
+.dk-lo{display:flex;align-items:center;gap:8px;min-height:34px;padding:4px 8px;border:1px solid transparent;border-radius:8px;font-size:14px;line-height:1.25;cursor:pointer}
+.dk-lo:hover{background:var(--soft)}
+.dk-lo:has(input:checked){border-color:var(--navy);background:color-mix(in srgb,var(--navy) 8%,transparent);font-weight:600}
+.dk-lo input{flex:none;width:17px;height:17px;margin:0;accent-color:var(--navy)}
+.dk-lc{margin-bottom:12px}
+@media (max-width:760px){.dk-lr{grid-template-columns:1fr}.dk-lo{min-height:44px}}
 dialog.st-confirm.dk-new-dlg,dialog.st-confirm.dk-lost-dlg{width:min(560px,calc(100vw - 32px));max-width:none}
 .dk-new{display:grid;gap:10px}
 .dk-nnote,.dk-lnote{margin:8px 0 10px}

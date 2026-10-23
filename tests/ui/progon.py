@@ -1461,6 +1461,7 @@ class Scenario(UiRun):
         pg.click('dialog.deal-dlg[open] [data-dks="lost"]')
         pg.wait_for_selector('dialog.dk-lost-dlg[open]', timeout=10000)
         pg.check('dialog.dk-lost-dlg[open] input[value="C5:DUP"]')
+        self.snap('g3_regs_lost', 'dialog.dk-lost-dlg[open]', wait=300)
         pg.fill('dialog.dk-lost-dlg[open] #lpC', 'Клиент уже ведётся в другой сделке')
         pg.click('dialog.dk-lost-dlg[open] [data-ok]')
         pg.wait_for_selector('dialog.dn-dlg[open]', timeout=15000)

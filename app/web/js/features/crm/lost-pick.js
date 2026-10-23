@@ -29,14 +29,15 @@ export class LostPick {
     const options = fails
       .map(
         stage =>
-          `<label class="ck"><input type="radio" name="lpS" value="${esc(stage.key)}"${stage.key === current ? ' checked' : ''}> ${esc(stage.label)}</label>`,
+          `<label class="dk-lo"><input type="radio" name="lpS" value="${esc(stage.key)}"${stage.key === current ? ' checked' : ''}><span>${esc(stage.label)}</span></label>`,
       )
       .join('');
     return new Promise(resolve => {
       const modal = new Modal(
         `<div class="dlg-h"><h3>Сделка проиграна</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
         <p class="muted" style="margin:0 0 8px">«${esc(deal.title || deal.client)}» — стадия провала, как в Битрикс24.</p>
-        <div class="dk-lr">${options}<label class="f"><span>${CrmData.regs() ? 'Почему проиграна' : 'Комментарий'}</span><input type="text" id="lpC" maxlength="200" value="${esc(deal.lostReason || '')}" placeholder="Например: выбрали поставщика дешевле"></label></div>
+        <div class="dk-lr" role="radiogroup" aria-label="Стадия провала">${options}</div>
+        <label class="f dk-lc"><span>${CrmData.regs() ? 'Почему проиграна' : 'Комментарий'}</span><input type="text" id="lpC" maxlength="200" value="${esc(deal.lostReason || '')}" placeholder="Например: выбрали поставщика дешевле"></label>
         <div class="row"><button class="btn primary" type="button" data-ok>Сделка проиграна</button><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button></div>`,
         'dk-lost-dlg',
       );

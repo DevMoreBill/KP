@@ -251,7 +251,8 @@ export class DealCard {
   // шапка одной строкой: номер, название, Битрикс24, ответственный и дата — слева; панель кнопок одного вида — справа
   static _top(deal) {
     const created = KpDate.ddmm(String(deal.created || '').slice(0, 10));
-    const who = deal.manager ? `${this._icon('client')}<b>${esc(ShortName.of(deal.manager))}</b> · ` : '';
+    const name = ShortName.of(deal.manager || '');
+    const who = name ? `${this._icon('client')}<b>${esc(name)}</b> · ` : '';
     return `<header class="dk-top"><div class="dk-hd">
       <span class="dk-no">Сделка № ${esc(deal.number)}</span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">
