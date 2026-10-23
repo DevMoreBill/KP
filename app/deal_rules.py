@@ -248,8 +248,11 @@ class DealRegs:
         codes = self.codes()
         has_file = self.kp_file(deal.get('id') or '')
         values = deal.get('uf') or {}
+        defs, users = self.fields.by_code(), self.fields.users()
         items = []
         for item in self.required(target):
+            if item.source is Source.FIELD and not DealFields.fillable(defs.get(codes.get(item.key, '')), users):
+                continue  # поле не заполнить из программы (вид поля или нет вариантов) — заполняется в Битрикс24
             if item.source is Source.NOTE:
                 empty = not str(deal.get('note') or '').strip()
             elif item.source is Source.FILE:

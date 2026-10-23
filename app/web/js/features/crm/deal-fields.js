@@ -25,11 +25,12 @@ export class DealFieldsView {
     'boolean',
     'url',
     'crm_status',
+    'iblock_element',
     'employee',
   ]);
   static LONG = 80;
   static CHIPS_MAX = 12;
-  static LISTS = new Set(['enumeration', 'crm_status', 'employee']);
+  static LISTS = new Set(['enumeration', 'crm_status', 'iblock_element', 'employee']);
   static NUMBER = new Set(['double', 'integer']);
 
   /**
@@ -115,6 +116,18 @@ export class DealFieldsView {
     return this._field(field, deal);
   }
 
+  /**
+   * Поле можно заполнить в программе: известный вид, у списка есть варианты (как DealFields.fillable на сервере).
+   * @param {object} field
+   * @param {object} users
+   * @returns {boolean}
+   */
+  static fillable(field, users) {
+    if (!this.EDIT.has(field.type)) return false;
+    if (field.type === 'employee') return Object.keys(users || {}).length > 0;
+    return !this.LISTS.has(field.type) || (field.items || []).length > 0;
+  }
+
   static _field(field, deal) {
     const value = (deal.uf || {})[field.code];
     const users = deal.users || {};
@@ -124,8 +137,8 @@ export class DealFieldsView {
     const need = this._need(deal.regsNext, field.code);
     const label = `<span>${esc(field.label || field.title || field.code)}${need}${mark}</span>`;
     const state = this._filled(value) ? '' : ' uf-empty';
-    if (!this.EDIT.has(field.type))
-      return `<div class="f dk-ro">${label}<b>${this._text(field, value, users)}</b></div>`;
+    if (!this.fillable(field, users))
+      return `<div class="f dk-ro" title="Это поле заполняется в Битрикс24">${label}<b>${this._text(field, value, users)}</b></div>`;
     if (field.multiple && this.LISTS.has(field.type)) return this._multi(field, value, users, label, state);
     const attrs = `data-uf="${esc(field.code)}" aria-label="${esc(field.label || field.code)}"`;
     return `<label class="f${this._wide(field, value) ? ' dk-wide' : ''}${state}">${label}${this._input(field, value, users, attrs)}</label>`;
@@ -209,6 +222,7 @@ export class DealFieldsView {
     const render = {
       enumeration: () => this._select(field.items || [], value, attrs, field.multiple),
       crm_status: () => this._select(field.items || [], value, attrs, field.multiple),
+      iblock_element: () => this._select(field.items || [], value, attrs, field.multiple),
       employee: () => this._select(this._people(users), value, attrs, field.multiple),
       boolean: () => `<input type="checkbox" ${attrs}${String(value) === '1' ? ' checked' : ''}>`,
       date: () => `<input type="date" ${attrs} value="${esc(value || '')}">`,

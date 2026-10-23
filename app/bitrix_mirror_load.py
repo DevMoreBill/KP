@@ -7,7 +7,7 @@ from collections import Counter
 from datetime import date, timedelta
 from typing import Any
 
-from bitrix import BitrixQueue, BitrixSync
+from bitrix import BitrixError, BitrixQueue, BitrixSync
 from bitrix_clients import BitrixClients
 from crm import DealBook, TaskBook
 from crm_funnels import DealFields, Funnels, UfValue
@@ -28,6 +28,7 @@ class MirrorStructure:
     def __init__(self, store, opener=None) -> None:
         self.store = store
         self.sync = BitrixSync(store, opener)
+        self._extra: dict[str, dict] | None = None
 
     def load(self) -> dict:
         """Загрузить структуру и выбрать поля. → {funnels, fields, on}."""
@@ -105,6 +106,7 @@ class MirrorStructure:
     def _fields(self) -> list[dict]:
         raw = self.sync.api.call('crm.deal.fields') or {}
         statuses: dict[str, list] = {}
+        self._extra = None
         out = []
         for code, field in raw.items() if isinstance(raw, dict) else []:
             if not code.startswith('UF_') or not isinstance(field, dict):
@@ -118,24 +120,53 @@ class MirrorStructure:
                 'multiple': bool(field.get('isMultiple')),
                 'on': [],
             }
-            items = self._items(field, statuses)
+            items = self._items(field, statuses, code)
             if items is not None:
                 row['items'] = items
             out.append(row)
         return out
 
-    def _items(self, field: dict, statuses: dict) -> list | None:
-        if field.get('type') == 'enumeration':
-            return [
-                {'id': str(item.get('ID')), 'value': str(item.get('VALUE') or '')} for item in field.get('items') or []
-            ]
-        if field.get('type') != 'crm_status':
+    def _items(self, field: dict, statuses: dict, code: str = '') -> list | None:
+        kind = field.get('type')
+        if kind == 'enumeration':
+            items = field.get('items') or self._userfield(code).get('LIST') or []
+            return [{'id': str(item.get('ID')), 'value': str(item.get('VALUE') or '')} for item in items]
+        if kind == 'iblock_element':
+            return self._iblock(field, code)
+        if kind != 'crm_status':
             return None
-        entity = str((field.get('settings') or {}).get('ENTITY_TYPE') or '')
+        settings = field.get('settings') or self._userfield(code).get('SETTINGS') or {}
+        entity = str(settings.get('ENTITY_TYPE') or '') if isinstance(settings, dict) else ''
         if entity and entity not in statuses:
             rows = self.sync.api.list('crm.status.list', {'filter': {'ENTITY_ID': entity}, 'order': {'SORT': 'ASC'}})
             statuses[entity] = [{'id': str(row.get('STATUS_ID')), 'value': str(row.get('NAME') or '')} for row in rows]
         return statuses.get(entity, [])
+
+    def _userfield(self, code: str) -> dict:
+        """Описание своего поля из crm.deal.userfield.list (настройки, варианты списка) — когда crm.deal.fields их не дал."""
+        if self._extra is None:
+            try:
+                rows = self.sync.api.list('crm.deal.userfield.list', {})
+            except BitrixError:
+                rows = []
+            self._extra = {str(row.get('FIELD_NAME')): row for row in rows if isinstance(row, dict)}
+        found = self._extra.get(code)
+        return found if isinstance(found, dict) else {}
+
+    def _iblock(self, field: dict, code: str) -> list | None:
+        """Варианты поля «элемент списка» (универсальные списки портала); нет доступа к спискам — None (только просмотр)."""
+        settings = field.get('settings') or self._userfield(code).get('SETTINGS') or {}
+        block = str(settings.get('IBLOCK_ID') or '') if isinstance(settings, dict) else ''
+        if not block.isdigit():
+            return None
+        try:
+            rows = self.sync.api.list('lists.element.get', {'IBLOCK_TYPE_ID': 'lists', 'IBLOCK_ID': int(block)})
+        except BitrixError:
+            return None
+        items = [
+            {'id': str(row.get('ID')), 'value': str(row.get('NAME') or '')} for row in rows if isinstance(row, dict)
+        ]
+        return items or None
 
     def _fill(self, cat: str, fields: list[dict]) -> dict:
         """Доля сделок воронки за год, где поле заполнено: {код: доля}."""

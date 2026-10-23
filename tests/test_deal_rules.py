@@ -127,6 +127,42 @@ class RegsTest(RegsBase):
         self.assertIn('Тема запроса', str(err.exception))
         self.assertIn('Телефон компании', str(err.exception))
 
+    def test_unfillable_skipped(self):
+        """Поле, которое программа не заполнит (вид поля «привязка к CRM», список без вариантов), стадию не держит —
+        его заполняют в Битрикс24 (23.10: «Тип клиента» и «Источник трафика» нельзя было выбрать — окно не сохранялось)."""
+        from crm_funnels import DealFields
+        fields = DealFields(self.st)
+        data = self.st.kv_get(fields.KEY)
+        for row in data['list']:
+            if row['code'] == 'UF_CTYPE':
+                row['items'] = []
+            if row['code'] == 'UF_REGION':
+                row['type'] = 'crm_entity'
+        self.st.kv_set(fields.KEY, data)
+        keys = [row['key'] for row in self.need(self.deal(source='own'), 'C5:TAKEN')['fields']]
+        self.assertNotIn('ctype', keys, 'список без вариантов')
+        self.assertNotIn('region', keys, 'вид поля, который программа не заполняет')
+        self.assertIn('topic', keys)
+
+    def test_choices_from_userfield_list(self):
+        """Варианты, которых нет в crm.deal.fields, — из crm.deal.userfield.list (статусы по ENTITY_TYPE, список значений);
+        «элемент списка» без доступа к спискам портала — только просмотр."""
+        self.fake.ufields += [
+            {'FIELD_NAME': 'UF_KIND', 'USER_TYPE_ID': 'crm_status', 'L': 'Тип клиента', 'SETTINGS': {'ENTITY_TYPE': 'DEAL_STAGE_6'}},
+            {'FIELD_NAME': 'UF_ENUM2', 'USER_TYPE_ID': 'enumeration', 'L': 'Канал',
+             'LIST': [{'ID': '71', 'VALUE': 'Сайт'}, {'ID': '72', 'VALUE': 'Звонок'}]},
+            {'FIELD_NAME': 'UF_TRAF', 'USER_TYPE_ID': 'iblock_element', 'L': 'Источник трафика', 'SETTINGS': {'IBLOCK_ID': 9}},
+        ]
+        from bitrix_mirror_load import MirrorStructure
+        from crm_funnels import DealFields
+        MirrorStructure(self.st, direct()).load()
+        defs = DealFields(self.st).by_code()
+        self.assertEqual([item['value'] for item in defs['UF_KIND']['items']][:2], ['Взято в работу', 'Первая оплата'])
+        self.assertEqual([item['id'] for item in defs['UF_ENUM2']['items']], ['71', '72'])
+        self.assertNotIn('items', defs['UF_TRAF'])
+        self.assertFalse(DealFields.fillable(defs['UF_TRAF']))
+        self.assertTrue(DealFields.fillable(defs['UF_KIND']))
+
     def test_source_filled(self):
         from crm import DealBook
         deal = self.deal(source='repeat')

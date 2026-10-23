@@ -208,6 +208,7 @@ class UfValue:
             'boolean',
             'url',
             'crm_status',
+            'iblock_element',
             'employee',
         }
     )
@@ -300,6 +301,7 @@ class UfValue:
             'date': cls._check_day,
             'datetime': cls._check_minute,
             'enumeration': cls._check_item,
+            'iblock_element': cls._check_item,
             'boolean': cls._check_flag,
         }
         check = checks.get(kind)
@@ -350,9 +352,22 @@ class DealFields:
         re.IGNORECASE,
     )
     FILL_MIN = 0.1
+    # виды полей, которые карточка сделки умеет заполнять; списки — если варианты загружены
+    EDIT = UfValue.EDIT
+    CHOICE = frozenset(('enumeration', 'crm_status', 'iblock_element'))
 
     def __init__(self, store) -> None:
         self.store = store
+
+    @classmethod
+    def fillable(cls, field: dict | None, users: dict | None = None) -> bool:
+        """Поле можно заполнить в программе: известный вид, у списка есть варианты (сотрудник — есть пользователи)."""
+        kind = str((field or {}).get('type') or '')
+        if kind == 'employee':
+            return bool(users)
+        if kind not in cls.EDIT:
+            return False
+        return kind not in cls.CHOICE or bool((field or {}).get('items'))
 
     def all(self) -> list[dict]:
         rows = (self.store.kv_get(self.KEY) or {}).get('list')
