@@ -15,6 +15,11 @@ export class DealFeed {
     ['comment', '💬 Комментарий'],
   ];
   static SHOWN = 40;
+  static KEY_SHOWN = 6;
+  // кто «сам» закрывает дела — программа и Битрикс24; в главное не идёт
+  static ROBOTS = new Set(['Кабинет: дело само', 'Битрикс24']);
+  // главное в истории: создание, стадия вручную, исполнение
+  static KEY_HISTORY = new Set(['create', 'stage', 'exec']);
   // служебное (правки и автозаполнение полей) в ленту не идёт — только то, что важно по сделке
   static SERVICE = new Set(['kp', 'fields', 'edit']);
   static mode = '';
@@ -71,7 +76,7 @@ export class DealFeed {
   }
 
   /**
-   * События ленты: [время, значок, текст (HTML), кто, класс], новые сверху.
+   * События ленты: [время, значок, текст (HTML), кто, класс, главное], новые сверху.
    * @param {object} deal
    * @param {Function} hist строка истории сделки
    * @returns {Array<Array<string>>}
@@ -87,6 +92,7 @@ export class DealFeed {
       `<span class="fd-text">${esc(row.text)}</span>`,
       row.by,
       'fd-c',
+      true,
     ]);
     const tasks = (deal.tasks || [])
       .filter(task => task.state !== 'open')
@@ -96,6 +102,7 @@ export class DealFeed {
         `${esc(task.title)} — <span class="muted">${task.state === 'cancel' ? 'отменено' : 'сделано'}</span>`,
         task.by || '',
         'fd-t',
+        task.state === 'done' && !this.ROBOTS.has(task.by || ''),
       ]);
     const offers = (deal.kps || []).map(offer => [
       offer.savedAt || offer.date,
@@ -103,34 +110,48 @@ export class DealFeed {
       `<button type="button" class="lnk" data-dko="${esc(offer.id)}">КП № ${esc(offer.number)}</button> — ${CrmFmt.rub(offer.sum)} · ${esc(KpTrack.STATUS[offer.status] || offer.status)}`,
       '',
       'fd-k',
+      true,
     ]);
     const history = (deal.history || [])
       .filter(item => !this.SERVICE.has(item.what))
-      .map(item => [item.at, this.ICONS[item.what] || '•', esc(hist(item)), item.by || '', 'fd-h']);
+      .map(item => [
+        item.at,
+        this.ICONS[item.what] || '•',
+        esc(hist(item)),
+        item.by || '',
+        'fd-h',
+        this.KEY_HISTORY.has(item.what) && !item.auto,
+      ]);
     return [...comments, ...tasks, ...offers, ...history]
       .filter(([, , text]) => text)
       .sort((one, two) => String(two[0] || '').localeCompare(String(one[0] || '')));
   }
 
+  // главное — комментарии, сделанные людьми дела, КП, стадии вручную; всё — по нажатию
   static _events(deal, hist) {
     const items = this._items(deal, hist);
     if (!items.length) return '<p class="empty">Пока пусто.</p>';
-    const shown = this.all ? items : items.slice(0, this.SHOWN);
+    const key = items.filter(item => item[5]).slice(0, this.KEY_SHOWN);
+    const shown = this.all ? items.slice(0, this.SHOWN) : key;
     const rows = shown
       .map(
         ([when, icon, text, author, css]) =>
           `<div class="fd ${css}"><i class="fd-i" aria-hidden="true">${icon}</i><div><span class="fd-m">${esc(Fmt.dateTime(when))}${author ? ` · ${esc(author)}` : ''}</span>${text}</div></div>`,
       )
       .join('');
-    const more =
-      items.length > shown.length
-        ? `<button type="button" class="btn sm ghost" data-feedall>Показать всё (${items.length})</button>`
-        : '';
-    return `<div class="fd-l">${rows}</div>${more}`;
+    const empty = shown.length ? '' : '<p class="muted fd-none">Главного пока нет.</p>';
+    const toggle = this._toggle(items.length, key.length);
+    return `${empty}<div class="fd-l">${rows}</div>${toggle}`;
+  }
+
+  static _toggle(total, key) {
+    if (this.all) return '<button type="button" class="btn sm ghost fd-more" data-feedall="0">Только главное</button>';
+    if (total <= key) return '';
+    return `<button type="button" class="btn sm ghost fd-more" data-feedall="1">Вся лента (${total})</button>`;
   }
 
   /**
-   * Щелчки ленты (вид добавления, «Показать всё»). true — нужно перерисовать.
+   * Щелчки ленты (вид добавления, «Вся лента» / «Только главное»). true — нужно перерисовать.
    * @param {Event} event
    * @returns {boolean}
    */
@@ -140,8 +161,9 @@ export class DealFeed {
       this.mode = this.mode === mode.dataset.feedmode ? '' : mode.dataset.feedmode;
       return true;
     }
-    if (!event.target.closest('[data-feedall]')) return false;
-    this.all = true;
+    const all = event.target.closest('[data-feedall]');
+    if (!all) return false;
+    this.all = all.dataset.feedall === '1';
     return true;
   }
 }

@@ -638,6 +638,10 @@ export class DealCard {
       exec: () => this._reveal('exec', '[data-dkpart="exec"]'),
       date: () => this._reveal('deal', '[data-dkf="expected"]'),
       docs: () => this._docs(),
+      done: () => {
+        const task = DealNow.openTask(deal);
+        if (task) CrmTask.done({ ...task, deal: deal.id }, () => this.reload());
+      },
     };
     if (actions[act]) actions[act]();
   }

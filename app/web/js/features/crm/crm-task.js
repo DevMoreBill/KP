@@ -123,8 +123,12 @@ export class CrmTask {
     box.addEventListener('change', event => {
       const check = event.target.closest('[data-tdone]');
       if (!check) return;
-      if (check.checked && check.dataset.tcall) CallResult.ask(+check.dataset.tdone, check.dataset.tcall, after);
-      else this.put(+check.dataset.tdone, { state: check.checked ? 'done' : 'open' }, after);
+      if (check.checked)
+        this.done(
+          { id: +check.dataset.tdone, deal: check.dataset.tcall || '', kind: check.dataset.tcall ? 'call' : '' },
+          after,
+        );
+      else this.put(+check.dataset.tdone, { state: 'open' }, after);
     });
     box.addEventListener('submit', event => {
       const form = event.target.closest('form.tq');
@@ -132,6 +136,16 @@ export class CrmTask {
       event.preventDefault();
       this._add(form, after);
     });
+  }
+
+  /**
+   * Отметить дело сделанным: звонок по сделке — через «Итог звонка», остальное — сразу.
+   * @param {{id: number, deal?: string, kind?: string}} task
+   * @param {Function} after
+   */
+  static done(task, after) {
+    if (task.kind === 'call' && task.deal) CallResult.ask(task.id, task.deal, after);
+    else this.put(task.id, { state: 'done' }, after);
   }
 
   static _click(event, after) {

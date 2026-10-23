@@ -79,12 +79,16 @@ export class CabTodaySide {
       return { stage, count: list.length, sum: list.reduce((total, deal) => total + (deal.sum || 0), 0) };
     });
     const top = Math.max(1, ...rows.map(row => row.sum));
-    const lines = rows
-      .map(row => {
-        const width = row.sum ? Math.max(this.BAR_MIN, Math.round((row.sum / top) * this.PERCENT)) : 0;
-        return `<button type="button" class="tf-r" data-cstage="${esc(row.stage.key)}" title="Открыть сделки на стадии"><span class="tf-l">${esc(row.stage.label)}</span><span class="tf-b"><i class="t-${CrmFunnel.tone(CrmData.funnel(), row.stage.key)}" style="width:${width}%"></i></span><b>${row.count}</b><span class="muted">${CrmFmt.short(row.sum)}</span></button>`;
-      })
-      .join('');
-    return `<section class="md-s ts"><div class="md-h"><p class="sub">Воронка: ${esc(CrmFunnel.get(CrmData.funnel()).name)}</p><span class="muted">${deals.length} в работе</span></div>${lines}</section>`;
+    const line = row => {
+      const width = row.sum ? Math.max(this.BAR_MIN, Math.round((row.sum / top) * this.PERCENT)) : 0;
+      return `<button type="button" class="tf-r" data-cstage="${esc(row.stage.key)}" title="Открыть сделки на стадии"><span class="tf-l">${esc(row.stage.label)}</span><span class="tf-b"><i class="t-${CrmFunnel.tone(CrmData.funnel(), row.stage.key)}" style="width:${width}%"></i></span><b>${row.count}</b><span class="muted">${CrmFmt.short(row.sum)}</span></button>`;
+    };
+    const busy = rows.filter(row => row.count);
+    const empty = rows.filter(row => !row.count);
+    const none = busy.length ? '' : '<p class="muted tf-none">Сделок в работе нет.</p>';
+    const rest = empty.length
+      ? `<details class="tf-more"><summary>Стадии без сделок: ${empty.length}</summary>${empty.map(line).join('')}</details>`
+      : '';
+    return `<section class="md-s ts"><div class="md-h"><p class="sub">Воронка: ${esc(CrmFunnel.get(CrmData.funnel()).name)}</p><span class="muted">${deals.length} в работе</span></div>${none}${busy.map(line).join('')}${rest}</section>`;
   }
 }
