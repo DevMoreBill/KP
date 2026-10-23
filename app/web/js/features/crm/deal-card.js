@@ -30,6 +30,7 @@ import { Fmt, Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
 import { KpDate } from '../kp/kp-date.js';
+import { ShortName } from '../kp/journal-row.js';
 import { Morph } from '../../core/morph.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
@@ -121,6 +122,7 @@ export class DealCard {
     this._remember(deal);
     const modal = new Modal(this.html(), 'deal-dlg');
     this.modal = modal;
+    if (modal.d.contains(document.activeElement)) document.activeElement.blur(); // окно само ставит курсор в название
     DealWin.bind(modal.d);
     modal.d.addEventListener('close', () => this._closed());
     modal.d.addEventListener('click', event => this._click(event));
@@ -232,15 +234,36 @@ export class DealCard {
     return `${this._about(deal)}<section class="dk-kps"><p class="sub">КП по сделке${offers.length ? ` <b class="md-c">${offers.length}</b>` : ''}</p>${this._kps(deal)}</section>${this._rare(deal)}`;
   }
 
+  // значки панели шапки — линиями, одного размера и толщины
+  static ICONS = {
+    prev: '<path d="M15 6l-6 6 6 6"/>',
+    next: '<path d="M9 6l6 6-6 6"/>',
+    client: '<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+    print: '<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
+    keys: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  };
+
+  static _icon(name) {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${this.ICONS[name]}</svg>`;
+  }
+
+  // шапка: номер, ответственный, дата; название крупно; метка Битрикс24 — слева; панель кнопок одного вида — справа
   static _top(deal) {
     const created = KpDate.ddmm(String(deal.created || '').slice(0, 10));
-    const card =
-      ClientCard.enabled() && (deal.client || deal.clientInn)
-        ? `<button class="btn sm ghost" type="button" data-cc="${esc(JSON.stringify({ id: deal.clientId || '', inn: deal.clientInn || '', name: deal.client || '' }))}" aria-label="Карточка клиента"><span aria-hidden="true">👤</span><span class="dk-cct"> Карточка клиента</span></button>`
-        : '';
-    return `<header class="dk-top">${this._nav(deal)}<div class="dk-hd"><span class="muted">Сделка № ${esc(deal.number)}${deal.manager ? ` · ${esc(deal.manager)}` : ''} · создана ${esc(created)} <span class="dk-saved" aria-live="polite"></span></span>
-      <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" placeholder="Название: объект или задача клиента">${this._bx(deal)}</div>
-      <div class="dk-acts">${card}<button class="icon dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">🖨</button><button class="icon dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">⌨</button><button class="icon" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">✕</button></div></header>`;
+    const who = deal.manager
+      ? `<span class="dk-who">${this._icon('client')}${esc(ShortName.of(deal.manager))}</span>`
+      : '';
+    return `<header class="dk-top"><div class="dk-hd">
+      <div class="dk-meta"><span class="dk-no">Сделка № ${esc(deal.number)}</span>${who}<span class="muted">создана ${esc(created)}</span><span class="dk-saved" aria-live="polite"></span></div>
+      <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">${this._bx(deal)}</div>
+      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button><button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
+  }
+
+  static _card(deal) {
+    if (!ClientCard.enabled() || !(deal.client || deal.clientInn)) return '';
+    const data = esc(JSON.stringify({ id: deal.clientId || '', inn: deal.clientInn || '', name: deal.client || '' }));
+    return `<button class="dk-ib dk-ccb" type="button" data-cc="${data}" aria-label="Карточка клиента" title="Карточка клиента">${this._icon('client')}<span class="dk-cct">Клиент</span></button>`;
   }
 
   static _nav(deal) {
@@ -248,19 +271,21 @@ export class DealCard {
     if (index < 0 || this.list.length < 2) return '';
     const prev = index > 0 ? '' : ' disabled';
     const next = index < this.list.length - 1 ? '' : ' disabled';
-    return `<div class="dk-nav" role="group" aria-label="Соседние сделки"><button class="icon" type="button" data-dknav="-1" aria-label="Предыдущая сделка" title="Предыдущая (←)"${prev}>‹</button><span class="muted">${index + 1} из ${this.list.length}</span><button class="icon" type="button" data-dknav="1" aria-label="Следующая сделка" title="Следующая (→)"${next}>›</button></div>`;
+    return `<div class="dk-nav" role="group" aria-label="Соседние сделки"><button class="dk-ib" type="button" data-dknav="-1" aria-label="Предыдущая сделка" title="Предыдущая (←)"${prev}>${this._icon('prev')}</button><span class="dk-pos">${index + 1} из ${this.list.length}</span><button class="dk-ib" type="button" data-dknav="1" aria-label="Следующая сделка" title="Следующая (→)"${next}>${this._icon('next')}</button></div>`;
   }
 
   static _bx(deal) {
     const link = deal.bx;
     if (!link) return '';
     if (!link.id) {
-      return `<span class="dk-bx${link.error ? ' bad-t' : ''}">Битрикс24: ${link.error ? `не отправлено — ${esc(link.error)}` : 'ждёт отправки'}</span>`;
+      const text = link.error ? `не отправлено — ${esc(link.error)}` : 'ждёт отправки';
+      return `<div class="dk-links"><span class="dk-bxc${link.error ? ' bad' : ''}">Битрикс24: ${text}</span></div>`;
     }
-    const url = link.url
-      ? `<a href="${esc(link.url)}" target="_blank" rel="noopener">сделка ${esc(link.id)} ↗</a>`
-      : `сделка ${esc(link.id)}`;
-    return `<span class="dk-bx">Битрикс24: ${url} · синхронизировано ${esc(Fmt.dateTime(link.at))}</span>`;
+    const name = `Битрикс24 · сделка ${esc(link.id)}`;
+    const chip = link.url
+      ? `<a class="dk-bxc" href="${esc(link.url)}" target="_blank" rel="noopener" title="Открыть сделку в Битрикс24">${name} ↗</a>`
+      : `<span class="dk-bxc">${name}</span>`;
+    return `<div class="dk-links">${chip}<span class="muted">синхронизировано ${esc(Fmt.dateTime(link.at))}</span></div>`;
   }
 
   static _stageLabel(stages, key, fallback) {

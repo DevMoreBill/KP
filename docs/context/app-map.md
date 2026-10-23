@@ -244,6 +244,7 @@
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.191.2** (23.10) — шапка карточки сделки: `DealCard._top/_nav/_card/_bx/_icon`, панель `.dk-acts`, метка `.dk-no`, плашка `.dk-bxc`.
 - **3.191.1** (23.10) — стадии карточки сделки — стрелки `.dk-chev` при любом числе стадий (ПК).
 - **3.191.0** (23.10) — карточка сделки: `DealTabs` (вкладки, `execShown`), сводка `.dk-sum`/`.dk-bar`, `DealFieldsView.wanted`, `DealDocs.body`/`badge`.
 - **3.190.4** (23.10) — `BitrixSync._regs_people` до смены стадии; `BitrixClientOut._fill_comm`/`comm` — дописанные телефон и почта контакта в Битрикс.

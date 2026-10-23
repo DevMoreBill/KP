@@ -254,12 +254,7 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 @media (prefers-reduced-motion:reduce){dialog.deal-dlg[open]{animation:none}}
 .dk-in{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 20px 24px}
 .dk-top{flex:none;display:flex;align-items:flex-start;gap:10px;padding:12px 20px 10px;background:var(--card);border-bottom:1px solid var(--line)}
-.dk-nav{display:flex;align-items:center;gap:2px;flex:none;padding-top:2px}
-.dk-nav .muted{font-size:12.5px;min-width:52px;text-align:center}
-.dk-nav .icon{font-size:20px}
 .dk-hd{flex:1;min-width:0;display:grid;gap:3px}
-.dk-hd>.muted{font-size:12.5px}
-.dk-acts{display:flex;align-items:center;gap:6px;flex:none}
 .dk-saved{color:var(--ok);font-weight:600;opacity:0;transition:opacity .2s}
 .dk-saved.on{opacity:1}
 .dk-title{font-weight:700;font-size:20px;line-height:1.3;border:1px solid transparent;border-radius:8px;padding:3px 6px;margin-left:-7px;background:transparent;color:var(--ink);width:100%}
@@ -371,11 +366,6 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
   .cab-sort{flex:1 1 auto}
   .mob dialog.st-confirm.deal-dlg{inset:0;width:100%;height:100%!important;max-height:none!important;border-radius:0;padding:0}
   .dk-in{padding:10px max(12px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
-  .dk-top{flex-wrap:wrap;padding:calc(8px + env(safe-area-inset-top)) 12px 8px}
-  .dk-hd{order:3;flex:1 1 100%}
-  .dk-nav{order:1}
-  .dk-acts{order:2;margin-left:auto}
-  .dk-title{font-size:18px}
   .dk-st{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .dk-st::-webkit-scrollbar{display:none}
   .dk-s{flex:none;min-height:44px}
@@ -618,17 +608,6 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .cab-newm .btn{justify-content:flex-start;white-space:nowrap}
 .cab-tab .md-c.bad{background:var(--danger);color:#fff}
 .cab-tab .md-c.warn{background:var(--warn-bg);color:var(--warn-ink)}
-@media (max-width:760px){
-  .dk-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"nav meta acts" "title title title" "bx bx bx";align-items:center;gap:2px 8px}
-  .dk-hd{display:contents}
-  .dk-hd>.muted{grid-area:meta;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dk-title{grid-area:title;font-size:17px;margin-left:0}
-  .dk-bx{grid-area:bx}
-  .dk-nav{grid-area:nav}
-  .dk-nav>.muted{display:none}
-  .dk-acts{grid-area:acts;margin-left:0}
-  .dk-cct{display:none}
-}
 @media (max-width:760px){.dk-acts .btn,.dk-acts .icon{min-width:44px;min-height:44px}}
 .dkk-l{margin:0 0 10px;padding-left:18px;display:grid;gap:6px}
 .mob .dk-keys,.mob .dk-prn{display:none}
@@ -710,3 +689,39 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .dk-chev>.dk-s:not(.on):hover{background:color-mix(in srgb,var(--tc,var(--navy)) 22%,var(--soft));filter:none}
 .dk-chev>.dk-s:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
 .dk-st .dk-won,.dk-st .dk-lost{flex:none;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* шапка карточки сделки: слева номер, ответственный, дата, название и Битрикс24; справа — панель кнопок одного вида (3.191.2) */
+.dk-top{display:flex;align-items:flex-start;gap:16px;padding:14px 20px 12px}
+.dk-hd{flex:1;min-width:0;display:grid;gap:4px}
+.dk-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;min-height:24px}
+.dk-no{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;background:color-mix(in srgb,var(--navy) 10%,transparent);color:var(--navy);font-weight:700;letter-spacing:.2px}
+.dk-who{display:inline-flex;align-items:center;gap:5px;color:var(--ink);font-weight:600}
+.dk-who svg{width:14px;height:14px;color:var(--muted)}
+.dk-title{font-size:21px;font-weight:700;line-height:1.25;margin:0 0 0 -7px;padding:4px 6px;border:1px solid transparent;border-radius:8px;background:transparent;width:calc(100% + 7px)}
+.dk-title:hover{border-color:var(--line)}
+.dk-title:focus{border-color:var(--navy);background:var(--field);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
+.dk-links{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;font-size:12.5px}
+.dk-bxc{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;border:1px solid color-mix(in srgb,#2fc6f6 55%,var(--line));background:color-mix(in srgb,#2fc6f6 10%,transparent);color:var(--ink);font-weight:600;text-decoration:none;white-space:nowrap}
+a.dk-bxc:hover{background:color-mix(in srgb,#2fc6f6 20%,transparent)}
+.dk-bxc.bad{border-color:color-mix(in srgb,var(--danger) 50%,transparent);background:color-mix(in srgb,var(--danger) 8%,transparent);color:var(--danger)}
+.dk-acts{display:flex;align-items:center;gap:6px;flex:none;padding:3px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.dk-nav{display:flex;align-items:center;gap:2px;padding-right:6px;margin-right:2px;border-right:1px solid var(--line)}
+.dk-pos{font-size:12.5px;color:var(--muted);min-width:46px;text-align:center;white-space:nowrap}
+.dk-ib{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:36px;height:36px;padding:0 8px;border:0;border-radius:9px;background:none;color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;touch-action:manipulation}
+.dk-ib:hover:not(:disabled){background:var(--soft)}
+.dk-ib:disabled{opacity:.35;cursor:default}
+.dk-ib:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+.dk-ccb{color:var(--navy)}
+.dk-x:hover{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+@media (max-width:760px){
+  .dk-top{flex-wrap:wrap;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 12px 10px}
+  .dk-acts{order:1;flex:1 1 100%;justify-content:space-between;border:0;padding:0}
+  .dk-nav{border:0;margin-right:auto}
+  .dk-hd{order:2;flex:1 1 100%}
+  .dk-title{font-size:18px}
+  .dk-cct{display:none}
+  .dk-ib{min-width:44px;height:44px}
+}
+dialog.deal-dlg header.dk-top input.dk-title{font-size:21px;font-weight:700;line-height:1.25;height:auto;min-height:0;padding:4px 6px;border:1px solid transparent;border-radius:8px;background:transparent;box-shadow:none;color:var(--ink)}
+dialog.deal-dlg header.dk-top input.dk-title:hover{border-color:var(--line)}
+dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);background:var(--field);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
+@media (max-width:760px){dialog.deal-dlg header.dk-top input.dk-title{font-size:18px}}
