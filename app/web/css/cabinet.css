@@ -466,7 +466,6 @@ label.f:has(.csg){position:relative}
   .ex-r>.btn,.ex-r>.ex-fact{grid-column:2/-1;justify-self:start;min-height:44px}
   .ex-r>.icon{min-width:44px;min-height:44px}
   .ex-ask .btn{min-height:44px}
-  .dk-pp a{display:inline-block;padding:10px 0}
   .csg button{min-height:48px}
 }
 .ex-act{display:inline-flex;align-items:center;gap:4px}
@@ -729,3 +728,42 @@ dialog.deal-dlg header.dk-top input.dk-title{font-size:19px;font-weight:700;line
 dialog.deal-dlg header.dk-top input.dk-title:hover{border-color:var(--line)}
 dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);background:var(--field);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
 @media (max-width:760px){dialog.deal-dlg header.dk-top input.dk-title{font-size:17px;height:40px}}
+/* вкладки карточки сделки: колонки не растягиваются сверх меры, блоки с заголовками, явные поля и контакты (3.191.5) */
+.dk-cols{grid-template-columns:minmax(0,1.5fr) minmax(360px,1fr)}
+@media (max-width:1100px){.dk-cols{grid-template-columns:minmax(0,1fr)}}
+.dk-blk+.dk-blk{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.dk-bh{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dk-panel .f>span{color:var(--ink);font-weight:600}
+.dk-panel input:not([type=radio]):not([type=checkbox]),.dk-panel select,.dk-panel textarea{border-color:color-mix(in srgb,var(--ink) 20%,var(--line));background:var(--field)}
+.dk-panel input:focus,.dk-panel select:focus,.dk-panel textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 15%,transparent)}
+.dk-cli{width:100%;font-size:16px;font-weight:600}
+.dk-blk textarea{width:100%}
+.dk-money{grid-template-columns:repeat(2,minmax(0,340px));align-items:start;gap:10px 16px}
+.dk-due{display:grid;gap:6px}
+.dk-due .dk-dchips{margin:0}
+.dk-cl{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:10px;align-items:stretch}
+.dk-cl>.dk-noinn{justify-self:start;align-self:center}
+.dk-cl>.muted{align-self:center}
+.dk-pp{display:grid;align-content:start;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--soft);min-width:0}
+.dk-ppn{display:grid;gap:1px;min-width:0}
+.dk-ppn b{font-weight:700;font-size:14px}
+.dk-ppn .muted{font-size:12.5px;overflow-wrap:anywhere}
+.dk-pa{display:inline-flex;align-items:center;gap:7px;min-height:28px;color:var(--navy);font-weight:600;font-size:13.5px;text-decoration:none;overflow-wrap:anywhere}
+.dk-pa>span{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--navy) 12%,transparent);font-size:12px}
+.dk-pa:hover{text-decoration:underline}
+.dk-kps .dk-kb{margin-top:10px}
+.dd-box{border:0;padding:0;gap:12px}
+.dd-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.dd-q{font-size:13px;font-weight:600}
+.dd-drop{display:grid;place-items:center;gap:4px;width:100%;min-height:96px;padding:16px;border:2px dashed color-mix(in srgb,var(--navy) 35%,var(--line));border-radius:14px;background:color-mix(in srgb,var(--navy) 4%,transparent);color:var(--ink);font:inherit;cursor:pointer;text-align:center}
+.dd-drop:hover,.dd-box.over .dd-drop{border-color:var(--navy);background:color-mix(in srgb,var(--navy) 9%,transparent)}
+.dd-drop:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+.dd-dt{font-size:15px;font-weight:700;color:var(--navy)}
+.dd-drop .muted{font-size:12.5px}
+.dd-none{margin:0;text-align:center;font-size:13px}
+@media (max-width:760px){
+  .dk-money{grid-template-columns:minmax(0,1fr)}
+  .dk-cl{grid-template-columns:minmax(0,1fr)}
+  .dk-pa{min-height:44px}
+  .dd-drop{min-height:80px}
+}

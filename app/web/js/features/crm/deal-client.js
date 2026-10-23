@@ -43,11 +43,13 @@ export class DealClient {
 
   static _person(person) {
     const phone = person.phone
-      ? `<a href="tel:${esc(person.phone.replace(/[^\d+]/g, ''))}">${esc(person.phone)}</a>`
+      ? `<a class="dk-pa" href="tel:${esc(person.phone.replace(/[^\d+]/g, ''))}" title="Позвонить"><span aria-hidden="true">☎</span>${esc(person.phone)}</a>`
       : '';
-    const mail = person.email ? `<a href="mailto:${esc(person.email)}">${esc(person.email)}</a>` : '';
-    const who = [person.name, person.post].filter(Boolean).map(esc).join(', ');
-    return `<div class="dk-pp"><b>${who || 'Контакт'}</b>${phone}${mail}</div>`;
+    const mail = person.email
+      ? `<a class="dk-pa" href="mailto:${esc(person.email)}" title="Написать"><span aria-hidden="true">✉</span>${esc(person.email)}</a>`
+      : '';
+    const post = person.post ? `<span class="muted">${esc(person.post)}</span>` : '';
+    return `<div class="dk-pp"><div class="dk-ppn"><b>${esc(person.name || 'Контакт')}</b>${post}</div>${phone}${mail}</div>`;
   }
 
   /**

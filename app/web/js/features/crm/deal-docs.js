@@ -49,10 +49,13 @@ export class DealDocs {
         `<button type="button" role="radio" aria-checked="${key === kind}" class="chip sm${key === kind ? ' on' : ''}" data-ddkind="${key}">${esc(names[key] || key)}</button>`,
     ).join('');
     const rows = (deal.files || []).map(file => this._row(deal, file)).join('');
+    const list = rows
+      ? `<div class="kf-l">${rows}</div>`
+      : '<p class="muted dd-none">Документов по сделке пока нет.</p>';
     return `<div class="dd-box" data-dddrop tabindex="0" aria-label="Документы сделки: перетащите файлы или нажмите Ctrl+V">
-      <div class="dd-k" role="radiogroup" aria-label="Что прикрепляете">${chips}</div>
-      <div class="row dd-add"><button class="btn sm" type="button" data-ddpick>📎 Прикрепить файл</button><span class="muted">или перетащите сюда, Ctrl+V — снимок или скан</span></div>
-      ${rows ? `<div class="kf-l">${rows}</div>` : ''}</div>`;
+      <div class="dd-top"><span class="dd-q">Что прикрепляете</span><div class="dd-k" role="radiogroup" aria-label="Что прикрепляете">${chips}</div></div>
+      <button class="dd-drop" type="button" data-ddpick><span class="dd-dt">📎 Прикрепить файл</span><span class="muted">или перетащите сюда · Ctrl+V — снимок или скан</span></button>
+      ${list}</div>`;
   }
 
   // вид по умолчанию: пора закрывать — УПД, договора нет — договор

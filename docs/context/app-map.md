@@ -244,6 +244,7 @@
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.191.5** (23.10) — вкладки сделки: блоки `.dk-blk`/`.dk-bh`, контакты `.dk-pp`/`.dk-pa`, зона файла `.dd-drop`; прогон `--modes wide`.
 - **3.191.4** (23.10) — «Сделка проиграна»: стадии провала `.dk-lo` (не `.ck`) в два столбца.
 - **3.191.3** (23.10) — шапка карточки сделки одной строкой (`.dk-hd` flex: `.dk-no`, `.dk-title`, `.dk-bxc`, `.dk-who`).
 - **3.191.2** (23.10) — шапка карточки сделки: `DealCard._top/_nav/_card/_bx/_icon`, панель `.dk-acts`, метка `.dk-no`, плашка `.dk-bxc`.

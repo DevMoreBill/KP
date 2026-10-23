@@ -231,7 +231,7 @@ export class DealCard {
   // «Сделка»: клиент и контакт, сумма и дата договора, заметка, КП; редкое — под раскрытием
   static _dealTab(deal) {
     const offers = deal.kps || [];
-    return `${this._about(deal)}<section class="dk-kps"><p class="sub">КП по сделке${offers.length ? ` <b class="md-c">${offers.length}</b>` : ''}</p>${this._kps(deal)}</section>${this._rare(deal)}`;
+    return `${this._about(deal)}<section class="dk-blk dk-kps"><h4 class="dk-bh">КП по сделке${offers.length ? ` <b class="md-c">${offers.length}</b>` : ''}</h4>${this._kps(deal)}</section>${this._rare(deal)}`;
   }
 
   // значки панели шапки — линиями, одного размера и толщины
@@ -362,18 +362,19 @@ export class DealCard {
     return `<label class="f"><span>Сумма, ₽ <em class="muted">${deal.sumOwn ? 'своя' : 'по КП'}</em>${sumTip}</span><input type="text" inputmode="decimal" data-dkf="sum" value="${own}" placeholder="${esc(autoText)}"></label>`;
   }
 
+  // «Сделка» блоками: клиент и его контакты, деньги и сроки, заметка
   static _about(deal) {
     const clients = (ClientStore.list || [])
       .slice(0, this.CLIENTS_SHOWN)
       .map(client => `<option value="${esc(client.name)}">`)
       .join('');
-    return `<div class="dk-f">
-      <label class="f dk-wide"><span>Клиент</span><input type="text" data-dkf="client" value="${esc(deal.client || '')}" maxlength="300" list="dkCl" autocomplete="off" placeholder="Название, ИНН, телефон, e-mail или ФИО контакта — подскажем"></label>
-      ${DealClient.html(deal)}${this._sumField(deal)}
-      <label class="f"><span>Ожидаемая дата договора</span><input type="date" data-dkf="expected" value="${esc(deal.expected || '')}"></label>
-      <div class="dk-wide dk-dchips">${DateChips.html(DateChips.DEAL, 'expected', deal.expected)}</div>
-      <label class="f dk-wide"><span>Заметка</span><textarea data-dkf="note" rows="2" maxlength="3000" placeholder="Кратко о заявке: что нужно клиенту, кто решает, бюджет, сроки">${esc(deal.note || '')}</textarea></label>
-      </div><datalist id="dkCl">${clients}</datalist>`;
+    return `<section class="dk-blk"><h4 class="dk-bh">Клиент</h4>
+      <input type="text" class="dk-cli" data-dkf="client" value="${esc(deal.client || '')}" maxlength="300" list="dkCl" autocomplete="off" aria-label="Клиент" placeholder="Название, ИНН, телефон, e-mail или ФИО контакта — подскажем">
+      <datalist id="dkCl">${clients}</datalist>${DealClient.html(deal)}</section>
+      <section class="dk-blk"><h4 class="dk-bh">Деньги и сроки</h4><div class="dk-f dk-money">${this._sumField(deal)}
+      <div class="dk-due"><label class="f"><span>Ожидаемая дата договора</span><input type="date" data-dkf="expected" value="${esc(deal.expected || '')}"></label>
+      <div class="dk-dchips">${DateChips.html(DateChips.DEAL, 'expected', deal.expected)}</div></div></div></section>
+      <section class="dk-blk"><h4 class="dk-bh">Заметка</h4><textarea data-dkf="note" rows="3" maxlength="3000" aria-label="Заметка" placeholder="Кратко о заявке: что нужно клиенту, кто решает, бюджет, сроки">${esc(deal.note || '')}</textarea></section>`;
   }
 
   // редкое — воронка, ответственный, наша компания — под раскрытием

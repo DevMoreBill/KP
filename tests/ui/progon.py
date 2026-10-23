@@ -48,7 +48,9 @@ class Modes:
                        device_scale_factor=3, user_agent=IPHONE),
            # планшет (iPad Air, книжная): раскладка ПК, но касания и узкий экран
            'tab': dict(BASE, viewport={'width': 820, 'height': 1180}, color_scheme='light', is_mobile=True, has_touch=True,
-                       device_scale_factor=2, user_agent=IPAD)}
+                       device_scale_factor=2, user_agent=IPAD),
+           # широкий монитор (по запросу: --modes wide) — растягивание окон
+           'wide': dict(BASE, viewport={'width': 1920, 'height': 1080}, color_scheme='light')}
     STAGES = ('client', 'cat', 'editor', 'station', 'price', 'deal', 'steps', 'preview', 'save', 'files', 'mail',
               'journal', 'kptabs', 'misc', 'cabinet', 'settings', 'bitrix', 'mirror', 'regs', 'dbl')
 
@@ -1448,7 +1450,11 @@ class Scenario(UiRun):
           body: JSON.stringify({title: 'Компрессор на завод (регламент)', client: 'ООО «Регламент-Прогон»', funnel: 'b5', source: 'ad'})})""")
         self.ev("id => DealCard.open(id)", deal['id'])
         pg.wait_for_selector('dialog.deal-dlg[open] .dk-in', timeout=20000)
+        self._part('deal')
         self.snap('g1_regs_card', 'dialog.deal-dlg[open]', wait=400)
+        self._part('fields')
+        self.snap('g1_regs_fields', 'dialog.deal-dlg[open]', wait=300)
+        self._part('deal')
         self._deal_stage('C5:TAKEN')
         pg.wait_for_selector('dialog.dn-dlg[open]', timeout=15000)
         self.snap('g2_regs_need', 'dialog.dn-dlg[open]', wait=300)
