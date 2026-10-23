@@ -21,6 +21,7 @@ import { Reminders } from '../kp/reminders.js';
 import { FEAT } from '../../core/features.js';
 import { esc, today } from '../../core/util.js';
 import { MyDay } from '../kp/my-day.js';
+import { BrowserNotify } from './browser-notify.js';
 import { Modal } from '../../core/modal.js';
 
 /**
@@ -88,6 +89,7 @@ export class Cabinet {
     await this._extras();
     this.render();
     this._announce();
+    BrowserNotify.start(id => DealCard.open(id));
   }
 
   static _fail(error) {
@@ -243,10 +245,12 @@ export class Cabinet {
 
   // одно «Новое» на ПК и телефоне: заявка из письма — первой, ею заводится большинство сделок
   static _newItems() {
-    return this.NEW.map(
-      ([kind, label, hint]) =>
-        `<button class="btn${kind === 'mail' ? ' primary' : ''}" type="button" role="menuitem" data-cq="${kind}" title="${hint}">${label}</button>`,
-    ).join('');
+    return this.NEW.filter(([kind]) => kind !== 'mail' || FEAT.on('intake'))
+      .map(
+        ([kind, label, hint]) =>
+          `<button class="btn${kind === 'mail' ? ' primary' : ''}" type="button" role="menuitem" data-cq="${kind}" title="${hint}">${label}</button>`,
+      )
+      .join('');
   }
 
   static _toggleNew() {

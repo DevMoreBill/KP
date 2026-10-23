@@ -1,11 +1,15 @@
 """«Где тратится время» в «Отделе» кабинета: сколько дней сделки стоят на каждой стадии, сколько проходит от заявки
 до первого КП, какая доля дел закрыта позже срока. По отделу целиком, без имён менеджеров."""
 
+import json
+import re
+from collections import Counter
 from datetime import date, datetime, timedelta
 from statistics import median
 from typing import Any
 
 from crm import DealBook, Stages
+from crm_funnels import Funnels
 
 
 class DealTime:
@@ -127,3 +131,64 @@ class DealTime:
         )
         late = sum(1 for due, done in rows if done and due and done > due)
         return {'done': len(rows), 'late': late}
+
+
+class StageOdds:
+    """Вероятность выиграть сделку с каждой стадии — по сделкам, закрытым за последние DAYS дней: из прошедших через
+    стадию сколько выиграно. Меньше MIN_CLOSED закрытых — процент из названия стадии («40% - ТКП»); нет ни того,
+    ни другого — стадия в прогноз не входит (не выдумываем)."""
+
+    DAYS = 365
+    MIN_CLOSED = 5
+    PERCENT = re.compile(r'^\s*(\d{1,3})\s*%')
+    HUNDRED = 100
+
+    def __init__(self, store) -> None:
+        self.store = store
+
+    def odds(self) -> dict[str, float]:
+        """{стадия: доля 0…1}."""
+        passed, won = self._history()
+        out: dict[str, float] = {}
+        for key, label in self._labels().items():
+            closed = passed.get(key, 0)
+            if closed >= self.MIN_CLOSED:
+                out[key] = round(won.get(key, 0) / closed, 2)
+                continue
+            found = self.PERCENT.match(label)
+            if found and int(found.group(1)) <= self.HUNDRED:
+                out[key] = int(found.group(1)) / self.HUNDRED
+        return out
+
+    def _labels(self) -> dict[str, str]:
+        labels = {str(row.get('key') or ''): str(row.get('label') or '') for row in Stages.all(self.store)}
+        for funnel in Funnels(self.store).all():
+            for row in funnel.get('stages') or []:
+                labels[str(row.get('key') or '')] = str(row.get('label') or '')
+        return labels
+
+    def _history(self) -> tuple[Counter, Counter]:
+        since = (date.today() - timedelta(days=self.DAYS)).isoformat()
+        passed: Counter = Counter()
+        won: Counter = Counter()
+        for doc, stage in self.store.all("SELECT doc, stage FROM deals WHERE stage IN ('won', 'lost')", ()):
+            deal = self._obj(doc)
+            if str(deal.get('stageAt') or '')[:10] < since:
+                continue
+            seen = {str(deal.get('fstage') or '')}
+            for row in deal.get('history') or []:
+                if isinstance(row, dict) and row.get('what') == 'stage':
+                    seen |= {str(row.get('from') or ''), str(row.get('to') or '')}
+            seen.discard('')
+            passed.update(seen)
+            if stage == 'won':
+                won.update(seen)
+        return passed, won
+
+    @staticmethod
+    def _obj(raw: Any) -> dict:
+        try:
+            found = json.loads(raw or '{}')
+        except (TypeError, ValueError):
+            return {}
+        return found if isinstance(found, dict) else {}

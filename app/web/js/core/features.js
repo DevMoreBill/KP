@@ -1,4 +1,5 @@
 import { Api } from './net.js';
+import { FEATURE_HOW } from './feature-help.js';
 import { MyDay } from '../features/kp/my-day.js';
 import { Reminders } from '../features/kp/reminders.js';
 import { FormView } from '../ui/form-view.js';
@@ -44,6 +45,15 @@ export class FeatureRegistry {
   add(def) {
     this.defs.push(def);
     return this;
+  }
+
+  /**
+   * Подробная инструкция к выключателю.
+   * @param {string} key
+   * @returns {string}
+   */
+  how(key) {
+    return FEATURE_HOW[key] || '';
   }
 
   /**
@@ -97,6 +107,7 @@ export const FEAT = new FeatureRegistry()
   .group('deal', 'Экономика')
   .group('work', 'Работа с клиентом')
   .group('cat', 'Каталог')
+  .group('cab', 'Кабинет и сделки')
   .group('ui', 'Интерфейс')
   .add({
     key: 'tender',
@@ -267,4 +278,92 @@ export const FEAT = new FeatureRegistry()
     group: 'ui',
     label: 'Горячие клавиши',
     hint: 'Ctrl+S — сохранить КП, Ctrl+K — каталог, «/» — поиск в каталоге.',
+  })
+  .add({
+    key: 'dealDocs',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Документы сделки',
+    hint: 'Вкладка «Документы» в карточке сделки: договор, спецификация, счёт, акт, УПД.',
+    off: 'Вкладки нет; файлы хранятся.',
+  })
+  .add({
+    key: 'intake',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Заявка из письма или ТЗ',
+    hint: '«📩 Из письма или ТЗ»: сделка, клиент, контакт и модели — из текста или файла письма.',
+    off: 'Сделки заводятся вручную.',
+  })
+  .add({
+    key: 'callResult',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Итог звонка',
+    hint: 'После галочки у звонка — «Договорились / Думает / Не дозвонился / Отказ» и следующий шаг.',
+    off: 'Галочка просто отмечает звонок.',
+  })
+  .add({
+    key: 'ufAuto',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Автозаполнение полей Битрикс24',
+    hint: 'Пустые поля Битрикс24 программа заполняет по КП, клиенту и прошлым сделкам (метка «из КП»).',
+    off: 'Поля заполняет только менеджер.',
+  })
+  .add({
+    key: 'dealDelete',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Удаление сделки',
+    hint: 'Корзина в шапке карточки сделки: своя — ответственным, любая — руководителем; «Отменить» 10 секунд.',
+    off: 'Удалить сделку нельзя.',
+  })
+  .add({
+    key: 'dealBulk',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Массовые действия со сделками',
+    hint: '«☐ Выбрать» в «Сделках»: стадия, ответственный, дело, пауза — сразу нескольким.',
+    off: 'Кнопки «Выбрать» нет.',
+  })
+  .add({
+    key: 'dealPause',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Отложенные сделки',
+    hint: '«⏸ Отложить до даты»: сделка уходит с доски, в нужный день — дело «Вернуться к сделке».',
+    off: 'Отложенные сделки снова видны как обычные.',
+  })
+  .add({
+    key: 'idleDeals',
+    group: 'cab',
+    needs: 'myDay',
+    label: '«Без движения» на «Сегодня»',
+    hint: 'Давно не менявшиеся сделки с кнопками «☎ Позвонить» и «Отложить на неделю».',
+    off: 'Группы нет.',
+  })
+  .add({
+    key: 'forecast',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Прогноз месяца',
+    hint: '«Этот месяц» → прогноз: выиграно + ожидаемое × вероятность стадии; прошлый месяц.',
+    off: 'Строки прогноза нет.',
+  })
+  .add({
+    key: 'callHistory',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Звонки клиенту в сделке',
+    hint: 'В карточке сделки — последние звонки по всем сделкам клиента с итогами.',
+    off: 'Списка нет.',
+  })
+  .add({
+    key: 'notify',
+    group: 'cab',
+    needs: 'myDay',
+    label: 'Уведомления в браузере',
+    hint: 'За 15 минут до дела и о новых заявках — уведомлением браузера (менеджер включает у себя).',
+    off: 'Уведомлений нет.',
   });

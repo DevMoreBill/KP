@@ -172,6 +172,33 @@ class UnitTest(unittest.TestCase):
         self.assertNotEqual(again, did)
         self.assertIsNotNone(book.get(again))
 
+    def test_pause_odds_calls(self):
+        """Отложить сделку: не раньше завтра, дел «сами» нет до даты, потом — «вернуться к сделке»; вероятность стадии —
+        по закрытым сделкам (иначе по проценту в названии); звонки клиента — по всем его сделкам."""
+        from crm import DealBook, TaskBook
+        from crm_auto import AutoTasks
+        from crm_time import StageOdds
+        book, tasks = DealBook(self.st), TaskBook(self.st)
+        did = book.create({'title': 'Насос', 'client': 'ООО «Пауза»', 'clientInn': '7700000081'}, 'm1', 'Иванов', 'И')['id']
+        with self.assertRaises(ValueError):
+            book.update(did, {'pausedUntil': date.today().isoformat()}, 'И')
+        later = (date.today() + timedelta(days=7)).isoformat()
+        book.update(did, {'pausedUntil': later}, 'И')
+        self.assertEqual(book.get(did)['pausedUntil'], later)
+        self.assertEqual(AutoTasks(self.st).sync(book.get(did)), 0, 'на паузе дела сами не ставятся')
+        deal = dict(book.get(did), pausedUntil=(date.today() - timedelta(days=1)).isoformat())
+        AutoTasks(self.st).sync(deal)
+        self.assertTrue(any('Вернуться к сделке' in t['title'] for t in tasks.list(deal=did)))
+        for n in range(5):
+            other = book.create({'title': f'С {n}', 'client': 'ООО «Шанс»'}, 'm1', 'Иванов', 'И')['id']
+            book.update(other, {'stage': 'talks'}, 'И')
+            book.update(other, {'stage': 'won' if n < 2 else 'lost', 'lostReason': 'Цена'}, 'И')
+        self.assertEqual(StageOdds(self.st).odds().get('talks'), 0.4, '2 из 5 прошедших «Переговоры» выиграны')
+        call = tasks.add({'kind': 'call', 'due': date.today().isoformat(), 'title': 'Звонок'}, 'm1', 'И', did)
+        tasks.update(call['id'], {'state': 'done', 'note': 'Итог: договорились'})
+        second = book.create({'title': 'Ещё', 'client': 'ООО «Пауза»', 'clientInn': '7700000081'}, 'm1', 'Иванов', 'И')
+        self.assertEqual([c['note'] for c in tasks.client_calls(second)], ['Итог: договорились'])
+
 
 class ApiTest(unittest.TestCase):
     @classmethod
@@ -290,6 +317,12 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.h.req('GET', '/api/crm/deal/' + own, cookie=c1)[0], 404)
         st, b, _ = self.h.req('GET', '/api/admin/trash', cookie=adm, headers=A)
         self.assertIn(own, [x['entityId'] for x in Http.js(b)['items']])
+        self.assertEqual(self.h.req('POST', '/api/crm/deal/%s/restore' % own, {}, cookie=c2)[0], 200, 'руководитель — любую')
+        self.h.req('POST', '/api/crm/deal/%s/remove' % own, {}, cookie=c1)
+        st, b, _ = self.h.req('POST', '/api/crm/deal/%s/restore' % own, {}, cookie=c1)
+        self.assertEqual(st, 200, b)
+        self.assertEqual(self.h.req('GET', '/api/crm/deal/' + own, cookie=c1)[0], 200, '«Отменить» вернул сделку')
+        self.assertEqual(self.h.req('POST', '/api/crm/deal/%s/restore' % own, {}, cookie=c1)[0], 404)
 
 
 if __name__ == '__main__':

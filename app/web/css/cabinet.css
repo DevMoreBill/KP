@@ -858,3 +858,20 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .dk-uf .dk-ro b{padding:6px 0;font-weight:600}
 /* единые метки программы: «из КП», «КП N», «Б24», «40%», «Тендер №», «Сделка №» — одна высота, радиус и шрифт */
 .uf-auto,.dc-k,.dc-bx,.kb-pc,.jr-n .jr-t,.jr-n .jr-f{display:inline-flex;align-items:center;height:18px;line-height:18px;border-radius:6px;font-size:11px;font-weight:700;padding:0 6px;white-space:nowrap}
+/* 3.197.0: прогноз месяца, «без движения», выбор сделок, панель массовых действий */
+.tm-fc{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;align-items:baseline;margin-top:8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--navy) 8%,var(--card));border:1px solid color-mix(in srgb,var(--navy) 20%,var(--line))}
+.tm-fc>span:first-child{font-weight:600}
+.tm-fc>b{font-size:16px;color:var(--navy)}
+.tm-fc>.muted{grid-column:1/-1;font-size:12px}
+.md-acts{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.dc-pk{flex:none;width:18px;height:18px;margin:1px 0 0;accent-color:var(--navy);cursor:pointer}
+.dc.picked,.cab-lr.picked{outline:2px solid var(--navy);outline-offset:-2px;background:color-mix(in srgb,var(--navy) 6%,var(--card))}
+.cab-lr .dc-pk{margin-right:6px;vertical-align:-3px}
+.cab-bulk{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding:8px 12px;border-radius:12px;background:var(--card);border:1px solid var(--navy);box-shadow:0 -4px 18px rgba(8,25,60,.14)}
+.cab-bulk select{width:auto;min-width:150px}
+.dk-paused{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--soft);border:1px dashed var(--line);font-size:13px}
+.dk-calls{display:grid;gap:4px;margin:6px 0 0;padding:0;list-style:none;font-size:12.5px}
+.dk-calls li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 8px}
+.dk-calls li>span:last-child{overflow-wrap:anywhere}
+@media (max-width:760px){.cab-bulk{bottom:calc(var(--tbh,0px) + 8px)}.cab-bulk select{flex:1 1 100%}}
+.td-ntf{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--navy) 7%,var(--card));border:1px solid color-mix(in srgb,var(--navy) 22%,var(--line));font-size:13px}

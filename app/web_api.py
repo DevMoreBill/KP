@@ -2076,6 +2076,7 @@ class CrmController(Controller):
             deal = dict(book.get(did) or deal, kps=deal['kps'], exec=deal['exec'])
             deal['clientCard'] = self._client_card(deal)
         deal['tasks'] = TaskBook(store()).list(deal=did)
+        deal['calls'] = TaskBook(store()).client_calls(deal)
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
             companies = MyCompanies(store())
@@ -2195,6 +2196,21 @@ class CrmController(Controller):
             {'title': deal.get('title'), 'client': deal.get('client')},
             None,
         )
+        return self.send_json({'ok': True, 'id': did})
+
+    @route(r'/api/crm/deal/(d\d{1,9})/restore', 'POST')
+    def deal_restore(self, did: str) -> Any:
+        """«Восстановить» сразу после удаления: свою — в первые минуты, руководитель и администратор — любую."""
+        from features import Viewer
+
+        uid, _name, everyone = self.who(self.handler)
+        try:
+            deal = DealBook(store()).restore(did, Viewer(admin=everyone, uid=uid))
+        except LookupError as exc:
+            return self.not_found(str(exc))
+        except PermissionError as exc:
+            return self.text(403, str(exc))
+        admin.log(self.handler, store(), 'restore', 'deal', did, None, {'title': deal.get('title')})
         return self.send_json({'ok': True, 'id': did})
 
     @route(r'/api/crm/deal/(d\d{1,9})/exec', 'PUT')

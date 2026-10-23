@@ -2,6 +2,7 @@ import { CallResult } from './call-result.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt, DateChips } from './crm-fmt.js';
 import { Modal } from '../../core/modal.js';
+import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { KpDate } from '../kp/kp-date.js';
@@ -35,7 +36,8 @@ export class CrmTask {
 
   // звонок по сделке: галочка спрашивает итог разговора (CallResult)
   static _call(task) {
-    return task.kind === 'call' && task.deal && task.state === 'open' ? ` data-tcall="${esc(task.deal)}"` : '';
+    const ask = task.kind === 'call' && task.deal && task.state === 'open' && FEAT.on('callResult');
+    return ask ? ` data-tcall="${esc(task.deal)}"` : '';
   }
 
   // общее название («Звонок», «Письмо») — действием и кому: «Позвонить: Петров П. П.»

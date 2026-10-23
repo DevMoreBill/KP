@@ -292,6 +292,12 @@ class DealBook:
             if v and not day:
                 raise ValueError('Ожидаемая дата — в формате ГГГГ-ММ-ДД')
             out['expected'] = day.isoformat() if day else ''
+        if 'pausedUntil' in data:  # «отложить до»: сделка скрыта с доски до даты, потом — дело «вернуться к сделке»
+            v = data.get('pausedUntil')
+            day = Val.day(v) if v else None
+            if v and (not day or day <= date.today()):
+                raise ValueError('Отложить можно до даты позже сегодняшней')
+            out['pausedUntil'] = day.isoformat() if day else ''
         if 'sum' in data:  # ввод — в рублях, хранится в копейках; пусто — по последнему КП сделки
             v = data.get('sum')
             if v in (None, ''):
@@ -428,6 +434,24 @@ class DealBook:
         )
         self.store.trash_put('deal', did, title[:300], author)
         return deal
+
+    UNDO_MIN = 10  # «Восстановить» после удаления — сам удаливший, в эти минуты; позже — администратор в корзине
+
+    def restore(self, did: str, viewer: Any) -> dict:
+        """Вернуть только что удалённую сделку из корзины; viewer — features.Viewer (admin — любую, иначе свою, uid).
+        LookupError — нет в корзине, PermissionError — чужая или поздно."""
+        row = self.store.one(
+            "SELECT id, data, deleted_at FROM trash WHERE entity_type='deal' AND entity_id=? ORDER BY id DESC LIMIT 1",
+            (str(did),),
+        )
+        if not row:
+            raise LookupError('Сделки нет в корзине')
+        owner = str(_obj(row[1]).get('manager_id') or '')
+        fresh = str(row[2] or '') >= (datetime.now() - timedelta(minutes=self.UNDO_MIN)).isoformat(timespec='seconds')
+        if not viewer.admin and (owner != viewer.uid or not fresh):
+            raise PermissionError('Вернуть сделку может администратор: «Настройки → Корзина»')
+        self.store.trash_restore(row[0])
+        return self._require(did)
 
     def deal_of(self, kid: str) -> str | None:
         row = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
@@ -618,7 +642,11 @@ class DealBook:
         return [row['id'] for row in live]
 
     def _autofill(self, deal: dict, kp_ids: list[str], author: str) -> bool:
-        """Пустые поля Битрикс24 — из КП (сбой подсказки не мешает сохранению сделки)."""
+        """Пустые поля Битрикс24 — из КП (сбой подсказки не мешает сохранению сделки); выключено — ничего."""
+        from features import FeatureAccess
+
+        if not FeatureAccess(self.store).is_on('ufAuto'):
+            return False
         try:
             if self._filler is None:
                 self._filler = DealAutoFill(self.store)
@@ -818,6 +846,23 @@ class TaskBook:
         row = self.store.one(f'SELECT {self.COLS} FROM crm_tasks WHERE id=?', (int(tid),))
         return self._out(row) if row else None
 
+    CALLS_SHOWN = 8
+
+    def client_calls(self, deal: dict) -> list[dict]:
+        """Сделанные звонки по всем сделкам этого клиента (по ИНН, иначе по названию) — последние сверху."""
+        inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
+        client = str(deal.get('client') or '').strip()
+        if not inn and not client:
+            return []
+        where, args = ('d.inn = ?', (inn,)) if inn else ('d.client = ?', (client,))
+        cols = ', '.join(f't.{col.strip()}' for col in self.COLS.split(','))
+        rows = self.store.all(
+            f"SELECT {cols} FROM crm_tasks t JOIN deals d ON d.id = t.deal_id WHERE t.kind = 'call' AND t.state = 'done' "
+            f'AND {where} ORDER BY t.done_at DESC LIMIT {self.CALLS_SHOWN}',
+            args,
+        )
+        return [self._out(row) for row in rows]
+
     def _require(self, tid) -> dict:
         found = self.get(tid)
         if found is None:
@@ -990,9 +1035,15 @@ class CrmBoard:
             'deals': deals,
             'tasks': task_list,
             'kinds': [{'key': k, 'label': label} for k, label in TaskBook.KINDS],
+            'odds': self._odds(),
             'today': date.today().isoformat(),
             'now': datetime.now().isoformat(timespec='minutes'),
         }
+
+    def _odds(self) -> dict[str, float]:
+        from crm_time import StageOdds  # crm_time подключает crm
+
+        return StageOdds(self.store).odds()
 
     def _who(self, deal: dict, seen: dict) -> dict | None:
         """Кому звонить или писать по сделке: компания и первый контакт клиента из справочника (один запрос на клиента)."""

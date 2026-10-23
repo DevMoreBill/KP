@@ -17,11 +17,14 @@ import { UiKit } from '../../ui/ui-kit.js';
 import { KpDate } from '../kp/kp-date.js';
 import { esc, today } from '../../core/util.js';
 import { MyDay } from '../kp/my-day.js';
+import { DealPause } from './deal-pause.js';
+import { BrowserNotify } from './browser-notify.js';
 
 /** «Сегодня»: плитки дня, «Что сделать» (дела и сделки, которым нужно действие), напоминания по КП; справа — неделя, месяц, воронка. */
 export class CabToday {
   static SHOW = 6;
   static DAY_MS = 864e5;
+  static IDLE_DAYS = 7;
 
   /**
    * Новые сделки из Битрикс24, которые ответственный ещё не открывал.
@@ -46,7 +49,7 @@ export class CabToday {
       !CrmData.board.me && !CrmData.all()
         ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>'
         : '';
-    return `${who}${CabGuide.tip()}${this._tiles()}<div class="td-g"><div class="td-l">${this._todo()}${this._reminders()}</div>
+    return `${who}${CabGuide.tip()}${BrowserNotify.offer()}${this._tiles()}<div class="td-g"><div class="td-l">${this._todo()}${this._reminders()}</div>
       <aside class="td-r">${CabTodaySide.html()}${this._drafts()}${this._more()}</aside></div>`;
   }
 
@@ -157,7 +160,19 @@ export class CabToday {
         'late',
         {},
       ],
+      [`Без движения больше ${this._idleDays()} дн. — позвоните или отложите`, this._idle(open), 'idle', {}],
     ];
+  }
+
+  static _idleDays() {
+    return Math.round(DefRegistry.num('crm.autoIdleDays', this.IDLE_DAYS));
+  }
+
+  // сделка не менялась N дней (с делом — тоже: дело могли переносить, а сделка стоит)
+  static _idle(open) {
+    if (!FEAT.on('idleDeals')) return [];
+    const edge = KpDate.addDays(today(), -this._idleDays());
+    return open.filter(deal => deal.next && String(deal.updated || '').slice(0, 10) < edge);
   }
 
   static _todo() {
@@ -199,6 +214,7 @@ export class CabToday {
         deal.execSum.next ? `${deal.execSum.next.label} — план ${CrmFmt.day(deal.execSum.next.plan)}` : 'просрочено',
       free: () => 'нет запланированного дела',
       late: () => `ожидалась ${CrmFmt.day(deal.expected)}`,
+      idle: () => `без движения с ${CrmFmt.day(String(deal.updated || '').slice(0, 10))}`,
     };
     return reasons[kind] ? reasons[kind]() : '';
   }
@@ -206,11 +222,19 @@ export class CabToday {
   static _dealRow(deal, kind) {
     const name = deal.title || deal.client;
     const client = deal.client && deal.client !== name ? `${esc(deal.client)} · ` : '';
-    const action =
-      kind === 'free'
-        ? `<button class="btn sm primary" type="button" data-dstep="${esc(deal.id)}" title="Запланировать дело по сделке">＋ Дело</button>`
-        : `<button class="btn sm" type="button" data-deal="${esc(deal.id)}">Открыть</button>`;
+    const action = this._action(deal, kind);
     return `<div class="md-r"><span class="cab-dot t-${CrmData.toneOf(deal)}" aria-hidden="true"></span><button type="button" class="cab-rl" data-deal="${esc(deal.id)}"><b>${esc(name)}</b><span class="muted">${client}${esc(CrmFunnel.label(deal))} · ${CrmFmt.short(deal.sum)} · ${esc(this._why(deal, kind))}</span></button>${action}</div>`;
+  }
+
+  static _action(deal, kind) {
+    const id = esc(deal.id);
+    const actions = {
+      free: () =>
+        `<button class="btn sm primary" type="button" data-dstep="${id}" title="Запланировать дело по сделке">＋ Дело</button>`,
+      idle: () =>
+        `<span class="md-acts"><button class="btn sm primary" type="button" data-didle="${id}" title="Звонок клиенту сегодня">☎ Позвонить</button>${FEAT.on('dealPause') ? `<button class="btn sm" type="button" data-dweek="${id}" title="Убрать с доски на неделю">Отложить на неделю</button>` : ''}</span>`,
+    };
+    return actions[kind] ? actions[kind]() : `<button class="btn sm" type="button" data-deal="${id}">Открыть</button>`;
   }
 
   // дела на будущие дни — свёрнуто
@@ -272,6 +296,20 @@ export class CabToday {
     return `<div class="md-q cab-more"><button class="btn" type="button" data-cq="journal">Журнал КП</button><button class="btn" type="button" data-cq="catalog">Каталог</button>${back}</div>`;
   }
 
+  // «☎ Позвонить» у сделки без движения — звонок на сегодня, кому — как в деле
+  static async _callToday(id) {
+    const deal = CrmData.deal(id) || {};
+    const whom = (deal.who && (deal.who.name || deal.who.company)) || deal.client || deal.title || '';
+    const task = await CrmTask.create({
+      deal: id,
+      kind: 'call',
+      title: `Позвонить: ${whom}`,
+      due: today(),
+      again: true,
+    });
+    if (task) Cabinet.reload();
+  }
+
   /**
    * Щелчки раздела (напоминания, черновики, «показать все»). true — обработано.
    * @param {Event} event
@@ -292,6 +330,9 @@ export class CabToday {
       ['[data-mdall]', () => this._leave(() => Reminders.open())],
       ['[data-mddr]', () => this._leave(() => Drafts.dialog())],
       ['[data-dro]', el => this._leave(() => Drafts.open(el.dataset.dro))],
+      ['[data-didle]', el => this._callToday(el.dataset.didle)],
+      ['[data-ntfon]', () => BrowserNotify.ask().then(() => Cabinet.render())],
+      ['[data-dweek]', el => DealPause.week({ id: el.dataset.dweek }, () => Cabinet.reload())],
     ];
     for (const [selector, run] of actions) {
       const el = target.closest(selector);

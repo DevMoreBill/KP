@@ -32,7 +32,37 @@ FEATURES = {
     'mgrLine': (True, '«Менеджер» строкой'),
     'clientCard': (True, 'Карточка клиента'),
     'kpFiles': (True, 'Справочные документы к КП'),
+    'dealDocs': (True, 'Документы сделки'),
+    'intake': (True, 'Заявка из письма или ТЗ'),
+    'callResult': (True, 'Итог звонка'),
+    'ufAuto': (True, 'Автозаполнение полей Битрикс24'),
+    'dealDelete': (True, 'Удаление сделки'),
+    'dealBulk': (True, 'Массовые действия со сделками'),
+    'dealPause': (True, 'Отложенные сделки'),
+    'idleDeals': (True, '«Без движения» на «Сегодня»'),
+    'forecast': (True, 'Прогноз месяца'),
+    'callHistory': (True, 'Звонки клиенту в сделке'),
+    'notify': (True, 'Уведомления в браузере'),
 }
+
+# функция работает только вместе с другой (как needs в app/web/js/core/features.js)
+NEEDS = dict.fromkeys(
+    (
+        'dealDocs',
+        'intake',
+        'callResult',
+        'ufAuto',
+        'dealDelete',
+        'dealBulk',
+        'dealPause',
+        'idleDeals',
+        'forecast',
+        'callHistory',
+        'notify',
+    ),
+    'myDay',
+)
+NEEDS.update({'stLayout': 'stations', 'carriers': 'deal', 'reminders': 'track', 'autosave': 'drafts'})
 
 # адреса функции: (метод или None — любой, шаблон пути, ключ)
 ROUTES = [
@@ -48,6 +78,9 @@ ROUTES = [
     (None, re.compile(r'^/api/presets(/.*)?$'), 'presets'),
     (None, re.compile(r'^/api/clientcard(/.*)?$'), 'clientCard'),
     (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/files(/.*)?$'), 'kpFiles'),
+    (None, re.compile(r'^/api/crm/deal/d\d{1,9}/files(/.*)?$'), 'dealDocs'),
+    (None, re.compile(r'^/api/crm/intake$'), 'intake'),
+    (None, re.compile(r'^/api/crm/deal/d\d{1,9}/(remove|restore)$'), 'dealDelete'),
     (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]
 
@@ -145,5 +178,18 @@ class FeatureAccess:
         """Название недоступной пользователю функции адреса или None; who() → (администратор ли, id менеджера)."""
         for pattern, regex, key in ROUTES:
             if (pattern is None or pattern == method) and regex.match(path):
-                return None if self.allowed(self.config(), key, Viewer(*who())) else FEATURES[key][1]
+                cfg, viewer = self.config(), Viewer(*who())
+                for one in (key, *self._needs(key)):
+                    if not self.allowed(cfg, one, viewer):
+                        return FEATURES[one][1]
+                return None
         return None
+
+    @staticmethod
+    def _needs(key: str) -> tuple[str, ...]:
+        """Без какой функции эта не работает (цепочкой)."""
+        found, out = NEEDS.get(key), []
+        while found:
+            out.append(found)
+            found = NEEDS.get(found)
+        return tuple(out)

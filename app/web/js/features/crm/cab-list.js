@@ -1,6 +1,7 @@
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
+import { DealBulk } from './deal-bulk.js';
 import { esc } from '../../core/util.js';
 
 /**
@@ -120,7 +121,7 @@ export class CabList {
 
   static _row(deal, keys, grid, row) {
     const cells = {
-      name: () => `<b>${esc(this.name(deal))}</b><span class="muted">№ ${esc(deal.number)}</span>`,
+      name: () => `${DealBulk.box(deal)}<b>${esc(this.name(deal))}</b><span class="muted">№ ${esc(deal.number)}</span>`,
       client: () => esc(deal.client || '—'),
       stage: () =>
         `<span class="cab-dot t-${CrmData.toneOf(deal)}" aria-hidden="true"></span>${esc(CrmFunnel.label(deal))}`,
@@ -132,7 +133,8 @@ export class CabList {
       kps: () => String((deal.kps || []).length || '—'),
     };
     const html = keys.map(key => `<span class="${this.COLS[key].css}" role="cell">${cells[key]()}</span>`).join('');
-    return `<div class="cab-lr t-${CrmData.toneOf(deal)}" style="${grid}" role="row" data-deal="${esc(deal.id)}" tabindex="0">${html}</div>`;
+    const picked = DealBulk.picked.has(deal.id) ? ' picked' : '';
+    return `<div class="cab-lr${picked} t-${CrmData.toneOf(deal)}" style="${grid}" role="row" data-deal="${esc(deal.id)}" tabindex="0">${html}</div>`;
   }
 
   /**

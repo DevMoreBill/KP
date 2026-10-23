@@ -467,7 +467,18 @@ export class FeaturesPanel {
       ? ` <i class="st-mod">изменено</i> <button type="button" class="icon ft-rs" data-ftrs="${key}" title="Вернуть как в программе: включено для всех" aria-label="Вернуть встроенное">↺</button>`
       : '';
     return `<div class="ft-r${enabled ? '' : ' off'}${changed ? ' own' : ''}"><label class="sw ft-sw"><input type="checkbox" data-ft="${key}"${enabled ? ' checked' : ''}><span>${enabled ? 'включено' : 'выключено'}</span></label>
-      <div><b>${esc(def.label)}</b>${reset}<span class="muted">${esc(def.hint)}</span>${!enabled && def.off ? `<span class="ft-off">Выключено: ${esc(def.off)}</span>` : ''}${need ? `<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>` : ''}${enabled ? this._who(key, conf) : ''}</div></div>`;
+      <div><b>${esc(def.label)}</b>${reset}<span class="muted">${esc(def.hint)}</span>${!enabled && def.off ? `<span class="ft-off">Выключено: ${esc(def.off)}</span>` : ''}${need ? `<span class="ft-off">Не работает: выключено «${esc(need.label)}»</span>` : ''}${enabled ? this._who(key, conf) : ''}${this._how(def.key)}</div></div>`;
+  }
+
+  // «Как пользоваться» — подробная инструкция под строкой функции
+  _how(key) {
+    const text = FEAT.how(key);
+    if (!text) return '';
+    const paragraphs = text
+      .split(/\n\s*\n/)
+      .map(part => `<p>${esc(part.trim())}</p>`)
+      .join('');
+    return `<details class="ft-how"><summary>Как пользоваться</summary>${paragraphs}</details>`;
   }
 
   /** Показать. */

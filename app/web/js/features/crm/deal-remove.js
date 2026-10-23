@@ -6,6 +6,8 @@ import { esc } from '../../core/util.js';
 
 /** «Удалить сделку»: после вопроса — в корзину «Настроек» (восстанавливает администратор вместе с делами, документами и КП). */
 export class DealRemove {
+  static UNDO_MS = 10000;
+
   /**
    * Спросить и удалить.
    * @param {object} deal
@@ -14,7 +16,7 @@ export class DealRemove {
   static async ask(deal, after) {
     const name = [deal.title, deal.client].filter(Boolean).join(' — ');
     const answer = await Modal.ask(`<h3>Удалить сделку № ${esc(deal.number)}?</h3><p><b>${esc(name)}</b></p>
-      <p class="muted">Сделка уйдёт в корзину вместе с делами и документами; КП останутся в журнале. Вернуть её может администратор: «Настройки → Корзина». В Битрикс24 сделка не удаляется.</p>
+      <p class="muted">Сделка уйдёт в корзину вместе с делами и документами; КП останутся в журнале. Передумали — «Отменить» в сообщении внизу; позже вернуть сделку может администратор: «Настройки → Корзина». В Битрикс24 сделка не удаляется.</p>
       <div class="row"><button class="btn" type="button" data-v="0">Отмена</button><span class="sp"></span><button class="btn danger-bg" type="button" data-v="1">Удалить</button></div>`);
     if (!answer) return;
     try {
@@ -23,8 +25,22 @@ export class DealRemove {
       Toast.show(`Не удалено: ${error.message}`);
       return;
     }
-    Toast.show(`Сделка № ${deal.number} удалена — в корзине «Настроек»`);
+    Toast.undo(`Сделка № ${deal.number} удалена`, () => this._restore(deal), this.UNDO_MS);
     after();
+    this._refresh();
+  }
+
+  static async _restore(deal) {
+    try {
+      await Api.request(`/api/crm/deal/${encodeURIComponent(deal.id)}/restore`, { method: 'POST' });
+      Toast.show(`Сделка № ${deal.number} восстановлена`);
+    } catch (error) {
+      Toast.show(`Не восстановлено: ${error.message}`);
+    }
+    this._refresh();
+  }
+
+  static _refresh() {
     if (document.getElementById('cabWin')?.open) Cabinet.reload();
   }
 }

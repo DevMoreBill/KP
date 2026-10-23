@@ -29,6 +29,7 @@ class AutoTasks:
     EXPIRE = 'auto:expire:'
     NEW = 'auto:new:'
     CLOSING = 'auto:closing:'
+    RESUME = 'auto:pause:'
     END_OF_DAY = '17:00'
 
     def __init__(self, store) -> None:
@@ -41,13 +42,15 @@ class AutoTasks:
         self._settle_new(deal, have)
         steps = {task.get('step') for task in have if task.get('step')}
         wanted = self._closing(deal)
-        if deal.get('stage') not in Funnels.CLOSED:
+        paused = str(deal.get('pausedUntil') or '') > date.today().isoformat()
+        if deal.get('stage') not in Funnels.CLOSED and not paused:
             offers = self._offers(deal['id'])
             wanted += [
                 *self._new_request(deal),
                 *self._after_sent(offers),
                 *self._expiring(offers),
                 *self._idle(deal, have),
+                *self._resume(deal),
             ]
         added = 0
         for step, body in wanted:
@@ -130,6 +133,18 @@ class AutoTasks:
             'due': date.today().isoformat(),
         }
         return [(self.IDLE + changed.isoformat(), body)]
+
+    def _resume(self, deal: dict) -> list[tuple[str, dict]]:
+        """Отложенная сделка: дата паузы пришла — «вернуться к сделке» (одно дело на каждую паузу)."""
+        until = str(deal.get('pausedUntil') or '')
+        if not until:
+            return []
+        body = {
+            'kind': 'call',
+            'title': f'Вернуться к сделке: была отложена до {until[8:10]}.{until[5:7]}',
+            'due': date.today().isoformat(),
+        }
+        return [(self.RESUME + until, body)]
 
     def _new_request(self, deal: dict) -> list[tuple[str, dict]]:
         """Регламент Битрикс24: к концу дня на стадии «Новая заявка» сделок не остаётся — взять в работу или закрыть."""

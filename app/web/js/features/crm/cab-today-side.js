@@ -4,6 +4,7 @@ import { CrmFunnel } from './crm-funnel.js';
 import { KpDate } from '../kp/kp-date.js';
 import { UiKit } from '../../ui/ui-kit.js';
 import { WorkCalendar } from '../../ui/date-picker.js';
+import { FEAT } from '../../core/features.js';
 import { esc, today } from '../../core/util.js';
 
 /**
@@ -72,7 +73,25 @@ export class CabTodaySide {
       )
       .join('');
     return `<section class="md-s ts"><div class="md-h"><p class="sub">Этот месяц</p><span class="muted">выиграно ${share} % от ожидаемого</span></div>
-      <div class="tm-bar" aria-hidden="true"><i style="width:${share}%"></i></div>${rows}</section>`;
+      <div class="tm-bar" aria-hidden="true"><i style="width:${share}%"></i></div>${rows}${this._forecast(expected, sum(won))}</section>`;
+  }
+
+  // прогноз: выиграно + ожидаемые × вероятность их стадии (по закрытым сделкам или % в названии стадии); прошлый месяц
+  static _forecast(expected, wonSum) {
+    if (!FEAT.on('forecast')) return '';
+    const odds = CrmData.board.odds || {};
+    const counted = expected.filter(deal => (deal.fstage || deal.stage) in odds || deal.stage in odds);
+    const likely = counted.reduce(
+      (total, deal) => total + (deal.sum || 0) * (odds[deal.fstage || deal.stage] ?? odds[deal.stage] ?? 0),
+      0,
+    );
+    const last = KpDate.addDays(`${today().slice(0, 7)}-01`, -1).slice(0, 7);
+    const before = CrmData.deals()
+      .filter(deal => deal.stage === 'won' && String(deal.stageAt || '').slice(0, 7) === last)
+      .reduce((total, deal) => total + (deal.sum || 0), 0);
+    const skipped = expected.length - counted.length;
+    const hint = `Выиграно в этом месяце плюс ожидаемые сделки с учётом вероятности их стадии — по закрытым сделкам за год (не меньше 5) или по проценту в названии стадии.${skipped ? ` Без оценки: ${skipped} (у стадии нет данных).` : ''}`;
+    return `<div class="tm-fc" title="${esc(hint)}"><span>Прогноз месяца</span><b>${CrmFmt.short(wonSum + likely)}</b><span class="muted">прошлый месяц выиграно ${CrmFmt.short(before)}</span></div>`;
   }
 
   // воронка открытой на доске воронки: сделки и суммы по стадиям

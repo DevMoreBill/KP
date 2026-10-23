@@ -4,6 +4,7 @@ import { CrmFunnel } from './crm-funnel.js';
 import { LostPick } from './lost-pick.js';
 import { DealNeed } from './deal-need.js';
 import { Cabinet } from './cabinet.js';
+import { DealBulk } from './deal-bulk.js';
 import { CabList } from './cab-list.js';
 import { CabGantt } from './cab-gantt.js';
 import { Toast } from '../../core/toast.js';
@@ -38,6 +39,7 @@ export class CabDeals {
   static LIST_LIMIT = 100;
   static LIGHT = 150;
   static PERCENT_LABEL = /^(\d{1,3})\s*%\s*[-–—:]?\s*(.*)$/;
+  static PAUSED = 'paused';
   static closed = false;
   static filter = '';
   static stage = '';
@@ -62,8 +64,8 @@ export class CabDeals {
         : '<p class="msg">Сделки появляются сами, когда вы сохраняете КП, — или нажмите «＋ Сделка» вверху.</p>';
     const body = this.view === 'list' ? this._list(deals) : this._board(deals);
     const sum = CrmFmt.short(open.reduce((total, deal) => total + (deal.sum || 0), 0));
-    return `<div class="cab-bar">${CrmFunnel.switcher(CrmData.deals(), CrmData.funnel())}${Cabinet.search('Сделка, клиент, ИНН или № КП')}${this._views()}${this._sortSelect()}<span class="muted cab-tot">В работе <b>${open.length}</b> · ${sum}</span></div>
-      <div class="cab-flt" role="group" aria-label="Быстрый отбор">${this._chips()}</div>${empty}${body}`;
+    return `<div class="cab-bar">${CrmFunnel.switcher(CrmData.deals(), CrmData.funnel())}${Cabinet.search('Сделка, клиент, ИНН или № КП')}${this._views()}${this._sortSelect()}${DealBulk.toggle()}<span class="muted cab-tot">В работе <b>${open.length}</b> · ${sum}</span></div>
+      <div class="cab-flt" role="group" aria-label="Быстрый отбор">${this._chips()}</div>${empty}${body}${DealBulk.bar()}`;
   }
 
   static _restore() {
@@ -95,12 +97,13 @@ export class CabDeals {
    */
   static deals() {
     const test = this.FILTERS[this.filter] ? this.FILTERS[this.filter][1] : () => true;
+    const paused = this.filter === this.PAUSED;
     return CrmData.deals().filter(
       deal =>
         CrmData.inFunnel(deal) &&
         Cabinet.match(deal) &&
         (this.closed || !CrmData.closed(deal)) &&
-        (CrmData.closed(deal) || test(deal)),
+        (CrmData.closed(deal) || (CrmData.paused(deal) === paused && (paused || test(deal)))),
     );
   }
 
@@ -143,9 +146,18 @@ export class CabDeals {
         this._chip({ attr: `data-cflt="${key}"`, label: `${label} <b>${count}</b>`, on: this.filter === key }),
       )
       .join('');
+    const pausedCount = CrmData.deals().filter(deal => CrmData.inFunnel(deal) && CrmData.paused(deal)).length;
+    const paused =
+      pausedCount || this.filter === this.PAUSED
+        ? this._chip({
+            attr: `data-cflt="${this.PAUSED}"`,
+            label: `⏸ Отложенные <b>${pausedCount}</b>`,
+            on: this.filter === this.PAUSED,
+          })
+        : '';
     const closed = this._chip({ attr: 'data-cclosed', label: 'Показать закрытые', on: this.closed });
     const all = this._chip({ attr: 'data-cflt=""', label: 'Все в работе', on: !this.filter });
-    return `<span class="cab-cnts" role="group" aria-label="Дела по сделкам"><span class="muted">Дела:</span>${counters}</span>${all}${chips}${closed}`;
+    return `<span class="cab-cnts" role="group" aria-label="Дела по сделкам"><span class="muted">Дела:</span>${counters}</span>${all}${chips}${paused}${closed}`;
   }
 
   static _chip({ attr, label, on }) {
@@ -258,8 +270,9 @@ export class CabDeals {
       ? `<a class="dc-bx" href="${esc(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24" aria-label="Открыть в Битрикс24">Б24</a>`
       : '';
     const kps = this._kps(count);
-    return `<article class="dc t-${CrmData.toneOf(deal)}" data-deal="${esc(deal.id)}"${drag} tabindex="0">
-      <div class="dc-h"><b class="dc-t" title="${esc(title)}">${esc(title)}</b>${link}</div>${client ? `<span class="dc-c">${client}</span>` : ''}
+    const picked = DealBulk.picked.has(deal.id) ? ' picked' : '';
+    return `<article class="dc${picked} t-${CrmData.toneOf(deal)}" data-deal="${esc(deal.id)}"${drag} tabindex="0">
+      <div class="dc-h">${DealBulk.box(deal)}<b class="dc-t" title="${esc(title)}">${esc(title)}</b>${link}</div>${client ? `<span class="dc-c">${client}</span>` : ''}
       <div class="dc-m">${kps}${this._expected(deal)}<b class="dc-s">${CrmFmt.short(deal.sum)}</b></div>
       <div class="dc-nx">${this._next(deal)}</div>${this.exec(deal)}${this._foot(deal)}</article>`;
   }
@@ -304,6 +317,9 @@ export class CabDeals {
   // низ карточки — только когда есть что сказать: новая заявка Битрикс24, ответственный (в «Весь отдел»)
   static _foot(deal) {
     const parts = [
+      CrmData.paused(deal)
+        ? `<span>⏸ до ${esc(CrmFmt.day(deal.pausedUntil))}</span> <button type="button" class="lnk" data-dunpause="${esc(deal.id)}">вернуть в работу</button>`
+        : '',
       deal.bxNew ? '<b class="dc-new">Новая из Битрикс24</b>' : '',
       CrmData.all() ? esc(CrmData.mgrShort(deal)) : '',
     ].filter(Boolean);
@@ -355,6 +371,14 @@ export class CabDeals {
    */
   static click(event) {
     const target = event.target;
+    if (
+      DealBulk.click(
+        event,
+        () => Cabinet.renderBody(),
+        () => Cabinet.reload(),
+      )
+    )
+      return true;
     if (CabList.click(event)) {
       Cabinet.renderBody();
       return true;
@@ -397,6 +421,7 @@ export class CabDeals {
    * @returns {boolean}
    */
   static change(target) {
+    if (DealBulk.change(target, () => Cabinet.reload())) return false;
     if (target.id === 'cabFunnel') {
       CrmFunnel.set(target.value);
       this.more.clear();

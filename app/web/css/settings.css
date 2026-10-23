@@ -880,3 +880,7 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .st-gt b{font-size:15px}
 .st-gt span{font-size:12.5px;line-height:1.35}
 .mob .rd-l li.rd-ok{display:none}
+/* «Как пользоваться» под функцией (3.197.0) */
+.ft-how{margin-top:4px;font-size:13px}
+.ft-how>summary{cursor:pointer;color:var(--navy);font-weight:600;min-height:28px;display:inline-flex;align-items:center}
+.ft-how>p{margin:4px 0;line-height:1.45;color:var(--ink)}

@@ -43,7 +43,22 @@ export class DealClient {
     const edit = FEAT.on('clientCard')
       ? `<button class="dk-ce" type="button" data-cc="${data}" title="Открыть карточку клиента: изменить контакт или добавить новый">✎ Изменить или добавить контакт</button>`
       : '';
-    return `<div class="dk-wide dk-cl">${flag}${rows}${more}${empty}${edit}</div>`;
+    return `<div class="dk-wide dk-cl">${flag}${rows}${more}${empty}${edit}${this._calls(deal.calls)}</div>`;
+  }
+
+  // звонки клиенту по всем его сделкам: когда, что, итог
+  static _calls(calls) {
+    if (!FEAT.on('callHistory') || !(calls || []).length) return '';
+    const rows = calls
+      .map(call => {
+        const said = String(call.note || '')
+          .split('\n')
+          .pop();
+        const day = String(call.doneAt || call.due || '').slice(0, 10);
+        return `<li><span class="muted">${esc(day.split('-').reverse().slice(0, 2).join('.'))}</span><span>${esc(call.title)}${said ? ` — ${esc(said)}` : ''}</span></li>`;
+      })
+      .join('');
+    return `<details class="dk-callsw"><summary>Звонки клиенту (${calls.length})</summary><ul class="dk-calls">${rows}</ul></details>`;
   }
 
   static _person(person) {

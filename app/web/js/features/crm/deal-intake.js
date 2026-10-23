@@ -1,3 +1,4 @@
+import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
@@ -16,6 +17,7 @@ export class DealIntakeView {
    */
   static html() {
     this.found = null;
+    if (!FEAT.on('intake')) return '';
     return `<details class="dk-mail"><summary>📩 Заполнить из письма или ТЗ</summary>
       <textarea name="mail" rows="4" maxlength="20000" placeholder="Вставьте текст письма клиента или ТЗ — программа найдёт клиента, контакт, суть и модели каталога"></textarea>
       <div class="row dk-mail-a"><button class="btn sm primary" type="button" data-dnparse>Разобрать</button><button class="btn sm" type="button" data-dnfile>Файл…</button><span class="muted">письмо .eml, PDF, Word, Excel, TXT</span></div>

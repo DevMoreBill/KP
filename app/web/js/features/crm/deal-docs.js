@@ -6,6 +6,7 @@ import { Api, AdminSession } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 
 /**
  * «Документы» в карточке сделки: договор, спецификация, счёт, акт, УПД, сканы — вид документа чипом, файл кнопкой,
@@ -28,6 +29,16 @@ export class DealDocs {
    */
   static body(deal) {
     return this._body(deal);
+  }
+
+  /**
+   * Вкладка «Документы» для карточки сделки (функция выключена — нет).
+   * @param {object} deal
+   * @returns {object} {docs: {title, badge, tone, body}} или {}
+   */
+  static panel(deal) {
+    if (!FEAT.on('dealDocs')) return {};
+    return { docs: { title: 'Документы', ...this.badge(deal), body: () => this.body(deal) } };
   }
 
   /**

@@ -1,7 +1,8 @@
 import { CrmFunnel } from './crm-funnel.js';
 import { ShortName } from '../kp/journal-row.js';
-import { esc } from '../../core/util.js';
+import { esc, today } from '../../core/util.js';
 import { Api } from '../../core/net.js';
+import { FEAT } from '../../core/features.js';
 
 /** Этапы своей воронки программы — «Настройки → Списки и тексты → Этапы сделки» (crm.stages); у сервера — тот же список. */
 export class CrmStages {
@@ -97,7 +98,16 @@ export class CrmData {
    * @returns {object[]}
    */
   static openDeals() {
-    return this.deals().filter(deal => !this.closed(deal));
+    return this.deals().filter(deal => !this.closed(deal) && !this.paused(deal));
+  }
+
+  /**
+   * Сделка отложена (до даты позже сегодняшней).
+   * @param {object} deal
+   * @returns {boolean}
+   */
+  static paused(deal) {
+    return FEAT.on('dealPause') && !!deal.pausedUntil && deal.pausedUntil > today();
   }
 
   /**
