@@ -148,7 +148,7 @@ jobs:
           $png = Join-Path $env:RUNNER_TEMP 'ci-photo.png'
           [IO.File]::WriteAllBytes($png, [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='))
           $im = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/img?cat=dgu&maker=CI&model=Test%201&name=CI%20Test%201' -InFile $png -ContentType 'image/png'
-          $item = @{ id = 'ci_item'; name = 'CI Test 1'; cat = 'dgu'; maker = 'CI'; model = 'Test 1'; photo = @{ src = '/img/' + $im.name } } | ConvertTo-Json -Compress
+          $item = @{ id = 'ci_item'; name = 'CI Test 1'; attrs = @{ cat = 'dgu'; maker = 'CI'; model = 'Test 1'; kw = 100; kwMax = 110 }; photo = @{ src = '/img/' + $im.name } } | ConvertTo-Json -Compress -Depth 4
           Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:17845/api/catalog/ci_item' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($item)) | Out-Null
           $cat = @(Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/catalog')
           Write-Host "Позиций в каталоге: $($cat.Count)"
