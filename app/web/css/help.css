@@ -18,8 +18,22 @@ dialog.helpwin[open]{display:flex}
 .hl-a mark{background:#ffe58a;color:inherit;border-radius:3px}
 .hl-faq dt{font-weight:650;margin-top:12px}
 .hl-faq dd{margin:2px 0 0;color:var(--ink)}
+.hl-a figure{margin:12px 0 16px}
+.hl-a figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(15,23,42,.08)}
+.hl-a figure.gph img{max-width:min(100%,360px)}
+.hl-a figcaption{font-size:13px;color:var(--muted);margin-top:6px}
+.hl-a ol.gl{list-style:none;padding-left:0}
+.hl-a ol.gl li{margin:8px 0;padding-left:34px;position:relative}
+.hl-a ol.gl li>.gn:first-child{position:absolute;left:0;top:1px}
+.hl-a .gn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#dc2626;color:#fff;font-size:13px;font-weight:700;line-height:1;vertical-align:middle}
+.hl-a .gs,.hl-a .gw{margin:14px 0;padding:10px 14px;border-radius:10px;border-left:4px solid}
+.hl-a .gs{background:#eff6ff;border-color:#2563eb}
+.hl-a .gw{background:#fff7ed;border-color:#ea580c}
 .help-btn{font-weight:700;min-width:40px}
 @media (max-width:760px){ .hl-b{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)} .hl-nav{border-right:0;border-bottom:1px solid var(--line);flex-direction:column;padding:10px 12px}
   .hl-nav button{display:none} .hl-sel{display:block;width:100%} .hl-a{padding:14px 16px 28px} .mob .help-btn{display:none} }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .hl-a mark{background:#6b5a12} }
 :root[data-theme="dark"] .hl-a mark{background:#6b5a12}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .hl-a .gs{background:#16233a} :root:not([data-theme="light"]) .hl-a .gw{background:#33220f} }
+:root[data-theme="dark"] .hl-a .gs{background:#16233a}
+:root[data-theme="dark"] .hl-a .gw{background:#33220f}

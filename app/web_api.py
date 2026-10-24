@@ -103,6 +103,7 @@ WEB_TYPES = {
     '.json': 'application/json; charset=utf-8',
     '.svg': 'image/svg+xml',
     '.png': 'image/png',
+    '.webp': 'image/webp',
     '.woff2': 'font/woff2',
     '.ttf': 'font/ttf',
 }

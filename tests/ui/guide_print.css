@@ -1,0 +1,24 @@
+/* «Руководство менеджера.pdf» (tests/ui/guide.py): разделы окна «?» для печати на А4 */
+body { font: 11pt/1.45 'Segoe UI', Arial, sans-serif; color: #1b2433; }
+h1 { font-size: 22pt; color: #0b3a8a; margin: 0 0 18mm; }
+h1 small { display: block; font-size: 14pt; color: #556; font-weight: 400; }
+h2 { font-size: 15pt; color: #0b3a8a; border-bottom: 2px solid #0b3a8a; padding-bottom: 2mm; margin: 0 0 4mm; }
+section { break-before: page; }
+h4 { font-size: 12pt; margin: 5mm 0 2mm; }
+img { max-width: 100%; border: 1px solid #cfd6e3; border-radius: 4px; break-inside: avoid; }
+figure { margin: 3mm 0 4mm; break-inside: avoid; }
+figcaption { font-size: 9pt; color: #667; }
+.gs { background: #eef4ff; border-left: 4px solid #2563eb; padding: 2mm 4mm; margin: 3mm 0; break-inside: avoid; }
+.gw { background: #fff7e6; border-left: 4px solid #d97706; padding: 2mm 4mm; margin: 3mm 0; break-inside: avoid; }
+.gn { display: inline-block; min-width: 1.4em; height: 1.4em; line-height: 1.4em; border-radius: 50%; background: #dc2626; color: #fff;
+      text-align: center; font-weight: 700; font-size: 9pt; margin-right: 1mm; }
+ol, ul { padding-left: 6mm; }
+li { margin: 1mm 0; }
+kbd { border: 1px solid #aab; border-radius: 3px; padding: 0 1mm; font-size: 9pt; }
+figure.gph img { max-width: 75mm; }
+ol.gl { list-style: none; padding-left: 0; }
+ol.gl li { margin: 1.5mm 0; }
+ol.toc { list-style: none; padding: 0; font-size: 13pt; line-height: 2; }
+ol.toc a { color: #1b2433; text-decoration: none; }
+dl.hl-faq dt { font-weight: 700; margin-top: 3mm; }
+dl.hl-faq dd { margin: 1mm 0 0 0; }

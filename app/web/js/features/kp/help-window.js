@@ -10,6 +10,15 @@ import { Api } from '../../core/net.js';
 export class HelpWindow {
   static KEY = 'kp.helpSec';
   static PRINT_DELAY = 300;
+  static PRINT_CSS = [
+    'body{font:14px/1.5 Arial,sans-serif;margin:24px;color:#111}h1{font-size:22px}',
+    'h2{font-size:18px;margin-top:28px;border-bottom:1px solid #ccc}h2~h2{break-before:page}h4{margin:14px 0 4px}',
+    'code{background:#f2f2f2;padding:0 4px}figure{margin:10px 0;break-inside:avoid}',
+    'figure img{max-width:100%;border:1px solid #ccc}figure.gph img{max-width:300px}figcaption{font-size:12px;color:#555}',
+    'ol.gl{list-style:none;padding-left:0}ol.gl li{margin:6px 0}',
+    '.gn{display:inline-block;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;font-weight:700;text-align:center;line-height:20px;font-size:12px;print-color-adjust:exact;-webkit-print-color-adjust:exact}',
+    '.gs,.gw{padding:8px 12px;border-left:4px solid;margin:10px 0}.gs{border-color:#2563eb}.gw{border-color:#ea580c}',
+  ].join('');
 
   /**
    * Фактическая версия — от сервера (после установки патча она новее встроенной в EXE).
@@ -122,7 +131,7 @@ export class HelpWindow {
       return;
     }
     if (button.dataset.hp === 'close') ctx.dialog.close();
-    else if (button.dataset.hp === 'print') this._print(ctx.all);
+    else if (button.dataset.hp === 'print') this._print(ctx.all.filter(([id]) => id !== 'versions'));
   }
 
   static _print(all) {
@@ -132,8 +141,8 @@ export class HelpWindow {
       return;
     }
     win.document
-      .write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Руководство пользователя — Конструктор КП</title>
-        <style>body{font:14px/1.5 Arial,sans-serif;margin:24px;color:#111}h1{font-size:22px}h2{font-size:18px;margin-top:28px;border-bottom:1px solid #ccc}h4{margin:14px 0 4px}code{background:#f2f2f2;padding:0 4px}</style></head>
+      .write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Руководство пользователя — Конструктор КП</title><base href="${location.origin}/">
+        <style>${this.PRINT_CSS}</style></head>
         <body><h1>Руководство пользователя — Конструктор КП (версия ${AppVersion.current})</h1>${all.map(([, title, html]) => `<h2>${esc(title)}</h2>${html}`).join('')}</body></html>`);
     win.document.close();
     win.focus();

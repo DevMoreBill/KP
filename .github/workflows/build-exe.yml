@@ -460,6 +460,7 @@ jobs:
           Copy-Item -Recurse -LiteralPath 'server-setup' -Destination $pkg
           Copy-Item -LiteralPath 'install\kp-common.ps1' -Destination "$pkg\server-setup"
           Copy-Item -LiteralPath 'Инструкция.txt' -Destination $pkg
+          Copy-Item -LiteralPath 'docs\Руководство менеджера.pdf' -Destination $pkg
           New-Item -ItemType Directory -Force -Path "$pkg\install" | Out-Null
           Copy-Item -LiteralPath 'install\Установить в C KP.cmd', 'install\install-full.ps1', 'install\kp-common.ps1' -Destination "$pkg\install"
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force
