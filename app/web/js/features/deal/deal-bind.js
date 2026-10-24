@@ -456,6 +456,7 @@ export class DealClicks {
     dock: '_dock',
     addsup: '_addSup',
     delsup: '_delSup',
+    bxfix: '_bxFix',
   };
   static PCT = 100;
 
@@ -546,6 +547,11 @@ export class DealClicks {
     const calc = DealCalculator.calc(DealState.inputs(), deal);
     const rate = String(DealTerms.bgRate()).replace('.', ',');
     deal.bg = [...(Array.isArray(deal.bg) ? deal.bg : []), { type: calc.advSum > 0 ? 'adv' : 'perf', rate }];
+  }
+
+  // поправка статьи из Битрикс24 больше не нужна: статья — по расчёту программы (уйдёт в Битрикс при сохранении КП)
+  static _bxFix(button, deal) {
+    if (deal.bxFix) delete deal.bxFix[button.dataset.key];
   }
 
   static _delBg(button, deal) {

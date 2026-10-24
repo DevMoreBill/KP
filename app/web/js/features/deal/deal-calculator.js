@@ -1,5 +1,6 @@
 import { DealCalcBase } from './deal-calc-base.js';
 import { DealSchedule } from './deal-schedule.js';
+import { DealBxFix } from './deal-bx-fix.js';
 import { Money } from '../../core/money.js';
 
 /**
@@ -82,7 +83,9 @@ export class DealCalculator extends DealSchedule {
     this.F = this.finance();
     const equipSum = this.sumOf(sup => sup.equip);
     const asmCost = this.asmC ? this.asmC.cost : 0;
-    this.Ccash = this.sumOf(sup => sup.cash) + this.M + this.E + this.Dc + this.W + this.Bn + this.BG + asmCost;
+    this.fix = DealBxFix.of(this, { equipSum, asmCost });
+    this.Ccash =
+      this.sumOf(sup => sup.cash) + this.M + this.E + this.Dc + this.W + this.Bn + this.BG + asmCost + this.fix.sum;
     const vat = this._vatIn(asmCost);
     this._iterate(vat);
     const base = vat.unknown.length ? null : this.lo;
@@ -106,7 +109,7 @@ export class DealCalculator extends DealSchedule {
     const voRuSum = this.sumOf(sup => sup.voRu);
     const unknown = this.S_.filter(sup => sup.vi == null);
     // сборка — услуга в России с НДС
-    const known = this.viSum + voSup + voRuSum + this.Vo + this.inSupVat(asmCost);
+    const known = this.viSum + voSup + voRuSum + this.Vo + this.inSupVat(asmCost) + this.fix.vat;
     const high = known + unknown.reduce((sum, sup) => sum + sup.T, 0);
     return { voSup, voRuSum, unknown, known, high };
   }
@@ -166,6 +169,7 @@ export class DealCalculator extends DealSchedule {
       ['Прочие расходы', this.E],
       ['Бонусы и комиссии с продажи', this.Bn],
       ['Резерв на гарантию', this.W],
+      ...DealBxFix.parts(this.fix.lines),
       ['Финансирование', this.F],
       ['НДС к вычету (уменьшает затраты)', -(base || this.lo).VATin],
     ].filter(part => Math.abs(part[1]) > DealCalculator.PART_EPS);
@@ -228,6 +232,10 @@ export class DealCalculator extends DealSchedule {
       hi: this.hi,
       cashBefore: this.S - this.Ccash - this.F,
       parts: this._parts(base, equipSum, asmCost),
+      bxFix: this.fix.lines,
+      xMode: this.xMode,
+      xV: this.xV,
+      xG: this.xG,
       err: this.err,
       warn: this.warn,
       ok: !Object.keys(this.err).length,

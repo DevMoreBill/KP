@@ -320,8 +320,9 @@ class DealAutoFill:
         self.history = DealHistory(store)
         self._types: dict[str, dict] | None = None
 
-    def apply(self, deal: dict, kp_ids: list[str]) -> list[str]:
-        """Дополнить deal['uf'] (на месте). → коды полей, которые заполнены или обновлены."""
+    def apply(self, deal: dict, kp_ids: list[str], skip: frozenset[str] = frozenset()) -> list[str]:
+        """Дополнить deal['uf'] (на месте); skip — поля, которые заполняет другой (раздел «Экономика сделки»).
+        → коды полей, которые заполнены или обновлены."""
         facts = self.facts(deal, kp_ids)
         deal['kpCats'] = sorted(set(facts.cats))
         values = dict(deal.get('uf') or {})
@@ -333,6 +334,8 @@ class DealAutoFill:
         context = ContextFill(self.history, deal, shown)
         for row in shown:
             code = row['code']
+            if code in skip:
+                continue
             if code in auto and values.get(code) != auto[code]:
                 continue  # менеджер изменил или стёр — его выбор
             if code not in auto and values.get(code) not in (None, '', [], '0'):

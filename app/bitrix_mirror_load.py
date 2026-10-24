@@ -41,10 +41,23 @@ class MirrorStructure:
         fill = {row['id']: self._fill(row['bx'], fields.all()) for row in funnels}
         fields.choose(fill)
         DealRegs(self.store).mark()
+        self._econ([str(row['bx']) for row in funnels])
         self.sync.log.add(
             f'Структура Битрикс24: воронок {len(funnels)}, полей сделки {len(fields.all())}, в карточке {len(fields.codes())}'
         )
         return {'funnels': len(funnels), 'fields': len(fields.all()), 'on': len(fields.codes())}
+
+    def _econ(self, cats: list[str]) -> None:
+        """Раздел «Экономика сделки» карточки портала — его поля заполняются из экономики КП."""
+        from deal_econ import DealEcon
+
+        found = DealEcon(self.store).discover(self.sync.api, cats)
+        codes = found.get('codes') or []
+        self.sync.log.add(
+            f'Раздел «{found["section"]}»: полей {len(codes)}'
+            if codes
+            else 'Раздел «Экономика сделки» в карточке сделки не найден'
+        )
 
     def _funnel(self, cat: dict) -> dict:
         cid = str(cat['id'])

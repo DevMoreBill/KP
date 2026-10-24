@@ -208,6 +208,35 @@ class MirrorSyncTest(unittest.TestCase):
         res = self.load()
         self.assertEqual((res['created'], res['updated']), (0, 5), res)
 
+    def test_econ_section_both_ways(self):
+        """Раздел «Экономика сделки» (deal_econ.py): поля — из карточки портала, значения — из экономики КП в Битрикс;
+        логистику поменяли в Битриксе — поправка в КП, прибыль пересчитана и ушла обратно."""
+        from bitrix import BitrixLinks, BitrixQueue, BitrixSync
+        from crm import DealBook
+        from test_deal_econ import Cases
+        self.fake.portal_fields += [{'FIELD_NAME': 'UF_CRM_LOGI', 'USER_TYPE_ID': 'money', 'L': 'Логистика'},
+                                    {'FIELD_NAME': 'UF_CRM_PROF', 'USER_TYPE_ID': 'double', 'L': 'Прибыль'}]
+        self.fake.card = [{'name': 'econ', 'title': 'Экономика сделки', 'elements': [{'name': 'UF_CRM_LOGI'}, {'name': 'UF_CRM_PROF'}]}]
+        self.load()
+        case = Cases.rows()[0]
+        meta = {'id': 'k1', 'number': 'k1', 'client': 'ООО «А»', 'authorId': 'm1', 'managerId': 'm1', 'date': '2026-10-24',
+                'sum': 122000000, 'deal': case['before']}
+        self.st.kp_set('k1', 'state', json.dumps({'number': 'k1', 'deal': {'touched': True}}, ensure_ascii=False), 'тест')
+        self.st.kp_set('k1', 'meta', json.dumps(meta, ensure_ascii=False), 'тест')
+        did = DealBook(self.st).on_kp('k1', meta, 'тест')
+        BitrixQueue.touch(self.st, 'deal', did)
+        BitrixSync(self.st, direct()).run_now()
+        bid = BitrixLinks(self.st).get('deal', did)['bx']
+        bx = self.fake.deals[bid]
+        self.assertEqual((bx['UF_CRM_LOGI'], float(bx['UF_CRM_PROF'])), ('60000|RUB', 516450.27))
+        self.fake.edit_deal(bid, UF_CRM_LOGI='160000|RUB')
+        BitrixSync(self.st, direct()).run_now()
+        BitrixSync(self.st, direct()).run_now()
+        fix = json.loads(self.st.kp_get('k1', 'state'))['deal']['bxFix']['logistics']
+        self.assertEqual((fix['to'], fix['base']), (160000, 60000))
+        self.assertAlmostEqual(float(bx['UF_CRM_PROF']), case['after']['profit'], delta=0.011, msg='прибыль — обратно в Битрикс')
+        self.assertEqual(bx['UF_CRM_LOGI'], '160000|RUB', 'логистика — как поменяли в Битриксе')
+
     def test_convert_linked_main_deals(self):
         from bitrix import BitrixLinks
         from bitrix_mirror_load import MirrorConvert, MirrorStructure

@@ -352,6 +352,26 @@ export class DealState {
       fin: cents(calc.F),
       parts: (calc.parts || []).map(([name, value]) => [name, cents(value)]),
       pays,
+      fix: Object.fromEntries(
+        (calc.bxFix || []).filter(line => line.active).map(line => [line.key, cents(line.delta)]),
+      ),
+      calc: DealState._calc(calc),
+    };
+  }
+
+  // для поправок из Битрикс24 на сервере (deal_econ.EconShift) — те же величины, что в DealCalculator.result
+  static _calc(calc) {
+    const side = res => ({ Pa: res.Pa, Ctot: res.Ctot });
+    return {
+      lo: side(calc.lo),
+      hi: side(calc.hi),
+      taxP: calc.taxP,
+      xMode: calc.xMode,
+      xV: calc.xV,
+      xG: calc.xG,
+      R: calc.R,
+      S: calc.S,
+      sv: calc.sv,
     };
   }
 }

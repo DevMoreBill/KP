@@ -244,6 +244,7 @@
 - **3.167.0** (20.10) — чистый код, ч. 29: экономика сделки, Excel, логистика, «Тарифы доставки», ТН ВЭД → `features/deal/` (`DealUi`, `LgState`, `DealCalculator`, `DealXlsx`, `TnVed`).
 - **3.168.0** (20.10) — чистый код, ч. 30: форма КП, шаги, боковая панель, события, телефон, даты, адреса → модули `ui/` (`Steps`, `FormView`, `SidePanel`, `ItemActions`, `Mobile`, `DatePicker`, `GeoInput`; мост `ui/legacy.js`).
 - **3.169.0** (21.10) — чистый код, ч. 31: общие помощники `core/` (`Net`, `Modal`, `Money`, `Xlsx`, `EquipTypes`, `ItemSpec` …) и запуск `main.js` (`App`) — ES-модули; весь интерфейс переведён, обычными скриптами — только `util`, `defaults*`, `state`, `lists`, `help.js`, `boot.js`, `kpgen.js`.
+- **3.206.0** (24.10) — раздел «Экономика сделки» Битрикс24 ↔ экономика КП (`deal_econ.py`: `DealEcon`, `EconValues`, `EconShift`; `DealBxFix` в расчёте сделки; `BitrixEcon` в «Настройках»; `bxEcon`)
 - **3.205.0** (24.10) — 👁 у чужих КП в журнале (`JournalRow._viewOnly`), запись `edit_others_kp` в журнал действий (`KpController._note_others_edit`)
 - **3.204.0** (24.10) — чужое КП только для просмотра (`KpGuard`, сервер `KpController._others_kp` + заголовок `X-KP-Edit-Other`, `kpViewLock`), защита от «Назад» (`core/back-guard.js`: `BackGuard`, `backGuard`)
 - **3.203.0** (24.10) — передача КП (`kp_transfer.py`: `KpTransfer`, `DealMove`; `KpTransferView`), звонки клиента — свои, спорное по расчётам (`PriceGuard`, `DocsGen._currencyNote`, `KpLead`, `CatalogAnalogs` + `cat.analogPp`, `BitrixDiff` валюта)

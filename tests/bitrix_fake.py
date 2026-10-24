@@ -27,6 +27,7 @@ class FakeBitrix:
         self.ufields, self.companies, self.requisites, self.contacts, self.deals = [], {}, {}, {}, {}
         self.deal_people, self.company_people = {}, {}  # контакты, привязанные к сделке и к компании списком связей
         self.rows, self.comments, self.activities, self.addresses = {}, [], {}, []
+        self.card = []                   # разделы карточки сделки (crm.deal.details.configuration.get)
         self.portal_fields = []          # свои поля сделки портала (кабинет как Битрикс24): {FIELD_NAME, USER_TYPE_ID, L, ITEMS}
         srv = ThreadingHTTPServer(('127.0.0.1', 0), self._handler())
         self.srv = srv
@@ -129,6 +130,8 @@ class FakeBitrix:
                 out[u['FIELD_NAME']] = {'type': u['USER_TYPE_ID'], 'formLabel': u.get('L') or u['FIELD_NAME'], 'title': u['FIELD_NAME'],
                                         'isMultiple': bool(u.get('MULTIPLE')), **({'items': u['ITEMS']} if u.get('ITEMS') else {})}
             return {'result': out}
+        if m == 'crm.deal.details.configuration.get':
+            return {'result': self.card}
         if m == 'crm.deal.userfield.list':
             return self.page(self.ufields, b)
         if m == 'crm.deal.userfield.add':

@@ -1,5 +1,6 @@
 import { DealValues } from './deal-values.js';
 import { DealCalculator } from './deal-calculator.js';
+import { DealBxFix } from './deal-bx-fix.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
 import { InputNum } from './input-num.js';
@@ -106,6 +107,7 @@ export class DealResult {
       : '';
     return `<div class="dl-now"><h4>Итог при текущей цене КП <span class="muted">${Fmt.rub(calc.S)}</span></h4>
         ${DealResult._chips(calc)}
+        ${DealBxFix.html(calc.bxFix)}
         ${DealResult._big(calc, res, profit)}
         ${DealResult._kpi(calc)}
         ${DealResult._list(calc, res)}

@@ -8,6 +8,7 @@ from typing import Any
 from bitrix_my import MyCompanies
 from crm_funnels import DealFields, Funnels
 from deal_autofill import DealAutoFill
+from deal_econ import DealEcon
 from kp_track import Val
 
 
@@ -642,15 +643,19 @@ class DealBook:
         return [row['id'] for row in live]
 
     def _autofill(self, deal: dict, kp_ids: list[str], author: str) -> bool:
-        """Пустые поля Битрикс24 — из КП (сбой подсказки не мешает сохранению сделки); выключено — ничего."""
+        """Поля Битрикс24 из КП: раздел «Экономика сделки» — по экономике, пустые остальные — по КП (сбой подсказки не
+        мешает сохранению сделки); выключено — ничего."""
         from features import FeatureAccess
 
-        if not FeatureAccess(self.store).is_on('ufAuto'):
-            return False
+        changed: list[str] = []
+        econ = DealEcon(self.store)
         try:
-            if self._filler is None:
-                self._filler = DealAutoFill(self.store)
-            changed = self._filler.apply(deal, kp_ids)
+            changed += econ.fill(deal, kp_ids)
+            if FeatureAccess(self.store).is_on('ufAuto'):
+                if self._filler is None:
+                    self._filler = DealAutoFill(self.store)
+                skip = frozenset(econ.pairs()) if econ.enabled() else frozenset()
+                changed += self._filler.apply(deal, kp_ids, skip)
         except Exception as exc:
             from server_log import ServerLog
 
@@ -659,6 +664,25 @@ class DealBook:
         if changed:
             self._log(deal, author, what='fields', fields=changed, auto=True)
         return bool(changed)
+
+    def kp_order(self, did) -> list[str]:
+        """КП сделки для полей Битрикс24 — свежие первыми (проигранные — только если других нет)."""
+        return self._fill_order(self._rows(self.store.conn(), did))
+
+    def put_econ(self, did, notes: dict, author: str, said: list[str]) -> None:
+        """Экономика из Битрикса: пометки об изменённых итогах и запись в историю о поправках статей."""
+        with self.store.lock:
+            cur = self.get(did)
+            if not cur:
+                return
+            if cur.get('econNotes') == notes and not said:
+                return
+            cur['econNotes'] = notes
+            if said:
+                self._log(cur, author, what='econ', said=said)
+            conn = self.store.conn()
+            self._save(conn, did, cur, author)
+            conn.commit()
 
     def autofill(self, did, author: str) -> bool:
         """Дозаполнить поля Битрикс24 сделки по её КП (карточку открыли). → изменилось ли."""

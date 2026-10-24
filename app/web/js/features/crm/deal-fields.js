@@ -74,7 +74,21 @@ export class DealFieldsView {
       ? `<details class="dk-ufmore"><summary>Все поля Битрикс24 <span class="muted">(${rest.length})</span></summary>${this._groupsHtml(rest, deal)}</details>`
       : '';
     const empty = !need && !filled.length ? '<p class="muted">Поля пока не заполнены.</p>' : '';
-    return `${need}${this._sections(filled, deal)}${empty}${auto}${more}`;
+    return `${this._econ(deal)}${need}${this._sections(filled, deal)}${empty}${auto}${more}`;
+  }
+
+  // итоги экономики, изменённые в Битрикс24 (по статьям не раскладываются — экономика КП та же, deal_econ.py)
+  static _econ(deal) {
+    const notes = Object.values(deal.econNotes || {});
+    if (!notes.length) return '';
+    const number = value => Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+    const rows = notes
+      .map(
+        note =>
+          `<li>${esc(note.label)}: в Битрикс24 <b>${number(note.theirs)}</b>, по экономике КП ${number(note.ours)}</li>`,
+      )
+      .join('');
+    return `<section class="dk-ufs need"><p class="sub">Изменено в Битрикс24 — экономика КП не менялась</p><ul class="dk-econ">${rows}</ul><p class="muted">Чтобы итог совпал, поправьте экономику КП; при её изменении значения программы уйдут в Битрикс24.</p></section>`;
   }
 
   // заполненные — блоками: «Клиент и источник», «Запрос клиента», «Предложение (из КП)», прочее; «Служебное» — свёрнуто

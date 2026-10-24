@@ -381,12 +381,12 @@ class DealFields:
         return {row['code']: row for row in self.all()}
 
     def shown(self, fid) -> list[dict]:
-        """Поля карточки сделки воронки fid (по порядку); поля регламента оформления сделки — во всех воронках."""
-        return [row for row in self.all() if fid in (row.get('on') or []) or row.get('reg')]
+        """Поля карточки сделки воронки fid (по порядку); поля регламента и раздела «Экономика сделки» — во всех воронках."""
+        return [row for row in self.all() if fid in (row.get('on') or []) or row.get('reg') or row.get('econ')]
 
     def codes(self) -> list[str]:
         """Поля, значения которых хранятся в программе (включены хоть в одной воронке)."""
-        return [row['code'] for row in self.all() if row.get('on') or row.get('reg')]
+        return [row['code'] for row in self.all() if row.get('on') or row.get('reg') or row.get('econ')]
 
     def save_rows(self, rows: list[dict]) -> None:
         self._put(rows)
@@ -409,6 +409,7 @@ class DealFields:
                     'label': prev.get('label') or row['label'],
                     'own': prev.get('own'),
                     'reg': prev.get('reg'),
+                    'econ': prev.get('econ'),
                 }
                 if prev
                 else {}

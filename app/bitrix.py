@@ -1392,6 +1392,20 @@ class BitrixSync:
                 back[k], agreed[k] = theirs_val, theirs_val
         return agreed, upd, back
 
+    def _econ_back(self, deal, fields: dict) -> None:
+        """Раздел «Экономика сделки», изменённый в Битриксе: статьи — поправкой в экономику КП (итоги уйдут обратно)."""
+        from deal_econ import DealEcon
+        from server_log import ServerLog
+
+        try:
+            said = DealEcon(self.store).from_bitrix(deal['id'], fields, self.WHO)
+        except Exception as exc:  # сбой поправки не останавливает обмен
+            ServerLog.failure(f'экономика сделки {deal.get("id")} из Битрикс24', exc)
+            return
+        if said:
+            self.log.add('Сделка № {} ← Битрикс24, экономика: {}'.format(deal.get('number'), '; '.join(said)))
+            BitrixQueue.touch(self.store, 'deal', deal['id'])  # пересчитанные итоги — в Битрикс
+
     def _apply(self, deal, back, bx_deal=None, base=None) -> None:
         """Значения из Битрикса — в сделку программы (без отправки обратно); в журнал — «поле: было → стало»."""
         if not self.rules.can('deal', 'in', deal.get('managerId')):
@@ -1434,6 +1448,8 @@ class BitrixSync:
                 DealBook(self.store).put_uf(deal['id'], fields, self.WHO)
         finally:
             BitrixQueue._quiet.on = False
+        if fields:
+            self._econ_back(deal, fields)
         shown = {k: back[k] for k in back if k in body or (k == 'manager' and mgr) or k.startswith('uf:')}
         self.log.add(
             'Сделка № {} ← Битрикс24: {}'.format(
@@ -2290,6 +2306,32 @@ class BitrixDesk:
             return self.text(422, str(exc))
         return self.text(404, 'Нет такого действия')
 
+    def _econ_admin(self, method, sub) -> None:
+        from deal_econ import DealEcon
+        from features import FeatureAccess
+
+        if not FeatureAccess(self.store).is_on('bxEcon'):
+            return self.text(403, 'Функция «Экономика сделки в Битрикс24» выключена')
+
+        econ = DealEcon(self.store)
+        try:
+            if sub == 'bitrix/econ' and method == 'GET':
+                return self.send(econ.view())
+            if sub == 'bitrix/econ' and method == 'POST':
+                view = econ.save(self.body())
+                self.log_fn('edit_settings', 'settings', 'bitrix-econ', None, {'экономика сделки': 'изменено'})
+                return self.send(view)
+            if sub == 'bitrix/econ/find' and method == 'POST':
+                sync = BitrixSync(self.store, self.opener)
+                cats = list(dict.fromkeys([*sync.rules.pull_cats(), *sync.mirror.cats()]))
+                econ.discover(BitrixConf(self.store).api(self.opener), cats)
+                return self.send(econ.view())
+        except ValueError as exc:
+            return self.text(400, str(exc))
+        except BitrixError as exc:
+            return self.text(422, str(exc))
+        return self.text(404, 'Нет такого действия')
+
     def route(self, method, sub, author: str) -> None:
         store = self.store
         if sub == 'bitrix' and method == 'GET':
@@ -2334,6 +2376,8 @@ class BitrixDesk:
                 return self.text(400, str(exc))
             self.log_fn('edit_settings', 'settings', 'bitrix-regs', None, {'регламент': 'изменён'})
             return self.send(view)
+        if sub.startswith('bitrix/econ'):  # раздел «Экономика сделки» карточки портала (deal_econ.py)
+            return self._econ_admin(method, sub)
         if sub == 'bitrix/test' and method == 'POST':
             try:
                 data = self.body()
