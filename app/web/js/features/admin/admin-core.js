@@ -207,6 +207,8 @@ export class AuditLabels {
     edit_ai: 'Нейросеть в программе',
     edit_access: 'Доступ менеджера',
     delete_kp: 'Удаление КП',
+    transfer_kp: 'Передача КП другому менеджеру',
+    edit_others_kp: 'Правка чужого КП',
     delete_catalog: 'Удаление товара',
     delete_manager: 'Удаление менеджера',
     delete_client: 'Удаление клиента',

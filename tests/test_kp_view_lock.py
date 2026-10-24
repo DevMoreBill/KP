@@ -44,6 +44,13 @@ class ViewLockTest(unittest.TestCase):
         state = json.loads(self.stand.http.req('GET', '/api/kp/%s/state' % self.KID)[1])
         self.assertEqual(state.get('client'), 'разрешено')
 
+    def test_05_unlocked_logged(self):
+        import sqlite3
+        self.assertEqual(self.put('meta', {'id': self.KID, 'authorId': 'm1', 'managerId': 'm1'}, 'm2', edit=True)[0], 200)
+        with sqlite3.connect(self.stand.db) as con:
+            rows = con.execute("SELECT user_id, entity_id, before FROM audit WHERE action = 'edit_others_kp'").fetchall()
+        self.assertTrue(rows and rows[-1][0] == 'm2' and rows[-1][1] == self.KID and 'm1' in rows[-1][2], rows)
+
     def test_04_docx_refused(self):
         status = self.stand.http.req('PUT', '/api/kp/%s/docx?name=kp.docx' % self.KID, b'PK\x03\x04' + b'0' * 64,
                                      headers={'X-KP-User-Id': 'm2'})[0]

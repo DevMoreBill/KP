@@ -732,6 +732,8 @@ class KpController(Controller):
                 return self.text(400, 'Неверный формат КП')
             if self._others_kp(kid):
                 return None
+            if field == 'meta':
+                self._note_others_edit(kid)
             rev = store().kp_set(
                 kid,
                 field,
@@ -781,23 +783,33 @@ class KpController(Controller):
 
     EDIT_OTHER = 'X-KP-Edit-Other'
 
-    def _others_kp(self, kid: str) -> bool:
-        """Чужое сохранённое КП без отметки «Разрешить правку» не перезаписывается (просмотр администратором или правом
-        «КП других менеджеров» не меняет КП случайно). True — отказ 409 уже отправлен."""
-        if self.handler.headers.get(self.EDIT_OTHER) == '1' or not FeatureAccess(store()).is_on('kpViewLock'):
-            return False
+    def _foreign_author(self, kid: str) -> str:
+        """Автор сохранённого КП, если это не тот, кто сохраняет (функция «только просмотр» включена); иначе ''."""
+        if not FeatureAccess(store()).is_on('kpViewLock'):
+            return ''
         try:
             meta = json.loads(store().kp_get(kid, 'meta') or '{}')
         except ValueError:
             meta = {}
         author = str(meta.get('authorId') or meta.get('managerId') or '') if isinstance(meta, dict) else ''
-        if not author or admin.actor(self.handler, admin=False)[0] == author:
+        return '' if admin.actor(self.handler, admin=False)[0] == author else author
+
+    def _others_kp(self, kid: str) -> bool:
+        """Чужое сохранённое КП без отметки «Разрешить правку» не перезаписывается (просмотр администратором или правом
+        «КП других менеджеров» не меняет КП случайно). True — отказ 409 уже отправлен."""
+        if self.handler.headers.get(self.EDIT_OTHER) == '1' or not self._foreign_author(kid):
             return False
         self.text(
             409,
             'КП другого менеджера открыто только для просмотра — нажмите «Разрешить правку», чтобы сохранить изменения',
         )
         return True
+
+    def _note_others_edit(self, kid: str) -> None:
+        """Правка чужого КП по «Разрешить правку» — в журнал действий (кто, чьё КП)."""
+        author = self._foreign_author(kid) if self.handler.headers.get(self.EDIT_OTHER) == '1' else ''
+        if author:
+            admin.log(self.handler, store(), 'edit_others_kp', 'kp', kid, {'author': author}, None)
 
     @route(r'/api/kp/([^/]+)/rev', 'GET')  # кто и когда последним сохранил КП — проверка перед сохранением
     def rev(self, kid: str) -> None:

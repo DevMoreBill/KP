@@ -7,6 +7,7 @@ import { Fmt } from '../../core/str.js';
 import { esc, today } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
 import { KpTransferView } from './kp-transfer.js';
+import { Managers } from './managers.js';
 
 /** «Иванов И. П.» из полного ФИО. */
 export class ShortName {
@@ -140,13 +141,20 @@ export class JournalRow {
    */
   static html(row, econ) {
     const author = row.manager
-      ? `<span class="jr-a" title="${esc([row.manager, row.managerPost].filter(Boolean).join(', '))}">${esc(ShortName.of(row.manager))}</span>`
+      ? `<span class="jr-a" title="${esc([row.manager, row.managerPost].filter(Boolean).join(', '))}">${this._viewOnly(row)}${esc(ShortName.of(row.manager))}</span>`
       : '<span class="muted">—</span>';
     return `<div class="jr${row.tender && row.tender.number ? ' tnd' : ''}">${this._number(row)}${this._client(row)}
       <div class="jr-w">${author}</div>${this._deal(row)}${this._until(row)}
       <div class="jr-e"><b>${econ.sum}</b><span class="muted">${econ.line}</span></div>
       <div class="jr-st">${KpTrack.chip(row)}</div>
       <div class="acts"><button class="btn" type="button" data-jo="${esc(row.id)}" title="Открыть КП для просмотра и правки">Открыть</button>${this.menu(row)}</div></div>`;
+  }
+
+  // КП коллеги откроется только для просмотра (KpGuard) — видно ещё в журнале
+  static _viewOnly(row) {
+    const author = row.authorId || row.managerId || '';
+    if (!FEAT.on('kpViewLock') || !author || author === Managers.meId()) return '';
+    return '<span class="jr-vo" title="КП другого менеджера — откроется только для просмотра" aria-label="только просмотр">👁 </span>';
   }
 
   static _number(row) {
