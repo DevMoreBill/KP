@@ -12,9 +12,11 @@ import time
 import urllib.parse
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from enum import Enum
 from typing import Any
 
 import auth_users
+from catalog_quality import CardRules, DupFinder
 from config import BadRequest
 from data_file import Load
 from defaults import SrvVal
@@ -740,6 +742,40 @@ def _set_moderation(store, enabled, author: str) -> None:
     store.kv_set('settings', settings)
 
 
+class CardSource(Enum):
+    """Откуда сохранение карточки: правка человеком или загрузка из файла (заголовок X-KP-Edit: import)."""
+
+    HAND = 'hand'
+    FILE = 'import'
+
+    @classmethod
+    def of(cls, header: str | None) -> 'CardSource':
+        return cls.FILE if header == cls.FILE.value else cls.HAND
+
+
+class CardQuality:
+    """Проверка карточки при сохранении человеком: обязательное у основного оборудования и возможные дубли (функция «catQuality»)."""
+
+    def __init__(self, store, before: dict | None, after: dict, cid: str, source: CardSource = CardSource.HAND) -> None:
+        from features import FeatureAccess
+
+        self.store, self.before, self.after, self.cid = store, before, after, cid
+        # загрузка каталога из файла (JSON, Excel) — как фиды: не блокируется, неполное видно пометкой в каталоге
+        self.enabled = source is not CardSource.FILE and FeatureAccess(store).is_on('catQuality')
+
+    def gaps(self) -> list[str]:
+        from equipment_types import load_types
+
+        return CardRules(load_types()['types']).check(self.before, self.after)
+
+    def dups(self) -> list[dict]:
+        from equipment_types import load_types
+
+        if not CardRules(load_types()['types']).is_main(self.after) or not DupFinder.changed(self.before, self.after):
+            return []
+        return DupFinder(self.store).find(self.after, self.cid)
+
+
 def _put_product(handler, store, cid, admin) -> None:
     """Единая точка сохранения товара: модерация (черновик) или сразу в каталог; всё — в журнал."""
     after = _body_obj(handler)
@@ -767,16 +803,23 @@ def _put_product(handler, store, cid, admin) -> None:
             'text/plain; charset=utf-8',
             f'Нет права {"редактировать" if before is not None else "добавлять"} оборудование в каталоге — обратитесь к администратору',
         )
+    quality = CardQuality(store, before, after, cid, CardSource.of(handler.headers.get('X-KP-Edit')))
+    if not auto and quality.enabled and (gaps := quality.gaps()):
+        log(handler, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
+        return handler.send(400, 'text/plain; charset=utf-8', CardRules.text(gaps))
     # модерация не касается администратора и менеджера с правом «Правки без модерации»
     mod = moderation(store).get('enabled') and not admin and not (login_on(handler) and perm(handler, 'catSelfMod'))
     if mod and before is not None and handler.headers.get('X-KP-Edit') == 'auto':
         mod = not auto  # сохранение КП обновило только цены и историю — без модерации
-    if mod:
+    dups = quality.dups() if not (admin or auto) and quality.enabled else []
+    if mod or dups:  # возможный дубль — на модерацию и при выключенной модерации, и с правом «без модерации»
         uid, name, _ = actor(handler, False)
         pid = store.pending_add(cid, 'update' if before else 'create', before_text, text, uid, name)
         before_spec, after_spec = diff(before, after, AUTO_KEYS)
+        if dups:
+            after_spec = dict(after_spec or {}, _dups=[dup['name'] for dup in dups])
         log(handler, store, 'submit_edit', 'product', cid, before_spec, after_spec, admin=False)
-        return handler.send_json({'ok': True, 'pending': True, 'pendingId': pid})
+        return handler.send_json({'ok': True, 'pending': True, 'pendingId': pid, 'dups': dups})
     try:
         rev = store.catalog_put(cid, text, actor(handler, admin)[1], handler.base_rev())
     except Conflict as exc:
@@ -859,7 +902,7 @@ def guard(handler, store, method, path) -> Any:
     if (
         match
         and method == 'PUT'
-        and match.group(1) in ('sources', 'pending', 'trash', 'export', 'moderation', 'search', 'sync')
+        and match.group(1) in ('sources', 'pending', 'trash', 'export', 'moderation', 'search', 'sync', 'check')
     ):  # служебные адреса — не карточки
         handler.send(400, 'text/plain; charset=utf-8', 'Недопустимый идентификатор')
         return True

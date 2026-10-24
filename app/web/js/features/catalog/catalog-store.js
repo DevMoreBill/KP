@@ -70,6 +70,15 @@ export class CatalogStore {
     return await this._put(doc, { 'X-KP-Edit': 'auto' });
   }
 
+  /**
+   * Загрузка каталога из файла (JSON, Excel): как фиды — без обязательных полей и проверки дублей.
+   * @param {object} doc
+   * @returns {Promise<object>}
+   */
+  static async putImport(doc) {
+    return await this._put(doc, { 'X-KP-Edit': 'import' });
+  }
+
   static async _put(doc, edit) {
     const saved = await this._images(doc);
     const headers = {

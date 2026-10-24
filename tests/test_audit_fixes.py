@@ -37,7 +37,7 @@ class ServerTest(unittest.TestCase):
         for raw in ('{"name":"x","attrs":{"noise":NaN}}', '{"sum":Infinity}', '{"a":-Infinity}'):
             st, b, _ = self.req('PUT', '/api/catalog/tst-nan', raw, raw=True)
             self.assertEqual(st, 400, (raw, b))
-        st, b, _ = self.req('PUT', '/api/catalog/tst-nan', '{"name":"NaN Infinity в тексте"}', raw=True)
+        st, b, _ = self.req('PUT', '/api/catalog/tst-nan', '{"name":"NaN Infinity в тексте","kind":"option"}', raw=True)
         self.assertEqual(st, 200, 'слова NaN и Infinity в строке — можно')
 
     def test_02_delivery_cargo_limits(self):

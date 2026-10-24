@@ -20,6 +20,8 @@ import { RecentModels } from '../kp/quick-search.js';
 import { Makers } from './makers.js';
 import { CatalogEditor } from './catalog-edit.js';
 import { ItemEditor } from './item-editor.js';
+import { CardRules } from './card-rules.js';
+import { AdminSession } from '../../core/net.js';
 
 /** Позиция КП из карточки каталога: всё содержимое карточки, цена — в валюте КП, без следов прежнего оборудования. */
 export class CatalogFill {
@@ -335,9 +337,28 @@ export class CatalogSync {
       Toast.show('Карточка каталога не загрузилась — повторите, когда будет связь с сервером');
       return;
     }
-    await this._put(item, this._saveDoc(item, cur));
+    CardRules.fill(item);
+    const doc = this._saveDoc(item, cur);
+    if (!(await this._quality(item, doc, index))) return;
+    await this._put(item, doc);
     FormView.render();
     KpState.persist();
+  }
+
+  // обязательное у основного оборудования и похожие позиции — до записи (сервер проверит то же самое)
+  static async _quality(item, doc, index) {
+    let found;
+    try {
+      found = await CardRules.check(doc, doc.id);
+    } catch {
+      return true;
+    }
+    if (found.missing.length) {
+      if (ItemEditor.current) CatalogEditor.askMissing(index, found.missing);
+      else Toast.show(`${CardRules.text(found.missing)} — «Изменить» у позиции`);
+      return false;
+    }
+    return !found.dups.length || CardRules.askDups(found.dups, { admin: AdminSession.on });
   }
 
   static async _put(item, doc) {

@@ -614,6 +614,26 @@ class CatalogController(Controller):
             {'moderation': bool(admin.moderation(store()).get('enabled')), 'ids': store().pending_ids()}
         )
 
+    # перед сохранением карточки: что не заполнено у основного оборудования и похожие позиции (сервер проверит то же)
+    @route(r'/api/catalog/check', 'POST')
+    def card_check(self) -> Any:
+        from admin import CardQuality
+
+        body = self.json_body()
+        doc = body.get('doc')
+        if not isinstance(doc, dict) or not isinstance(doc.get('attrs', {}), dict):
+            return self.text(400, 'Нужна карточка оборудования')
+        cid = safe_id(str(body.get('id') or ''))
+        before = json.loads(raw) if (raw := store().catalog_get(cid)) else None
+        quality = CardQuality(store(), before, doc, cid)
+        return self.send_json(
+            {
+                'on': quality.enabled,
+                'missing': quality.gaps() if quality.enabled else [],
+                'dups': quality.dups() if quality.enabled else [],
+            }
+        )
+
     @route(r'/api/catalog/([^/]+)', 'GET')  # запись позиции — PUT в admin.guard (модерация, права)
     def item(self, cid) -> Any:
         doc = store().catalog_get_rev(safe_id(cid))

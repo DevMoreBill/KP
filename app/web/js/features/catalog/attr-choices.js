@@ -4,6 +4,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { esc } from '../../core/util.js';
 import { DimInput } from '../../core/dim-input.js';
 import { Makers } from './makers.js';
+import { CardRules } from './card-rules.js';
 /**
  * Варианты выбора параметра позиции: значение не из списка категории («2/1» в ступенях Remeza, «Прямой» в приводе) остаётся
  * в списке — иначе окно показало бы «—» и при сохранении карточки стёрло бы его.
@@ -51,7 +52,8 @@ export class DimRow {
 /** Категория и параметры позиции по группам категории (основные, двигатель, комплектация, применимость…). */
 export class AttrsBlock {
   static _label(field) {
-    return `${esc(field.label)}${field.unit ? `, ${esc(field.unit)}` : ''}`;
+    const need = field.need ? ' <b class="req" title="Обязательно для основного оборудования">*</b>' : '';
+    return `${esc(field.label)}${field.unit ? `, ${esc(field.unit)}` : ''}${need}`;
   }
 
   static _input({ path, attrs, auto }, field) {
@@ -73,8 +75,7 @@ export class AttrsBlock {
   // текстовое поле; list — подсказки (вписать или выбрать), need — обязательно для новой позиции каталога
   static _text({ path, value, hint }, field) {
     const list = field.list ? ` list="${field.list}"` : '';
-    const need = field.need ? ' <b class="req" title="Обязательно для новой позиции каталога">*</b>' : '';
-    return `<label class="f"><span>${this._label(field)}${need}</span><input type="text" ${field.num ? 'inputmode="decimal"' : ''} data-p="${path}.${field.key}" value="${esc(value)}" placeholder="${esc(hint || field.ph || '')}" autocomplete="off"${list}></label>`;
+    return `<label class="f"><span>${this._label(field)}</span><input type="text" ${field.num ? 'inputmode="decimal"' : ''} data-p="${path}.${field.key}" value="${esc(value)}" placeholder="${esc(hint || field.ph || '')}" autocomplete="off"${list}></label>`;
   }
 
   static _groups(type) {
@@ -98,7 +99,8 @@ export class AttrsBlock {
     const auto = Attrs.of(item);
     const cat = auto.cat;
     const type = EquipTypes.byId(cat);
-    const input = field => this._input({ path, attrs: item.attrs || {}, auto }, field);
+    const need = field => field.need || (CardRules.isMain(item) && CardRules.required(field.key, cat));
+    const input = field => this._input({ path, attrs: item.attrs || {}, auto }, { ...field, need: need(field) });
     const groups = [...this._groups(type).entries()]
       .map(
         ([group, fields]) => `<p class="agrp">${esc(group)}</p><div class="attrs">${fields.map(input).join('')}</div>`,
@@ -106,7 +108,7 @@ export class AttrsBlock {
       .join('');
     return `<div><div class="sub">Категория и параметры${UiKit.tip(`Набор параметров зависит от категории «${esc(type.name)}». Они работают в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик — серым показано, что будет подставлено.`)} <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
       <button class="btn ghost" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать таблицу характеристик</button></div>
-   <div class="attrs"><label class="f"><span>Категория</span><select data-p="${path}.cat" data-retype="${i}">${EquipTypes.optionsHtml(cat)}</select></label>
+   <div class="attrs"><label class="f"><span>${this._label({ label: 'Категория', need: need({ key: 'cat' }) })}</span><select data-p="${path}.cat" data-retype="${i}">${EquipTypes.optionsHtml(cat)}</select></label>
    ${input({ key: Makers.FIELD, label: 'Производитель', list: Makers.LIST_ID, need: true, ph: 'Выберите из списка или впишите' })}${input({ key: 'series', label: 'Серия' })}${input({ key: 'model', label: 'Модель' })}</div>
    ${groups}${Makers.datalist()}</div>`;
   }

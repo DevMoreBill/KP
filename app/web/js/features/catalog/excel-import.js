@@ -347,7 +347,7 @@ export class XlsImport {
       }
       const card = this._card(type, values, seen);
       await this._keep(card);
-      await CatalogStore.put(card);
+      await CatalogStore.putImport(card);
       count++;
     }
     await Catalog.refresh();

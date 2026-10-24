@@ -183,6 +183,7 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .catwin.tiny .cw-lbl{display:none}
 .catwin.tiny .cw-h{gap:4px;padding:10px 8px}
 .pv-pf{margin:-4px 0 10px;font-size:12px}
+.pv-gap{margin:-4px 0 10px;padding:6px 10px;font-size:12.5px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px}
 .mig{margin:4px 0 12px;padding-left:20px;font-size:14px;line-height:1.55}
 
 /* категории каталога: шире, с подсказкой и кнопкой настройки */

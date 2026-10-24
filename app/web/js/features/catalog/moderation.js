@@ -99,12 +99,19 @@ export class ModerationView {
     return `<div class="mv-t"><div class="mv-hd"><span class="mv-c">${pend ? `<label class="mv-all"><input type="checkbox" data-mall checked aria-label="Отметить все поля"></label>` : ''}Поле</span><span>Было</span><span>Стало</span></div>${rows || '<p class="muted">Отличий нет.</p>'}</div>`;
   }
 
+  // возможные дубли: позиция похожа на имеющиеся в каталоге (app/catalog_quality.py) — поэтому на модерации
+  static _dups(dups) {
+    if (!dups || !dups.length) return '';
+    const list = dups.map(dup => `<li>${esc(dup.name)} <span class="muted">— ${esc(dup.why)}</span></li>`).join('');
+    return `<div class="msg warn mv-dups"><b>Похожие позиции уже есть в каталоге</b> — проверьте, не дубль ли это:<ul>${list}</ul></div>`;
+  }
+
   static _html(edit, ctx) {
     const { isNew, cat } = ctx;
     const gone = edit.current || isNew ? '' : ' · <span class="bad-t">товара сейчас нет в каталоге</span>';
     return `<div class="mv-h"><h3>${isNew ? 'Новый товар на модерации' : 'Правка товара'}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted mv-who"><b>${esc((edit.afterDoc || {}).name || edit.productId)}</b> · ${esc(EquipTypes.byId(cat).name)} · ${esc(edit.userName || '—')} · ${esc(Fmt.dateTime(edit.created))}${gone}</p>
-      ${edit.stale ? '<p class="msg warn mv-stale">Товар изменили после отправки правки. Принятые поля лягут на текущую карточку, остальные её поля не изменятся.</p>' : ''}
+      ${this._dups(edit.dups)}${edit.stale ? '<p class="msg warn mv-stale">Товар изменили после отправки правки. Принятые поля лягут на текущую карточку, остальные её поля не изменятся.</p>' : ''}
       ${this._body(edit, ctx)}
       <details class="mv-adv"><summary>Расширенное: код правки (JSON)</summary>${this._code(edit.diff || [])}</details>
       ${this._foot(edit, ctx)}`;

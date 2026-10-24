@@ -360,7 +360,7 @@ export class CatalogActions {
       if (!(card && card.id && card.name)) continue;
       win.setBusy(`Загружаю каталог: ${++count} из ${items.length}`);
       this._keep(card, known.get(card.id));
-      if ((await CatalogStore.put(card))._pending) pend++;
+      if ((await CatalogStore.putImport(card))._pending) pend++;
     }
     return { count, pend };
   }

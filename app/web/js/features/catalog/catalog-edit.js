@@ -10,6 +10,7 @@ import { Kit } from '../kit/kit.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Makers } from './makers.js';
+import { CardRules } from './card-rules.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.
@@ -231,8 +232,43 @@ export class CatalogEditor {
       this.askMaker(0);
       return;
     }
+    if (!(await this._quality(item))) return;
     const doc = await this._put(item);
     if (doc) await this._finish(doc);
+  }
+
+  // обязательное у основного оборудования и похожие позиции (сервер проверит то же самое)
+  static async _quality(item) {
+    CardRules.fill(item);
+    const base = CatalogEditor.session.base;
+    let found;
+    try {
+      found = await CardRules.check(this.toDoc(item, base), base.id);
+    } catch {
+      return true; // нет ответа — решит сервер при сохранении
+    }
+    if (found.missing.length) {
+      this.askMissing(0, found.missing);
+      return false;
+    }
+    return !found.dups.length || CardRules.askDups(found.dups, { admin: AdminSession.on });
+  }
+
+  /**
+   * Не заполнено обязательное: открыть нужную вкладку (фото — «Описание и фото»), сказать, чего не хватает.
+   * @param {number} index позиция в окне
+   * @param {string[]} missing
+   */
+  static askMissing(index, missing) {
+    const onlyPhoto = missing.length === 1 && missing[0] === CardRules.PHOTO;
+    ItemEditor.current.tab = onlyPhoto ? 'desc' : 'main';
+    ItemEditor.render();
+    const attrs = S.items[index].attrs || {};
+    const empty = CardRules.keys(attrs.cat).filter(([key]) => attrs[key] == null || String(attrs[key]).trim() === '');
+    for (const [key] of empty) $(`#edlg [data-p="items.${index}.attrs.${key}"]`)?.classList.add('bad');
+    if (empty.length)
+      setTimeout(() => $(`#edlg [data-p="items.${index}.attrs.${empty[0][0]}"]`)?.focus(), this.FOCUS_DELAY);
+    Toast.show(CardRules.text(missing));
   }
 
   /**

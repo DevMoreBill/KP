@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape as xml_escape
 from xml.sax.saxutils import quoteattr
 
 from admin import AUTO_KEYS, LABELS, AdminSessions, _loads, actor, diff, is_admin, log, session
+from catalog_quality import DupFinder
 
 
 def power(handler, key, method='GET') -> bool:
@@ -75,6 +76,7 @@ class ModerationDesk:
         pend['diff'] = self.fields(before, after)
         pend['current'] = self.store.catalog_get(pend['productId']) is not None
         pend['beforeDoc'], pend['afterDoc'] = before, after
+        pend['dups'] = DupFinder(self.store).find(after, pend['productId']) if DupFinder.changed(before, after) else []
         pend['stale'] = pend['status'] == 'pending' and (self.store.catalog_get(pend['productId']) or None) != (
             pend['before'] or None
         )

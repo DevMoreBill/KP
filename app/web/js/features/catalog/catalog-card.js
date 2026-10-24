@@ -1,3 +1,4 @@
+import { CardRules } from './card-rules.js';
 import { FEAT } from '../../core/features.js';
 import { CatalogAnalogs } from './catalog-analogs.js';
 import { PriceAge } from './price-age.js';
@@ -126,7 +127,7 @@ export class CatalogCard {
         ? `<label class="pv-cat"><span>Категория</span><select data-pvcat>${EquipTypes.optionsHtml(attrs.cat)}</select></label>`
         : '';
     return `<div class="pv-photo">${photo}</div>
-      ${from}
+      ${from}${CardRules.note(card)}
       <div class="pv-ttl"><h4>${esc(card.name || 'Без названия')}</h4>${card.logo ? `<img class="pv-logo" src="${esc(card.logo.src)}" alt="">` : ''}</div>${card.spec ? `<p class="muted pv-spec">${esc(card.spec)}</p>` : ''}
       ${cat}`;
   }
