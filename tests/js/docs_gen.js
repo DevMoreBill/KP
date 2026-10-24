@@ -107,9 +107,32 @@ check('проверка цен перед сохранением', ()=>{
   assert.ok(found.some(t=>t.includes('«Дешёвый» — цена ниже закупки')), found);
   assert.ok(!found.some(t=>t.includes('Нормальный')));
   assert.ok(found.some(t=>t.startsWith('Маржа 8 %')), found);
-  assert.ok(found.some(t=>t.startsWith('Курс ЦБ старше суток')), found);
+  assert.ok(found.some(t=>t.startsWith('Курс ЦБ устарел')), found);
   pricing.cur='RUB'; DealState.summary=()=>null; PriceHist.doc=()=>null;
   assert.deepStrictEqual(PriceGuard.problems(), []);
+  // цена после скидки позиции ниже закупки; закупка без НДС — с НДС поставщика
+  PriceHist.doc=()=>({ cost:90000, costCur:'RUB' });
+  KpState.replace(Object.assign(KpState.fresh(), { items:[{ name:'Скидка', qty:1, price:100000, disc:{ type:'pct', v:15 } }] }));
+  const discounted=PriceGuard.problems();
+  KpState.replace(Object.assign(KpState.fresh(), { items:[{ name:'Без НДС', qty:1, price:100000 }] }));
+  state.S.pricing.costNoVat=true;
+  assert.ok(PriceGuard.problems().some(t=>t.includes('«Без НДС» — цена ниже закупки')), 'закупка 90 000 без НДС = 109 800');
+  state.S.pricing.costNoVat=false;
+  assert.deepStrictEqual(PriceGuard.problems(), [], 'с НДС 90 000 < 100 000');
+  assert.ok(discounted.some(t=>t.includes('«Скидка»')), JSON.stringify(discounted));
+  // экономику не открывали — маржа по закупке позиций
+  KpState.replace(Object.assign(KpState.fresh(), { items:[{ name:'Узкая', qty:1, price:100000, cost:95000 }] }));
+  PriceHist.doc=()=>null;
+  assert.ok(PriceGuard.problems().some(t=>t.startsWith('Маржа 5 %')), PriceGuard.problems());
+  // понедельник утром: курс субботы ещё действует
+  const realNow=Date.now;
+  Date.now=()=>new Date('2026-10-26T09:00:00').getTime();
+  KpState.replace(Object.assign(KpState.fresh(), { items:[] }));
+  Object.assign(state.S.pricing, { cur:'USD', rates:{ USD:'90' }, rateDate:'2026-10-24' });
+  assert.deepStrictEqual(PriceGuard.problems(), [], 'курс от субботы в понедельник — не устарел');
+  state.S.pricing.rateDate='2026-10-22';
+  assert.ok(PriceGuard.problems().length, 'курс четверга в понедельник — устарел');
+  Date.now=realNow;
 });
 
 (async ()=>{

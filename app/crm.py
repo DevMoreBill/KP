@@ -848,18 +848,22 @@ class TaskBook:
 
     CALLS_SHOWN = 8
 
-    def client_calls(self, deal: dict) -> list[dict]:
-        """Сделанные звонки по всем сделкам этого клиента (по ИНН, иначе по названию) — последние сверху."""
+    def client_calls(self, deal: dict, managers: list[str] | None = None) -> list[dict]:
+        """Сделанные звонки по всем сделкам этого клиента (по ИНН, иначе по названию) — последние сверху; managers — только
+        звонки этих менеджеров (кому не открыты КП коллег), None — всех."""
         inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
         client = str(deal.get('client') or '').strip()
         if not inn and not client:
             return []
-        where, args = ('d.inn = ?', (inn,)) if inn else ('d.client = ?', (client,))
+        where, args = ('d.inn = ?', [inn]) if inn else ('d.client = ?', [client])
+        if managers is not None:
+            where += ' AND t.manager_id IN ({})'.format(','.join('?' * len(managers))) if managers else ' AND 0'
+            args += managers
         cols = ', '.join(f't.{col.strip()}' for col in self.COLS.split(','))
         rows = self.store.all(
             f"SELECT {cols} FROM crm_tasks t JOIN deals d ON d.id = t.deal_id WHERE t.kind = 'call' AND t.state = 'done' "
             f'AND {where} ORDER BY t.done_at DESC LIMIT {self.CALLS_SHOWN}',
-            args,
+            tuple(args),
         )
         return [self._out(row) for row in rows]
 

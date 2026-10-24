@@ -6,6 +6,7 @@ import { FEAT } from '../../core/features.js';
 import { Modal } from '../../core/modal.js';
 import { esc, isoDay } from '../../core/util.js';
 import { S } from '../../core/state.js';
+import { WorkCalendar } from '../../ui/date-picker.js';
 import { KpEconomics } from './price-calc.js';
 import { DefRegistry } from '../../core/defaults.js';
 
@@ -13,6 +14,7 @@ import { DefRegistry } from '../../core/defaults.js';
 export class PriceGuard {
   static RATE_DAYS = 1;
   static DAY_MS = 86400000;
+  static LOOK_BACK = 14; // самые длинные праздники — январские
 
   /**
    * Что не так с ценами текущего КП.
@@ -67,17 +69,28 @@ export class PriceGuard {
       .map(item => `«${item.name || 'позиция'}» — цена ниже закупки`);
   }
 
+  // экономику не открывали — маржа по закупке позиций, как в «Цене КП»
   static _margin() {
     const sum = DealState.summary();
-    const margin = sum && (sum.confirmed ? sum.margin : sum.marginLo);
+    const margin = sum ? this._dealMargin(sum) : KpEconomics.of().margin;
     if (margin == null || !Number.isFinite(margin)) return [];
     const red = DealValues.num('deal.marginRed', DealValues.MARGIN_RED);
     return margin < red ? [`Маржа ${Math.round(margin)} % — ниже порога ${red} %`] : [];
   }
 
+  static _dealMargin(sum) {
+    return sum.confirmed ? sum.margin : sum.marginLo;
+  }
+
+  // курс ЦБ устанавливается на рабочий день: в понедельник утром курс субботы ещё действует
   static _rate() {
     if (Currency.current() === 'RUB' || !S.pricing.rateDate) return [];
-    const border = isoDay(new Date(Date.now() - this.RATE_DAYS * this.DAY_MS));
-    return S.pricing.rateDate < border ? ['Курс ЦБ старше суток — обновите курс в «Ценах и валюте»'] : [];
+    return S.pricing.rateDate < this._lastWorkDay() ? ['Курс ЦБ устарел — обновите курс в «Ценах и валюте»'] : [];
+  }
+
+  static _lastWorkDay() {
+    const day = new Date(Date.now() - this.RATE_DAYS * this.DAY_MS);
+    for (let step = 0; step < this.LOOK_BACK && WorkCalendar.day(day).off; step++) day.setDate(day.getDate() - 1);
+    return isoDay(day);
   }
 }

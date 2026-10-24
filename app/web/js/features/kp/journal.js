@@ -25,6 +25,7 @@ import { DefRegistry } from '../../core/defaults.js';
 import { $, esc, today } from '../../core/util.js';
 import { KpTabs } from './kp-tabs.js';
 import { DealCard } from '../crm/deal-card.js';
+import { KpTransferView } from './kp-transfer.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -313,6 +314,7 @@ export class Journal {
     ],
     ['[data-jkf]', (ctx, button) => Journal._files(ctx, button)],
     ['[data-jdg]', (ctx, button) => DocsGen.open(button.dataset.jdg)],
+    ['[data-jt]', (ctx, button) => KpTransferView.open(button.dataset.jt, () => Journal._load(ctx))],
     [
       '[data-jr]',
       (ctx, button) => {

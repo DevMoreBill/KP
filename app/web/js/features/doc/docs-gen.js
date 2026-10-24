@@ -1,3 +1,4 @@
+import { Templates } from './templates.js';
 import { DocData } from './doc-data.js';
 import { DocxWriter } from './docx-writer.js';
 import { DocxFill } from './docx-fill.js';
@@ -82,6 +83,7 @@ export class DocsGen {
     const seller = ctx.own.items.find(item => item.id === modal.$('#dgSeller').value) || ctx.own.items[0];
     const doc = { number: modal.$('#dgNum').value.trim() || ctx.state.number || '', date: today() };
     const data = new DocData(ctx.state, seller);
+    data.currencyNote = await this._currencyNote(ctx.state);
     button.disabled = true;
     try {
       await this._make(button.dataset.dg, data, doc, ctx.own.templates);
@@ -89,6 +91,20 @@ export class DocsGen {
       Toast.show(`Документ не собран: ${error.message || error}`);
     }
     button.disabled = false;
+  }
+
+  // примечание о валюте — тем же текстом, что в КП по его шаблону (выключено в шаблоне — строки нет)
+  static async _currencyNote(state) {
+    try {
+      const pack = await Templates.pack(state.template || Templates.MAIN);
+      const { blocks = {}, texts = {} } = pack.settings || {};
+      const cur = KPGen.CURS[(state.pricing && state.pricing.cur) || 'RUB'];
+      return blocks.currencyNote && texts.currencyNote && cur
+        ? KPGen.fill(texts.currencyNote, { curName: cur.name })
+        : '';
+    } catch {
+      return '';
+    }
   }
 
   static async _make(kind, data, doc, templates) {
@@ -130,7 +146,7 @@ export class DocsGen {
     writer.para(basis, { after: this.GAP });
     this._goods(writer, data);
     this._sum(writer, data);
-    if (data.cur() !== 'RUB') writer.para('Оплата в рублях по курсу ЦБ РФ на день оплаты.');
+    if (data.cur() !== 'RUB' && data.currencyNote) writer.para(data.currencyNote);
     const accountant = own.accountant || own.director || '';
     return writer.table(
       this.SIGN_W,

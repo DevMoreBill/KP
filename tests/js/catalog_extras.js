@@ -46,19 +46,29 @@ check('аналоги других производителей', ()=>{
   assert.deepStrictEqual(CatalogAnalogs.of({ id:'z', attrs:{ cat:'comp', power:'37' } }), [], 'без производителя — нет');
 });
 
+check('аналоги: чистота газа — разницей, не долей', ()=>{
+  const byId=EquipTypes.byId;
+  EquipTypes.byId=()=>({ id:'gen', fields:[{ key:'flow', kpi:true }, { key:'purity', kpi:true, unit:'%' }] });
+  const card=(id, maker, flow, purity)=>({ id, name:id, price:1, attrs:{ cat:'gen', maker, flow:String(flow), purity:String(purity) } });
+  const base=card('base', 'Atlas', '7,5', '99,5');
+  Catalog.cache=[base, card('near', 'Dali', '7,8', '99,9'), card('low', 'Kraft', 7.5, 95), card('big', 'Fubag', '1 000', 99.5)];
+  assert.deepStrictEqual(CatalogAnalogs.of(base).map(c=>c.id), ['near'], '95 % к 99,5 % — не аналог; «1 000» — не 1');
+  EquipTypes.byId=byId;
+});
+
 check('срок поставки в условия', async ()=>{
   const { KpState }=state;
   KpState.replace(Object.assign(KpState.fresh(), { items:[{ name:'А' }, { name:'Б' }], conditions:[{ label:'Срок поставки', value:'' }] }));
   Suppliers.sups=[{ name:'Поставщик', makers:['Dali'], prod:20, ship:10 }];
   const own={ attrs:{ maker:'Atlas' }, lead:'под заказ 6–8 недель' };
   assert.strictEqual(KpLead.of(own), 'под заказ 6–8 недель');
-  assert.strictEqual(KpLead.of({ attrs:{ maker:'Dali' } }), 'под заказ, 30 дн.', 'по поставщику: изготовление + доставка');
+  assert.strictEqual(KpLead.of({ attrs:{ maker:'Dali' } }), 'под заказ, 30 рабочих дней', 'по поставщику: изготовление + доставка');
   assert.strictEqual(KpLead.of({ ...own, stock:{ qty:1 } }), '', 'в наличии — без срока');
   const S=()=>state.S;
   await KpLead.take(S().items[0], own);
   assert.strictEqual(S().conditions[0].value, 'под заказ 6–8 недель');
   await KpLead.take(S().items[1], { attrs:{ maker:'Dali' } });
-  assert.strictEqual(S().conditions[0].value, 'А — под заказ 6–8 недель; Б — под заказ, 30 дн.');
+  assert.strictEqual(S().conditions[0].value, 'А — под заказ 6–8 недель; Б — под заказ, 30 рабочих дней');
   S().conditions[0].value='30 дней';
   await KpLead.take(S().items[1], own);
   assert.strictEqual(S().conditions[0].value, '30 дней', 'вписанное вручную не меняется');

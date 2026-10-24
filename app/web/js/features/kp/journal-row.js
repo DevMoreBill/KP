@@ -6,6 +6,7 @@ import { Srv } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
 import { esc, today } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
+import { KpTransferView } from './kp-transfer.js';
 
 /** «Иванов И. П.» из полного ФИО. */
 export class ShortName {
@@ -229,6 +230,7 @@ export class JournalRow {
         : '',
       row.locked || !FEAT.on('deal') ? '' : item(`data-je="${id}"`, 'Экономика сделки'),
       FEAT.on('versions') ? item(`data-jv="${id}" data-jn="${esc(row.number)}"`, 'Прежние версии КП') : '',
+      KpTransferView.item(row.id),
     ];
     return `<details class="jr-more" data-id="${id}"><summary class="btn" title="Другие действия с КП" aria-label="Другие действия с КП № ${esc(row.number)}">⋯</summary><div class="menu-l">${items.join('')}</div></details>`;
   }

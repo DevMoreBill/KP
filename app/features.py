@@ -63,6 +63,7 @@ FEATURES = {
     'reqParse': (True, 'Клиент из карточки предприятия'),
     'offlineSave': (True, 'Сохранить КП, когда вернётся связь'),
     'phoneToday': (True, '«Сегодня» для телефона'),
+    'kpTransfer': (True, 'Передать КП другому менеджеру'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -120,6 +121,7 @@ ROUTES = [
     ('POST', re.compile(r'^/api/crm/deal/d\d{1,9}/remind$'), 'receivables'),
     (None, re.compile(r'^/api/onec(/.*)?$'), 'onec'),
     ('GET', re.compile(r'^/api/crm/regs/audit$'), 'regAudit'),
+    (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/transfer$'), 'kpTransfer'),
     (None, re.compile(r'^/api/companycard/.*$'), 'reqParse'),
     (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]

@@ -13,6 +13,7 @@ import { esc } from '../../core/util.js';
  */
 export class CatalogAnalogs {
   static PCT = 15;
+  static POINTS = 0.5;
   static KEYS = 3;
   static SHOWN = 8;
   static PERCENT = 100;
@@ -30,7 +31,21 @@ export class CatalogAnalogs {
           req: true,
           min: 1,
           max: 100,
-          hint: 'Карточка позиции → «Аналоги»: позиции той же категории других производителей, у которых главные параметры (мощность, давление, производительность…) отличаются не больше чем на это число. Пример: 15 — к компрессору 37 кВт подходят 31,5–42,5 кВт.',
+          hint: 'Карточка позиции → «Аналоги»: позиции той же категории других производителей, у которых главные параметры (мощность, давление, производительность…) отличаются не больше чем на это число. Пример: 15 — к компрессору 37 кВт подходят 31,45–42,55 кВт. Параметры в процентах (чистота газа) сравниваются отдельно — по следующему значению.',
+        },
+      ],
+      [
+        'cat.analogPp',
+        'catsearch',
+        'Аналоги: параметры в процентах (чистота газа) отличаются не больше',
+        'num',
+        String(CatalogAnalogs.POINTS),
+        {
+          unit: 'п. п.',
+          req: true,
+          min: 0,
+          max: 10,
+          hint: 'Чистота азота или кислорода и другие параметры в процентах сравниваются разницей, а не долей: 95 % и 99,99 % — не аналоги. Пример: 0,5 — к генератору 99,5 % подходят 99–100 %.',
         },
       ],
     ],
@@ -45,7 +60,7 @@ export class CatalogAnalogs {
     const attrs = CatalogIndex.attrs(card);
     return EquipTypes.byId(attrs.cat)
       .fields.filter(field => field.kpi)
-      .map(field => ({ key: field.key, value: Str.num(attrs[field.key]) ?? NaN }))
+      .map(field => ({ key: field.key, value: Str.num(attrs[field.key]) ?? NaN, share: field.unit === '%' }))
       .filter(row => row.value > 0)
       .slice(0, this.KEYS);
   }
@@ -60,7 +75,10 @@ export class CatalogAnalogs {
     const attrs = CatalogIndex.attrs(card);
     const maker = Str.norm(attrs.maker);
     if (!own.length || !maker) return [];
-    const limit = DefRegistry.num('cat.analogPct', this.PCT) / this.PERCENT;
+    const limit = {
+      rel: DefRegistry.num('cat.analogPct', this.PCT) / this.PERCENT,
+      pp: DefRegistry.num('cat.analogPp', this.POINTS),
+    };
     return Catalog.cache
       .filter(other => other.id !== card.id && CatalogIndex.attrs(other).cat === attrs.cat)
       .filter(other => Str.norm(CatalogIndex.attrs(other).maker) && Str.norm(CatalogIndex.attrs(other).maker) !== maker)
@@ -75,11 +93,11 @@ export class CatalogAnalogs {
   static _gap(own, other, limit) {
     const attrs = CatalogIndex.attrs(other);
     let gap = 0;
-    for (const { key, value } of own) {
+    for (const { key, value, share } of own) {
       const theirs = Str.num(attrs[key]) ?? NaN;
       if (!(theirs > 0)) return null;
-      const diff = Math.abs(theirs - value) / value;
-      if (diff > limit) return null;
+      const diff = share ? Math.abs(theirs - value) / this.PERCENT : Math.abs(theirs - value) / value;
+      if (share ? Math.abs(theirs - value) > limit.pp : diff > limit.rel) return null;
       gap = Math.max(gap, diff);
     }
     return gap;

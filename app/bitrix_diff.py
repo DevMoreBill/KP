@@ -13,7 +13,8 @@ class BitrixDiff:
     BATCH = 50
     LIMIT = 500
     KOPECKS = 100
-    LABELS = {'stage': 'стадия', 'sum': 'сумма', 'manager': 'ответственный'}
+    LABELS = {'stage': 'стадия', 'sum': 'сумма', 'currency': 'валюта', 'manager': 'ответственный'}
+    RUB = 'RUB'  # сумма сделки программы — в рублях
 
     def __init__(self, store, sync: BitrixSync | None = None) -> None:
         self.store = store
@@ -49,14 +50,17 @@ class BitrixDiff:
             part = [str(bx_id) for bx_id in ids[start : start + self.BATCH]]
             for row in self.sync.api.list(
                 'crm.deal.list',
-                {'filter': {'ID': part}, 'select': ['ID', 'STAGE_ID', 'OPPORTUNITY', 'ASSIGNED_BY_ID', 'CATEGORY_ID']},
+                {
+                    'filter': {'ID': part},
+                    'select': ['ID', 'STAGE_ID', 'OPPORTUNITY', 'CURRENCY_ID', 'ASSIGNED_BY_ID', 'CATEGORY_ID'],
+                },
                 limit=self.BATCH,
             ):
                 out[str(row.get('ID'))] = row
         return out
 
     def _compare(self, deal: dict, bx_deal: dict) -> list[dict[str, Any]]:
-        mine = {
+        mine: dict[str, Any] = {
             'stage': self.sync.bx_stage(deal, str(bx_deal.get('CATEGORY_ID') or '0')),
             'sum': round((deal.get('sum') or 0) / self.KOPECKS),
             'manager': str(self.sync.bx_user(deal.get('managerId')) or ''),
@@ -65,9 +69,14 @@ class BitrixDiff:
             bx_sum = round(float(bx_deal.get('OPPORTUNITY') or 0))
         except (TypeError, ValueError):
             bx_sum = 0
+        currency = str(bx_deal.get('CURRENCY_ID') or self.RUB)
+        mine['currency'] = self.RUB
+        if currency != self.RUB:
+            mine['sum'] = None  # рубли с другой валютой не сравниваются — расхождение показывает строка «валюта»
         theirs = {
             'stage': str(bx_deal.get('STAGE_ID') or ''),
             'sum': bx_sum,
+            'currency': currency,
             'manager': str(bx_deal.get('ASSIGNED_BY_ID') or ''),
         }
         return [

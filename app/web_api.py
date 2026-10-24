@@ -753,6 +753,30 @@ class KpController(Controller):
             return self.send_json(v)
         return self.send_json(admin.kp_out(self.handler, field, v)) if v else self.not_found()
 
+    @route(r'/api/kp/([^/]+)/transfer', ('GET', 'POST'))
+    def transfer(self, kid: str) -> Any:
+        """Передать КП другому менеджеру: GET — что изменится, POST {manager, deal: with | keep} — передать.
+        Автор, администратор и право «КП других менеджеров»."""
+        from kp_transfer import DealMove, KpTransfer
+
+        kid = safe_id(kid)
+        if not admin.kp_access(self.handler, store(), kid):
+            return self.text(403, 'Передать можно своё КП; чужое — администратору и с правом «КП других менеджеров»')
+        mover = KpTransfer(store())
+        try:
+            if self.method == 'GET':
+                return self.send_json(mover.plan(kid))
+            data = self.json_body()
+            choice = DealMove.KEEP if data.get('deal') == DealMove.KEEP.value else DealMove.WITH
+            with self.user_input():
+                result = mover.move(kid, str(data.get('manager') or '')[:64], admin.actor(self.handler)[1], choice)
+        except LookupError as exc:
+            return self.text(404, str(exc))
+        admin.log(
+            self.handler, store(), 'transfer_kp', 'kp', kid, {'manager': result['from']}, {'manager': result['manager']}
+        )
+        return self.send_json(result)
+
     @route(r'/api/kp/([^/]+)/rev', 'GET')  # кто и когда последним сохранил КП — проверка перед сохранением
     def rev(self, kid: str) -> None:
         return self.send_json(store().rev_of('kp', safe_id(kid)))
@@ -2140,7 +2164,8 @@ class CrmController(Controller):
             deal = dict(book.get(did) or deal, kps=deal['kps'], exec=deal['exec'])
             deal['clientCard'] = self._client_card(deal)
         deal['tasks'] = TaskBook(store()).list(deal=did)
-        deal['calls'] = TaskBook(store()).client_calls(deal)
+        uid, _name, everyone = self.who(self.handler)
+        deal['calls'] = TaskBook(store()).client_calls(deal, None if everyone else [uid])
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
             companies = MyCompanies(store())

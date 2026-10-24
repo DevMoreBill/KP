@@ -1,6 +1,7 @@
 import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Suppliers } from '../catalog/suppliers.js';
 import { DealConds } from '../deal/deal-conds.js';
+import { DealTerms } from '../deal/deal-terms.js';
 import { FEAT } from '../../core/features.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';
@@ -26,7 +27,7 @@ export class KpLead {
     const name = Str.norm(Suppliers.of(card));
     const sup = name && Suppliers.sups.find(row => Str.norm(row.name) === name);
     const days = sup ? (+sup.prod || 0) + (+sup.ship || 0) : 0;
-    return days > 0 ? `под заказ, ${days} дн.` : '';
+    return days > 0 ? `под заказ, ${DealTerms.daysText(days, 'work')}` : ''; // вид дней у поставщика не задан — рабочие: срок не короче обещанного
   }
 
   /**
