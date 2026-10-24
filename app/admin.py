@@ -804,7 +804,9 @@ def _put_product(handler, store, cid, admin) -> None:
             f'Нет права {"редактировать" if before is not None else "добавлять"} оборудование в каталоге — обратитесь к администратору',
         )
     quality = CardQuality(store, before, after, cid, CardSource.of(handler.headers.get('X-KP-Edit')))
-    if not auto and quality.enabled and (gaps := quality.gaps()):
+    gaps = quality.gaps() if not auto and quality.enabled else []
+    from_kp = handler.headers.get('X-KP-Edit') == 'auto'
+    if gaps and not from_kp:
         log(handler, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
         return handler.send(400, 'text/plain; charset=utf-8', CardRules.text(gaps))
     # модерация не касается администратора и менеджера с правом «Правки без модерации»
@@ -812,12 +814,13 @@ def _put_product(handler, store, cid, admin) -> None:
     if mod and before is not None and handler.headers.get('X-KP-Edit') == 'auto':
         mod = not auto  # сохранение КП обновило только цены и историю — без модерации
     dups = quality.dups() if not (admin or auto) and quality.enabled else []
-    if mod or dups:  # возможный дубль — на модерацию и при выключенной модерации, и с правом «без модерации»
+    # возможный дубль и неполная позиция из сохранённого КП — на модерацию (КП сохраняется, каталог не засоряется)
+    if mod or dups or gaps:
         uid, name, _ = actor(handler, False)
         pid = store.pending_add(cid, 'update' if before else 'create', before_text, text, uid, name)
         before_spec, after_spec = diff(before, after, AUTO_KEYS)
-        if dups:
-            after_spec = dict(after_spec or {}, _dups=[dup['name'] for dup in dups])
+        if dups or gaps:
+            after_spec = dict(after_spec or {}, _dups=[dup['name'] for dup in dups], _gaps=gaps)
         log(handler, store, 'submit_edit', 'product', cid, before_spec, after_spec, admin=False)
         return handler.send_json({'ok': True, 'pending': True, 'pendingId': pid, 'dups': dups})
     try:

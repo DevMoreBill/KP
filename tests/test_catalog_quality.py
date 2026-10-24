@@ -134,6 +134,13 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(st, 200)
         self.assertTrue(body['pending'], 'право «без модерации» не пропускает дубль')
 
+    def test_5_new_item_from_saved_kp_goes_to_moderation(self):
+        st, b, _ = self.http.req('PUT', '/api/catalog/q-kp-auto', card(photo=None, attrs={'model': 'KP-1'}),
+                                 headers=dict(self.H, **{'X-KP-Edit': 'auto'}))
+        self.assertEqual(st, 200, 'сохранение КП не ломается')
+        self.assertTrue(Http.js(b)['pending'], 'неполная позиция из КП — на модерацию, не в каталог')
+        self.assertEqual(self.http.req('GET', '/api/catalog/q-kp-auto')[0], 404)
+
     def test_4_switch_off(self):
         self.features(False)
         try:
