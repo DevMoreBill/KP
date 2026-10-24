@@ -49,9 +49,13 @@ class MirrorStructure:
 
     def _econ(self, cats: list[str]) -> None:
         """Раздел «Экономика сделки» карточки портала — его поля заполняются из экономики КП."""
+        from bitrix_econ_list import EconList
         from deal_econ import DealEcon
 
         found = DealEcon(self.store).discover(self.sync.api, cats)
+        pays = EconList(self.store).discover(self.sync.api)
+        if pays.get('list'):
+            self.sync.log.add(f'Список «{pays["list"]["name"]}»: оплаты сделок — элементами списка')
         codes = found.get('codes') or []
         self.sync.log.add(
             f'Раздел «{found["section"]}»: полей {len(codes)}'

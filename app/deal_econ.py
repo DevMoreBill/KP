@@ -331,9 +331,16 @@ class DealEcon:
     def _title(row: dict) -> str:
         return str(row.get('title') or row.get('label') or '')
 
+    def owned(self) -> set[str]:
+        """Поля сделки, которые заполняет экономика: раздел и привязка к элементам списка «Оплаты» (bitrix_econ_list)."""
+        if self.conf().get('on', True) is False:
+            return set()
+        link = (self.store.kv_get('crm.dealEconList') or {}).get('dealField')
+        return set(self.pairs()) | ({str(link)} if link else set())
+
     def mark(self) -> bool:
         """Поля раздела — в карточке сделки во всех воронках (их значения хранятся в программе и ходят в обмене)."""
-        wanted = set(self.pairs()) if self.conf().get('on', True) is not False else set()
+        wanted = self.owned()
         rows = self.fields.all()
         changed = False
         for row in rows:
@@ -510,6 +517,18 @@ class DealEcon:
         if said:
             book.autofill(did, author)  # итоги после поправки — в поля раздела и в Битрикс
         return said
+
+    def shift_part(self, did: str, key: str, delta: float, author: str) -> str:
+        """Статья key последнего КП сделки с экономикой — на delta ₽ (поправка из Битрикса). → строка «было → стало»."""
+        from crm import DealBook
+
+        kid, summary = self.latest(DealBook(self.store).kp_order(did))
+        item = EconValues.by_key().get(key)
+        if not kid or not item:
+            return ''
+        ours = EconValues.of_summary(summary).get(key, 0.0)
+        self._fix(kid, summary, item, ours + delta, author)
+        return f'{item.label.split(",")[0]}: {self._rub(ours)} → {self._rub(ours + delta)}'
 
     @staticmethod
     def _rub(value: float) -> str:

@@ -237,6 +237,64 @@ class MirrorSyncTest(unittest.TestCase):
         self.assertAlmostEqual(float(bx['UF_CRM_PROF']), case['after']['profit'], delta=0.011, msg='прибыль — обратно в Битрикс')
         self.assertEqual(bx['UF_CRM_LOGI'], '160000|RUB', 'логистика — как поменяли в Битриксе')
 
+    def test_econ_payments_list(self):
+        """Список «Оплаты» (bitrix_econ_list.py): находится по полям, элемент на каждую отмеченную оплату клиента — сумма,
+        закупка и доставка в доле оплаты, НДС; закупку поправили в элементе — поправка в КП и элемент по новой экономике."""
+        from bitrix import BitrixLinks, BitrixQueue, BitrixSync
+        from crm import DealBook
+        from crm_exec import ExecBook
+        from test_deal_econ import Cases
+        fields = {'NAME': {'FIELD_ID': 'NAME', 'NAME': 'Название', 'TYPE': 'NAME'},
+                  'PROPERTY_1': {'NAME': 'Дата поступления', 'TYPE': 'S:Date'}, 'PROPERTY_2': {'NAME': 'Сумма поступлений', 'TYPE': 'N'},
+                  'PROPERTY_3': {'NAME': 'Поставщик', 'TYPE': 'S'}, 'PROPERTY_4': {'NAME': 'Закупочная цена', 'TYPE': 'N'},
+                  'PROPERTY_5': {'NAME': 'Ст-ть доставки', 'TYPE': 'N'}, 'PROPERTY_6': {'NAME': 'Прочие расходы', 'TYPE': 'N'},
+                  'PROPERTY_7': {'NAME': 'НДС включен в закупку', 'TYPE': 'L', 'DISPLAY_VALUES_FORM': {'71': 'Да', '72': 'Нет'}},
+                  'PROPERTY_8': {'NAME': 'Ставка НДС', 'TYPE': 'L', 'DISPLAY_VALUES_FORM': {'81': '22', '82': '20', '83': 'Без НДС'}},
+                  'PROPERTY_9': {'NAME': 'Сделка', 'TYPE': 'S:ECrm', 'USER_TYPE_SETTINGS': {'DEAL': 'Y'}}}
+        self.fake.lists = [{'ID': '40', 'NAME': 'Претензия по браку', 'TYPE': 'lists', 'FIELDS': {'PROPERTY_1': {'NAME': 'Дата', 'TYPE': 'S:Date'}}, 'ELEMENTS': {}},
+                           {'ID': '41', 'NAME': 'Оплаты', 'TYPE': 'lists', 'FIELDS': fields, 'ELEMENTS': {}}]
+        self.load()
+        from bitrix_econ_list import EconList
+        view = EconList(self.st).view()
+        self.assertEqual((view['list']['name'], view['link']), ('Оплаты', 'поле «Сделка» в списке'))
+        self.assertEqual({row['key']: row['field'] for row in view['fields']}['delivery'], 'Ст-ть доставки')
+        case = Cases.rows()[0]
+        before = dict(case['before'], full=dict(case['before']['full'], sup=[{'name': 'ООО «Поставщик»', 'vatIn': True}]))
+        meta = {'id': 'k1', 'number': 'k1', 'client': 'ООО «А»', 'authorId': 'm1', 'managerId': 'm1', 'date': '2026-10-24',
+                'sum': 122000000, 'deal': before,
+                'plan': {'start': '2026-10-24', 'steps': [{'k': 'adv', 'd': 0, 't': 'Аванс 50 %', 'p': 'cust', 'a': 610000},
+                                                          {'k': 'rest', 'd': 30, 't': 'Остаток', 'p': 'cust', 'a': 610000}]}}
+        self.st.kp_set('k1', 'state', json.dumps({'number': 'k1', 'deal': {'touched': True}}, ensure_ascii=False), 'тест')
+        self.st.kp_set('k1', 'meta', json.dumps(meta, ensure_ascii=False), 'тест')
+        did = DealBook(self.st).on_kp('k1', meta, 'тест')
+        ExecBook(self.st).mark(did, 'p:adv', '2026-10-25', 'тест')
+        BitrixQueue.touch(self.st, 'deal', did)
+        BitrixSync(self.st, direct()).run_now()
+        bid = BitrixLinks(self.st).get('deal', did)['bx']
+        items = list(self.fake.lists[1]['ELEMENTS'].values())
+        self.assertEqual(len(items), 1, 'элемент — только на отмеченную оплату')
+        item = items[0]
+        value = lambda f: next(iter(item[f].values()))  # noqa: E731
+        self.assertEqual((value('PROPERTY_1'), value('PROPERTY_2'), value('PROPERTY_4'), value('PROPERTY_5')),
+                         ('25.10.2026', '610000.00', '250000.00', '30000.00'))
+        self.assertEqual((value('PROPERTY_3'), value('PROPERTY_7'), value('PROPERTY_8'), value('PROPERTY_9')),
+                         ('ООО «Поставщик»', '71', '81', bid))
+        # закупку в элементе поправили в Битриксе: 250 000 → 300 000 при доле 0,5 — закупка сделки +100 000
+        item['PROPERTY_4'] = {'1': '300000'}
+        BitrixSync(self.st, direct()).run_now()
+        BitrixSync(self.st, direct()).run_now()
+        fix = json.loads(self.st.kp_get('k1', 'state'))['deal']['bxFix']['equip']
+        self.assertEqual((fix['to'], fix['base']), (600000, 500000))
+        item = list(self.fake.lists[1]['ELEMENTS'].values())[0]
+        self.assertEqual(float(next(iter(item['PROPERTY_4'].values()))), 300000, 'элемент совпадает с новой экономикой')
+        sent = DealBook(self.st).get(did)['econList']['p:adv']['sent']
+        self.assertEqual(sent['purchase'], 300000.0, 'новая экономика КП даёт то же значение — повторно не пишется')
+        # отметку оплаты сняли — элемент убран
+        ExecBook(self.st).mark(did, 'p:adv', '', 'тест')
+        BitrixQueue.touch(self.st, 'deal', did)
+        BitrixSync(self.st, direct()).run_now()
+        self.assertEqual(self.fake.lists[1]['ELEMENTS'], {})
+
     def test_convert_linked_main_deals(self):
         from bitrix import BitrixLinks
         from bitrix_mirror_load import MirrorConvert, MirrorStructure

@@ -186,6 +186,9 @@ class OneCSync:
                 day = str(pay.get('Date') or '')[:10] or date.today().isoformat()
                 for step in steps:
                     ExecBook(self.store).mark(deal['id'], step['key'], day, self.AUTHOR)
+                from bitrix import BitrixQueue
+
+                BitrixQueue.touch(self.store, 'deal', deal['id'])  # оплата — и в Битрикс24 (список «Оплаты»)
                 labels = ', '.join(step['label'] for step in steps)
                 return {'deal': deal['id'], 'title': deal.get('title') or '', 'step': labels}
         return None

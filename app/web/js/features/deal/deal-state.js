@@ -312,6 +312,11 @@ export class DealState {
     const calc = DealCalculator.calc(DealState.kpInputs(state), state.deal);
     const base = calc.base;
     const full = DealState._full(calc, DealState._start(state));
+    // для списка «Оплаты» Битрикс24: поставщики и НДС в закупке
+    full.sup = (state.deal.sup || []).map(sup => ({
+      name: String(sup.name || '').slice(0, DealState.LABEL),
+      vatIn: Boolean(sup.vatIn),
+    }));
     const cents = value => Math.round(value * DealState.KOPECKS) / DealState.KOPECKS;
     if (base) {
       return {

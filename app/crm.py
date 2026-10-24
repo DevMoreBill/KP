@@ -654,7 +654,7 @@ class DealBook:
             if FeatureAccess(self.store).is_on('ufAuto'):
                 if self._filler is None:
                     self._filler = DealAutoFill(self.store)
-                skip = frozenset(econ.pairs()) if econ.enabled() else frozenset()
+                skip = frozenset(econ.owned()) if econ.enabled() else frozenset()
                 changed += self._filler.apply(deal, kp_ids, skip)
         except Exception as exc:
             from server_log import ServerLog
@@ -668,6 +668,17 @@ class DealBook:
     def kp_order(self, did) -> list[str]:
         """КП сделки для полей Битрикс24 — свежие первыми (проигранные — только если других нет)."""
         return self._fill_order(self._rows(self.store.conn(), did))
+
+    def put_econ_list(self, did, have: dict) -> None:
+        """Элементы списка «Оплаты» Битрикс24 по оплатам сделки: {ключ оплаты: {id, sent, share}} (bitrix_econ_list)."""
+        with self.store.lock:
+            cur = self.get(did)
+            if not cur or cur.get('econList') == have:
+                return
+            cur['econList'] = have
+            conn = self.store.conn()
+            self._save(conn, did, cur, 'Битрикс24')
+            conn.commit()
 
     def put_econ(self, did, notes: dict, author: str, said: list[str]) -> None:
         """Экономика из Битрикса: пометки об изменённых итогах и запись в историю о поправках статей."""

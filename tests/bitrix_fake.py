@@ -27,6 +27,7 @@ class FakeBitrix:
         self.ufields, self.companies, self.requisites, self.contacts, self.deals = [], {}, {}, {}, {}
         self.deal_people, self.company_people = {}, {}  # контакты, привязанные к сделке и к компании списком связей
         self.rows, self.comments, self.activities, self.addresses = {}, [], {}, []
+        self.lists = []                  # универсальные списки: {ID, NAME, TYPE, FIELDS: {FIELD_ID: {...}}, ELEMENTS: {id: {...}}}
         self.card = []                   # разделы карточки сделки (crm.deal.details.configuration.get)
         self.portal_fields = []          # свои поля сделки портала (кабинет как Битрикс24): {FIELD_NAME, USER_TYPE_ID, L, ITEMS}
         srv = ThreadingHTTPServer(('127.0.0.1', 0), self._handler())
@@ -130,6 +131,8 @@ class FakeBitrix:
                 out[u['FIELD_NAME']] = {'type': u['USER_TYPE_ID'], 'formLabel': u.get('L') or u['FIELD_NAME'], 'title': u['FIELD_NAME'],
                                         'isMultiple': bool(u.get('MULTIPLE')), **({'items': u['ITEMS']} if u.get('ITEMS') else {})}
             return {'result': out}
+        if m.startswith('lists.'):
+            return self.lists_call(m, b)
         if m == 'crm.deal.details.configuration.get':
             return {'result': self.card}
         if m == 'crm.deal.userfield.list':
@@ -248,6 +251,36 @@ class FakeBitrix:
         raise KeyError(m)
 
     # ---------- «пользователь Битрикса» правит
+    def lists_call(self, m, b):
+        """Универсальные списки (lists.*): свойства элементов — {номер значения: значение}, как отдаёт портал."""
+        if m == 'lists.get':
+            return self.page([{'ID': row['ID'], 'NAME': row['NAME']} for row in self.lists if row['TYPE'] == b.get('IBLOCK_TYPE_ID')], b)
+        found = next((row for row in self.lists if str(row['ID']) == str(b.get('IBLOCK_ID'))), None)
+        if not found:
+            return {'error': 'ERROR_IBLOCK_NOT_FOUND', 'error_description': 'Список не найден'}
+        if m == 'lists.field.get':
+            return {'result': found['FIELDS']}
+        store = found['ELEMENTS']
+
+        def keep(fields):
+            return {k: ({f'{len(store) + 1}0': v} if k.startswith('PROPERTY_') else v) for k, v in fields.items()}
+
+        if m == 'lists.element.add':
+            i = self._id()
+            store[i] = dict(keep(b.get('FIELDS') or {}), ID=i, CODE=b.get('ELEMENT_CODE'))
+            return {'result': int(i)}
+        if m == 'lists.element.update':
+            i = str(b.get('ELEMENT_ID'))
+            store[i] = dict(keep(b.get('FIELDS') or {}), ID=i, CODE=store[i].get('CODE'))
+            return {'result': True}
+        if m == 'lists.element.delete':
+            store.pop(str(b.get('ELEMENT_ID')), None)
+            return {'result': True}
+        if m == 'lists.element.get':
+            ids = {str(x) for x in ((b.get('FILTER') or {}).get('ID') or store)}
+            return self.page([row for i, row in store.items() if i in ids], b)
+        return {'error': 'ERROR_METHOD_NOT_FOUND', 'error_description': m}
+
     def edit_deal(self, i, **f):
         self.deals[str(i)].update(f)
         self.deals[str(i)]['DATE_MODIFY'] = self.now()

@@ -819,6 +819,8 @@ class BitrixSync:
                 except Exception as exc:
                     self.log.add(f'Изменения из Битрикс24 не получены: {exc}', 'error')
                     res['error'] = str(exc)
+                else:
+                    self._econ_list_in(res)
             return res
         finally:
             self.LOCK.release()
@@ -1243,10 +1245,36 @@ class BitrixSync:
             self._files(bid, k)
         self._comments(bid, deal)
         BitrixDealDocs(self).push(deal, bid)
+        self._econ_list_out(deal, bid)
         self._regs_out(deal, cid, bid, kps)
         for task in TaskBook(self.store).list(deal=did):
             if not self.links.get('task', task['id']):
                 self.push_task(task['id'], bid)
+
+    def _econ_list_out(self, deal: dict, bid: str) -> None:
+        """Оплаты клиента — элементами списка «Оплаты» Битрикс24 (bitrix_econ_list): сбой не держит отправку сделки."""
+        from bitrix_econ_list import EconList
+
+        try:
+            said = EconList(self.store).push(self.api, deal, bid)
+        except BitrixError as exc:
+            self.log.add(f'Сделка № {deal.get("number")}: оплаты в список Битрикс24 не записаны — {exc}', 'warn')
+            return
+        if said:
+            self.log.add(f'Сделка № {deal.get("number")} → список оплат: {"; ".join(said)}')
+
+    def _econ_list_in(self, res: dict) -> None:
+        """Правки закупки, доставки и прочих в элементах списка «Оплаты» — поправками в экономику КП."""
+        from bitrix_econ_list import EconList
+
+        try:
+            said = EconList(self.store).pull(self.api)
+        except BitrixError as exc:
+            self.log.add(f'Список оплат Битрикс24 не прочитан: {exc}', 'warn')
+            return
+        for line in said:
+            self.log.add(line)
+        res['econ'] = len(said)
 
     def _regs_out(self, deal: dict, cid: str | None, bid: str, kps: list) -> None:
         """Регламент оформления сделки: телефон и почта компании, контакты со связкой, файл КП в поле «ТКП / счёт»."""
@@ -2307,25 +2335,31 @@ class BitrixDesk:
         return self.text(404, 'Нет такого действия')
 
     def _econ_admin(self, method, sub) -> None:
+        from bitrix_econ_list import EconList
         from deal_econ import DealEcon
         from features import FeatureAccess
 
         if not FeatureAccess(self.store).is_on('bxEcon'):
             return self.text(403, 'Функция «Экономика сделки в Битрикс24» выключена')
 
-        econ = DealEcon(self.store)
+        econ, pays = DealEcon(self.store), EconList(self.store)
         try:
             if sub == 'bitrix/econ' and method == 'GET':
-                return self.send(econ.view())
+                return self.send(dict(econ.view(), list=pays.view()))
             if sub == 'bitrix/econ' and method == 'POST':
-                view = econ.save(self.body())
+                body = self.body()
+                view = econ.save(body)
+                if 'listOn' in body:
+                    pays.save_on(body['listOn'])
                 self.log_fn('edit_settings', 'settings', 'bitrix-econ', None, {'экономика сделки': 'изменено'})
-                return self.send(view)
+                return self.send(dict(view, list=pays.view()))
             if sub == 'bitrix/econ/find' and method == 'POST':
                 sync = BitrixSync(self.store, self.opener)
                 cats = list(dict.fromkeys([*sync.rules.pull_cats(), *sync.mirror.cats()]))
-                econ.discover(BitrixConf(self.store).api(self.opener), cats)
-                return self.send(econ.view())
+                api = BitrixConf(self.store).api(self.opener)
+                econ.discover(api, cats)
+                pays.discover(api)
+                return self.send(dict(econ.view(), list=pays.view()))
         except ValueError as exc:
             return self.text(400, str(exc))
         except BitrixError as exc:
