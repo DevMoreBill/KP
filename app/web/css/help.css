@@ -29,6 +29,11 @@ dialog.helpwin[open]{display:flex}
 .hl-a .gs,.hl-a .gw{margin:14px 0;padding:10px 14px;border-radius:10px;border-left:4px solid}
 .hl-a .gs{background:#eff6ff;border-color:#2563eb}
 .hl-a .gw{background:#fff7ed;border-color:#ea580c}
+.hl-a ol.g5{counter-reset:g5;list-style:none;padding-left:0}
+.hl-a ol.g5>li{counter-increment:g5;position:relative;padding:8px 70px 8px 44px;margin:6px 0;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.hl-a ol.g5>li::before{content:counter(g5);position:absolute;left:10px;top:8px;width:24px;height:24px;border-radius:50%;background:var(--navy);color:var(--on-navy);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.hl-a .g5-t{position:absolute;right:12px;top:9px;font-size:12.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.help-link{font-weight:800}
 .help-btn{font-weight:700;min-width:40px}
 @media (max-width:760px){ .hl-b{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)} .hl-nav{border-right:0;border-bottom:1px solid var(--line);flex-direction:column;padding:10px 12px}
   .hl-nav button{display:none} .hl-sel{display:block;width:100%} .hl-a{padding:14px 16px 28px} .mob .help-btn{display:none} }

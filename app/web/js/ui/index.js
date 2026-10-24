@@ -1,4 +1,5 @@
 import { AdminGearClicks } from './admin-gear.js';
+import { HelpLinkClicks } from './help-link.js';
 import { AppKeys, TopBar } from './app-keys.js';
 import { DatePicker, WorkCalendar } from './date-picker.js';
 import { FieldEvents } from './field-events.js';
@@ -24,6 +25,7 @@ import { UiKit } from './ui-kit.js';
 
 export const UI_PARTS = {
   AdminGearClicks,
+  HelpLinkClicks,
   AppKeys,
   TopBar,
   DatePicker,
@@ -77,5 +79,6 @@ Steps.listen();
 ItemOrder.listen();
 ProblemReport.listen();
 AdminGearClicks.listen();
+HelpLinkClicks.listen();
 PicView.listen();
 Tour.later();

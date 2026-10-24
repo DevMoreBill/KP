@@ -9,6 +9,7 @@ import { $, esc } from '../../core/util.js';
 import { AdminSession } from '../../core/net.js';
 import { Auth } from '../kp/auth.js';
 import { FEAT } from '../../core/features.js';
+import { HelpLink } from '../../core/help-link.js';
 
 /** Разметка окна каталога и его события (вешаются один раз на элемент окна). */
 export class CatalogEvents {
@@ -51,6 +52,7 @@ export class CatalogEvents {
        ${main ? '<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>' : ''}
        <button class="btn cw-modq" type="button" data-cw="modq" hidden title="Правки товаров, ожидающие решения: посмотреть «было → стало», принять или отклонить"></button>
        ${this._menu()}
+       ${HelpLink.html('kp-equip', 'каталог')}
        <button class="icon" type="button" data-cw="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button>
        <button class="icon" type="button" data-cw="close" aria-label="Закрыть">✕</button></div>
      <div class="cw-fb" id="cwBar" role="group" aria-label="Отбор по категории, производителю, поставщику"></div>

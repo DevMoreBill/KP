@@ -24,6 +24,7 @@ from progon import Modes, Scenario, UiStand  # noqa: E402
 
 IMG = os.path.join(ROOT, 'app', 'web', 'img', 'guide')
 PDF = os.path.join(ROOT, 'docs', 'Руководство менеджера.pdf')
+MEMO = os.path.join(ROOT, 'docs', 'Памятка КП за 5 минут.pdf')
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 RED = (220, 38, 38)
 WIDTH = 1200
@@ -287,6 +288,7 @@ def main():
                 run.br.close()
             if args.pdf or args.pdf_only:
                 Pdf.build(p, cfg)
+                Pdf.memo(p, cfg)
     finally:
         stand.close()
         stand.st.stop()
@@ -307,6 +309,46 @@ class Pdf:
         buf = io.BytesIO()
         Image.open(os.path.join(IMG, found.group(1))).convert('RGB').save(buf, 'JPEG', quality=Pdf.JPEG_QUALITY, optimize=True)
         return 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+
+    MEMO_CSS = '''
+      @page { size: A4; margin: 12mm 14mm; }
+      body { font: 12.5pt/1.45 'Segoe UI', Arial, sans-serif; color: #1b2433; margin: 0; }
+      .top { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #0b3a8a;
+             padding-bottom: 3mm; margin-bottom: 4mm; }
+      h1 { font-size: 24pt; color: #0b3a8a; margin: 0; }
+      .top small { color: #556; font-size: 10pt; text-align: right; }
+      .g5-lead { margin: 0 0 3mm; color: #334; }
+      ol.g5 { counter-reset: g5; list-style: none; padding: 0; margin: 0; }
+      ol.g5 > li { counter-increment: g5; position: relative; padding: 2.4mm 22mm 2.4mm 13mm; margin: 0 0 2mm;
+                   border: 1px solid #cfd6e3; border-radius: 3mm; background: #f6f8fc; break-inside: avoid; }
+      ol.g5 > li::before { content: counter(g5); position: absolute; left: 3mm; top: 2.2mm; width: 7mm; height: 7mm;
+                   border-radius: 50%; background: #0b3a8a; color: #fff; font-weight: 700; text-align: center; line-height: 7mm; }
+      .g5-t { position: absolute; right: 3mm; top: 2.6mm; font-weight: 700; color: #0b3a8a; font-size: 10pt; }
+      h4 { font-size: 13pt; color: #0b3a8a; margin: 5mm 0 2mm; }
+      ul.g5-tips { padding-left: 5mm; margin: 0; }
+      ul.g5-tips li { margin: 1.4mm 0; }
+      .foot { margin-top: 5mm; padding-top: 2mm; border-top: 1px solid #cfd6e3; font-size: 9pt; color: #667; }
+    '''
+
+    @staticmethod
+    def memo(p, cfg):
+        """«Памятка КП за 5 минут.pdf» — раздел «kp5» на одном листе A4 для печати новым менеджерам."""
+        br = p.chromium.launch(executable_path=Modes.chromium()) if Modes.chromium() else p.chromium.launch()
+        pg = br.new_page()
+        pg.goto('http://127.0.0.1:%d/' % cfg['port'])
+        pg.wait_for_timeout(3000)
+        version, body = pg.evaluate("""async () => {
+          const m = await import('/web/js/features/help.js');
+          return [m.APP_VERSION, m.HELP_SECTIONS.find(([id]) => id === 'kp5')[2]];
+        }""")
+        pg.set_content('<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>%s</style></head><body>'
+                       '<div class="top"><h1>КП за 5 минут</h1><small>Конструктор КП ПНЕВМОТЕХ<br>памятка менеджера · версия %s</small></div>'
+                       '%s<p class="foot">Подробно, со снимками экрана — кнопка «?» вверху программы или файл «Руководство менеджера.pdf».</p>'
+                       '</body></html>' % (Pdf.MEMO_CSS, version, body))
+        pg.wait_for_timeout(500)
+        pg.pdf(path=MEMO, format='A4', print_background=True, prefer_css_page_size=True)
+        br.close()
+        print('Памятка:', MEMO, os.path.getsize(MEMO) // 1024, 'КБ')
 
     @staticmethod
     def build(p, cfg):

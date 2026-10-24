@@ -1,4 +1,5 @@
 import { KpRate } from './kp-rate.js';
+import { HelpLink } from '../../core/help-link.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
@@ -262,7 +263,7 @@ export class DealCard {
       <span class="dk-no">Сделка № ${esc(deal.number)}</span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">
       <span class="dk-saved" aria-live="polite"></span>${this._bx(deal)}<span class="dk-who" title="Ответственный · дата создания">${who}${esc(created)}</span></div>
-      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button>${DealPause.button()}${FEAT.on('dealDelete') ? `<button class="dk-ib dk-del" type="button" data-dkdel aria-label="Удалить сделку" title="Удалить сделку (в корзину)">${this._icon('trash')}</button>` : ''}<button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
+      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button>${HelpLink.html('deal-card', 'карточка сделки', 'dk-ib dk-help')}${DealPause.button()}${FEAT.on('dealDelete') ? `<button class="dk-ib dk-del" type="button" data-dkdel aria-label="Удалить сделку" title="Удалить сделку (в корзину)">${this._icon('trash')}</button>` : ''}<button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
   }
 
   static _card(deal) {

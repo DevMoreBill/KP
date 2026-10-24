@@ -23,6 +23,7 @@ import { Morph } from '../../core/morph.js';
 import { ItemAttrs } from '../../core/item-attrs.js';
 import { $, esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
+import { HelpLink } from '../../core/help-link.js';
 import { DealSeen } from './deal-seen.js';
 
 /**
@@ -112,7 +113,7 @@ export class DealWin {
 
   static _head(date) {
     return `<div class="dlg-h"><h3>Экономика сделки${S.number ? ` · КП № ${esc(S.number)}` : ''}<small>${esc(S.client || 'Получатель не указан')}</small></h3>
-        ${date}${AdminGear.html('params:deal', 'экономика сделки')}<button class="btn" type="button" data-dlx="xlsx" title="Excel для согласования"><span class="dl-xl-l">Excel для согласования</span><span class="dl-xl-s">Excel</span></button><button class="icon dl-maxb" type="button" data-dlx="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>`;
+        ${date}${AdminGear.html('params:deal', 'экономика сделки')}${HelpLink.html('econ', 'экономика сделки')}<button class="btn" type="button" data-dlx="xlsx" title="Excel для согласования"><span class="dl-xl-l">Excel для согласования</span><span class="dl-xl-s">Excel</span></button><button class="icon dl-maxb" type="button" data-dlx="max" aria-label="Во весь экран" title="Во весь экран / обычный размер. Размер окна можно менять, потянув за правый нижний угол">⤢</button><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div>`;
   }
 
   static _banner(kpData) {
