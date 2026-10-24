@@ -36,6 +36,8 @@ import { KpLoader, Reminders } from './reminders.js';
 import { UiTexts } from './ui-texts.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { KpGuard } from './kp-guard.js';
+import { BackGuard } from '../../core/back-guard.js';
 
 export const KP_PARTS = {
   ApiKeys,
@@ -100,6 +102,8 @@ LISTS.ready(['obj.purposes', 'kp.lost']);
 DefRegistry.personal = key => MyPrefs.def(key);
 
 UiTexts.listen();
+KpGuard.listen();
+BackGuard.listen(() => !!Drafts.pending());
 MgrBar.listen();
 ClientFind.listen();
 ClientsImport.listen();

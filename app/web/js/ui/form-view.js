@@ -10,6 +10,7 @@ import { MgrLock } from '../features/kp/managers.js';
 import { Templates } from '../features/doc/templates.js';
 import { AdminGear } from '../core/admin-gear.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
+import { KpGuard } from '../features/kp/kp-guard.js';
 
 /** Перерисовка формы КП: полоса шагов, открытый шаг, фокус в поле, боковая панель. */
 export class FormView {
@@ -32,7 +33,11 @@ export class FormView {
     Morph.apply($('#nav'), Steps.stepperHtml());
     const number = `<h2><span class="n">${Steps.visible().indexOf(current) + 1}</span>`;
     const gear = this.GEAR.includes(current.id) ? AdminGear.html('params:kp', 'новое КП и условия') : '';
-    Morph.apply(form, current.f().replace(this.NUMBER, number).replace('</h2>', `${gear}</h2>`) + Steps.navHtml());
+    Morph.apply(
+      form,
+      KpGuard.bar() + current.f().replace(this.NUMBER, number).replace('</h2>', `${gear}</h2>`) + Steps.navHtml(),
+    );
+    KpGuard.apply(form);
     // поле осталось тем же узлом — фокус не трогаем (иначе на телефоне прыгает клавиатура)
     if (focusPath && !active.isConnected && !AppTabs.visible($('#edlg'))) this._refocus(form, focusPath);
     this._centerStep();

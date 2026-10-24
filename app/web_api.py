@@ -730,6 +730,8 @@ class KpController(Controller):
                     raise ValueError
             except ValueError:  # испорченная запись ломала бы журнал КП у всех
                 return self.text(400, 'Неверный формат КП')
+            if self._others_kp(kid):
+                return None
             rev = store().kp_set(
                 kid,
                 field,
@@ -777,6 +779,26 @@ class KpController(Controller):
         )
         return self.send_json(result)
 
+    EDIT_OTHER = 'X-KP-Edit-Other'
+
+    def _others_kp(self, kid: str) -> bool:
+        """Чужое сохранённое КП без отметки «Разрешить правку» не перезаписывается (просмотр администратором или правом
+        «КП других менеджеров» не меняет КП случайно). True — отказ 409 уже отправлен."""
+        if self.handler.headers.get(self.EDIT_OTHER) == '1' or not FeatureAccess(store()).is_on('kpViewLock'):
+            return False
+        try:
+            meta = json.loads(store().kp_get(kid, 'meta') or '{}')
+        except ValueError:
+            meta = {}
+        author = str(meta.get('authorId') or meta.get('managerId') or '') if isinstance(meta, dict) else ''
+        if not author or admin.actor(self.handler, admin=False)[0] == author:
+            return False
+        self.text(
+            409,
+            'КП другого менеджера открыто только для просмотра — нажмите «Разрешить правку», чтобы сохранить изменения',
+        )
+        return True
+
     @route(r'/api/kp/([^/]+)/rev', 'GET')  # кто и когда последним сохранил КП — проверка перед сохранением
     def rev(self, kid: str) -> None:
         return self.send_json(store().rev_of('kp', safe_id(kid)))
@@ -796,6 +818,8 @@ class KpController(Controller):
     @route(r'/api/kp/([^/]+)/docx', 'PUT')
     def docx_put(self, kid: str) -> Any:
         kid, query = safe_id(kid), self.query
+        if self._others_kp(kid):
+            return None
         name = safe_file(query.get('name'))
         # только документ Word: имя — с расширением .docx (не .exe, .bat, .lnk…), содержимое — архив docx (PK…)
         if not name.lower().endswith('.docx'):

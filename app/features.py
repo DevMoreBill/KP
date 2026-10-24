@@ -64,6 +64,8 @@ FEATURES = {
     'offlineSave': (True, 'Сохранить КП, когда вернётся связь'),
     'phoneToday': (True, '«Сегодня» для телефона'),
     'kpTransfer': (True, 'Передать КП другому менеджеру'),
+    'kpViewLock': (True, 'Чужое КП — только просмотр'),
+    'backGuard': (True, 'Защита от кнопки «Назад»'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)

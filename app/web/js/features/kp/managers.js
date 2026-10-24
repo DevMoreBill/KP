@@ -8,6 +8,7 @@ import { KpState, S } from '../../core/state.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { Toast } from '../../core/toast.js';
+import { KpGuard } from './kp-guard.js';
 
 /**
  * Менеджеры: справочник в базе программы (общий для отдела), выбор менеджера в разделе «Менеджер». Выбранный менеджер
@@ -295,7 +296,7 @@ export class MgrLock {
 
   /** КП открыто, создано, взято из черновика или заготовки — менеджером в нём становится вошедший. */
   static apply() {
-    if (!this.locked() || S.managerId === Auth.state.user.id) return;
+    if (!this.locked() || S.managerId === Auth.state.user.id || KpGuard.locked()) return; // КП коллеги на просмотре — не трогать
     const manager = Managers.list.find(row => row.id === Auth.state.user.id);
     if (manager) Managers.use(manager);
   }

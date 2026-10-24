@@ -129,3 +129,7 @@ dialog.st-confirm.pv-dlg,.mob dialog.st-confirm.pv-dlg{inset:0;width:100vw;max-w
 .pv-prev{left:8px}.pv-next{right:8px}
 .pv-hint{margin:0;padding:6px 12px;padding-bottom:max(6px,env(safe-area-inset-bottom));font-size:12.5px;text-align:center}
 img[data-st3d],img[data-st3do]{cursor:zoom-in}
+.kpv-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 14px;border-radius:10px;border:1px solid color-mix(in srgb,var(--warn,#b45309) 45%,var(--line));background:color-mix(in srgb,var(--warn,#b45309) 10%,var(--paper));font-size:14px}
+.kpv-bar span{flex:1 1 280px}
+.kpv-bar.on{border-color:var(--line);background:var(--soft);color:var(--muted)}
+#form [inert]{opacity:.85}

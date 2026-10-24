@@ -30,6 +30,7 @@ import { $, esc } from '../../core/util.js';
 import { StationImages } from '../station/station-images.js';
 import { KpState, S } from '../../core/state.js';
 import { OfflineSave } from './offline-save.js';
+import { KpGuard } from '../kp/kp-guard.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
@@ -71,11 +72,16 @@ export class KpSave {
     }, this.TRIAL_KEEP);
   }
 
+  // не сохранять: не заполнено, уже сохраняется, чужое КП на просмотре
+  static _refused() {
+    return Problems.list().length > 0 || this.busy || KpGuard.blocksSave();
+  }
+
   /** «Сохранить КП»: второе нажатие (кнопка панели телефона) — не второе КП. */
   static async run() {
     const message = $('#dlmsg');
     const button = document.querySelector('[data-a="download"]');
-    if (Problems.list().length || this.busy) return;
+    if (this._refused()) return;
     if (!window.JSZip) {
       message.className = 'msg err';
       message.textContent = 'Не загрузился модуль сборки файла. Обновите страницу.';
@@ -194,7 +200,11 @@ export class KpSave {
 
   static async _putState() {
     const clean = Drafts.clean();
-    const headers = { ...this.JSON_HEADERS, ...(S._rev != null ? { 'X-KP-Rev': String(S._rev) } : {}) };
+    const headers = {
+      ...this.JSON_HEADERS,
+      ...KpGuard.headers(),
+      ...(S._rev != null ? { 'X-KP-Rev': String(S._rev) } : {}),
+    };
     const result = await Api.request(`/api/kp/${S.kpId}/state`, {
       method: 'PUT',
       headers,
@@ -222,7 +232,11 @@ export class KpSave {
   // имя файла может получить «(2)», если такое уже занято другим КП (два КП по одному тендеру)
   static async _putDocx(blob, fileName) {
     const query = `name=${encodeURIComponent(fileName)}&dir=${encodeURIComponent(KpFile.folder())}`;
-    const result = await Api.request(`/api/kp/${S.kpId}/docx?${query}`, { method: 'PUT', body: blob });
+    const result = await Api.request(`/api/kp/${S.kpId}/docx?${query}`, {
+      method: 'PUT',
+      headers: KpGuard.headers(),
+      body: blob,
+    });
     const saved = (result && result.rel ? String(result.rel).split('/').pop() : '') || fileName;
     S._file = saved;
     return saved;
@@ -258,7 +272,11 @@ export class KpSave {
 
   static async _meta(totals, file) {
     const body = JSON.stringify(this._metaBody(totals, file));
-    const result = await Api.request(`/api/kp/${S.kpId}/meta`, { method: 'PUT', headers: this.JSON_HEADERS, body });
+    const result = await Api.request(`/api/kp/${S.kpId}/meta`, {
+      method: 'PUT',
+      headers: { ...this.JSON_HEADERS, ...KpGuard.headers() },
+      body,
+    });
     if (result && result.deal) S.dealId = result.deal; // КП в сделке: следующее сохранение — в ту же сделку
     // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
     if (!result || !result.bx || !S.deal || !S.deal.touched || !DealDefaults.allowed()) return;

@@ -10,6 +10,7 @@ import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from './kp-tabs.js';
+import { KpGuard } from './kp-guard.js';
 
 /**
  * Черновики КП на сервере (DraftsController, таблица drafts): незаконченное КП или несохранённые правки сохранённого,
@@ -111,7 +112,7 @@ export class Drafts {
    * @returns {{state: object, sig: string}|null}
    */
   static pending() {
-    if (CatalogEditor.session) return null;
+    if (CatalogEditor.session || KpGuard.locked()) return null;
     const state = this.clean();
     const sig = this.sig(state);
     const kpId = S.kpId || '';

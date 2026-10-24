@@ -823,6 +823,17 @@ class Scenario(UiRun):
             pg.locator('.kt-dlg [data-kto]').nth(n).click()
         self.wait(1500)
 
+    def _unlock_others(self):
+        """КП коллеги открыто только для просмотра: снимок полосы, затем «Разрешить правку» — дальше сценарий правит его."""
+        button = self.visible('.kpv-bar [data-kpunlock]')
+        if not button:
+            return
+        self.snap('k0_kp_view_only', None)
+        button.click()
+        self.wait(500)
+        self.pg.locator('dialog[open] [data-v]:not([data-v="0"])').last.click()
+        self.wait(800)
+
     def s_kptabs(self):
         """Несколько КП вкладками: открыть из журнала второе, правка в нём не трогает первое, «＋» — новое пустое,
         то же КП ещё раз — переход на его вкладку, после перезагрузки — те же вкладки, ✕ — закрыть."""
@@ -847,6 +858,7 @@ class Scenario(UiRun):
         second = self.ev("({client:S.client, kpId:S.kpId||''})")
         if len(tabs) != 2 or second['kpId'] != other_id:
             bad.append('из журнала — не новой вкладкой: %s' % tabs)
+        self._unlock_others()
         self.go('conds')
         loc = self.visible('#form [data-p=condExtra]')
         if loc:
@@ -1213,7 +1225,7 @@ class Scenario(UiRun):
         did = self.ev("""async plan => { const b = await Api.request('/api/crm/board?manager=all');
           const d = b.deals.find(x => (x.kps || []).length && !x.execSum && !['won', 'lost'].includes(x.stage)); if (!d) return '';
           const kid = d.kps[0].id, m = await Api.request(`/api/kp/${kid}/meta`); m.plan = plan;
-          await Api.request(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8'}, body: JSON.stringify(m)});
+          await Api.request(`/api/kp/${kid}/meta`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8', 'X-KP-Edit-Other': '1'}, body: JSON.stringify(m)});
           const cur = await Api.request(`/api/crm/deal/${d.id}`);
           try { await Api.request(`/api/crm/deal/${d.id}`, {method: 'PUT', headers: {'Content-Type': 'application/json; charset=utf-8',
             'X-KP-Rev': String(cur.rev)}, body: JSON.stringify({stage: 'contract'})}); }
