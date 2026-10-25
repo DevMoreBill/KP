@@ -13,6 +13,9 @@
   обрезанные картинки, на телефоне — области нажатия меньше 44 px и шрифт полей меньше 16 px (iOS увеличивает страницу).
 - Итог: <out>/report.txt (сводка по режимам), <out>/res_<режим>.json (всё найденное), <out>/shots/<режим>/*.png.
   Код выхода 1 — сбой сценария или ошибка JavaScript на странице.
+- Зависание: этап, не закончившийся за --stage-max минут (по умолчанию 10), записывается как HUNG, режим перезапускается со
+  следующего этапа (профиль браузера — на диске, открытое КП и вкладки те же), не больше 3 раз. 3D-вид станции (WebGL
+  программно) режимы строят по очереди — параллельно он перегружал стенд, и страница переставала отвечать.
 
 Нужен Playwright для Python (pip install playwright) и Chromium: KP_CHROMIUM=путь, иначе — из /opt/pw-browsers, иначе
 браузер Playwright по умолчанию.
@@ -27,6 +30,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +65,113 @@ class Modes:
             return p
         found = sorted(glob.glob('/opt/pw-browsers/chromium-*/chrome-linux/chrome'))
         return found[-1] if found else None
+
+
+class GlQueue:
+    """Этапы с 3D-видом станции (WebGL на процессоре, swiftshader) — по одному режиму за раз: четыре сразу перегружали стенд,
+    и страница переставала отвечать. Очередь — папка-замок в папке прогона (os.mkdir атомарен и в Windows)."""
+    STAGES = ('station',)
+    STALE = 1800
+
+    def __init__(self, out):
+        self.path = os.path.join(out, 'gl.lock')
+        self.held = False
+
+    def acquire(self, beat):
+        while True:
+            try:
+                os.mkdir(self.path)
+                self.held = True
+                return
+            except FileExistsError:
+                self._drop_stale()
+                beat()
+                time.sleep(2)
+
+    def _drop_stale(self):
+        try:
+            if time.time() - os.path.getmtime(self.path) > self.STALE:
+                os.rmdir(self.path)
+        except OSError:
+            pass
+
+    def release(self):
+        if not self.held:
+            return
+        self.held = False
+        try:
+            os.rmdir(self.path)
+        except OSError:
+            pass
+
+
+class StageGuard:
+    """Предел времени этапа (Playwright evaluate ждёт страницу без предела): не уложился — HUNG в ошибках, результат на
+    диск, выход с кодом HUNG; Progon перезапустит режим со следующего этапа."""
+    HUNG = 3
+    TICK = 5
+
+    def __init__(self, run, limit):
+        self.run, self.limit = run, limit
+        self.stage, self.until = 'start', None
+        self.path = os.path.join(run.out, 'progress_%s.json' % run.mode)
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def begin(self, stage):
+        self.stage, self.until = stage, time.time() + self.limit
+        self._write({'stage': stage})
+
+    def beat(self):
+        self._write({'stage': self.stage, 'wait': 'очередь 3D'})
+
+    def end(self):
+        self.until = None
+
+    def _write(self, data):
+        try:
+            with open(self.path, 'w', encoding='utf-8') as f:
+                json.dump(dict(data, t=time.time()), f, ensure_ascii=False)
+        except OSError:
+            pass
+
+    def _watch(self):
+        while True:
+            time.sleep(self.TICK)
+            if self.until and time.time() > self.until:
+                self._give_up()
+
+    def _give_up(self):
+        run = self.run
+        minutes = ('%.1f' % (self.limit / 60)).rstrip('0').rstrip('.').replace('.', ',')
+        run.errs.append((self.stage, 'HUNG', 'этап не закончился за %s мин — страница не отвечала; режим продолжен со следующего '
+                                             'этапа' % minutes))
+        run.log.append('%s HUNG' % self.stage)
+        for _ in range(3):   # словари меняет и основной поток — повторить, если поменялись во время записи
+            try:
+                run.save()
+                break
+            except (RuntimeError, ValueError):
+                time.sleep(0.2)
+        run.gl.release()
+        self._write({'stage': self.stage, 'hung': self.stage})
+        os._exit(self.HUNG)
+
+
+class ProfileProcs:
+    """Браузер зависшего режима после выхода процесса-режима остаётся работать и грузит стенд — закрыть по папке профиля
+    (Linux, /proc; в Windows браузер закрывается вместе с драйвером Playwright)."""
+
+    @staticmethod
+    def kill(profile):
+        mark = profile.encode()
+        for cmd in glob.glob('/proc/[0-9]*/cmdline'):
+            try:
+                with open(cmd, 'rb') as f:
+                    if mark not in f.read():
+                        continue
+                os.kill(int(cmd.split('/')[2]), 9)
+            except (OSError, ValueError):
+                pass
 
 
 class UiStand:
@@ -155,22 +266,29 @@ class UiRun:
         os.makedirs(self.shots, exist_ok=True)
         with open(os.path.join(HERE, 'check.js'), encoding='utf-8') as f:
             self.check = f.read()
+        self.gl = GlQueue(out)
+        self.guard = None
 
     def open(self, p):
         exe = Modes.chromium()
         gl = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']   # WebGL2 программно — 3D-вид станции, как у менеджера
-        self.br = p.chromium.launch(executable_path=exe, args=gl) if exe else p.chromium.launch(args=gl)
-        self.ctx = self.br.new_context(accept_downloads=True, **Modes.ALL[self.mode])
+        # профиль на диске: перезапущенный после зависания режим открывает то же КП и вкладки
+        self.ctx = p.chromium.launch_persistent_context(self.profile(), executable_path=exe or None, args=gl,
+                                                        accept_downloads=True, **Modes.ALL[self.mode])
+        self.br = self.ctx
         if self.mode == 'phd':
             self.ctx.add_init_script("try{ if(!localStorage.getItem('kp.theme')) localStorage.setItem('kp.theme','dark') }catch(e){}")
         self.ctx.add_init_script(self.expose_script())
-        pg = self.pg = self.ctx.new_page()
+        pg = self.pg = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
         pg.on('pageerror', lambda e: self.errs.append((self.cur, 'pageerror', str(e)[:400])))
         pg.on('console', self._console)
         pg.on('response', lambda r: self.errs.append((self.cur, 'http %d' % r.status, r.request.method + ' ' + r.url.replace(self.base, '')[:200]))
               if r.status >= 400 else None)
         pg.on('dialog', self._dialog)
         return pg
+
+    def profile(self):
+        return os.path.join(self.out, 'profile', self.mode)
 
     @staticmethod
     def expose_script():
@@ -253,6 +371,10 @@ addEventListener('DOMContentLoaded', async () => {
 
     def stage(self, name, fn):
         self.cur, t = name, time.time()
+        if self.guard and name in GlQueue.STAGES:
+            self.gl.acquire(self.guard.beat)
+        if self.guard:
+            self.guard.begin(name)
         try:
             if self.ev("document.querySelectorAll('dialog[open]').length"):
                 self.errs.append((name, 'NOTE', 'перед этапом было открыто окно: %s' % self.ev(
@@ -268,7 +390,11 @@ addEventListener('DOMContentLoaded', async () => {
                 self.pg.screenshot(path=os.path.join(self.shots, 'ERR_%s.png' % name))
             except Exception:
                 pass
+        if self.guard:
+            self.guard.end()
+        self.gl.release()
         self.log.append('%s %.1fs' % (name, time.time() - t))
+        self.save()
 
     def closeall(self):
         self.pg.keyboard.press('Escape')
@@ -283,8 +409,18 @@ addEventListener('DOMContentLoaded', async () => {
         return self.res.setdefault('meta', {})
 
     def save(self):
+        text = json.dumps({'res': self.res, 'errs': self.errs, 'dialogs': self.dialogs, 'log': self.log}, ensure_ascii=False, indent=1)
         with open(os.path.join(self.out, 'res_%s.json' % self.mode), 'w', encoding='utf-8') as f:
-            json.dump({'res': self.res, 'errs': self.errs, 'dialogs': self.dialogs, 'log': self.log}, f, ensure_ascii=False, indent=1)
+            f.write(text)
+
+    def load(self):
+        """Продолжение после зависания: найденное до перезапуска — из файла режима."""
+        try:
+            with open(os.path.join(self.out, 'res_%s.json' % self.mode), encoding='utf-8') as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            return
+        self.res, self.errs, self.dialogs, self.log = d['res'], [tuple(e) for e in d['errs']], d['dialogs'], d['log']
 
 
 class Scenario(UiRun):
@@ -311,12 +447,17 @@ class Scenario(UiRun):
     def dlg_list(self):
         return self.ev("[...document.querySelectorAll('dialog[open]')].map(d=>(d.id||d.className)+':'+d.innerText.trim().length)")
 
-    def run(self, stages):
+    def run(self, stages, resume=False):
         pg = self.pg
+        if self.guard:
+            self.guard.begin('start')
         pg.goto(self.base + '/')
         pg.wait_for_function("window.__kpExposed && Catalog.cache.length>0", timeout=60000)
         self.wait(1500)
-        self.stage('first', self.s_first)
+        if resume:
+            self.load()
+        else:
+            self.stage('first', self.s_first)
         for name in Modes.STAGES:
             if not stages or name in stages:
                 self.stage(name, getattr(self, 's_' + name))
@@ -1583,7 +1724,7 @@ class Report:
     """Сводка по режиму: уникальные замечания проверок, ошибки сценария и страницы (без отсутствующих на стенде фото)."""
     CATS = ('docScroll', 'out', 'btnTxt', 'contrast', 'overlap', 'img', 'font', 'small')
     SKIP_OVERLAP = ('pw-eye', 'st-find', 'df-bar')
-    BAD = ('SCRIPT', 'pageerror', 'DOUBLE', 'EMPTY')
+    BAD = ('SCRIPT', 'pageerror', 'DOUBLE', 'EMPTY', 'HUNG')
 
     def __init__(self, out, mode):
         with open(os.path.join(out, 'res_%s.json' % mode), encoding='utf-8') as f:
@@ -1650,6 +1791,8 @@ class Progon:
         a.add_argument('--db', default='', help='КОПИЯ базы вместо вымышленных данных')
         a.add_argument('--worker', default='', help=argparse.SUPPRESS)
         a.add_argument('--cfg', default='', help=argparse.SUPPRESS)
+        a.add_argument('--resume', action='store_true', help=argparse.SUPPRESS)
+        a.add_argument('--stage-max', type=float, default=10, help='предел этапа, мин (дольше — «завис», режим продолжается)')
         self.a = a.parse_args(argv)
         self.modes = [m for m in self.a.modes.split(',') if m]
         bad = [m for m in self.modes if m not in Modes.ALL]
@@ -1667,15 +1810,59 @@ class Progon:
             cfg = json.load(f)
         with sync_playwright() as p:
             sc = Scenario(self.a.worker, cfg, self.out)
+            sc.guard = StageGuard(sc, int(self.a.stage_max * 60))
             sc.open(p)
-            sc.run(self.stages)
+            sc.run(self.stages, resume=self.a.resume)
         return 0
+
+    RESTARTS = 3
+
+    def _spawn(self, m, path, stages, resume=False):
+        cmd = [sys.executable, os.path.abspath(__file__), '--worker', m, '--cfg', path, '--out', self.out,
+               '--stage-max', str(self.a.stage_max)]
+        if stages:
+            cmd += ['--stages', ','.join(stages)]
+        if resume:
+            cmd.append('--resume')
+        log = open(os.path.join(self.out, 'log_%s.txt' % m), 'a')
+        return subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+
+    def _after_hung(self, m):
+        """Этапы после зависшего (из выбранных); None — продолжать нечего."""
+        try:
+            with open(os.path.join(self.out, 'progress_%s.json' % m), encoding='utf-8') as f:
+                hung = json.load(f).get('hung')
+        except (OSError, ValueError):
+            return None
+        chosen = [s for s in Modes.STAGES if not self.stages or s in self.stages]
+        if hung not in Modes.STAGES:
+            return chosen
+        rest = chosen[chosen.index(hung) + 1:] if hung in chosen else []
+        return rest or None
+
+    def _wait(self, procs, paths):
+        restarts = collections.Counter()
+        pending = dict(procs)
+        while pending:
+            for m, pr in list(pending.items()):
+                if pr.poll() is None:
+                    continue
+                ProfileProcs.kill(os.path.join(self.out, 'profile', m))
+                rest = self._after_hung(m) if pr.returncode == StageGuard.HUNG else None
+                if rest and restarts[m] < self.RESTARTS:
+                    restarts[m] += 1
+                    print('режим %s: этап завис — продолжаю с «%s»' % (m, rest[0]), flush=True)
+                    pending[m] = procs[m] = self._spawn(m, paths[m], rest, resume=True)
+                    continue
+                print('режим %s: %s' % (m, 'готово' if pr.returncode == 0 else 'сбой (код %s, см. log_%s.txt)' % (pr.returncode, m)), flush=True)
+                del pending[m]
+            time.sleep(2)
 
     def main(self):
         if self.a.worker:
             return self.worker()
         os.makedirs(self.out, exist_ok=True)
-        stands, procs = [], {}
+        stands, procs, paths = [], {}, {}
         try:
             for m in self.modes:  # у каждого режима свой стенд: режимы не меняют сделки и дела друг друга
                 stand = UiStand(self.a.db or None)
@@ -1685,14 +1872,10 @@ class Progon:
                 with open(path, 'w', encoding='utf-8') as f:
                     json.dump(cfg, f)
                 print('Стенд %s: http://127.0.0.1:%d — %s' % (m, cfg['port'], 'копия базы' if self.a.db else 'вымышленные данные'), flush=True)
-                cmd = [sys.executable, os.path.abspath(__file__), '--worker', m, '--cfg', path, '--out', self.out]
-                if self.stages:
-                    cmd += ['--stages', ','.join(self.stages)]
-                procs[m] = subprocess.Popen(cmd, stdout=open(os.path.join(self.out, 'log_%s.txt' % m), 'w'), stderr=subprocess.STDOUT)
+                paths[m] = path
+                procs[m] = self._spawn(m, path, self.stages)
             print('Итог — %s' % self.out, flush=True)
-            for m, pr in procs.items():
-                pr.wait()
-                print('режим %s: %s' % (m, 'готово' if pr.returncode == 0 else 'сбой (код %s, см. log_%s.txt)' % (pr.returncode, m)), flush=True)
+            self._wait(procs, paths)
         finally:
             for stand in stands:
                 stand.close()
