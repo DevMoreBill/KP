@@ -68,13 +68,13 @@ html.mob .jr-sum{justify-content:flex-start}
 .apt-add:hover{border-style:solid;border-color:var(--navy);color:var(--navy)}
 @media (max-width:1180px){.apt-kp span{max-width:110px}}
 /* телефон: список открытых КП */
-.kt-l{display:grid;gap:6px;margin-bottom:12px}
-.kt-r{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:4px 4px 4px 0;background:var(--card)}
-.kt-r.on{border-color:var(--navy);box-shadow:inset 3px 0 0 var(--navy)}
-.kt-o{flex:1;min-width:0;display:grid;gap:2px;text-align:left;background:none;border:0;padding:8px 12px;font:inherit;color:var(--ink);cursor:pointer;min-height:44px}
-.kt-o b,.kt-o span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kt-o span{font-size:13px}
-.kt-add{width:100%;justify-content:center}
+.kpt-l{display:grid;gap:6px;margin-bottom:12px}
+.kpt-r{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:4px 4px 4px 0;background:var(--card)}
+.kpt-r.on{border-color:var(--navy);box-shadow:inset 3px 0 0 var(--navy)}
+.kpt-o{flex:1;min-width:0;display:grid;gap:2px;text-align:left;background:none;border:0;padding:8px 12px;font:inherit;color:var(--ink);cursor:pointer;min-height:44px}
+.kpt-o b,.kpt-o span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpt-o span{font-size:13px}
+.kpt-add{width:100%;justify-content:center}
 @media (max-width:1560px){.has-tabs #saved{display:none}}
 /* экономика сделки во вкладке: «Excel для согласования» и дата договора не вытесняются длинным названием КП и клиента */
 html dialog.tabwin.dealwin>.dlg-h [data-dlx=xlsx],html dialog.tabwin.dealwin>.dlg-h .dl-hd{flex-shrink:0}

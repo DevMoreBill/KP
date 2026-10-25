@@ -134,7 +134,7 @@ export class StationModsUi {
       <p class="muted md-hint">Перетащите модули на сетке (на телефоне — нажмите модуль, затем клетку): по длине — торец к торцу, по ширине — бок о бок. Раскладка — прямоугольник, внутри — одно помещение; оборудование на стыки не ставится.</p>
       <div class="md-grid" style="grid-template-columns:repeat(${view.cols}, minmax(44px, 1fr))">${this._grid(state, view)}</div>
       <small class="muted md-ax">← торец у входа · внизу — стена с дверью оператора, как на плане чертежа</small>${this._legend(view)}
-      <div class="md-st ${this._statusClass(view)}">${this._status(state, view)}</div>
+      <div class="smd-st ${this._statusClass(view)}">${this._status(state, view)}</div>
       ${this._actions(state, view)}
       <p class="muted md-cost">В составе станции: контейнер × N (цена — за модуль) и строка «${esc(this.JOIN)}» по числу стыков${this._joinCost()}.</p>`;
     this.calc(state);
@@ -157,7 +157,7 @@ export class StationModsUi {
 
   static _count(state) {
     const max = StationMods.MAX;
-    return `<div class="md-n"><span>Модулей</span><button class="btn ghost sm" type="button" data-mn="-1"${state.n <= this.MIN_MODULES ? ' disabled' : ''} aria-label="Меньше">−</button><b>${state.n}</b><button class="btn ghost sm" type="button" data-mn="1"${state.n >= max ? ' disabled' : ''} aria-label="Больше">+</button>
+    return `<div class="smd-n"><span>Модулей</span><button class="btn ghost sm" type="button" data-mn="-1"${state.n <= this.MIN_MODULES ? ' disabled' : ''} aria-label="Меньше">−</button><b>${state.n}</b><button class="btn ghost sm" type="button" data-mn="1"${state.n >= max ? ' disabled' : ''} aria-label="Больше">+</button>
         <small class="muted">до ${max}${state.n >= max ? ' — больше по запросу' : ''}</small></div>`;
   }
 

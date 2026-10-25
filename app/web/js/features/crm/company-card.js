@@ -61,7 +61,7 @@ export class CompanyCardView {
       <textarea name="text" rows="4" maxlength="40000" placeholder="Вставьте текст карточки предприятия (реквизиты) или выберите файл — PDF, Word, Excel, TXT"></textarea>
       <div class="row"><button class="btn sm primary" type="button" data-ccparse>Распознать</button><button class="btn sm" type="button" data-ccfile>Файл…</button><span class="muted">скан без текста не читается</span></div>
       <div class="cc-r" aria-live="polite"></div>
-      <form class="cc-f" hidden><div class="cc-g">${rows}</div>
+      <form class="cc-f" hidden><div class="cc-fg">${rows}</div>
         <div class="row"><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="submit">Создать клиента</button></div></form>`;
   }
 

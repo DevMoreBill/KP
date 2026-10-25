@@ -75,7 +75,7 @@ export class DesignInspector {
       .join('');
     return `<div class="td-row2"><span>Положение</span>${float}</div>
     ${where}
-    <label class="td-l"><span>${item.float ? 'Привязка (страница, где объект)' : 'Место'}</span><select data-tdpath="${esc(path)}.place">${places}</select></label>`;
+    <label class="td-f"><span>${item.float ? 'Привязка (страница, где объект)' : 'Место'}</span><select data-tdpath="${esc(path)}.place">${places}</select></label>`;
   }
 
   static _toggles(path, item) {
@@ -119,7 +119,7 @@ export class DesignInspector {
     const height = +image.heightCm ? Design.round(+image.heightCm, Design.CENTS) : '';
     return `<h4 class="td-ih">Картинка шаблона</h4>
       <div class="td-img1"><img src="${Design.imageUrl(image.file)}" alt=""></div>
-      <label class="td-l"><span>Название</span><input type="text" data-tdpath="${path}.name" value="${esc(image.name || '')}"></label>
+      <label class="td-f"><span>Название</span><input type="text" data-tdpath="${path}.name" value="${esc(image.name || '')}"></label>
       <h4 class="td-ih2">Размер</h4>
       <div class="td-wh"><label class="td-n"><span>Ширина, см</span>${DesignForm.number(`${path}.widthCm`, Design.round(+image.widthCm || 6, Design.CENTS), { min: 0.3, max: 30 })}</label><label class="td-n"><span>Высота, см</span>${DesignForm.number(`${path}.heightCm`, height, { min: 0, max: 30, ph: 'авто' })}</label></div>
       <label class="td-chk"><input type="checkbox" data-tdpath="${path}.lock" ${image.lock ? 'checked' : ''}> Сохранять пропорции</label>
@@ -170,7 +170,7 @@ export class DesignInspector {
     const areas = texts
       .map(key => {
         const rows = Math.min(this.TEXT_ROWS, Math.ceil(String(work.texts[key] || '').length / this.TEXT_LINE) + 1);
-        return `<label class="td-l"><span>${esc(DesignModel.textLabel(key))}</span><textarea rows="${rows}" data-tdpath="texts.${esc(key)}">${esc(work.texts[key] || '')}</textarea></label>`;
+        return `<label class="td-f"><span>${esc(DesignModel.textLabel(key))}</span><textarea rows="${rows}" data-tdpath="texts.${esc(key)}">${esc(work.texts[key] || '')}</textarea></label>`;
       })
       .join('');
     return `<h4 class="td-ih2">Надпись</h4>${areas}

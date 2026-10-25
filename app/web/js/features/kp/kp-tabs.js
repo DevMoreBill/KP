@@ -179,13 +179,13 @@ export class KpTabs {
   static menu() {
     const modal = new Modal(
       `<div class="dlg-h"><h3>Открытые КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <div class="kt-l">${this.items()
+      <div class="kpt-l">${this.items()
         .map(
           item =>
-            `<div class="kt-r${item.on ? ' on' : ''}"><button type="button" class="kt-o" data-kto="${esc(item.uid)}"><b>${esc(item.label)}</b><span class="muted">${esc(item.title)}</span></button><button class="icon" type="button" data-ktx="${esc(item.uid)}" aria-label="Закрыть ${esc(item.label)}">✕</button></div>`,
+            `<div class="kpt-r${item.on ? ' on' : ''}"><button type="button" class="kpt-o" data-kto="${esc(item.uid)}"><b>${esc(item.label)}</b><span class="muted">${esc(item.title)}</span></button><button class="icon" type="button" data-ktx="${esc(item.uid)}" aria-label="Закрыть ${esc(item.label)}">✕</button></div>`,
         )
         .join('')}</div>
-      ${this.roomy() ? '<button class="btn primary kt-add" type="button" data-ktn>＋ Новое КП</button>' : `<p class="muted">Открыто ${this.MAX} КП — закройте одно, чтобы открыть ещё.</p>`}`,
+      ${this.roomy() ? '<button class="btn primary kpt-add" type="button" data-ktn>＋ Новое КП</button>' : `<p class="muted">Открыто ${this.MAX} КП — закройте одно, чтобы открыть ещё.</p>`}`,
       'sheet kt-dlg',
     );
     modal.d.onclick = event => this._menuClick(modal, event.target);

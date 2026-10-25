@@ -229,7 +229,7 @@ export class DesignPanels {
       <div class="td-pal">${palette}</div>
       <h4 class="td-h">Фирменный знак</h4>
       ${this._brand(work)}
-      <label class="td-l"><span>Сайт</span><input type="text" data-tdpath="site" value="${esc(work.site || '')}"></label>
+      <label class="td-f"><span>Сайт</span><input type="text" data-tdpath="site" value="${esc(work.site || '')}"></label>
       <h4 class="td-h">Поля страницы, см</h4>
       <div class="td-marg">${['top', 'bottom', 'left', 'right'].map(side => this._margin(work, side)).join('')}</div>
       <small class="muted">Пусто — как в основе Word (${esc(info || 'base.docx')}).</small>
@@ -264,12 +264,12 @@ export class DesignPanels {
         <h4 class="td-h">Реквизиты</h4>
         <textarea rows="5" data-tdpath="header.lines" placeholder="ООО «Компания»&#10;ИНН 0000000000, г. Москва, ул. …&#10;+7 (000) 000-00-00 · info@site.ru">${esc(header.lines || '')}</textarea>
         <small class="muted">Каждая строка — отдельная строка шапки. Первая может быть крупнее и другим цветом.</small>
-        <label class="td-l"><span>Размер текста, пт</span>${DesignForm.number('header.textSize', header.textSize ?? 8, { min: 5, max: 16, step: 0.5 })}</label>
-        <label class="td-l"><span>Цвет текста</span><select data-tdpath="header.textColor">${DesignForm.colorOptions(header.textColor || 'GRAY')}</select></label>
+        <label class="td-f"><span>Размер текста, пт</span>${DesignForm.number('header.textSize', header.textSize ?? 8, { min: 5, max: 16, step: 0.5 })}</label>
+        <label class="td-f"><span>Цвет текста</span><select data-tdpath="header.textColor">${DesignForm.colorOptions(header.textColor || 'GRAY')}</select></label>
         <label class="td-chk"><input type="checkbox" data-tdpath="header.firstBold" ${header.firstBold ? 'checked' : ''}> Первая строка жирнее и крупнее</label>
-        <label class="td-l"><span>Цвет первой строки</span><select data-tdpath="header.firstColor">${DesignForm.colorOptions(header.firstColor || 'BLUE')}</select></label>
+        <label class="td-f"><span>Цвет первой строки</span><select data-tdpath="header.firstColor">${DesignForm.colorOptions(header.firstColor || 'BLUE')}</select></label>
         <label class="td-chk"><input type="checkbox" data-tdpath="header.rule" ${header.rule !== false ? 'checked' : ''}> Линия под шапкой</label>
-        <label class="td-l"><span>Цвет линии</span><select data-tdpath="header.ruleColor">${DesignForm.colorOptions(header.ruleColor || 'LINE')}</select></label>`;
+        <label class="td-f"><span>Цвет линии</span><select data-tdpath="header.ruleColor">${DesignForm.colorOptions(header.ruleColor || 'LINE')}</select></label>`;
   }
 
   static _on(key) {

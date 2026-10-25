@@ -561,7 +561,7 @@ class Scenario(UiRun):
         pg.click('dialog.md-dlg [data-va="1"][data-vb="2"]')   # бок о бок
         pg.wait_for_function("!document.querySelector('dialog.md-dlg[open]').innerText.includes('считаю')", timeout=120000)
         if pg.locator('dialog.md-dlg [data-md=apply][disabled]').count():
-            self.errs.append(('station', 'mods', 'бок о бок — не помещается: ' + pg.locator('dialog.md-dlg .md-st').inner_text()[:150]))
+            self.errs.append(('station', 'mods', 'бок о бок — не помещается: ' + pg.locator('dialog.md-dlg .smd-st').inner_text()[:150]))
             pg.click('dialog.md-dlg [data-x]')
             return
         pg.click('dialog.md-dlg [data-md=apply]')
