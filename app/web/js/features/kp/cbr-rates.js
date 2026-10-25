@@ -1,4 +1,5 @@
 import { Currency } from './currency.js';
+import { OptionCost } from './option-cost.js';
 import { DEF_BY } from '../../core/defaults.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
@@ -31,6 +32,7 @@ export class CbrRates {
     const need = [
       Currency.current(),
       ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB'),
+      ...OptionCost.currencies(S.items),
       ...S.items.flatMap(item =>
         Kit.parts(item)
           .filter(part => part.cost)
@@ -144,6 +146,7 @@ export class PricingBlock {
     const codes = [
       cur,
       ...S.items.map(item => (item.cost && !Kit.has(item) ? item.costCur || 'RUB' : null)),
+      ...OptionCost.currencies(S.items),
       ...S.items.flatMap(item =>
         Kit.parts(item)
           .filter(part => part.cost)

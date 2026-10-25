@@ -1,4 +1,5 @@
 import { LivePreview } from '../features/doc/live-preview.js';
+import { OptionCost } from '../features/kp/option-cost.js';
 import { Steps } from './steps.js';
 import { Tender } from './tender.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
@@ -86,7 +87,11 @@ export class Problems {
     if (!S.cover.model.trim() && KpModels.list().length < 2) out.push(['Титул: укажите модель или серию', 'st-cover']);
     const vat = +S.vat;
     if (!(vat >= 0 && vat <= this.VAT_MAX)) out.push(['Проверьте ставку НДС', 'st-price']);
-    const currencies = [Currency.current(), ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB')];
+    const currencies = [
+      Currency.current(),
+      ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB'),
+      ...OptionCost.currencies(S.items),
+    ];
     for (const code of new Set(currencies.filter(cur => cur !== 'RUB'))) {
       if (!(Currency.rate(code) > 0)) out.push([`Укажите курс ${code}`, 'st-price']);
     }

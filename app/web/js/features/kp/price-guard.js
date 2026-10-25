@@ -66,7 +66,21 @@ export class PriceGuard {
         const cost = KpEconomics.unitCost(item) || this._cost(item);
         return cost != null && KPGen.netPrice(item) < cost;
       })
-      .map(item => `«${item.name || 'позиция'}» — цена ниже закупки`);
+      .map(item => `«${item.name || 'позиция'}» — цена ниже закупки`)
+      .concat(this._optionsBelowCost());
+  }
+
+  // опция или услуга продаётся дешевле своей закупки (выключатель optCost)
+  static _optionsBelowCost() {
+    if (!FEAT.on('optCost')) return [];
+    return S.items
+      .flatMap(item => item.options || [])
+      .filter(option => option.name && option.price > 0)
+      .filter(option => {
+        const cost = KpEconomics.unitCost(option);
+        return cost != null && option.price < cost;
+      })
+      .map(option => `опция «${option.name}» — цена ниже закупки`);
   }
 
   // экономику не открывали — маржа по закупке позиций, как в «Цене КП»

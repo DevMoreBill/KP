@@ -1,15 +1,22 @@
 import { EquipTypes } from '../../core/equip-types.js';
 import { Price, Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { OptionCost } from '../kp/option-cost.js';
 /** Опции и услуги позиции: быстрые опции категории кнопками и строки своих опций. */
 export class OptsBlock {
   static _row(path, i, option, j) {
     const priceText = option._priceText ?? (option.price ? KPGen.money(option.price) : '');
-    return `<div class="opt"><input type="text" data-p="${path}.options.${j}.name" value="${esc(option.name)}" placeholder="Наименование опции или услуги" list="optNames" autocomplete="off" aria-label="Опция">
+    return `<div class="opt${OptionCost.enabled() ? ' wcost' : ''}"><input type="text" data-p="${path}.options.${j}.name" value="${esc(option.name)}" placeholder="Наименование опции или услуги" list="optNames" autocomplete="off" aria-label="Опция">
     <input type="text" inputmode="numeric" data-p="${path}.options.${j}.qty" value="${esc(option.qty)}" class="${+option.qty >= 1 ? '' : 'bad'}" aria-label="Количество" title="Количество, ${esc(option.unit || 'шт.')}">
-    <input type="text" inputmode="decimal" class="num${Number.isNaN(Price.parse(priceText)) ? ' bad' : ''}" data-oprice="${i}.${j}" value="${esc(priceText)}" placeholder="включено" aria-label="Цена за единицу">
+    ${OptionCost.enabled() ? OptionCost.field(i, j, option) : ''}
+    <span class="opt-sale"><input type="text" inputmode="decimal" class="num${Number.isNaN(Price.parse(priceText)) ? ' bad' : ''}" data-oprice="${i}.${j}" value="${esc(priceText)}" placeholder="включено" aria-label="Цена продажи за единицу"></span>
     <span class="s" data-osum="${i}.${j}">${option.price ? KPGen.money((+option.qty || 0) * option.price) : '—'}</span>
     <button class="icon" type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Удалить опцию">✕</button></div>`;
+  }
+
+  static _head() {
+    const cost = OptionCost.enabled() ? '<span>Закупка за ед.</span>' : '';
+    return `<div class="opt opt-h${cost ? ' wcost' : ''}" aria-hidden="true"><span>Опция или услуга</span><span>Кол.</span>${cost}<span>Цена продажи за ед.</span><span class="s">Сумма</span><span></span></div>`;
   }
 
   /**
@@ -30,7 +37,7 @@ export class OptsBlock {
       )
       .join('');
     return `<div class="opts"><p class="sub">Дополнительное оборудование и услуги ${opts.length ? `<span class="muted">${opts.length} ${KPGen.plural(opts.length, 'опция', 'опции', 'опций')}</span>` : ''}</p>
-   <div class="chips">${chips}</div>${rows}
+   <div class="chips">${chips}</div>${rows ? this._head() : ''}${rows}
    <div class="row"><button class="btn ghost" type="button" data-a="addOpt" data-i="${i}">+ своя опция</button>
    ${opts.length ? '<span class="muted">Пустая цена — «включено в стоимость».</span>' : ''}</div></div>`;
   }

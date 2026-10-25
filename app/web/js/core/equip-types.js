@@ -180,6 +180,8 @@ export class EquipTypes {
       unit: from.unit || 'шт.',
       qty: from.unit === 'усл.' ? 1 : +item.qty || 1,
       price: from.price || 0,
+      cost: from.cost || 0,
+      costCur: from.costCur || 'RUB',
       catId: from.catId,
     };
   }

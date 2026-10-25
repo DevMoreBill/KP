@@ -70,6 +70,14 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
 .dl-it tr.need td{background:color-mix(in srgb,var(--warn) 9%,transparent)}
 .dl-it input.need{border-color:#e0a800}
 .dl-it select{width:auto;max-width:180px}
+/* доп (опция, услуга) — под своей позицией: отступ, уголок, метка «доп.», бледнее */
+.dl-it tr.dl-opt td{background:color-mix(in srgb,var(--soft) 60%,transparent);font-size:13.5px}
+.dl-it tr.dl-opt .c-nm{position:relative;padding-left:34px}
+.dl-it tr.dl-opt .c-nm::before{content:"";position:absolute;left:14px;top:0;height:50%;width:12px;border-left:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-bottom:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-bottom-left-radius:4px}
+.dl-it tr.dl-opt .c-nm b{font-weight:500}
+.dl-it .dl-optm{display:inline-block;margin-right:6px;padding:0 6px;border-radius:6px;background:var(--navy);color:var(--on-navy);font-size:11px;font-style:normal;font-weight:700;line-height:18px;vertical-align:1px}
+.dl-it tr:has(+ tr.dl-opt) td{border-bottom-style:dashed}
+.dl-it tr.dl-opt.need td{background:color-mix(in srgb,var(--warn) 9%,transparent)}
 .dl-inl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .dl-lab{font-weight:600;font-size:14px}
 .dl-supf{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:14px;color:var(--muted)}
@@ -197,6 +205,9 @@ details.dl-step:not([open])>summary h4::after{content:" ▸"}
   .dl-it td.num:nth-child(2)::before{content:"кол-во "; color:var(--muted)}
   .dl-it tr.need{background:color-mix(in srgb,var(--warn) 9%,transparent);border-radius:10px;padding:10px 8px}
   .dl-it tr.need td{background:none}
+  .dl-it tr.dl-opt{margin-left:14px;padding:8px 8px 8px 0;background:color-mix(in srgb,var(--soft) 60%,transparent);border-radius:0 0 10px 10px}
+  .dl-it tr.dl-opt td{background:none}
+  .dl-it tr.dl-opt .c-cost,.dl-it tr.dl-opt td.num{padding-left:34px}
   .dl-hs tr{grid-template-columns:auto auto minmax(0,1fr)}
   .dl-hs td.num{grid-column:auto}
   .dl-hs td.num::before{content:none}

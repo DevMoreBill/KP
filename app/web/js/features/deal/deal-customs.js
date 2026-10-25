@@ -112,12 +112,17 @@ export class DealCustoms {
           `<option value="${esc(cat.key)}">${esc(cat.name)} · ${esc(cat.code || '—')} · ${esc(cat.duty === '' ? '?' : cat.duty)} %</option>`,
       )
       .join('');
-    return `<tr><td class="c-nm"><b>${esc(line.name)}</b><small>${line.of ? `в составе «${esc(line.of)}» · ` : ''}${esc(kind)}</small></td>
+    return `<tr${line.opt ? ' class="dl-opt"' : ''}><td class="c-nm"><b>${line.opt ? '<i class="dl-optm">доп.</i>' : ''}${esc(line.name)}</b><small>${DealCustoms._whose(line)}${esc(kind)}</small></td>
             <td><input type="text" class="hs" data-hs-i="${esc(item.id)}" data-f="code" value="${esc(hsCode.code)}" placeholder="0000 00 000 0" aria-label="Код ТН ВЭД"></td>
             <td><span class="dl-in"><input type="text" inputmode="decimal" class="hs-d" data-hs-i="${esc(item.id)}" data-f="duty" value="${esc(hsCode.duty)}" placeholder="?" aria-label="Ставка пошлины, %"><i>%</i></span></td>
             <td class="c-src">${DealHs.badge(item, hsCode)}${DealCustoms._special(own)}
               <select class="dl-hspick" data-hspick="${esc(item.id)}" aria-label="Взять код и ставку из справочника"><option value="">из справочника…</option>${options}</select></td>
             <td class="num">${own ? Fmt.rub(own.cv) : '—'}</td><td class="num">${own ? Fmt.rub(own.dutyA) : '—'}</td></tr>`;
+  }
+
+  static _whose(line) {
+    if (!line.of) return '';
+    return line.opt ? `к «${esc(line.of)}» · ` : `в составе «${esc(line.of)}» · `;
   }
 
   static _special(line) {

@@ -363,7 +363,15 @@ export class ItemActions {
       item.options.splice(index, 1);
     } else {
       const card = CatFind.name(preset.name);
-      item.options.push(EquipTypes.newOpt(item, { ...preset, price: card?.price || 0, catId: card?.id }));
+      item.options.push(
+        EquipTypes.newOpt(item, {
+          ...preset,
+          price: card?.price || 0,
+          cost: card?.cost || 0,
+          costCur: card?.costCur,
+          catId: card?.id,
+        }),
+      );
     }
     return RENDER;
   }

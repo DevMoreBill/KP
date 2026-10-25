@@ -1,4 +1,5 @@
 import { Currency } from './currency.js';
+import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { S } from '../../core/state.js';
 
@@ -89,8 +90,13 @@ export class KpEconomics {
     );
     const unitCost = item => this._unitCost(item, { pricing, rate, cur });
     const withCost = items.filter(item => unitCost(item) > 0);
-    const cost = withCost.reduce((sum, item) => sum + unitCost(item) * (+item.qty || 0), 0);
-    const sale = withCost.reduce((sum, item) => sum + KPGen.netPrice(item) * (+item.qty || 0), 0);
+    const opts = this._options(items, { pricing, rate, cur });
+    const cost =
+      withCost.reduce((sum, item) => sum + unitCost(item) * (+item.qty || 0), 0) +
+      opts.reduce((sum, row) => sum + row.cost, 0);
+    const sale =
+      withCost.reduce((sum, item) => sum + KPGen.netPrice(item) * (+item.qty || 0), 0) +
+      opts.reduce((sum, row) => sum + row.sale, 0);
     const kpRate = cur !== 'RUB' && rate(cur) > 0 ? rate(cur) : null;
     return {
       cur,
@@ -106,6 +112,18 @@ export class KpEconomics {
       margin: sale ? ((sale - cost) / sale) * this.PERCENT : null,
       markup: cost ? ((sale - cost) / cost) * this.PERCENT : null,
     };
+  }
+
+  // опции и услуги с закупкой (выключатель optCost): закупка и продажа — за всё количество
+  static _options(items, ctx) {
+    if (!FEAT.on('optCost')) return [];
+    return items
+      .flatMap(item => item.options || [])
+      .filter(option => option.name && option.cost > 0)
+      .map(option => ({
+        cost: (this._unitCost(option, ctx) || 0) * (+option.qty || 0),
+        sale: (option.price || 0) * (+option.qty || 0),
+      }));
   }
 
   static _rate(pricing, code) {

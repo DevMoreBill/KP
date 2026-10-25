@@ -212,7 +212,19 @@ export class DealSuppliers {
     const deal = S.deal;
     if (!deal) return '';
     const own = deal.map && deal.map[itemId];
-    return deal.sup.some(sup => sup.id === own) ? own : deal.sup[0].id;
+    if (deal.sup.some(sup => sup.id === own)) return own;
+    return DealSuppliers._ofParent(deal, String(itemId)) || deal.sup[0].id;
+  }
+
+  // опция без своего поставщика — у поставщика позиции; опция станции — у сборщика
+  static _ofParent(deal, lineId) {
+    const cut = lineId.indexOf(KitDoc.OPT);
+    if (cut < 0) return '';
+    const itemId = lineId.slice(0, cut);
+    const station = KitDoc.lines(S).some(line => line.part && line.id.startsWith(`${itemId}~`));
+    if (!station) return DealSuppliers.of(itemId);
+    const asm = deal.asm && deal.asm.on !== false ? deal.asm.sup : '';
+    return deal.sup.some(sup => sup.id === asm) ? asm : '';
   }
 
   /**

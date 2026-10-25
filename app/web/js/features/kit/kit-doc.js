@@ -1,4 +1,5 @@
 import { Kit } from './kit.js';
+import { FEAT } from '../../core/features.js';
 import { StationPurpose } from './station-spec.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { StationCalc } from '../calc/station-calc.js';
@@ -16,6 +17,7 @@ import { StationDoc } from '../station/station-doc.js';
  */
 export class KitDoc {
   static CARD_ROWS = 5;
+  static OPT = '~opt~';
   static SPEC_MAX = 200;
 
   /**
@@ -95,24 +97,57 @@ export class KitDoc {
     const out = [];
     (state.items || []).forEach((item, i) => {
       if (!String(item.name || '').trim() && !item.cost) return;
-      if (!Kit.has(item)) {
-        out.push({
-          id: item.id,
-          i,
-          name: item.name,
-          qty: +item.qty || 0,
-          cost: item.cost || 0,
-          costCur: item.costCur || 'RUB',
-          maker: Attrs.of(item).maker || '',
-          item,
-        });
-        return;
-      }
-      Kit.parts(item).forEach((part, j) => {
-        if (String(part.name || '').trim() || part.cost) out.push(this._line(item, part, i, j));
-      });
+      out.push(...this._own(item, i), ...this._options(item, i));
     });
     return out;
+  }
+
+  static _own(item, i) {
+    if (Kit.has(item)) {
+      return Kit.parts(item)
+        .map((part, j) => ({ part, j }))
+        .filter(({ part }) => String(part.name || '').trim() || part.cost)
+        .map(({ part, j }) => this._line(item, part, i, j));
+    }
+    const maker = Attrs.of(item).maker || '';
+    return [
+      {
+        id: item.id,
+        i,
+        name: item.name,
+        qty: +item.qty || 0,
+        cost: item.cost || 0,
+        costCur: item.costCur || 'RUB',
+        maker,
+        item,
+      },
+    ];
+  }
+
+  // опции и услуги с ценой продажи или закупкой — свои строки закупки (поставщик по умолчанию — как у позиции)
+  static _options(item, i) {
+    if (!FEAT.on('optCost')) return [];
+    return (item.options || [])
+      .map((option, j) => ({ option, j }))
+      .filter(({ option }) => String(option.name || '').trim() && (option.cost > 0 || option.price > 0))
+      .map(({ option, j }) => this._optLine(item, option, i, j));
+  }
+
+  static _optLine(item, option, i, j) {
+    const id = `${item.id}${this.OPT}${option.id || j}`;
+    return {
+      id,
+      i,
+      j,
+      opt: option,
+      name: option.name,
+      of: item.name,
+      qty: +option.qty || 0,
+      cost: option.cost || 0,
+      costCur: option.costCur || 'RUB',
+      maker: '',
+      item: { id, catId: option.catId || '', name: option.name, role: '', attrs: { cat: Attrs.of(item).cat } },
+    };
   }
 
   /**

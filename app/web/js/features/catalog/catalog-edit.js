@@ -100,7 +100,7 @@ export class CatalogEditor {
       attrs: Object.fromEntries(Object.entries(item.attrs || {}).filter(([, value]) => value !== '' && value != null)),
       options: (item.options || [])
         .filter(option => option.name)
-        .map(option => CatalogCache.omit(option, '_priceText')),
+        .map(option => CatalogCache.omit(CatalogCache.omit(option, '_priceText'), '_costText')),
       price: item.price || 0,
       priceCur: item.priceCur || 'RUB',
       cost: item.cost || 0,

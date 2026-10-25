@@ -79,13 +79,19 @@ export class DealState {
     };
   }
 
+  // доп — «Позиция — доп.: опция», элемент станции — «Станция: элемент»
+  static _name(line) {
+    if (line.opt) return `${line.of} — доп.: ${line.name}`;
+    return line.of ? `${line.of}: ${line.name}` : line.name;
+  }
+
   // обычная позиция — как есть, сборка — по элементам (у каждого своя валюта и поставщик)
   static _line(line, state) {
     const item = line.item;
     const hsCode = DealHs.of(item, state.deal);
     return {
       id: line.id,
-      name: line.of ? `${line.of}: ${line.name}` : line.name,
+      name: DealState._name(line),
       qty: line.qty,
       cost: (line.cost || 0) / DealState.KOPECKS,
       cur: line.costCur || 'RUB',
@@ -126,9 +132,10 @@ export class DealState {
 
   // позиция каталога, закреплённая в справочнике за поставщиком, — к нему; остальные — по производителю
   static _suppliers(deal, def) {
-    const lines = KitDoc.lines(S).filter(line => String(line.name || '').trim());
     const dirOf = line =>
       line.item.catId && (DealUi.sups || []).find(dir => (dir.items || []).includes(line.item.catId));
+    // опция без своего поставщика в справочнике — у поставщика позиции (DealSuppliers.of), своей карточки не заводит
+    const lines = KitDoc.lines(S).filter(line => String(line.name || '').trim() && (!line.opt || dirOf(line)));
     const keyOf = line => {
       const dir = dirOf(line);
       return dir ? DealState.DIR_MARK + dir.id : line.maker || '';

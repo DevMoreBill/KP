@@ -215,7 +215,9 @@ export class DealSupplierCard {
   _itemRow(line) {
     const sum = this._lineSum(line);
     const sub = DealSupplierCard._itemSub(line);
-    return `<tr${line.cost ? '' : ' class="need"'}><td class="c-nm"><b>${esc(line.name)}</b>${sub}</td><td class="num">${esc(line.qty)}</td>
+    const cls = [line.opt ? 'dl-opt' : '', line.cost ? '' : 'need'].filter(Boolean).join(' ');
+    const mark = line.opt ? '<i class="dl-optm">доп.</i>' : '';
+    return `<tr${cls ? ` class="${cls}"` : ''}><td class="c-nm"><b>${mark}${esc(line.name)}</b>${sub}</td><td class="num">${esc(line.qty)}</td>
               <td class="c-cost">${DealSupplierCard._costIn(line)}</td>
               <td class="num c-sum">${line.cost ? Fmt.rub(sum) : '—'}</td>
               ${this.multi ? this._mapCell(line) : ''}</tr>`;
@@ -228,11 +230,22 @@ export class DealSupplierCard {
     return (line.cost / DealPurchase.KOPECKS) * (+line.qty || 0) * (rate || 0) * vatK;
   }
 
+  // поле закупки: позиция, элемент станции или опция — у каждой свой атрибут (обработчик свой)
+  static ATTRS = [
+    [line => line.part, 'kitcost', 'kitcur'],
+    [line => line.opt, 'optcost', 'optcur'],
+  ];
+
+  static _costAttrs(line) {
+    const hit = DealSupplierCard.ATTRS.find(([test]) => test(line));
+    if (!hit) return [`data-cost-i="${line.i}"`, `data-costcur-i="${line.i}"`];
+    return [`data-${hit[1]}="${line.i}.${line.j}"`, `data-${hit[2]}="${line.i}.${line.j}"`];
+  }
+
   static _costIn(line) {
-    const src = line.part || line.item;
+    const src = line.part || line.opt || line.item;
     const text = src._costText ?? (line.cost ? DealFmt.inp(line.cost / DealPurchase.KOPECKS) : '');
-    const costAttr = line.part ? `data-kitcost="${line.i}.${line.j}"` : `data-cost-i="${line.i}"`;
-    const curAttr = line.part ? `data-kitcur="${line.i}.${line.j}"` : `data-costcur-i="${line.i}"`;
+    const [costAttr, curAttr] = DealSupplierCard._costAttrs(line);
     const curs = DealTerms.CURS.map(
       cur => `<option${(line.costCur || 'RUB') === cur ? ' selected' : ''}>${cur}</option>`,
     ).join('');
@@ -241,6 +254,7 @@ export class DealSupplierCard {
 
   static _itemSub(line) {
     if (line.part) return `<small>в составе «${esc(line.of)}»</small>`;
+    if (line.opt) return `<small>к «${esc(line.of)}»</small>`;
     return line.maker ? `<small>${esc(line.maker)}</small>` : '';
   }
 
