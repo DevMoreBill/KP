@@ -935,11 +935,3 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-of td:nth-child(4){grid-area:sum;font-size:17px;font-weight:700;text-align:left!important}
 .lg-of td small{max-width:none}
 .lg-of .lg-pk{cursor:pointer}
-/* широкий экран: содержимое экономики — по центру, не шире 1600 px (как форма КП), шапка — по той же линии */
-@media (min-width:1760px){
-  dialog.dealwin>:not(.dlg-h){width:100%;max-width:1600px;margin-inline:auto}
-  dialog.dealwin>.dlg-h{padding-inline:max(16px,calc((100% - 1600px) / 2))}
-  dialog.dealwin{background:var(--paper)}
-  dialog.dealwin>.dlg-h{background:var(--card)}
-  dialog.dealwin .dl-b{border-inline:1px solid var(--line);background:var(--card)}
-}

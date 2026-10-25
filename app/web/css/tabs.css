@@ -134,3 +134,14 @@ html dialog.tabwin.jrnwin .jr-h:hover{background:none}
 .mob .apt-t{color:var(--muted)}
 .mob .apt-t.on{color:var(--navy);background:color-mix(in srgb,var(--navy) 9%,transparent)}
 .mob .apt-t.on i{transform:scale(1.08)}
+
+/* широкий экран: все разделы (вкладки) и форма КП — одной ширины по центру, шапка с вкладками — по той же линии */
+:root{--page-max:1760px}
+@media (min-width:1800px){
+  html:not(.mob) .top{padding-inline:max(28px,calc((100% - var(--page-max)) / 2))}
+  html:not(.mob) main.wrap{max-width:var(--page-max)}
+  html:not(.mob) dialog.tabwin{background:var(--paper)}
+  html:not(.mob) dialog.tabwin>*{width:100%;max-width:var(--page-max);margin-inline:auto;box-sizing:border-box}
+  html:not(.mob) dialog.tabwin:not([data-apptab=cab])>*{background-color:var(--card)}
+  html:not(.mob) dialog.tabwin:not([data-apptab=cab])>:last-child{border-inline:1px solid var(--line)}
+}
