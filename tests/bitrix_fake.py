@@ -27,6 +27,8 @@ class FakeBitrix:
         self.ufields, self.companies, self.requisites, self.contacts, self.deals = [], {}, {}, {}, {}
         self.deal_people, self.company_people = {}, {}  # контакты, привязанные к сделке и к компании списком связей
         self.rows, self.comments, self.activities, self.addresses = {}, [], {}, []
+        self.call_stats = []             # статистика телефонии (voximplant.statistic.get); telephony=False — у вебхука нет права
+        self.telephony = True
         self.lists = []                  # универсальные списки: {ID, NAME, TYPE, FIELDS: {FIELD_ID: {...}}, ELEMENTS: {id: {...}}}
         self.card = []                   # разделы карточки сделки (crm.deal.details.configuration.get)
         self.portal_fields = []          # свои поля сделки портала (кабинет как Битрикс24): {FIELD_NAME, USER_TYPE_ID, L, ITEMS}
@@ -230,6 +232,11 @@ class FakeBitrix:
                 a['DEADLINE'] = f['DEADLINE'] + '+03:00'
             a['LAST_UPDATED'] = self.now()
             return {'result': True}
+        if m == 'voximplant.statistic.get':
+            if not self.telephony:
+                raise ValueError('Insufficient scope: telephony')
+            ids = {str(x) for x in (b.get('FILTER') or {}).get('CRM_ACTIVITY_ID') or []}
+            return self.page([row for row in self.call_stats if str(row['CRM_ACTIVITY_ID']) in ids], b)
         if m == 'crm.activity.list':
             return self.page([a for a in self.activities.values() if self.match(a, b.get('filter'))], b)
         if m == 'crm.company.update':

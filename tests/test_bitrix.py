@@ -219,6 +219,53 @@ class SyncTest(SyncBase):
         self.assertEqual(tb.get(got[0]['id'])['state'], 'done')
         self.assertEqual(len([x for x in tb.list(deal=did)]), 2, 'своё дело не вернулось дублем')
 
+    def test_calls_and_mail_feed(self):
+        """Звонки и письма Битрикс24 по сделке — в ленту: длительность, итог, запись, тема и текст письма; без права телефонии —
+        звонок без записи; запланированный звонок — не разговор; чужая сделка и выключатель bxComms — ничего."""
+        from bitrix import BitrixQueue
+        from bitrix_comms import DealComms
+        from features import FeatureAccess
+        did = self.kp('26-0011')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        bid = list(self.fake.deals)[0]
+        time.sleep(1.1)
+        call = self.fake.add_activity(bid, 'Входящий звонок от +7 900 111-22-33', '2026-10-24T10:00:00+03:00', COMPLETED='Y', DIRECTION='1',
+                                      START_TIME='2026-10-24T10:00:00+03:00', END_TIME='2026-10-24T10:04:10+03:00',
+                                      DESCRIPTION='Договорились о встрече', PROVIDER_ID='VOXIMPLANT_CALL')
+        self.fake.add_activity(bid, 'Позвонить завтра', '2026-10-26T10:00:00+03:00')
+        mail = self.fake.add_activity(bid, 'Re: КП на компрессор', '2026-10-24T11:00:00+03:00', TYPE_ID='4', DIRECTION='1',
+                                      START_TIME='2026-10-24T11:00:00+03:00', DESCRIPTION_TYPE='3',
+                                      DESCRIPTION='<html><head><style>p{color:red}</style></head><body><p>Добрый день!</p><p>Цена &laquo;ок&raquo;, '
+                                                  'ждём счёт.</p><script>alert(1)</script></body></html>',
+                                      SETTINGS={'EMAIL_META': {'from': 'Сидоров <s@alfa.ru>', 'to': 'ivanova@example.com'}})
+        self.fake.call_stats.append({'CRM_ACTIVITY_ID': call, 'CALL_DURATION': '247', 'CALL_FAILED_CODE': '200',
+                                     'CALL_RECORD_URL': 'https://example.bitrix24.ru/record/1.mp3'})
+        self.sync().run()
+        rows = {row['id']: row for row in DealComms(self.st).of(did)}
+        self.assertEqual(set(rows), {call, mail}, 'запланированный звонок — не разговор')
+        got = rows[call]
+        self.assertEqual((got['kind'], got['dir'], got['dur'], got['result'], got['record'], got['note'], got['by']),
+                         ('call', 'in', 247, 'состоялся', 'https://example.bitrix24.ru/record/1.mp3', 'Договорились о встрече', 'Иванова Анна'))
+        letter = rows[mail]
+        self.assertEqual((letter['kind'], letter['subject'], letter['peer']), ('mail', 'Re: КП на компрессор', 'Сидоров <s@alfa.ru>'))
+        self.assertEqual(letter['body'], 'Добрый день!\n\nЦена «ок», ждём счёт.', 'текст без разметки, стилей и скриптов')
+        self.assertEqual(DealComms(self.st).body(did, mail), letter['body'])
+        self.assertIsNone(DealComms(self.st).body('d999', mail), 'письмо другой сделки')
+        # без права «Телефония» у вебхука — звонок остаётся с длительностью по времени дела
+        self.fake.telephony = False
+        time.sleep(1.1)
+        other = self.fake.add_activity(bid, 'Исходящий звонок', '2026-10-24T12:00:00+03:00', COMPLETED='Y', DIRECTION='2',
+                                       START_TIME='2026-10-24T12:00:00+03:00', END_TIME='2026-10-24T12:01:30+03:00')
+        self.sync().run()
+        row = next(x for x in DealComms(self.st).of(did) if x['id'] == other)
+        self.assertEqual((row['dir'], row['dur'], row.get('record')), ('out', 90, None))
+        FeatureAccess(self.st).save({'bxComms': False}, 'тест')
+        time.sleep(1.1)
+        self.fake.add_activity(bid, 'Ещё звонок', '2026-10-24T13:00:00+03:00', COMPLETED='Y')
+        self.sync().run()
+        self.assertEqual(len(DealComms(self.st).of(did)), 3, 'выключено — не загружаются')
+
     def test_task_moved_stays(self):
         """«+1 день» у дела, ушедшего в Битрикс универсальным делом: срок уходит своим методом, опрос не возвращает старый."""
         from crm import TaskBook

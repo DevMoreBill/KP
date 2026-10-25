@@ -907,20 +907,20 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .md-r.md-dr .muted{font-size:12px}
 html:not(.mob) .md-r.md-dr .btn{min-height:28px;padding:3px 10px;font-size:12.5px}
 /* своё расположение разделов кабинета (ПК): две колонки, ⠿ — перетащить, нижний край — высота, граница — ширина колонок */
-.lay-g{display:grid;gap:0;align-items:start}
-.lay-col{display:grid;gap:12px;min-width:0;min-height:80px;align-content:start}
+.lay-g{display:grid;gap:0;align-items:start;padding-top:8px}
+.lay-col{display:grid;gap:16px;min-width:0;min-height:80px;align-content:start}
 .lay-split{align-self:stretch;cursor:col-resize;position:relative;touch-action:none}
 .lay-split::after{content:"";position:absolute;inset:0 4px;border-radius:2px;transition:background .15s}
 .lay-split:hover::after,body.lay-busy .lay-split::after{background:color-mix(in srgb,var(--navy) 35%,transparent)}
 .lay-s{position:relative;min-width:0;display:flex;flex-direction:column}
-.lay-s.fixed{overflow:hidden}
 .lay-in{min-width:0;flex:1 1 auto}
 .lay-s.fixed .lay-in{overflow:hidden;min-height:0;display:flex;flex-direction:column}
 .lay-in>.md-s,.lay-in>section{margin:0}
 .lay-s.fixed .lay-in>.md-s{flex:1 1 auto;min-height:0;overflow:auto;box-sizing:border-box}
-.lay-tools{position:absolute;top:8px;right:8px;z-index:2;display:flex;gap:2px;opacity:0;transition:opacity .15s}
+/* инструменты раздела — на верхней рамке, не поверх кнопок раздела */
+.lay-tools{position:absolute;top:-15px;right:14px;z-index:3;display:flex;gap:2px;padding:1px;border-radius:8px;background:var(--card);box-shadow:0 2px 6px rgba(10,20,40,.15);opacity:0;transition:opacity .15s}
 .lay-s:hover>.lay-tools,.lay-s:focus-within>.lay-tools{opacity:1}
-.lay-tools button{width:26px;height:24px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--muted);font:inherit;font-size:14px;line-height:1;cursor:pointer;padding:0}
+.lay-tools button{width:26px;height:22px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--muted);font:inherit;font-size:14px;line-height:1;cursor:pointer;padding:0}
 .lay-grip{cursor:grab}
 .lay-tools button:hover{color:var(--navy);border-color:var(--navy)}
 .lay-rs{height:10px;margin-top:-5px;cursor:row-resize;position:relative;z-index:1;touch-action:none}
@@ -929,7 +929,17 @@ html:not(.mob) .md-r.md-dr .btn{min-height:28px;padding:3px 10px;font-size:12.5p
 .lay-moving{opacity:.45;outline:2px dashed var(--navy);outline-offset:2px;border-radius:12px}
 body.lay-busy{user-select:none}
 .lay-off{margin:10px 0 0;font-size:12.5px}
-.lay-s .md-h{padding-right:58px}
+.lay-s.lay-full{position:fixed;inset:calc(var(--apptop,72px) + 12px) 24px 24px;z-index:60;height:auto;display:flex;border-radius:14px;background:var(--card);box-shadow:0 0 0 100vmax rgba(10,20,40,.35),0 20px 60px rgba(0,0,0,.35)}
+.lay-s.lay-full>.lay-tools{opacity:1;top:8px;right:8px}
+.lay-s.lay-full>.lay-in{padding-top:28px}
+.lay-s.lay-full>.lay-rs{display:none}
+.lay-s.lay-full .lay-in{overflow:auto;min-height:0;display:flex;flex-direction:column}
+.lay-s.lay-full .lay-in>*{flex:1 0 auto}
+dialog.deal-dlg .lay-s.lay-full{inset:12px}
+/* узкое окно (карточка сделки, кабинет до 900 px) — одна колонка, без границы колонок */
+.cab-b,dialog.deal-dlg .dk-in{container-type:inline-size}
+@container (max-width:900px){.lay-g{grid-template-columns:minmax(0,1fr)!important;row-gap:12px}.lay-split{display:none}}
+dialog.deal-dlg .lay-g .dk-sum,dialog.deal-dlg .lay-g .dk-main{margin:0}
 /* «Сегодня»: главные действия — крупно; слева — что горит, справа — создать */
 .cta-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
 .cta-now,.cta-new{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -956,3 +966,12 @@ body.lay-busy{user-select:none}
 .cp-bar{position:sticky;bottom:-20px;display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:12px;padding:10px 0;background:var(--bg,var(--soft))}
 @media (max-width:1000px){.cp-g{grid-template-columns:1fr}}
 .mob .cp-bar{position:static}
+/* лента сделки: звонки и письма Битрикс24 */
+.fd-b .fd-i{border-color:var(--sky)}
+.fd-bh{display:block}
+.fd-rec{font-weight:600;white-space:nowrap}
+.fd-b .fd-text{display:block;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+.fd-mail{margin-top:2px}
+.fd-mail>summary{cursor:pointer;color:var(--navy);font-size:12.5px}
+.fd-mbody{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;margin-top:4px;padding:6px 10px;border-radius:8px;background:color-mix(in srgb,var(--sky) 8%,var(--card));font-size:13px}
+.fd-all{margin-top:4px;font-size:12.5px}

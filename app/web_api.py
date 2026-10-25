@@ -25,6 +25,7 @@ import pdf_convert
 import pdf_text
 from ai_profile import CategoryProfile, ModelFacts
 from bitrix import BitrixConf, BitrixQueue, BitrixSync, EconXlsx
+from bitrix_comms import BitrixComms, DealComms
 from bitrix_my import MyCompanies
 from cbr import cbr_key_rate, cbr_rates
 from client_contacts import ClientContacts
@@ -2156,6 +2157,24 @@ class CrmController(Controller):
             deal = new
         return self._card(did, deal)
 
+    def _comms(self, did: str) -> list:
+        """Звонки и письма сделки из Битрикс24 (до подключения обмена — подтягиваются при открытии, раз в полчаса)."""
+        comms = BitrixComms(BitrixSync(store()))
+        if not comms.enabled():
+            return []
+        self.safe(lambda: comms.sweep(did))
+        return DealComms(store()).of(did)
+
+    @route(r'/api/crm/deal/(d\d{1,9})/comm/(\d{1,12})', 'GET')
+    def comm_body(self, did, bx_id) -> Any:
+        """Текст письма Битрикс24 целиком — по нажатию в ленте сделки."""
+        if self._deal(did) is None:
+            return None
+        body = DealComms(store()).body(did, bx_id)
+        if body is None:
+            return self.not_found('Письма нет')
+        return self.send_json({'body': body})
+
     @route(r'/api/crm/client/inn', 'POST')
     def client_by_inn(self) -> Any:
         """Клиент по ИНН: из справочника или из ФНС (новая карточка) — для сделки без ручного ввода реквизитов."""
@@ -2225,6 +2244,7 @@ class CrmController(Controller):
         deal['calls'] = TaskBook(store()).client_calls(deal, None if everyone else [uid])
         if BitrixConf(store()).enabled():
             deal['bx'] = self.safe(lambda: BitrixSync(store()).card(did))
+            deal['comms'] = self._comms(did)
             companies = MyCompanies(store())
             deal['myCompanies'] = companies.all()
             deal['myCompanyDefault'] = companies.default(BitrixConf(store()).rules().company()['my'])

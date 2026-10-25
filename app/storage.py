@@ -359,6 +359,18 @@ MIGRATIONS = [
      DROP INDEX IF EXISTS deals_updated; DROP INDEX IF EXISTS crm_tasks_state;
      """,
     ),
+    # звонки и письма сделок из Битрикс24 (app/bitrix_comms.py) — строки ленты сделки
+    (
+        '2027-23-deal-comm',
+        """
+     CREATE TABLE IF NOT EXISTS deal_comm (bx_id TEXT PRIMARY KEY, deal_id TEXT NOT NULL, kind TEXT NOT NULL, dir TEXT, at TEXT,
+       dur INTEGER, subject TEXT, result TEXT, note TEXT, body TEXT, peer TEXT, record TEXT, mid TEXT, updated TEXT);
+     CREATE INDEX IF NOT EXISTS deal_comm_deal ON deal_comm(deal_id, at);
+     """,
+        """
+     DROP INDEX IF EXISTS deal_comm_deal; DROP TABLE IF EXISTS deal_comm;
+     """,
+    ),
 ]
 
 # таблицы, строки которых удаляются в корзину целиком (все столбцы) и восстанавливаются из неё

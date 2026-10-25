@@ -7,7 +7,7 @@ from datetime import datetime
 class CabLayout:
     """Расположение разделов кабинета, своё у менеджера: две колонки, порядок, ширина левой, высоты, скрытые."""
 
-    PAGES = ('today', 'team')
+    PAGES = ('today', 'team', 'deal')
     COLS = ('l', 'r')
     KEY_RX = re.compile(r'^[a-z]{2,16}$')
     MAX_KEYS = 24

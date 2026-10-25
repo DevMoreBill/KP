@@ -4,6 +4,8 @@ import { CrmTask } from './crm-task.js';
 import { KpTrack } from '../kp/kp-track.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { Api } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
 
 /**
  * Лента сделки, как в Битрикс24: сверху — «Дело / Комментарий», запланированные дела, ниже — всё, что было по сделке
@@ -24,6 +26,8 @@ export class DealFeed {
   static SERVICE = new Set(['kp', 'fields', 'edit']);
   static mode = '';
   static all = false;
+  static MINUTE = 60;
+  static DIRS = { in: 'Входящий', out: 'Исходящий' };
   static ICONS = {
     create: '✦',
     stage: '➜',
@@ -94,8 +98,9 @@ export class DealFeed {
       'fd-c',
       true,
     ]);
+    const twins = this._twins(deal);
     const tasks = (deal.tasks || [])
-      .filter(task => task.state !== 'open')
+      .filter(task => task.state !== 'open' && !twins.has(String(task.id)))
       .map(task => [
         task.doneAt || `${task.due}T${task.time || '00:00'}`,
         CrmData.KINDS[task.kind] || '✓',
@@ -122,9 +127,71 @@ export class DealFeed {
         'fd-h',
         this.KEY_HISTORY.has(item.what) && !item.auto,
       ]);
-    return [...comments, ...tasks, ...offers, ...history]
+    return [...comments, ...this._talks(deal), ...tasks, ...offers, ...history]
       .filter(([, , text]) => text)
       .sort((one, two) => String(two[0] || '').localeCompare(String(one[0] || '')));
+  }
+
+  // дело программы, пришедшее из того же звонка Битрикса, — одной строкой звонка
+  static _twins(deal) {
+    return new Set((deal.comms || []).map(row => String(row.taskId || '')).filter(Boolean));
+  }
+
+  static _talks(deal) {
+    return (deal.comms || []).map(row => [
+      row.at,
+      row.kind === 'mail' ? '✉' : '☎',
+      this._comm(deal, row),
+      row.by || '',
+      'fd-b',
+      true,
+    ]);
+  }
+
+  // звонок: направление, длительность, итог, заметка, запись; письмо: тема, от кого / кому, текст под раскрытием
+  static _comm(deal, row) {
+    return row.kind === 'mail' ? this._mail(deal, row) : this._call(row);
+  }
+
+  static _call(row) {
+    const word = this.DIRS[row.dir] ? `${this.DIRS[row.dir]} звонок` : 'Звонок';
+    const head = [`<b>${word}</b>`, row.dur ? esc(this._duration(row.dur)) : '', row.result ? esc(row.result) : '']
+      .filter(Boolean)
+      .join(' · ');
+    const note = row.note ? `<span class="fd-text">${esc(row.note)}</span>` : '';
+    const record = row.record
+      ? ` <a class="fd-rec" href="${esc(row.record)}" target="_blank" rel="noopener noreferrer">▶ Запись разговора</a>`
+      : '';
+    return `<span class="fd-bh">${head}${record}</span>${note}`;
+  }
+
+  static _mail(deal, row) {
+    const word = { in: 'Входящее письмо', out: 'Исходящее письмо' }[row.dir] || 'Письмо';
+    const peer = row.peer ? ` <span class="muted">${row.dir === 'out' ? 'кому' : 'от'} ${esc(row.peer)}</span>` : '';
+    const more = row.long
+      ? `<button type="button" class="lnk fd-all" data-commbody="${esc(row.id)}" data-commdeal="${esc(deal.id)}">Показать целиком</button>`
+      : '';
+    const body = row.body
+      ? `<details class="fd-mail"><summary>Текст письма</summary><div class="fd-mbody" data-mb="${esc(row.id)}">${esc(row.body)}</div>${more}</details>`
+      : '';
+    return `<span class="fd-bh"><b>${word}</b> «${esc(row.subject || 'без темы')}»${peer}</span>${body}`;
+  }
+
+  static _duration(seconds) {
+    const minutes = Math.floor(seconds / this.MINUTE);
+    const rest = seconds % this.MINUTE;
+    return minutes ? `${minutes} мин ${rest} с` : `${rest} с`;
+  }
+
+  static async _fullBody(button) {
+    try {
+      const answer = await Api.request(`/api/crm/deal/${button.dataset.commdeal}/comm/${button.dataset.commbody}`);
+      const box = button.parentElement.querySelector('.fd-mbody');
+      if (box) box.textContent = answer.body || '';
+      button.remove();
+    } catch (error) {
+      Toast.show(`Письмо не загрузилось: ${error.message || error}`);
+    }
   }
 
   // главное — комментарии, сделанные людьми дела, КП, стадии вручную; всё — по нажатию
@@ -160,6 +227,11 @@ export class DealFeed {
     if (mode) {
       this.mode = this.mode === mode.dataset.feedmode ? '' : mode.dataset.feedmode;
       return true;
+    }
+    const full = event.target.closest('[data-commbody]');
+    if (full) {
+      this._fullBody(full);
+      return false;
     }
     const all = event.target.closest('[data-feedall]');
     if (!all) return false;

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bitrix_clients import BitrixClientOut, BitrixClients
+from bitrix_comms import BitrixComms
 from bitrix_docs import BitrixDealDocs
 from bitrix_mirror import BitrixMirror
 from bitrix_my import MyCompanies
@@ -1836,20 +1837,11 @@ class BitrixSync:
             'crm.activity.list',
             {
                 'filter': {'OWNER_TYPE_ID': 2, '>LAST_UPDATED': since_dt.isoformat(timespec='seconds')},
-                'select': [
-                    'ID',
-                    'OWNER_ID',
-                    'SUBJECT',
-                    'DEADLINE',
-                    'COMPLETED',
-                    'TYPE_ID',
-                    'RESPONSIBLE_ID',
-                    'DESCRIPTION',
-                    'PROVIDER_ID',
-                ],
+                'select': BitrixComms.fields(),
             },
             limit=2000,
         )
+        BitrixComms(self).take(rows)
         tasks, count = TaskBook(self.store), 0
         for activity in rows:
             count += self._task_in(activity, tasks, task_rules)

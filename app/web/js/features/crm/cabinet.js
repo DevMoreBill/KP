@@ -411,7 +411,7 @@ export class Cabinet {
     dialog.addEventListener('input', event => this._input(event));
     CrmTask.bind(dialog, () => this.reload());
     CabDeals.bindDrag(dialog);
-    CabLayout.bind(dialog, () => this.render());
+    CabLayout.bind(dialog, 'cabinet', () => this.render());
     dialog.addEventListener('submit', event => {
       const form = event.target.closest('[data-kbform]');
       if (!form) return;

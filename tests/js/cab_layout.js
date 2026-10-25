@@ -44,6 +44,25 @@ check('скрыть и показать — в личных настройках
   assert.deepStrictEqual(saved.cabLayout, {});
 });
 
+check('карточка сделки: сводка и вкладки слева, «Что сделать» и лента справа; своё — поверх', ()=>{
+  const parts={sum:'<section>s</section>', now:'<section>n</section>', main:'<div>m</div>', feed:'<section>f</section>'};
+  assert.deepStrictEqual(CabLayout.of('deal', Object.keys(parts)).cols, {l:['sum', 'main'], r:['now', 'feed']});
+  assert.ok(DealLayout.html(parts, {feedTab:false}).includes('data-clpage="deal"'));
+  assert.ok(DealLayout.html(parts, {feedTab:true}).includes('dk-cols'), 'лента вкладкой (телефон) — как в программе');
+  FEAT.vals={dealLayout:false};
+  assert.ok(!DealLayout.html(parts, {feedTab:false}).includes('lay-g'), 'выключено — как в программе');
+});
+
+check('«⤢» — раздел на весь экран, повторно — обратно; выключено — кнопки нет', ()=>{
+  const parts={todo:'<section>t</section>', week:'<section>w</section>'};
+  assert.ok(CabLayout.html('today', parts).includes('data-clmax="todo"'));
+  CabLayout._full='todo';
+  assert.ok(CabLayout.html('today', parts).includes('lay-s lay-full" data-cl="todo"'));
+  CabLayout._full='';
+  FEAT.vals={cabExpand:false};
+  assert.ok(!CabLayout.html('today', parts).includes('data-clmax'));
+});
+
 check('выключено — своего расположения нет', ()=>{
   FEAT.vals={cabLayout:false};
   assert.strictEqual(CabLayout.enabled(), false);

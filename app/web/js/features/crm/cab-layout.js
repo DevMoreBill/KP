@@ -26,21 +26,29 @@ export class CabLayout {
     managers: 'Менеджеры',
     regs: 'Регламент',
     time: 'Где тратится время',
+    sum: 'Сводка сделки',
+    now: 'Что сделать сейчас',
+    main: 'Сделка, поля, документы',
+    feed: 'Дела и лента',
   };
   static DEFAULTS = {
     today: { cols: { l: ['todo', 'reminders'], r: ['week', 'month', 'funnel', 'drafts'] }, ratio: 0.62 },
     team: { cols: { l: ['attention', 'managers', 'time'], r: ['team', 'regs'] }, ratio: 0.6 },
+    deal: { cols: { l: ['sum', 'main'], r: ['now', 'feed'] }, ratio: 0.6 },
   };
+  static _redraws = new Map();
+  static _full = '';
   static _saving = new Debounce(CabLayout.SAVE_MS);
   static _drag = null;
   static _local = {};
 
   /**
-   * Своё расположение действует (ПК, функция включена).
+   * Своё расположение действует (ПК, функция включена): кабинет — cabLayout, карточка сделки — dealLayout.
+   * @param {string} [feature]
    * @returns {boolean}
    */
-  static enabled() {
-    return FEAT.on('cabLayout') && !Mobile.isPhone();
+  static enabled(feature = 'cabLayout') {
+    return FEAT.on(feature) && !Mobile.isPhone();
   }
 
   /**
@@ -86,28 +94,41 @@ export class CabLayout {
         .join('')}</div>`;
     const ratio = layout.ratio;
     const style = `grid-template-columns:minmax(0,${ratio}fr) 10px minmax(0,${(1 - ratio).toFixed(3)}fr)`;
-    return `<div class="lay-g" data-clpage="${page}" style="${style}">${column('l')}<div class="lay-split" role="separator" aria-orientation="vertical" aria-label="Ширина колонок — потяните" title="Потяните — колонка шире или уже"></div>${column('r')}</div>${this._hidden(layout)}`;
+    return `<div class="lay-g" data-clpage="${page}" style="${style}">${column('l')}<div class="lay-split" role="separator" aria-orientation="vertical" aria-label="Ширина колонок — потяните" title="Потяните — колонка шире или уже"></div>${column('r')}</div>${this._hidden(page, layout)}`;
   }
 
   static _section(key, html, height) {
-    const size = height ? ` style="height:${height}px"` : '';
+    const full = this._full === key;
+    const size = height && !full ? ` style="height:${height}px"` : '';
     const name = this.NAMES[key] || key;
-    return `<div class="lay-s${height ? ' fixed' : ''}" data-cl="${key}"${size}><div class="lay-tools"><button type="button" class="lay-grip" draggable="true" aria-label="Перетащить раздел «${name}»" title="Перетащить в другое место">⠿</button><button type="button" class="lay-hide" data-clhide="${key}" aria-label="Скрыть раздел «${name}»" title="Скрыть (вернуть — «Мои настройки»)">—</button></div><div class="lay-in">${html}</div><div class="lay-rs" data-clrs="${key}" title="Потяните — выше или ниже; двойной щелчок — по содержимому" aria-hidden="true"></div></div>`;
+    const state = `${height && !full ? ' fixed' : ''}${full ? ' lay-full' : ''}`;
+    return `<div class="lay-s${state}" data-cl="${key}"${size}><div class="lay-tools">${this._fullButton(key, name)}<button type="button" class="lay-grip" draggable="true" aria-label="Перетащить раздел «${name}»" title="Перетащить в другое место">⠿</button><button type="button" class="lay-hide" data-clhide="${key}" aria-label="Скрыть раздел «${name}»" title="Скрыть (вернуть — «Мои настройки»)">—</button></div><div class="lay-in">${html}</div><div class="lay-rs" data-clrs="${key}" title="Потяните — выше или ниже; двойной щелчок — по содержимому" aria-hidden="true"></div></div>`;
   }
 
-  static _hidden(layout) {
+  // «⤢» — раздел на весь экран, «⤡» или Esc — обратно
+  static _fullButton(key, name) {
+    if (!FEAT.on('cabExpand')) return '';
+    const full = this._full === key;
+    const label = full ? `Свернуть раздел «${name}»` : `Раздел «${name}» — на весь экран`;
+    return `<button type="button" class="lay-max" data-clmax="${key}" aria-pressed="${full}" aria-label="${label}" title="${full ? 'Свернуть (Esc)' : 'На весь экран'}">${full ? '⤡' : '⤢'}</button>`;
+  }
+
+  static _hidden(page, layout) {
     if (!layout.hide.length) return '';
     const names = layout.hide.map(key => this.NAMES[key] || key).join(', ');
-    return `<p class="muted lay-off">Скрыто: ${names}. <button type="button" class="lnk" data-clshow>Показать все</button></p>`;
+    return `<p class="muted lay-off">Скрыто: ${names}. <button type="button" class="lnk" data-clshow="${page}">Показать все</button></p>`;
   }
 
   /**
-   * Перетаскивание, размеры и скрытие — один раз на окно кабинета.
+   * Перетаскивание, размеры, «на весь экран» и скрытие — один раз на окно (кабинет, карточка сделки).
    * @param {HTMLElement} box
-   * @param {Function} redraw перерисовать раздел
+   * @param {string} owner кабинет или карточка — своя перерисовка
+   * @param {Function} redraw перерисовать
    */
-  static bind(box, redraw) {
-    this._redraw = redraw;
+  static bind(box, owner, redraw) {
+    // Esc — с любого места (после «⤢» фокус уходит с перерисованной кнопки), раньше закрытия окна
+    if (!this._redraws.size) document.addEventListener('keydown', event => this._escape(event), true);
+    this._redraws.set(owner, redraw);
     box.addEventListener('dragstart', event => this._dragStart(event));
     box.addEventListener('dragover', event => this._dragOver(event));
     box.addEventListener('drop', event => this._dropSection(event));
@@ -198,7 +219,19 @@ export class CabLayout {
     else delete this._local[page];
     MyPrefs.prefs = { ...MyPrefs.prefs, cabLayout: all };
     this._saving.run(() => MyPrefs.remember({ cabLayout: all }));
-    if (this._redraw) this._redraw();
+    this._redrawAll();
+  }
+
+  static _redrawAll() {
+    this._redraws.forEach(redraw => redraw());
+  }
+
+  static _escape(event) {
+    if (event.key !== 'Escape' || !this._full) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._full = '';
+    this._redrawAll();
   }
 
   static _dragStart(event) {
@@ -318,6 +351,12 @@ export class CabLayout {
   }
 
   static _click(event) {
+    const max = event.target.closest && event.target.closest('[data-clmax]');
+    if (max) {
+      this._full = this._full === max.dataset.clmax ? '' : max.dataset.clmax;
+      this._redrawAll();
+      return;
+    }
     const hide = event.target.closest && event.target.closest('[data-clhide]');
     if (hide) {
       this.show(hide.closest('.lay-g').dataset.clpage, hide.dataset.clhide, false);
@@ -325,7 +364,7 @@ export class CabLayout {
     }
     const all = event.target.closest && event.target.closest('[data-clshow]');
     if (!all) return;
-    const page = all.closest('.cab-b').querySelector('.lay-g').dataset.clpage;
+    const page = all.dataset.clshow;
     const layout = this._current(page);
     layout.hide = [];
     this._store(page, layout);

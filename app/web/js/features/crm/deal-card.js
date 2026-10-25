@@ -1,3 +1,4 @@
+import { DealLayout } from './deal-layout.js';
 import { KpRate } from './kp-rate.js';
 import { HelpLink } from '../../core/help-link.js';
 import { CrmData } from './crm-data.js';
@@ -30,7 +31,7 @@ import { FEAT } from '../../core/features.js';
 import { ClientStore } from '../kp/client-store.js';
 import { UiKit } from '../../ui/ui-kit.js';
 import { Mobile } from '../../ui/mobile.js';
-import { Fmt, Str } from '../../core/str.js';
+import { Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
 import { KpDate } from '../kp/kp-date.js';
@@ -130,6 +131,7 @@ export class DealCard {
     DealWin.bind(modal.d);
     modal.d.addEventListener('close', () => this._closed());
     modal.d.addEventListener('click', event => this._click(event));
+    DealLayout.bind(modal.d, () => this.render());
     modal.d.addEventListener('change', event => this._change(event));
     modal.d.addEventListener('keydown', event => this._key(event));
     modal.d.addEventListener('input', event => this._input(event));
@@ -193,9 +195,13 @@ export class DealCard {
    */
   static html() {
     const deal = this.deal;
-    const side = DealTabs.feedTab() ? '' : `<div class="dk-side">${this._feed(deal)}</div>`;
-    return `${DealWin.grip()}${this._top(deal)}<div class="dk-in"><section class="dk-sum">${this._steps(deal)}${DealParts.facts(deal)}</section>${DealNow.html(deal)}
-      <div class="dk-cols"><div class="dk-main">${DealTabs.html(this._panels(deal))}</div>${side}</div></div>`;
+    const parts = {
+      sum: `<section class="dk-sum">${this._steps(deal)}${DealParts.facts(deal)}</section>`,
+      now: DealNow.html(deal),
+      main: `<div class="dk-main">${DealTabs.html(this._panels(deal))}</div>`,
+      feed: DealTabs.feedTab() ? '' : this._feed(deal),
+    };
+    return `${DealWin.grip()}${this._top(deal)}<div class="dk-in">${DealLayout.html(parts, { feedTab: DealTabs.feedTab() })}</div>`;
   }
 
   static _feed(deal) {
@@ -262,7 +268,7 @@ export class DealCard {
     return `<header class="dk-top"><div class="dk-hd">
       <span class="dk-no">Сделка № ${esc(deal.number)}</span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">
-      <span class="dk-saved" aria-live="polite"></span>${this._bx(deal)}<span class="dk-who" title="Ответственный · дата создания">${who}${esc(created)}</span></div>
+      <span class="dk-saved" aria-live="polite"></span>${DealParts.bitrix(deal)}<span class="dk-who" title="Ответственный · дата создания">${who}${esc(created)}</span></div>
       <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button>${HelpLink.html('deal-card', 'карточка сделки', 'dk-ib dk-help')}${DealPause.button()}${FEAT.on('dealDelete') ? `<button class="dk-ib dk-del" type="button" data-dkdel aria-label="Удалить сделку" title="Удалить сделку (в корзину)">${this._icon('trash')}</button>` : ''}<button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
   }
 
@@ -278,21 +284,6 @@ export class DealCard {
     const prev = index > 0 ? '' : ' disabled';
     const next = index < this.list.length - 1 ? '' : ' disabled';
     return `<div class="dk-nav" role="group" aria-label="Соседние сделки"><button class="dk-ib" type="button" data-dknav="-1" aria-label="Предыдущая сделка" title="Предыдущая (←)"${prev}>${this._icon('prev')}</button><span class="dk-pos">${index + 1} из ${this.list.length}</span><button class="dk-ib" type="button" data-dknav="1" aria-label="Следующая сделка" title="Следующая (→)"${next}>${this._icon('next')}</button></div>`;
-  }
-
-  static _bx(deal) {
-    const link = deal.bx;
-    if (!link) return '';
-    if (!link.id) {
-      const text = link.error ? 'не отправлено' : 'ждёт отправки';
-      const hint = link.error ? `Битрикс24: не отправлено — ${link.error}` : 'Битрикс24: сделка ещё не отправлена';
-      return `<span class="dk-bxc${link.error ? ' bad' : ''}" title="${esc(hint)}">Б24 · ${text}</span>`;
-    }
-    const hint = esc(`Сделка ${link.id} в Битрикс24 · синхронизировано ${Fmt.dateTime(link.at)}`);
-    const name = `Б24 · ${esc(link.id)}`;
-    return link.url
-      ? `<a class="dk-bxc" href="${esc(link.url)}" target="_blank" rel="noopener" title="${hint} — открыть">${name} ↗</a>`
-      : `<span class="dk-bxc" title="${hint}">${name}</span>`;
   }
 
   static _stageLabel(stages, key, fallback) {

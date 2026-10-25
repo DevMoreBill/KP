@@ -2,6 +2,7 @@ import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { Money } from '../../core/money.js';
 import { esc, today } from '../../core/util.js';
+import { Fmt } from '../../core/str.js';
 
 /**
  * Разделы карточки сделки строками-раскрывашками с итогом в заголовке («Клиент и сделка · ООО … · Иванов»), строка
@@ -54,6 +55,26 @@ export class DealParts {
       this.chosen = {};
     }
     return this.chosen;
+  }
+
+  /**
+   * Метка «Б24 · №» в шапке карточки: ссылка в Битрикс24 или «ждёт отправки» / «не отправлено».
+   * @param {object} deal
+   * @returns {string}
+   */
+  static bitrix(deal) {
+    const link = deal.bx;
+    if (!link) return '';
+    if (!link.id) {
+      const text = link.error ? 'не отправлено' : 'ждёт отправки';
+      const hint = link.error ? `Битрикс24: не отправлено — ${link.error}` : 'Битрикс24: сделка ещё не отправлена';
+      return `<span class="dk-bxc${link.error ? ' bad' : ''}" title="${esc(hint)}">Б24 · ${text}</span>`;
+    }
+    const hint = esc(`Сделка ${link.id} в Битрикс24 · синхронизировано ${Fmt.dateTime(link.at)}`);
+    const name = `Б24 · ${esc(link.id)}`;
+    return link.url
+      ? `<a class="dk-bxc" href="${esc(link.url)}" target="_blank" rel="noopener" title="${hint} — открыть">${name} ↗</a>`
+      : `<span class="dk-bxc" title="${hint}">${name}</span>`;
   }
 
   /**
