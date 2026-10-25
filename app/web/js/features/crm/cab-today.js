@@ -292,7 +292,7 @@ export class CabToday {
       .slice(0, limit)
       .map(
         draft =>
-          `<div class="md-r"><div><b>${esc(draft.client || 'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(draft))} · ${draft.positions || 0} поз. · ${esc(Fmt.dateTime(draft.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(draft.id)}">Продолжить</button></div>`,
+          `<div class="md-r md-dr"><div><b>${esc(draft.client || 'Клиент не указан')}</b><span class="muted">${esc(Drafts.title(draft))} · ${draft.positions || 0} поз. · ${esc(Fmt.dateTime(draft.updated))}</span></div><button class="btn sm" type="button" data-dro="${esc(draft.id)}">Продолжить</button></div>`,
       )
       .join('');
     if (!drafts.length) return '';

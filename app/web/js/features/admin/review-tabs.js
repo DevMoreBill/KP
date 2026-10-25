@@ -23,7 +23,11 @@ export class StatsTab {
     minWidth: 2,
     round: 4,
     labelY: 15,
+    maxWidth: 2000,
+    pad: 40,
   };
+  // ширина рисунка — по месту в окне: иначе 640 растягивались на весь монитор вместе с подписями и высотой
+  static drawWidth = 640;
   static KOPECKS = 100;
   static ACTIVE_DAYS = 30;
   static PERIODS = [
@@ -39,7 +43,8 @@ export class StatsTab {
    * @returns {string}
    */
   static bars(series) {
-    const { width, height, axis } = this.CHART;
+    const { height, axis } = this.CHART;
+    const width = this.drawWidth;
     const max = Math.max(1, ...series.map(row => row.count));
     const count = series.length;
     const barWidth = width / count;
@@ -137,6 +142,7 @@ export class StatsTab {
    */
   static async render(box) {
     const stats = await AdminApi.get('stats');
+    this.drawWidth = Math.max(this.CHART.width, Math.min(this.CHART.maxWidth, box.clientWidth - this.CHART.pad));
     box.innerHTML = `${await AdminReadiness.html()}<div id="stAttn"></div>
     <div class="row st-quick"><button class="btn" type="button" data-q="report">Отчёт по КП…</button><button class="btn" type="button" data-q="journal">Журнал КП…</button><button class="btn" type="button" data-sttab="audit">Журнал действий</button><button class="btn" type="button" data-sttab="connections">Проверить подключения</button><button class="btn" type="button" data-sttab="changed">Изменённые настройки</button><button class="btn" type="button" data-sttab="updates">Обновления</button></div>
     <div class="st-tiles">${this._tiles(stats)}</div>

@@ -183,3 +183,11 @@ dialog.st-confirm .row.auth-row{flex-wrap:wrap}
 @media (max-width:700px){ .kp-kind .kk-grid{grid-template-columns:1fr} }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .jr-t{color:#fbbf24} }
 :root[data-theme="dark"] .jr-t{color:#fbbf24}
+/* полосы прокрутки на ПК — свои: тонкие, скруглённые, в цвет темы (телефон — родные, исчезающие) */
+:root{--sb:color-mix(in srgb,var(--muted) 42%,transparent);--sb-h:color-mix(in srgb,var(--navy) 75%,transparent)}
+html:not(.mob) ::-webkit-scrollbar{width:10px;height:10px}
+html:not(.mob) ::-webkit-scrollbar-track,html:not(.mob) ::-webkit-scrollbar-corner{background:transparent}
+html:not(.mob) ::-webkit-scrollbar-thumb{background:var(--sb);border:2px solid transparent;border-radius:10px;background-clip:padding-box;min-height:40px}
+html:not(.mob) ::-webkit-scrollbar-thumb:hover,html:not(.mob) ::-webkit-scrollbar-thumb:active{background-color:var(--sb-h)}
+html:not(.mob) ::-webkit-scrollbar-button{display:none;width:0;height:0}
+@supports (-moz-appearance:none){html:not(.mob) *{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}}

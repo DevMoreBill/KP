@@ -402,7 +402,7 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-trw .dl-ddt input[type=date]{max-width:150px}
 
 /* ---- вкладки шагов */
-.dl-tabs{position:sticky;top:0;z-index:5;scrollbar-width:thin;display:flex;align-items:stretch;gap:0;padding:0;border-radius:12px;overflow-x:auto;overflow-y:hidden;background:var(--card);border:1px solid var(--line);box-shadow:none}
+.dl-tabs{position:sticky;top:0;z-index:5;display:flex;align-items:stretch;gap:0;padding:0;border-radius:12px;overflow-x:auto;overflow-y:hidden;background:var(--card);border:1px solid var(--line);box-shadow:none}
 .dl-tab:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 .dl-tab.ok .dl-tn{background:var(--ok);border-color:var(--ok);color:var(--on-navy)}
 .dl-tab.need .dl-tn{background:var(--warn);border-color:var(--warn);color:var(--on-navy)}

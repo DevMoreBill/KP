@@ -901,3 +901,8 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 @media (max-width:600px){.cc-fg{grid-template-columns:1fr}}
 .td-more{margin-top:10px;border-top:1px solid var(--line)}
 .td-more>summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer}
+/* черновики КП на «Сегодня» — плотнее: строка ниже, кнопка меньше */
+.md-r.md-dr{padding:5px 0;gap:8px}
+.md-r.md-dr b{font-size:13.5px;font-weight:600}
+.md-r.md-dr .muted{font-size:12px}
+html:not(.mob) .md-r.md-dr .btn{min-height:28px;padding:3px 10px;font-size:12.5px}

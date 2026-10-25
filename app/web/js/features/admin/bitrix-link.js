@@ -23,7 +23,7 @@ export class BitrixLink {
     const queue = state.queue || {};
     const linked = state.linked || {};
     const off = state.on ? '' : ' disabled';
-    return `<p class="bx-st">Последний обмен: <b>${esc(BitrixPanel.when(state.lastRun))}</b> · в Битриксе сделок <b>${linked.deals || 0}</b>, компаний <b>${linked.companies || 0}</b>, дел <b>${linked.tasks || 0}</b>
+    return `<p class="bx-sum">Последний обмен: <b>${esc(BitrixPanel.when(state.lastRun))}</b> · в Битриксе сделок <b>${linked.deals || 0}</b>, компаний <b>${linked.companies || 0}</b>, дел <b>${linked.tasks || 0}</b>
         · в очереди <b>${queue.queued || 0}</b>${queue.failed ? ` · <span class="bad-t">с ошибкой ${queue.failed}: ${esc(queue.lastError || '')}</span>` : ''}</p>
         <div class="row bx-btns"><button class="btn" type="button" id="bxRun"${off}>Обменяться сейчас</button>
           <button class="btn ghost" type="button" id="bxPull"${off} title="Забрать изменения и новые сделки, очередь не отправлять">Загрузить из Битрикса</button>

@@ -68,7 +68,7 @@ dialog.wide{max-width:min(1160px,96vw)}
 .mrg-more>summary{cursor:pointer;color:var(--navy);font-size:12.5px;width:max-content}
 .mrg-more>dl{margin-top:6px}
 @media (min-width:1025px){
-  aside#side{max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:4px;margin:-4px}
+  aside#side{max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;padding:4px;margin:-4px}
 }
 dialog{border:0;border-radius:18px;padding:0;max-width:min(760px,94vw);width:100%;background:var(--card);color:var(--ink);box-shadow:0 30px 80px rgba(8,25,60,.35)}
 dialog::backdrop{background:rgba(10,20,40,.45)}
