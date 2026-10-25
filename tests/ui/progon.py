@@ -163,7 +163,8 @@ class ProfileProcs:
 
     @staticmethod
     def kill(profile):
-        mark = profile.encode()
+        # путь целиком, до конца аргумента: «profile/pc» — начало «profile/pcd»
+        mark = b'--user-data-dir=' + profile.encode() + b'\0'
         for cmd in glob.glob('/proc/[0-9]*/cmdline'):
             try:
                 with open(cmd, 'rb') as f:
@@ -1847,7 +1848,8 @@ class Progon:
             for m, pr in list(pending.items()):
                 if pr.poll() is None:
                     continue
-                ProfileProcs.kill(os.path.join(self.out, 'profile', m))
+                if pr.returncode:
+                    ProfileProcs.kill(os.path.join(self.out, 'profile', m))
                 rest = self._after_hung(m) if pr.returncode == StageGuard.HUNG else None
                 if rest and restarts[m] < self.RESTARTS:
                     restarts[m] += 1
