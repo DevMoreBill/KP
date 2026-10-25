@@ -68,7 +68,7 @@ export class Theme {
   static toggle() {
     const theme = this.current() === 'dark' ? 'light' : 'dark';
     this.set(theme);
-    MyPrefs.rememberTheme(theme);
+    MyPrefs.remember({ theme });
   }
 
   /** Надпись пункта меню — тема, на которую переключит. */

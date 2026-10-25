@@ -55,6 +55,6 @@ dialog.kpprev[open]{display:flex}
 @media (min-width:1600px){.pv-live-btn{display:flex}}
 .pv-live .wrap{max-width:none;margin:0;margin-right:40vw}
 #pvLive{position:fixed;right:0;top:var(--apptop,72px);bottom:0;align-self:stretch;width:40vw;background:#7d8597;border-left:1px solid var(--line);z-index:5;overflow:auto}
-#pvLive .docx-wrapper{zoom:.62;background:none!important;padding:16px 0!important}
-#pvLive section.docx{box-shadow:0 6px 20px rgba(0,0,0,.3)!important;margin-bottom:16px!important}
+#pvLive .docx-wrapper{zoom:.62;background:none!important;padding:14px 0!important}
+#pvLive section.docx{box-shadow:0 6px 20px rgba(0,0,0,.3)!important;margin:0 auto 14px!important}
 #pvLive .empty{color:#fff;padding:24px}

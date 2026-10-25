@@ -10,6 +10,8 @@ import { CabClients } from './cab-clients.js';
 import { CompanyCardView } from './company-card.js';
 import { CabTeam, MonthXlsx } from './cab-team.js';
 import { CabGuide } from './cab-guide.js';
+import { CabLayout } from './cab-layout.js';
+import { CabPrefs } from './cab-prefs.js';
 import { DealCard } from './deal-card.js';
 import { DealNew } from './deal-new.js';
 import { Debounce } from '../../core/debounce.js';
@@ -43,6 +45,7 @@ export class Cabinet {
     ['deals', 'Сделки'],
     ['clients', 'Клиенты'],
     ['team', 'Отдел'],
+    ['prefs', '⚙ Мои настройки'],
   ];
   static HOURS = [
     [5, 'Доброй ночи'],
@@ -88,7 +91,7 @@ export class Cabinet {
       this._fail(error);
       return;
     }
-    if (this.tab === 'team' && !CrmData.board.canAll) this.tab = 'today';
+    if (!this._shownTabs().some(([key]) => key === this.tab)) this.tab = 'today';
     CabPay.reset();
     KpRate.load();
     await this._extras();
@@ -162,7 +165,7 @@ export class Cabinet {
   }
 
   static _view() {
-    const views = { today: CabToday, deals: CabDeals, clients: CabClients, team: CabTeam };
+    const views = { today: CabToday, deals: CabDeals, clients: CabClients, team: CabTeam, prefs: CabPrefs };
     return views[this.tab] || CabToday;
   }
 
@@ -198,8 +201,13 @@ export class Cabinet {
       <button class="icon cab-help" type="button" data-cguide aria-label="Как пользоваться кабинетом" title="Как пользоваться кабинетом">?</button><button class="icon" type="button" data-x aria-label="Закрыть кабинет" title="Закрыть (Esc)">✕</button></div></header>`;
   }
 
+  static _shownTabs() {
+    const shown = { team: () => CrmData.board.canAll, prefs: () => CabPrefs.enabled() };
+    return this.TABS.filter(([key]) => !shown[key] || shown[key]());
+  }
+
   static _tabs() {
-    return this.TABS.filter(([key]) => key !== 'team' || CrmData.board.canAll)
+    return this._shownTabs()
       .map(([key, label]) => {
         const active = this.tab === key;
         return `<button type="button" role="tab" aria-selected="${active}" class="cab-tab${active ? ' on' : ''}" data-ctab="${key}">${label}${this._badge(key)}</button>`;
@@ -355,7 +363,7 @@ export class Cabinet {
 
   static _click(event) {
     if (!event.target.closest('.cab-q, .cab-fab')) this._hideMenus();
-    if (CabDeals.click(event) || CabToday.click(event)) return;
+    if (CabDeals.click(event) || CabToday.click(event) || CabPrefs.click(event)) return;
     for (const [selector, run] of this._clicks()) {
       const el = event.target.closest(selector);
       if (el) {
@@ -403,6 +411,7 @@ export class Cabinet {
     dialog.addEventListener('input', event => this._input(event));
     CrmTask.bind(dialog, () => this.reload());
     CabDeals.bindDrag(dialog);
+    CabLayout.bind(dialog, () => this.render());
     dialog.addEventListener('submit', event => {
       const form = event.target.closest('[data-kbform]');
       if (!form) return;

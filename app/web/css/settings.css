@@ -456,7 +456,10 @@ dialog.st-confirm:has(.sh-t){width:min(820px,calc(100vw - 32px));max-width:none}
 .mob .ch-t thead,.mob .sh-t thead{display:none}
 .mob .ch-t td[data-l]::before,.mob .sh-t td[data-l]::before{content:attr(data-l) ': ';color:var(--muted)}
 /* «Мои настройки» менеджера */
-.mp-dlg label.mp-ck{display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer}
+label.mp-ck{display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer}
+.mp-h{margin:14px 0 6px}
+.mp-lead{margin-top:0}
+label.mp-pv{align-self:end;margin:0 0 10px}
 .mp-dlg .dlg-h h3 small{display:block;font-size:13px;font-weight:400;color:var(--muted)}
 /* матрица расстановки станций (Настройки → Инженерные правила станций) */
 .st-card.mx>summary{cursor:pointer;list-style-position:inside}

@@ -906,3 +906,53 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .md-r.md-dr b{font-size:13.5px;font-weight:600}
 .md-r.md-dr .muted{font-size:12px}
 html:not(.mob) .md-r.md-dr .btn{min-height:28px;padding:3px 10px;font-size:12.5px}
+/* своё расположение разделов кабинета (ПК): две колонки, ⠿ — перетащить, нижний край — высота, граница — ширина колонок */
+.lay-g{display:grid;gap:0;align-items:start}
+.lay-col{display:grid;gap:12px;min-width:0;min-height:80px;align-content:start}
+.lay-split{align-self:stretch;cursor:col-resize;position:relative;touch-action:none}
+.lay-split::after{content:"";position:absolute;inset:0 4px;border-radius:2px;transition:background .15s}
+.lay-split:hover::after,body.lay-busy .lay-split::after{background:color-mix(in srgb,var(--navy) 35%,transparent)}
+.lay-s{position:relative;min-width:0;display:flex;flex-direction:column}
+.lay-s.fixed{overflow:hidden}
+.lay-in{min-width:0;flex:1 1 auto}
+.lay-s.fixed .lay-in{overflow:hidden;min-height:0;display:flex;flex-direction:column}
+.lay-in>.md-s,.lay-in>section{margin:0}
+.lay-s.fixed .lay-in>.md-s{flex:1 1 auto;min-height:0;overflow:auto;box-sizing:border-box}
+.lay-tools{position:absolute;top:8px;right:8px;z-index:2;display:flex;gap:2px;opacity:0;transition:opacity .15s}
+.lay-s:hover>.lay-tools,.lay-s:focus-within>.lay-tools{opacity:1}
+.lay-tools button{width:26px;height:24px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--muted);font:inherit;font-size:14px;line-height:1;cursor:pointer;padding:0}
+.lay-grip{cursor:grab}
+.lay-tools button:hover{color:var(--navy);border-color:var(--navy)}
+.lay-rs{height:10px;margin-top:-5px;cursor:row-resize;position:relative;z-index:1;touch-action:none}
+.lay-rs::after{content:"";position:absolute;left:calc(50% - 22px);top:3px;width:44px;height:4px;border-radius:2px;background:var(--line);opacity:0;transition:opacity .15s}
+.lay-s:hover>.lay-rs::after,body.lay-busy .lay-rs::after{opacity:1}
+.lay-moving{opacity:.45;outline:2px dashed var(--navy);outline-offset:2px;border-radius:12px}
+body.lay-busy{user-select:none}
+.lay-off{margin:10px 0 0;font-size:12.5px}
+.lay-s .md-h{padding-right:58px}
+/* «Сегодня»: главные действия — крупно; слева — что горит, справа — создать */
+.cta-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.cta-now,.cta-new{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cta{min-height:40px;padding:0 14px;border-radius:10px;border:1px solid transparent;font:inherit;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;color:var(--on-navy);background:var(--navy)}
+.cta b{min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:rgba(255,255,255,.25);display:inline-grid;place-items:center;font-size:12.5px}
+.cta.bad{background:var(--danger)}
+.cta.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn)}
+.cta.warn b{background:var(--warn);color:var(--on-navy)}
+.cta.go{background:var(--ok)}
+.cta:hover{filter:brightness(1.07)}
+.cta-ok{font-weight:600;color:var(--ok)}
+.cta-b{min-height:40px;font-weight:700}
+.td-flash{box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 45%,transparent);transition:box-shadow .3s}
+.mob .cta-bar{padding:8px;gap:8px}
+.mob .cta{min-height:44px;flex:1 1 100%;justify-content:space-between}
+.mob .cta-new{display:none}
+.mob .cta-now{flex:1 1 100%}
+/* вкладка «⚙ Мои настройки» */
+.cp{max-width:1280px}
+.cp-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.cp-s .mp-h:first-of-type{margin-top:0}
+.cp-ck{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+.cp-how{font-size:12.5px;margin:6px 0 0}
+.cp-bar{position:sticky;bottom:-20px;display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:12px;padding:10px 0;background:var(--bg,var(--soft))}
+@media (max-width:1000px){.cp-g{grid-template-columns:1fr}}
+.mob .cp-bar{position:static}

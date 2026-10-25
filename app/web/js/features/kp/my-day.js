@@ -1,9 +1,10 @@
+import { MyPrefs } from './my-prefs.js';
 import { Auth } from './auth.js';
 import { Managers } from './managers.js';
 import { Cabinet } from '../crm/cabinet.js';
 import { FEAT } from '../../core/features.js';
 
-/** Кабинет менеджера — главный экран: открывается при запуске (иное — «Мои настройки → Стартовый экран»). */
+/** Кабинет менеджера — главный экран и точка входа: открывается при запуске всегда. */
 export class MyDay {
   /**
    * Кабинет включён в «Функциях».
@@ -39,19 +40,23 @@ export class MyDay {
     return `<section class="md-s"><div class="md-h"><p class="sub">${title}</p>${more}</div>${body}</section>`;
   }
 
-  /** «Мой день» стал вкладкой «Сегодня» кабинета менеджера. */
-  static open() {
-    return Cabinet.open();
+  /**
+   * «Мой день» стал вкладкой «Сегодня» кабинета менеджера.
+   * @param {string} [tab] раздел кабинета
+   * @returns {Promise<void>}
+   */
+  static open(tab) {
+    return Cabinet.open(tab);
   }
 
   /**
-   * При запуске: кабинет вместо каталога.
+   * При запуске — всегда кабинет (раздел — из «Моих настроек»).
    * @returns {boolean} открыт
    */
   static start() {
     this.badge();
     if (this.enabled()) {
-      this.open();
+      this.open(MyPrefs.prefs.cabTab);
       return true;
     }
     return false;

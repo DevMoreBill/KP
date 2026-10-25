@@ -115,16 +115,10 @@ export class App {
     Drafts.start();
     Reminders.load();
     Reminders.poll();
-    // «Мой день» — вместо каталога
-    if (
-      !MigrationNotice.show(Srv.info.migrations) &&
-      !MyPrefs.start() &&
-      !MyDay.start() &&
-      !S.items.length &&
-      Catalog.cache.length
-    ) {
-      CatalogWindow.open({});
-    }
+    // кабинет — точка входа всегда (сообщение об обновлении базы — поверх него); без кабинета — каталог
+    const cabinet = MyDay.start();
+    if (MigrationNotice.show(Srv.info.migrations) || cabinet) return;
+    if (!S.items.length && Catalog.cache.length) CatalogWindow.open({});
   }
 }
 

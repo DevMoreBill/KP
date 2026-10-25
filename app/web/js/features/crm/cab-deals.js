@@ -1,3 +1,4 @@
+import { MyPrefs } from '../kp/my-prefs.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
@@ -74,8 +75,21 @@ export class CabDeals {
   static _restore() {
     if (this.sort === null) this.sort = this._stored(this.SORT_KEY, Object.keys(this.SORTS), 'exp');
     if (this.view === null)
-      this.view = this._stored(this.VIEW_KEY, ['board', 'list', 'gantt', 'pay'], Mobile.isPhone() ? 'list' : 'board');
+      this.view = this._stored(
+        this.VIEW_KEY,
+        ['board', 'list', 'gantt', 'pay'],
+        MyPrefs.prefs.dealsView || (Mobile.isPhone() ? 'list' : 'board'),
+      );
     if (this.view === 'pay' && !FEAT.on('payCalendar')) this.view = 'board';
+  }
+
+  /**
+   * Вид сделок из «Моих настроек»: сразу и при следующих открытиях.
+   * @param {string} view
+   */
+  static useView(view) {
+    this.view = view;
+    this._keep(this.VIEW_KEY, view);
   }
 
   static _stored(key, allowed, fallback) {

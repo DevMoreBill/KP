@@ -251,10 +251,16 @@ class ApiTest(unittest.TestCase):
         self.ok_json('POST', '/api/presets/tstp1/delete', {})
 
     def test_08_personal_prefs(self):
-        p = self.ok_json('PUT', '/api/me/prefs', {'theme': 'dark', 'start': 'journal', 'template': 'pnevmotekh', 'mailSign': 'С уважением,\nАнна',
+        p = self.ok_json('PUT', '/api/me/prefs', {'theme': 'dark', 'cabTab': 'deals', 'dealsView': 'list', 'template': 'pnevmotekh', 'mailSign': 'С уважением,\nАнна',
                                                   'mailCopy': False, 'defaults': {'kp.city': 'Казань', 'kp.cur': 'EUR', 'cond.pay': '50/50',
-                                                                                  'kp.vat': '0', 'x.y': '1'}})['prefs']
-        self.assertEqual((p.get('theme'), p.get('start'), p.get('mailCopy')), ('dark', 'journal', False))
+                                                                                  'kp.vat': '0', 'x.y': '1'},
+                                                  'limits': {'rem': 8, 'drafts': 99}, 'livePreview': True,
+                                                  'cabLayout': {'today': {'cols': {'l': ['todo', 'Bad!', 'todo'], 'r': ['week']}, 'ratio': 0.6,
+                                                                          'h': {'week': 300, 'todo': 5}, 'hide': ['month']}, 'evil': {}}})['prefs']
+        self.assertEqual((p.get('theme'), p.get('cabTab'), p.get('dealsView'), p.get('mailCopy')), ('dark', 'deals', 'list', False))
+        self.assertEqual((p['limits'], p['livePreview']), ({'rem': 8}, True), 'строк в списках — 1…30')
+        self.assertEqual(p['cabLayout'], {'today': {'cols': {'l': ['todo'], 'r': ['week']}, 'hide': ['month'], 'ratio': 0.6, 'h': {'week': 300}}},
+                         'расположение разделов — только известные страницы, ключи и пределы')
         self.assertEqual(set(p.get('defaults', {})), {'kp.city', 'kp.cur', 'cond.pay'}, 'свои умолчания — только город, валюта и условия')
         d = self.ok_json('GET', '/api/me/prefs')
         self.assertEqual((d['prefs']['defaults']['kp.city'], d['id']), ('Казань', self.M1[0]))
@@ -262,8 +268,8 @@ class ApiTest(unittest.TestCase):
         for bad in ({'defaults': {'kp.cur': 'BTC'}}, {'template': '../../x'}, '[1]'):
             with self.subTest(bad):
                 self.assertEqual(self.J('PUT', '/api/me/prefs', bad)[0], 400)
-        p = self.ok_json('PUT', '/api/me/prefs', {'theme': 'purple', 'start': 'x', 'mailSign': 'я' * 5000})['prefs']
-        self.assertTrue('theme' not in p and 'start' not in p and len(p.get('mailSign', '')) == 2000, p)
+        p = self.ok_json('PUT', '/api/me/prefs', {'theme': 'purple', 'cabTab': 'x', 'mailSign': 'я' * 5000})['prefs']
+        self.assertTrue('theme' not in p and 'cabTab' not in p and len(p.get('mailSign', '')) == 2000, p)
         self.assertEqual(self.J('PUT', '/api/me/prefs', {'theme': 'dark'}, who='nobody')[0], 400, 'без выбранного менеджера')
 
     # ---------------------------------------------------------------- 5. настройки отдела, история, откат

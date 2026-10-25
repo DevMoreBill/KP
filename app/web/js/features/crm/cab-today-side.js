@@ -22,7 +22,15 @@ export class CabTodaySide {
    * @returns {string}
    */
   static html() {
-    return `${this._week()}${this._month()}${this._funnel()}`;
+    return Object.values(this.parts()).join('');
+  }
+
+  /**
+   * Разделы колонки по отдельности — для своего расположения кабинета.
+   * @returns {{week: string, month: string, funnel: string}}
+   */
+  static parts() {
+    return { week: this._week(), month: this._month(), funnel: this._funnel() };
   }
 
   // неделя вперёд: сколько дел и ожидаемых договоров на каждый день

@@ -89,7 +89,7 @@ html dialog.tabwin>.dlg-h{position:sticky;top:0;z-index:6;background:var(--card)
 @media (max-width:1280px){.top .find-l{display:none}.top:has(.apt-add) #btnNew{display:none}}
 .mob .top .apt-t{flex:1 1 0;min-width:58px;max-width:none}
 /* журнал КП — таблица: одна строка на КП (3.194.0) */
-.jr{grid-template-columns:minmax(100px,120px) minmax(200px,2.4fr) minmax(86px,.7fr) minmax(150px,1.5fr) minmax(64px,84px) minmax(130px,1fr) minmax(104px,124px) 124px;gap:4px 14px;padding:5px 8px;align-items:center}
+.jr{grid-template-columns:minmax(170px,210px) minmax(200px,2.4fr) minmax(86px,.7fr) minmax(150px,1.5fr) minmax(64px,84px) minmax(130px,1fr) minmax(104px,124px) 124px;gap:4px 14px;padding:5px 8px;align-items:center}
 .jr.tnd{border-left:0;padding-left:8px;box-shadow:inset 3px 0 0 #f59e0b}
 html dialog.tabwin.jrnwin .jr.tnd{box-shadow:inset 3px 0 0 #f59e0b,inset 0 -1px 0 var(--line)}
 .jr>div{gap:1px}
@@ -97,10 +97,10 @@ html dialog.tabwin.jrnwin .jr.tnd{box-shadow:inset 3px 0 0 #f59e0b,inset 0 -1px 
 .jr-m b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .jr-n .n{font-size:13.5px}
 .jr-n .jr-t,.jr-n .jr-f{font-size:11px;padding:0 6px}
-/* метка тендера не шире столбца «№»: длинный номер — с многоточием, целиком — в подсказке (3.196.0) */
+/* столбец «№» шире: номер тендера виден целиком, длинный — переносится внутри метки */
 .jr-n{min-width:0}
-.jr-n .jr-t{max-width:100%;min-width:0}
-.jr-tn{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.jr-n .jr-t{max-width:100%;min-width:0;height:auto;min-height:18px;white-space:normal;line-height:1.35}
+.jr-tn{min-width:0;overflow-wrap:anywhere}
 .jr-h{padding:2px 8px 4px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
 .jr-h .r,.jr-e{text-align:right}
 html dialog.tabwin.jrnwin .jr-h:hover{background:none}
@@ -116,7 +116,7 @@ html dialog.tabwin.jrnwin .jr-h:hover{background:none}
 .jr-u.warn>span:first-child{color:var(--warn-ink,#8a4b00);font-weight:700}
 .jr-u.bad>span{color:var(--danger);font-weight:700}
 .jr .acts{flex-wrap:nowrap;justify-content:flex-end}
-@media (max-width:1250px){.jr{grid-template-columns:minmax(84px,100px) minmax(180px,2fr) minmax(140px,1.4fr) minmax(64px,80px) minmax(120px,1fr) minmax(100px,120px) 124px}.jr-w,.jr-h>span:nth-child(3){display:none}}
+@media (max-width:1250px){.jr{grid-template-columns:minmax(150px,180px) minmax(180px,2fr) minmax(140px,1.4fr) minmax(64px,80px) minmax(120px,1fr) minmax(100px,120px) 124px}.jr-w,.jr-h>span:nth-child(3){display:none}}
 @media (max-width:1000px){.jr .none{display:none}.jr-h{display:none}.jr{grid-template-columns:1fr}.jr.tnd{box-shadow:inset 3px 0 0 #f59e0b}.jr-e,.jr-h .r{text-align:left}.jr .muted{white-space:normal}}
 .mob .jr-h,.mob .jr .none{display:none}
 /* вкладки на ПК — контрастнее: открытая — заливкой, остальные — чёткой подписью в рамке-«таблетке» (3.195.0) */
@@ -135,13 +135,11 @@ html dialog.tabwin.jrnwin .jr-h:hover{background:none}
 .mob .apt-t.on{color:var(--navy);background:color-mix(in srgb,var(--navy) 9%,transparent)}
 .mob .apt-t.on i{transform:scale(1.08)}
 
-/* широкий экран: все разделы (вкладки) и форма КП — одной ширины по центру, шапка с вкладками — по той же линии */
+/* широкий экран: форма КП и разделы «по месту» — одной ширины по центру; шапка, кабинет, каталог и журнал — во всю ширину */
 :root{--page-max:1760px}
 @media (min-width:1800px){
-  html:not(.mob) .top{padding-inline:max(28px,calc((100% - var(--page-max)) / 2))}
   html:not(.mob) main.wrap{max-width:var(--page-max)}
-  html:not(.mob) dialog.tabwin{background:var(--paper)}
-  html:not(.mob) dialog.tabwin>*{width:100%;max-width:var(--page-max);margin-inline:auto;box-sizing:border-box}
-  html:not(.mob) dialog.tabwin:not([data-apptab=cab])>*{background-color:var(--card)}
-  html:not(.mob) dialog.tabwin:not([data-apptab=cab])>:last-child{border-inline:1px solid var(--line)}
+  html:not(.mob) dialog.tabwin:not([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn]){background:var(--paper)}
+  html:not(.mob) dialog.tabwin:not([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn])>*{width:100%;max-width:var(--page-max);margin-inline:auto;box-sizing:border-box;background-color:var(--card)}
+  html:not(.mob) dialog.tabwin:not([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn])>:last-child{border-inline:1px solid var(--line)}
 }

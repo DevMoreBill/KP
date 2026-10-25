@@ -1,3 +1,4 @@
+import { CabLayout } from './cab-layout.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
@@ -32,10 +33,16 @@ export class CabTeam {
     }
     const deals = CrmData.deals();
     const open = deals.filter(deal => !CrmData.closed(deal) && CrmData.inFunnel(deal));
-    return `<div class="cab-team">${this._attention(deals)}<section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p>${CrmFunnel.switcher(deals, CrmData.funnel())}<span class="muted">${open.length} в работе · ${CrmFmt.short(this._sum(open))}</span></div><div class="fn">${this._funnel(open)}</div></section>
-      <section class="md-s"><div class="md-h"><p class="sub">Менеджеры</p><span class="muted">итоги месяца — с 1-го числа; имя — открыть кабинет менеджера</span></div>
-      <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th><th>Заявки ждут</th></tr></thead><tbody>${this._rows(deals)}</tbody></table></div></section>
-      ${TeamRegs.html()}${TeamTime.html()}</div>`;
+    const parts = {
+      attention: this._attention(deals),
+      team: `<section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p>${CrmFunnel.switcher(deals, CrmData.funnel())}<span class="muted">${open.length} в работе · ${CrmFmt.short(this._sum(open))}</span></div><div class="fn">${this._funnel(open)}</div></section>`,
+      managers: `<section class="md-s"><div class="md-h"><p class="sub">Менеджеры</p><span class="muted">итоги месяца — с 1-го числа; имя — открыть кабинет менеджера</span></div>
+      <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th><th>Заявки ждут</th></tr></thead><tbody>${this._rows(deals)}</tbody></table></div></section>`,
+      regs: TeamRegs.html(),
+      time: TeamTime.html(),
+    };
+    if (CabLayout.enabled()) return `<div class="cab-team">${CabLayout.html('team', parts)}</div>`;
+    return `<div class="cab-team">${Object.values(parts).join('')}</div>`;
   }
 
   // утренняя сводка: у кого что горит — по каждому менеджеру, самые проблемные сверху
