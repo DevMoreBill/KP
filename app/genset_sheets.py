@@ -385,7 +385,7 @@ class GensetMatch:
         if not states:
             return None
         out: dict[str, Any] = {'qty': 0, 'available': False}
-        wh: dict = {}
+        places: dict = {}
         for state in states:
             out['qty'] += state['qty']
             for key in ('transit', 'prod'):
@@ -395,8 +395,8 @@ class GensetMatch:
                 if state.get(key) and not out.get(key):
                     out[key] = state[key]
             for place, qty in state.get('wh') or []:
-                wh[place] = wh.get(place, 0) + qty
+                places[place] = places.get(place, 0) + qty
         out['available'] = out['qty'] > 0
-        if wh:
-            out['wh'] = sorted(([place, qty] for place, qty in wh.items()), key=lambda pair: -pair[1])
+        if places:
+            out['wh'] = sorted(([place, qty] for place, qty in places.items()), key=lambda pair: -pair[1])
         return out
