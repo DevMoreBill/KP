@@ -1056,10 +1056,10 @@ class CrmBoard:
         from crm_exec import ExecPlan
         from deal_files import DealClosing, DealFiles
 
-        contacts: dict[str, dict | None] = {}
+        clients = self.store.clients_get(cid for deal in deals if (cid := self._client_id(deal)))
         docs = DealFiles.of(self.store).kinds([deal['id'] for deal in deals])
         for deal in deals:
-            deal['who'] = self._who(deal, contacts)
+            deal['who'] = self._who(deal, clients)
             deal['kps'] = kps.get(deal['id'], [])
             deal['next'] = nxt.get(deal['id'])
             deal['execSum'] = ExecPlan(deal).summary()
@@ -1084,23 +1084,20 @@ class CrmBoard:
 
         return StageOdds(self.store).odds()
 
-    def _who(self, deal: dict, seen: dict) -> dict | None:
-        """Кому звонить или писать по сделке: компания и первый контакт клиента из справочника (один запрос на клиента)."""
-        cid = deal.get('clientId') or ('inn' + deal['clientInn'] if deal.get('clientInn') else '')
-        if not cid:
+    @staticmethod
+    def _client_id(deal: dict) -> str:
+        return deal.get('clientId') or ('inn' + deal['clientInn'] if deal.get('clientInn') else '')
+
+    def _who(self, deal: dict, clients: dict) -> dict | None:
+        """Кому звонить или писать по сделке: компания и первый контакт клиента из справочника (clients — {id: карточка})."""
+        client = clients.get(self._client_id(deal))
+        if not client:
             return None
-        if cid not in seen:
-            client = self.store.client_get(cid)
-            contact = next((row for row in (client or {}).get('contacts') or [] if isinstance(row, dict)), {})
-            seen[cid] = (
-                {
-                    'company': str(client.get('name') or ''),
-                    **{key: str(contact.get(key) or '') for key in ClientPick.CONTACT},
-                }
-                if client
-                else None
-            )
-        return seen[cid]
+        contact = next((row for row in client.get('contacts') or [] if isinstance(row, dict)), {})
+        return {
+            'company': str(client.get('name') or ''),
+            **{key: str(contact.get(key) or '') for key in ClientPick.CONTACT},
+        }
 
     def find(self, managers, query, limit: int = 8) -> list[dict]:
         """Сделки по словам (название, клиент, ИНН, номер) — единый поиск программы; сначала незакрытые и свежие."""

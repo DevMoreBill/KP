@@ -418,17 +418,29 @@ def kp_access(handler, store, kid: str) -> bool:
     return not meta or own_kp(handler, meta) or perm(handler, 'kpOthers')
 
 
+class DealViewer:
+    """Кто смотрит экономику КП: сессия, вход и подпись запроса разбираются один раз (журнал проверяет сотни КП)."""
+
+    def __init__(self, handler) -> None:
+        self.handler = handler
+        self.admin = AdminSessions.of(handler) is not None
+        self.login = not self.admin and login_on(handler)
+        self.uid, self.name, _ = actor(handler, admin=False)
+
+    def allows(self, doc) -> bool:
+        if self.admin:
+            return True
+        if self.login:
+            return perm(self.handler, 'dealView') and (own_kp(self.handler, doc) or perm(self.handler, 'kpOthers'))
+        author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
+        if author:
+            return bool(self.uid) and self.uid == author
+        mgr = str((doc or {}).get('manager') or '').strip().lower()  # описание КП прежней версии — по имени автора
+        return not mgr or (self.name or '').strip().lower() == mgr
+
+
 def deal_allowed(handler, doc) -> bool:
-    if AdminSessions.of(handler) is not None:
-        return True
-    if login_on(handler):
-        return perm(handler, 'dealView') and (own_kp(handler, doc) or perm(handler, 'kpOthers'))
-    uid, name, _ = actor(handler, admin=False)
-    author = (doc or {}).get('authorId') or (doc or {}).get('managerId')
-    if author:
-        return bool(uid) and uid == author
-    mgr = str((doc or {}).get('manager') or '').strip().lower()  # описание КП прежней версии — по имени автора
-    return not mgr or (name or '').strip().lower() == mgr
+    return DealViewer(handler).allows(doc)
 
 
 def kp_out(handler, field, text) -> str:
@@ -570,8 +582,9 @@ class KpJournal:
         """Разобранные описания КП с правами журнала (список меняется на месте)."""
         if login_on(handler) and not perm(handler, 'kpOthers'):
             rows = [rec for rec in rows if isinstance(rec, dict) and own_kp(handler, rec)]
+        viewer = DealViewer(handler)
         for rec in rows:
-            if isinstance(rec, dict) and not deal_allowed(handler, rec):
+            if isinstance(rec, dict) and not viewer.allows(rec):
                 for k in DEAL_KEYS_META:
                     rec.pop(k, None)
                 rec['locked'] = True

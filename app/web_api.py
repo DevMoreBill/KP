@@ -315,7 +315,9 @@ class WebIndex:
     REF = re.compile(r'((?:src|href)=")(/web/[^"?#]+)(")')
     MODULE = re.compile(r'<script type="module"')
     JS_ROOT = 'js'
+    RECHECK = 2.0  # секунд: модули переспрашиваются у диска не чаще — одновременный запуск отдела не проверяет их на каждую страницу
     cache: dict = {}  # {(метки index.html и файлов): (готовые байты, CSP)}
+    scanned: tuple = (0.0, [])  # (когда, модули)
 
     @staticmethod
     def tag(path) -> str:
@@ -328,7 +330,17 @@ class WebIndex:
 
     @classmethod
     def _modules(cls) -> list[tuple[str, str]]:
-        """[(адрес /web/js/…, метка)] всех скриптов интерфейса."""
+        """[(адрес /web/js/…, метка)] всех скриптов интерфейса (свежий обход — не чаще RECHECK)."""
+        when, found = cls.scanned
+        now = time.monotonic()
+        if found and now - when < cls.RECHECK:
+            return found
+        found = cls._scan()
+        cls.scanned = (now, found)
+        return found
+
+    @classmethod
+    def _scan(cls) -> list[tuple[str, str]]:
         root = os.path.join(WEB_DIR, cls.JS_ROOT)
         out = []
         for folder, _, files in os.walk(root):
@@ -1485,16 +1497,12 @@ class TrackController(Controller):
                 continue
             if not mine(meta_dict):
                 continue
-            # состояние КП (бывает в мегабайтах) — только своим КП и только если срок действия не записан в описании
-            rows.append(
-                (
-                    kid,
-                    meta_dict,
-                    self._obj(track),
-                    {} if meta_dict.get('validUntil') else self._obj(store().kp_get(kid, 'state')),
-                )
-            )
-        items = ReminderList(store=store()).collect(rows, mine)
+            rows.append((kid, meta_dict, self._obj(track)))
+        # срок действия, не записанный в описании, — из условий КП (состояние бывает в мегабайтах — читаются два поля)
+        terms = store().kp_terms([kid for kid, meta_dict, _ in rows if not meta_dict.get('validUntil')])
+        items = ReminderList(store=store()).collect(
+            [(kid, meta_dict, track, terms.get(kid, {})) for kid, meta_dict, track in rows], mine
+        )
         return self.send_json({'items': items, 'count': len(items)})
 
     @route(r'/api/features', 'GET')  # какие функции программы включены (для всех; правка — /api/admin/features)

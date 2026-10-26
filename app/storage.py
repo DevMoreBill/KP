@@ -889,6 +889,7 @@ class Store:
         self.path = path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.local = threading.local()
+        self._authors: tuple = ('0', [])  # авторы КП журнала: (datarev:kpj, имена)
         self.lock = TxLock(self)
         conn = self.conn()
         conn.executescript(SCHEMA)
@@ -1847,19 +1848,46 @@ class Store:
             (since,),
         )
 
+    TERMS_BATCH = 500  # параметров в одном запросе (предел SQLite — 999)
+
+    def kp_terms(self, ids: list) -> dict[str, dict]:
+        """Из состояния КП — только условия и дата (срок действия), без чтения состояния целиком: {id: {conditions, date}}."""
+        out: dict[str, dict] = {}
+        ids = list(ids)
+        for start in range(0, len(ids), self.TERMS_BATCH):
+            part = ids[start : start + self.TERMS_BATCH]
+            sql = (
+                "SELECT id, CASE WHEN json_valid(state) THEN json_extract(state, '$.conditions') END, "
+                "CASE WHEN json_valid(state) THEN json_extract(state, '$.date') END FROM kp WHERE id IN ({})"
+            ).format(','.join('?' * len(part)))
+            for kid, conditions, day in self.all(sql, tuple(part)):
+                try:
+                    parsed = json.loads(conditions) if isinstance(conditions, str) else conditions
+                except ValueError:
+                    parsed = None
+                out[kid] = {'conditions': parsed, 'date': day}
+        return out
+
     def kp_docx_owner(self, rel, kid: str) -> str | None:
         """Другое КП, чей файл лежит по этому пути (тендерные КП называются «<№ закупки> КП» и могут совпасть)."""
         row = self.one('SELECT id FROM kp WHERE docx=? AND id<>?', (rel, kid))
         return row[0] if row else None
 
     def kp_authors(self) -> list:
-        return [
+        """Авторы КП для фильтра журнала — из памяти, пока КП не менялись (datarev:kpj)."""
+        rev = self.data_rev('kpj')
+        cached = self._authors
+        if rev != '0' and cached[0] == rev:  # без счётчика правок (не та схема) — всегда из базы
+            return cached[1]
+        names = [
             row[0]
             for row in self.all(
                 "SELECT DISTINCT manager FROM kp WHERE meta IS NOT NULL AND manager IS NOT NULL AND manager <> '' "
                 'ORDER BY manager COLLATE NOCASE'
             )
         ]
+        self._authors = (rev, names)
+        return names
 
     def kp_trashed(self, kid: str) -> bool:
         return self.one("SELECT 1 FROM trash WHERE entity_type = 'kp' AND entity_id = ?", (kid,)) is not None
@@ -1970,6 +1998,18 @@ class Store:
     def client_get(self, cid) -> dict | None:
         row = self.one('SELECT doc FROM clients WHERE id=?', (cid,))
         return json.loads(row[0]) if row else None
+
+    def clients_get(self, ids) -> dict[str, dict]:
+        """Несколько клиентов одним запросом на пачку: {id: карточка}; нет в справочнике — нет в ответе."""
+        out: dict[str, dict] = {}
+        ids = list(dict.fromkeys(ids))
+        for start in range(0, len(ids), self.TERMS_BATCH):
+            part = ids[start : start + self.TERMS_BATCH]
+            for cid, doc in self.all(
+                'SELECT id, doc FROM clients WHERE id IN ({})'.format(','.join('?' * len(part))), tuple(part)
+            ):
+                out[cid] = json.loads(doc)
+        return out
 
     def client_get_rev(self, cid) -> dict | None:
         """Клиент с номером правки (_rev) — для совместной правки."""

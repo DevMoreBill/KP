@@ -30,6 +30,7 @@ import { KpTransferView } from './kp-transfer.js';
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
   static PERCENT = 100;
+  static econMemo = new Map(); // экономика КП прежних версий: «id@сохранено» → итоги (без повторной загрузки КП)
 
   /**
    * Окно журнала.
@@ -272,9 +273,16 @@ export class Journal {
       items
         .filter(row => !row.econ && !row.locked)
         .map(async row => {
+          const key = `${row.id}@${row.savedAt || row.date || ''}`;
+          if (this.econMemo.has(key)) {
+            row.econ = this.econMemo.get(key);
+            return;
+          }
           try {
             const state = await Api.request(`/api/kp/${row.id}/state`);
-            if (seq === ctx.seq) row.econ = KpEconomics.of(state);
+            const econ = KpEconomics.of(state);
+            this.econMemo.set(key, econ);
+            if (seq === ctx.seq) row.econ = econ;
           } catch {
             row.econ = { cur: 'RUB', sum: row.sum || 0, withCost: 0, positions: row.positions || 0 };
           }

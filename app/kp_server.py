@@ -83,7 +83,9 @@ class FileGzip:
     """Сжатые файлы интерфейса в памяти: сжатие один раз на версию файла."""
 
     MIN = 1024  # меньше — сжатие не окупается
-    cache = GzipCache(400, 9)  # файлов в памяти (интерфейс — ~110)
+    cache = GzipCache(
+        2000, 9
+    )  # файлов в памяти (интерфейс — ~550; меньше — при одновременном запуске сжимается заново)
 
     @classmethod
     def get(cls, tag, data, ctype) -> bytes | None:
@@ -177,12 +179,15 @@ class Handler(BaseHTTPRequestHandler):
         extra = {'Cache-Control': cache, 'ETag': tag}
         if csp:
             extra['Content-Security-Policy'] = csp
-        if data is None:
-            with open(path, 'rb') as handle:
-                data = handle.read()
         # ключ сжатого — файл и его версия: у разных файлов после распаковки обновления бывают одинаковые время и размер
         gzip_key = f'{path}|{tag}'
-        gzipped = FileGzip.get(gzip_key, data, ctype) if 'gzip' in (self.headers.get('Accept-Encoding') or '') else None
+        gz_ok = 'gzip' in (self.headers.get('Accept-Encoding') or '')
+        gzipped = FileGzip.cache.get(gzip_key) if gz_ok else None  # уже сжатый — без чтения файла с диска
+        if gzipped is None and data is None:
+            with open(path, 'rb') as handle:
+                data = handle.read()
+        if gzipped is None and gz_ok and data is not None:
+            gzipped = FileGzip.get(gzip_key, data, ctype)
         if gzipped is not None:
             extra['Content-Encoding'] = 'gzip'
             extra['Vary'] = 'Accept-Encoding'
