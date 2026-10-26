@@ -16,6 +16,7 @@ from typing import Any
 
 import images
 from defaults import SrvVal
+from genset_sheets import GensetBook, GensetMatch
 
 SPEC_PIPES = 2
 ROWS_MIN = 2
@@ -984,6 +985,10 @@ def _opt_name(text) -> str:
 def parse_price(data) -> tuple:
     """XLSX прайса → (строки с ценами, опциями и характеристиками, валюта, столбцы)."""
     book = read_xlsx(data)
+    if GensetBook.applies(book):  # прайс-склад ДГУ (HERTZ): листы машин и моделей — по шапкам
+        rows, found = GensetBook.price_rows(book)
+        if rows:
+            return rows, found
     out: list = []
     sheets = []
     for sname, rows in book:
@@ -2162,10 +2167,15 @@ def parse_stock(data) -> list:
         whc, promo = pick(r'^(склад|на каком складе)'), pick(r'^скидки|^акци')
         if name is None and sku is None:
             continue
+        titles = {re.sub(r'\s+', ' ', str(v)).strip().lower() for v in rows[head_row].values()}
         data_rows = [
             row
             for row in rows[head_row + 1 :]
-            if str(row.get(name if name is not None else sku, '')).strip() not in ('', '0', 'Номенклатура', 'Артикул')
+            if str(row.get(name if name is not None else sku, '')).strip() not in ('', '0')
+            and not StockModel.is_head(row, titles)
+            and not any(
+                StockModel.HEAD_CELL.match(str(row.get(col, '')).strip()) for col in (sku, name) if col is not None
+            )
         ]
         qty = pick(r'^(остат|кол-?во|количеств|наличи)')
         if qty is None and status is None:
@@ -2267,6 +2277,100 @@ def _merge_stock(rows) -> dict:
     return x
 
 
+class StockModel:
+    """Исполнение строки остатков по названию без русских слов и марки — запасной путь, когда артикула и подписи модели мало:
+    «Компрессор винтовой TIDY10-7 (O) Dalgakiran,» ↔ «Винтовой компрессор Dalgakiran TIDY 10-7», «INVERSYS Plus PM 22-7,5» ↔
+    «INVERSYS PLUS PM 22-7,5 с частотным преобразователем». Вид изделия (компрессор, фильтр, шкаф…) должен совпасть: «Комплект ЗИП
+    для компрессора PET MASTER 300» — не сам компрессор."""
+
+    BRANDS = re.compile(r'^(DALGAKIRAN|HERTZ)$', re.I)
+    KINDS = (
+        'компрессор',
+        'воздуходувк',
+        'осушител',
+        'фильтр',
+        'сепаратор',
+        'ресивер',
+        'шкаф',
+        'панел',
+        'генератор',
+        'комплект',
+        'масловлаго',
+        'электростанц',
+        'установк',
+    )
+    CYR_WORD = re.compile(r'^[А-ЯЁа-яё.,:;/()«»"-]+$')
+
+    HEAD_CELL = re.compile(r'^(артикул|код|номенклатура|наименование|название|модель)$', re.I)
+
+    @staticmethod
+    def is_head(row: dict, titles: set) -> bool:
+        """Строка — повтор шапки (объединённые ячейки шапки на две строки) или строка единиц «(шт.)»."""
+        cells = [re.sub(r'\s+', ' ', str(v)).strip().lower() for v in row.values() if str(v).strip()]
+        return bool(cells) and (
+            all(cell in titles for cell in cells) or all(re.fullmatch(r'\(.*\)', cell) for cell in cells)
+        )
+
+    @classmethod
+    def text(cls, name: str) -> str:
+        """Название без русских слов, марки и хвостовых запятых: остаётся код модели."""
+        words = [word.strip(',;') for word in re.sub(r'\([^)]*\)', ' ', str(name or '')).split()]
+        return ' '.join(word for word in words if word and not cls.CYR_WORD.match(word) and not cls.BRANDS.match(word))
+
+    @classmethod
+    def kind(cls, name: str) -> str:
+        """Вид изделия — первое из известных слов в названии («Комплект ЗИП для компрессора» — комплект)."""
+        low = str(name or '').lower()
+        found = [(low.find(stem), stem) for stem in cls.KINDS if stem in low]
+        return min(found)[1] if found else ''
+
+    @classmethod
+    def cfg(cls, name: str) -> dict | None:
+        cfg = model_cfg(cls.text(name), name)
+        return cfg if cfg['ser'] and cfg['size'] is not None else None
+
+    @staticmethod
+    def key(cfg: dict) -> tuple:
+        return (frozenset(cfg['ser']), cfg['size'], cfg['vsd'], cfg['w'], cfg['dry'], cfg['rec'])
+
+    @classmethod
+    def index(cls, stock: list) -> dict:
+        """Исполнение → [(давление, вид, строка)]."""
+        out: dict = {}
+        for row in stock:
+            cfg = cls.cfg(row['name'])
+            if cfg:
+                out.setdefault(cls.key(cfg), []).append((cfg['p'], cls.kind(row['name']), row))
+        return out
+
+    @staticmethod
+    def of_rows(stock: list, prices: list, name: str, idx: tuple) -> dict | None:
+        """Остатки карточки, которой подошли несколько строк прайса (давления одной модели): по их артикулам вместе,
+        иначе — по названию карточки."""
+        found: dict = {}
+        for price in prices:
+            row = stock_row(stock, price.get('sku'), '', idx) if price.get('sku') else None
+            if row is not None:
+                found[id(row)] = row
+        return _merge_stock(list(found.values())) if found else stock_row(stock, '', name, idx)
+
+    @classmethod
+    def find(cls, idx: dict, name: str) -> dict | None:
+        """Строка (несколько — вместе) того же исполнения и вида; давление — то же, без давления у позиции — все давления."""
+        cfg = cls.cfg(name)
+        if not cfg:
+            return None
+        kind = cls.kind(name)
+        rows = [
+            (pbar, row)
+            for pbar, row_kind, row in idx.get(cls.key(cfg), [])
+            if not kind or not row_kind or row_kind == kind
+        ]
+        if cfg['p'] is not None:
+            rows = [(pbar, row) for pbar, row in rows if pbar == cfg['p']]
+        return _merge_stock([row for _, row in rows]) if rows else None
+
+
 def stock_index(stock) -> tuple:
     """Указатели по строкам остатков: (артикул → строка, код изделия → [кандидаты для _by_code], подпись модели → [(признаки, строка)])."""
     by_sku: dict = {}
@@ -2291,12 +2395,12 @@ def stock_index(stock) -> tuple:
         core, opt = _sig(row['name'])
         if len(core) >= SIG_MIN and any(re.search(r'\d', x) for x in core):
             by_sig.setdefault(core, []).append((opt, row))
-    return {k: _merge_stock(v) for k, v in by_sku.items()}, code_rows, by_sig
+    return {k: _merge_stock(v) for k, v in by_sku.items()}, code_rows, by_sig, StockModel.index(stock)
 
 
 def stock_row(stock, sku, name, idx=None) -> dict | None:
-    """Строка остатков позиции: по артикулу, подписи модели или коду изделия."""
-    by_sku, by_code, by_sig = idx or stock_index(stock)
+    """Строка остатков позиции: по артикулу, подписи модели, коду изделия или исполнению (StockModel)."""
+    by_sku, by_code, by_sig, by_cfg = idx or stock_index(stock)
     row = by_sku.get(_sku_key(sku)) if sku else None
     if row is None:
         core, opt = _sig(name)
@@ -2316,6 +2420,8 @@ def stock_row(stock, sku, name, idx=None) -> dict | None:
     if row is None and _code(name):
         x = _by_code(name, by_code)
         row = x['r'] if x else None
+    if row is None:
+        row = StockModel.find(by_cfg, name)
     return row
 
 
@@ -2371,7 +2477,12 @@ def _price_specs_ok(page, price) -> list:
 def build_feed(feed, pages, prices, param_name, stock=None) -> dict:
     """→ {shop, date, cats, offers} как у feeds.parse(): позиции парса с ценой из прайса."""
     pages = unique_names(pages)
-    hit, stats = match_prices(pages, prices) if prices else ({}, {'matched': 0, 'how': {}, 'priceOnly': len(prices)})
+    if prices and prices[0].get('genset'):  # прайс-склад ДГУ: по модели, исполнению и альтернатору
+        hit, stats = GensetMatch.pages(pages, prices)
+    else:
+        hit, stats = (
+            match_prices(pages, prices) if prices else ({}, {'matched': 0, 'how': {}, 'priceOnly': len(prices)})
+        )
     cats: dict = {}
     offers: dict = {}
     maker = (
@@ -2450,7 +2561,7 @@ def build_feed(feed, pages, prices, param_name, stock=None) -> dict:
     for page in pages:
         if page.get('logo'):
             logos.setdefault(page.get('brand') or maker, page['logo'])
-    if stock:
+    if stock and not (prices and prices[0].get('genset')):  # у прайса-склада ДГУ наличие — в самом прайсе
         stats['stock'] = apply_stock(offs, stock)
     return {
         'shop': feed.get('name') or '',
@@ -2567,6 +2678,8 @@ def card_attrs(cfg, attrs) -> dict:
 
 def match_card(name, model, attrs, prices) -> tuple:
     """Ручная карточка → строки прайса того же исполнения; → (строки, причина-если-нет)."""
+    if prices and prices[0].get('genset'):
+        return GensetMatch.card(name, model, attrs or {}, prices)
     cfg = card_attrs(model_cfg(model or name, name), attrs)
     attr_map = attrs or {}
     if not cfg['ser'] or cfg['size'] is None:
@@ -2652,4 +2765,11 @@ def _offer(oid, name, cid, path, url, pictures, desc, params, maker, model, pric
         'notes': '',
         'opts': [{'name': opt_name, 'price': v} for opt_name, v in (price['opts'] if price else [])],
         'sheet': price['sheet'] if price else '',
+        **_row_stock(price),
     }
+
+
+def _row_stock(price) -> dict:
+    """Наличие из самой строки прайса (прайс-склад ДГУ); без файла остатков."""
+    info = price.get('stockInfo') if price else None
+    return {'stockInfo': info, 'qty': info['qty'], 'available': info['available'], 'nostock': False} if info else {}

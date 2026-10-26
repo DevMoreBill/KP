@@ -26,6 +26,7 @@ import images
 import imgfetch
 from config import DATA_DIR
 from defaults import SrvVal
+from feed_photo import FeedPhotoFrom
 from maker_logos import MakerLogos
 from storage import Conflict, WriteBatch
 
@@ -1142,13 +1143,13 @@ def load(store, feed_cfg, max_age=CACHE_SEC) -> dict:
             return cached[2]
     if files:
         pages = feed_files.read_file(DATA_DIR, feed_cfg['id'], 'pages')
-        if not pages:
-            raise ValueError('Сначала загрузите файл парса сайта (CSV)')
         prices = load_prices(feed_cfg)
+        if not pages and not prices:
+            raise ValueError('Сначала загрузите файл парса сайта (CSV) или прайс')
         stock = feed_files.read_file(DATA_DIR, feed_cfg['id'], 'stock')
         feed = feed_files.build_feed(
             feed_cfg,
-            feed_files.parse_pages(pages),
+            feed_files.parse_pages(pages) if pages else [],
             prices,
             _param_name,
             feed_files.parse_stock(stock) if stock else None,
@@ -2153,6 +2154,8 @@ PATH_RULES = [
     ),  # Dali CAT, VFW — безмасляные винтовые
     (r'поршнев\S*\s+(маслозаполн\S*\s+|безмасл\S*\s+)?компрессор|медицинск\S*\s+компрессор', 'comp_piston'),
     (r'спиральн\S*\s+компрессор|компрессор\S*\s+серии\s+акс', 'comp_scroll'),
+    (r'дизель-генератор|дизельн\S*\s+генератор|газопоршнев\S*\s+электростанц', 'dgu'),
+    (r'ввод\S*\s+резерв', 'ats'),
 ]
 
 
@@ -2940,6 +2943,7 @@ def import_feed(
         save()
         logo_save()
         dsave()
+        borrowed = FeedPhotoFrom(store, types).fill(_feed_docs(store, feed_cfg['id']), author or 'Фид')
         if derr:
             errors.append(
                 f'Страница товара не открылась (описание, фото, применимость), позиций: {len(derr)} (первая: {derr[0]})'
@@ -2986,6 +2990,7 @@ def import_feed(
             'stock': stock_ch[:300],
             'errors': errors[:50],
             'photos': {
+                'borrowed': borrowed,
                 'new': istat['got'],
                 'pages': pstat['img'],
                 'items': len(pics),
@@ -3059,9 +3064,14 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tup
             'dealer': price.get('dealer'),
             'disc': price.get('disc'),
         }
-        if stock:  # остатки поставщика — и у карточек, заведённых вручную
-            row = feed_files.stock_row(stock, price.get('sku'), doc.get('name'), sidx)
+        if (
+            stock and sidx is not None and not price.get('genset')
+        ):  # остатки поставщика — и у карточек, заведённых вручную
+            row = feed_files.StockModel.of_rows(stock, rows, doc.get('name'), sidx)
             stock_info = feed_files.stock_info(row)
+            offer.update(qty=stock_info['qty'], available=stock_info['available'], nostock=False, stockInfo=stock_info)
+        elif price.get('genset'):  # прайс-склад ДГУ: наличие машин — в самом прайсе
+            stock_info = feed_files.GensetMatch.stock(rows) or feed_files.stock_info(None)
             offer.update(qty=stock_info['qty'], available=stock_info['available'], nostock=False, stockInfo=stock_info)
         for cat in _price_part(doc, offer, feed, today):
             changes.append(_change(doc['id'], doc, cat))
