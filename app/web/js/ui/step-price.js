@@ -6,6 +6,7 @@ import { DealDefaults } from '../features/deal/deal-defaults.js';
 import { PricingBlock } from '../features/kp/cbr-rates.js';
 import { KpState, S } from '../core/state.js';
 import { Currency, Discount } from '../features/kp/currency.js';
+import { OptionSale } from '../features/kp/option-sale.js';
 
 /**
  * Раздел 3 «Цены и валюта»: цены продажи вводятся вручную, одна строка на позицию; скидка попадает в КП. Закупка,
@@ -18,7 +19,7 @@ export class PriceStep {
    */
   static html() {
     const currency = Currency.short(Currency.current());
-    const rows = S.items.map((item, i) => this._row(item, i, currency)).join('');
+    const rows = S.items.map((item, i) => this._row(item, i, currency) + this._options(item, i)).join('');
     const table = rows
       ? `<div class="ptable"><div class="phead" aria-hidden="true"><span>№</span><span>Позиция</span><span>Цена за ед. с НДС, ${currency}</span><span>Скидка</span><span>Сумма, ${currency}</span></div>${rows}</div>`
       : `<div class="empty-pick"><p><b>Сначала добавьте оборудование</b></p><button class="btn primary" type="button" data-step="equip">Перейти к оборудованию</button></div>`;
@@ -32,6 +33,20 @@ export class PriceStep {
   static _deal() {
     if (!(S.items.length && DealDefaults.allowed())) return '';
     return `<button class="dl-cta" type="button" data-a="deal"><i aria-hidden="true">₽</i><span><b>Экономика сделки: логистика, растаможка, финансирование</b><small>Закупка у поставщиков, таможня по кодам ТН ВЭД — и цена продажи под нужную маржу. В КП не выводится.</small></span><em aria-hidden="true">→</em></button>`;
+  }
+
+  // опции и услуги позиции — строкой «доп.» под ней: цена продажи (с валютой) и сумма в валюте КП
+  static _options(item, i) {
+    return (item.options || [])
+      .map((option, j) =>
+        option.name
+          ? `<div class="prow popt"><span></span>
+      <div class="pname"><b><i class="popt-m">доп.</i>${esc(option.name)}</b><small>${esc(option.qty)} ${esc(option.unit || 'шт.')} · к «${esc(item.name || 'позиция')}»</small></div>
+      <label class="f pprice"><span class="pl">Цена за ед.</span>${OptionSale.field(i, j, option)}</label><span></span>
+      <div class="psum"><span class="pl">Сумма</span><b data-osum="${i}.${j}">${OptionSale.sum(option)}</b></div></div>`
+          : '',
+      )
+      .join('');
   }
 
   static _row(item, i, currency) {

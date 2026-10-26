@@ -14,6 +14,7 @@ import { KpFile } from '../features/doc/kp-file.js';
 import { $ } from '../core/util.js';
 import { KpState, S } from '../core/state.js';
 import { ObjPath, Price, Str } from '../core/str.js';
+import { OptionSale } from '../features/kp/option-sale.js';
 
 /** Ввод в поля формы КП: поля по пути (data-p), цены, скидки, цены опций, курсы валют. */
 export class FieldEvents {
@@ -78,8 +79,9 @@ export class FieldEvents {
     const opt = S.items[i].options[j];
     const price = Price.parse(target.value);
     opt._priceText = target.value;
-    opt.price = Number.isNaN(price) ? 0 : price;
+    OptionSale.set(opt, Number.isNaN(price) ? 0 : price);
     target.classList.toggle('bad', Number.isNaN(price));
+    document.querySelectorAll(`[data-osum="${i}.${j}"]`).forEach(cell => (cell.textContent = OptionSale.sum(opt)));
     SidePanel.updateLive();
   }
 
@@ -108,6 +110,7 @@ export class FieldEvents {
   static _rate(target) {
     S.pricing.rates[target.dataset.rate] = target.value;
     S.pricing.rateSrc = 'вручную';
+    OptionSale.syncAll();
     const shown = document.querySelector(`[data-rshow="${target.dataset.rate}"]`);
     if (shown) shown.textContent = target.value || '—';
     SidePanel.updateLive();
@@ -224,7 +227,7 @@ export class FieldEvents {
     const price = Price.parse(target.value);
     if (!Number.isNaN(price)) {
       delete opt._priceText;
-      target.value = price ? KPGen.money(price) : '';
+      target.value = OptionSale.text(opt);
     }
     KpState.persist();
   }

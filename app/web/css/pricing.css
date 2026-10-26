@@ -15,7 +15,7 @@ details.psettings>summary{cursor:pointer;color:var(--navy);font-weight:600;paddi
 .mtog button.on{background:var(--navy);color:var(--on-navy)}
 /* строка позиции: № | позиция | кол-во | цена | скидка | сумма */
 .ptable{display:grid;gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
-.phead,.prow{display:grid;grid-template-columns:26px minmax(150px,1fr) 136px 156px 118px;gap:10px;align-items:center;padding:10px 12px}
+.phead,.prow{display:grid;grid-template-columns:26px minmax(150px,1fr) 176px 156px 118px;gap:10px;align-items:center;padding:10px 12px}
 .phead{font-size:11.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);background:var(--soft);border-bottom:1px solid var(--line)}
 .phead span:nth-child(5){text-align:right}
 .prow+.prow{border-top:1px solid var(--line)}
@@ -31,11 +31,18 @@ details.psettings>summary{cursor:pointer;color:var(--navy);font-weight:600;paddi
 .psum{text-align:right}
 .psum b{font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pinfo{grid-column:2/-1;font-size:12.5px;color:var(--muted);margin-top:-4px}
+/* доп (опция, услуга) под своей позицией — как в закупке экономики: отступ, уголок, метка «доп.», бледнее */
+.prow.popt{padding-top:6px;padding-bottom:6px;background:color-mix(in srgb,var(--soft) 60%,transparent);border-top-style:dashed}
+.prow.popt .pname{position:relative;padding-left:22px}
+.prow.popt .pname::before{content:"";position:absolute;left:4px;top:0;height:50%;width:12px;border-left:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-bottom:1.5px solid color-mix(in srgb,var(--muted) 70%,transparent);border-bottom-left-radius:4px}
+.prow.popt .pname b{font-weight:500;font-size:14px}
+.prow.popt .psum b{font-size:14px;font-weight:600}
+.popt-m{display:inline-block;margin-right:6px;padding:0 6px;border-radius:6px;background:var(--navy);color:var(--on-navy);font-size:11px;font-style:normal;font-weight:700;line-height:18px;vertical-align:1px}
 .pinfo:empty{display:none}
 input.strong{font-weight:650}
 input.flash{animation:flash 1.6s ease}
 @keyframes flash{0%{background:#d6f5e3;border-color:var(--ok)}100%{}}
-@media (max-width:1000px){.phead,.prow{grid-template-columns:26px minmax(0,1fr) 150px 170px 130px}}
+@media (max-width:1000px){.phead,.prow{grid-template-columns:26px minmax(0,1fr) 176px 170px 130px}}
 .cost select{width:100%;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink)}
 /* контроль РРЦ в строке позиции */
 .rrc-h{font-size:12.5px;color:var(--muted)}

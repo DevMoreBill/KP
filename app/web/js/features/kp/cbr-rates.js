@@ -8,6 +8,7 @@ import { FormView } from '../../ui/form-view.js';
 import { $, esc, today } from '../../core/util.js';
 import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
+import { OptionSale } from './option-sale.js';
 
 /** Курсы ЦБ РФ: кнопка «Курс ЦБ» — все валюты; программа сама (нет курса нужной валюты) — только пустые. */
 export class CbrRates {
@@ -33,6 +34,7 @@ export class CbrRates {
       Currency.current(),
       ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB'),
       ...OptionCost.currencies(S.items),
+      ...OptionSale.currencies(S.items),
       ...S.items.flatMap(item =>
         Kit.parts(item)
           .filter(part => part.cost)
@@ -59,6 +61,7 @@ export class CbrRates {
     const got = this.RATED.filter(code => answer.rates[code] && !(emptyOnly && Currency.rate(code) > 0));
     for (const code of got) S.pricing.rates[code] = (+answer.rates[code]).toFixed(this.DIGITS).replace('.', ',');
     if (!got.length) return;
+    OptionSale.syncAll();
     S.pricing.rateDate = answer.rates.date || today();
     S.pricing.rateSrc = answer.src;
     FormView.render();
@@ -147,6 +150,7 @@ export class PricingBlock {
       cur,
       ...S.items.map(item => (item.cost && !Kit.has(item) ? item.costCur || 'RUB' : null)),
       ...OptionCost.currencies(S.items),
+      ...OptionSale.currencies(S.items),
       ...S.items.flatMap(item =>
         Kit.parts(item)
           .filter(part => part.cost)

@@ -18,6 +18,7 @@ import { StationUi } from '../features/station/station-ui.js';
 import { Price } from '../core/str.js';
 import { Inn } from '../features/kp/client-store.js';
 import { KpState, S } from '../core/state.js';
+import { OptionSale } from '../features/kp/option-sale.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {
@@ -91,6 +92,7 @@ export class Problems {
       Currency.current(),
       ...S.items.filter(item => item.cost).map(item => item.costCur || 'RUB'),
       ...OptionCost.currencies(S.items),
+      ...OptionSale.currencies(S.items),
     ];
     for (const code of new Set(currencies.filter(cur => cur !== 'RUB'))) {
       if (!(Currency.rate(code) > 0)) out.push([`Укажите курс ${code}`, 'st-price']);

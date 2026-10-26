@@ -84,4 +84,30 @@ check('маржа КП (журнал, проверка цен): закупка �
   assert.strictEqual(KpEconomics.of(state).cost/100, 2*500000, 'выключено — как раньше');
 });
 
+check('цена продажи опции в своей валюте — в КП по курсу, итог КП, смена курса и валюты КП', ()=>{
+  Toast.show=()=>{}; FormView.render=()=>{}; DealWin.render=()=>{}; KpState.persist=()=>{}; CbrRates.fillEmpty=()=>Promise.resolve();
+  const state={...kp(), pricing:{cur:'RUB', rates:{USD:'90', EUR:'100'}}, vat:22};
+  KpState.replace(state);
+  const opt=S.items[0].options[1];
+  opt.saleCur='USD'; OptionSale.set(opt, 10000);            // 100 USD
+  assert.strictEqual(opt.price, 900000, '100 USD × 90 = 9 000 руб.');
+  assert.strictEqual(OptionSale.amount(opt), 10000);
+  assert.strictEqual(KpState.itemSum(S.items[0]), 2*100000000 + 5000000 + 2*900000, 'опция — в сумме позиции');
+  S.pricing.rates.USD='95'; OptionSale.syncAll();
+  assert.strictEqual(opt.price, 950000, 'курс поменялся — пересчитана');
+  Currency.setKp('EUR');
+  assert.strictEqual(opt.price, 9500, '100 USD × 95 / 100 = 95 EUR');
+  assert.strictEqual(S.items[0].options[0].price, 50000, 'опция в валюте КП — переведена как цены');
+  Currency.setKp('USD');
+  assert.strictEqual(opt.price, 10000, 'валюта КП = валюта опции — та же сумма');
+  assert.deepStrictEqual(OptionSale.currencies(S.items), []);
+  opt.saleCur='EUR'; OptionSale.set(opt, 10000);
+  assert.deepStrictEqual(OptionSale.currencies(S.items), ['EUR']);
+  delete S.pricing.rates.EUR; OptionSale.syncAll();
+  assert.strictEqual(opt.price, 0, 'нет курса — 0, КП попросит курс');
+  assert.strictEqual(OptionSale.sum(opt), 'нет курса');
+  FEAT.vals={optSaleCur:false};
+  assert.strictEqual(OptionSale.foreign(opt), false, 'выключено — в валюте КП');
+});
+
 if (!process.exitCode) console.log(`option_cost: ${n} проверок — OK`);

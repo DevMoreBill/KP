@@ -4,6 +4,7 @@ import { DealWin } from '../deal/deal-win.js';
 import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
+import { OptionSale } from './option-sale.js';
 
 /** Валюта КП и курсы: короткое обозначение, курс к рублю, смена валюты с пересчётом цен. */
 export class Currency {
@@ -50,7 +51,9 @@ export class Currency {
     if (prev === code) return;
     const from = this.rate(prev);
     const rateTo = this.rate(code);
+    OptionSale.pin();
     S.pricing.cur = code;
+    OptionSale.syncAll();
     if (from > 0 && rateTo > 0) {
       this._convert(value => Math.round((value * from) / rateTo));
       Toast.show(`Цены переведены в ${code} по курсу`);
@@ -68,7 +71,7 @@ export class Currency {
       // скидка суммой — в той же валюте, что цена
       if (item.disc && item.disc.type === 'sum' && +item.disc.v) item.disc = { ...item.disc, v: convert(+item.disc.v) };
       (item.options || []).forEach(option => {
-        if (!option.price) return;
+        if (!option.price || option.saleCur) return; // цена в своей валюте — уже пересчитана (OptionSale)
         option.price = convert(option.price);
         delete option._priceText;
       });

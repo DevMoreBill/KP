@@ -38,10 +38,12 @@ import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpGuard } from './kp-guard.js';
 import { OptionCost } from './option-cost.js';
+import { OptionSale } from './option-sale.js';
 import { BackGuard } from '../../core/back-guard.js';
 
 export const KP_PARTS = {
   OptionCost,
+  OptionSale,
   ApiKeys,
   Auth,
   Powers,
@@ -106,6 +108,7 @@ DefRegistry.personal = key => MyPrefs.def(key);
 UiTexts.listen();
 KpGuard.listen();
 OptionCost.listen();
+OptionSale.listen();
 BackGuard.listen(() => !!Drafts.pending());
 MgrBar.listen();
 ClientFind.listen();

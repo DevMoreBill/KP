@@ -24,6 +24,7 @@ import { ObjPath, Price } from '../../core/str.js';
 import { Mobile } from '../../ui/mobile.js';
 import { SidePanel } from '../../ui/side-panel.js';
 import { KpState, S } from '../../core/state.js';
+import { OptionSale } from '../kp/option-sale.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
@@ -174,6 +175,7 @@ export class DealBind {
     S.pricing.rates[field.dataset.kprate] = field.value;
     S.pricing.rateSrc = 'вручную';
     if (S.deal && S.deal.rates) delete S.deal.rates[field.dataset.kprate];
+    OptionSale.syncAll();
     this._touchLive();
   }
 

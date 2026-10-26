@@ -87,6 +87,8 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .opt .s{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
 .opt input{padding:8px 10px;font-size:14px;background:var(--field)}
 .opt.wcost{grid-template-columns:minmax(0,1fr) 64px 180px 130px 110px 32px}
+.opt.wsale{grid-template-columns:minmax(0,1fr) 72px 180px 130px 32px}
+.opt.wcost.wsale{grid-template-columns:minmax(0,1fr) 64px 180px 180px 130px 32px}
 .opt-h{margin-bottom:2px;font-size:12px;font-weight:600;color:var(--muted)}
 .opt-h .s{font-size:12px}
 .opt-cost{display:flex;gap:4px;min-width:0}
