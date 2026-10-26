@@ -2561,7 +2561,9 @@ def build_feed(feed, pages, prices, param_name, stock=None) -> dict:
     for page in pages:
         if page.get('logo'):
             logos.setdefault(page.get('brand') or maker, page['logo'])
-    if stock and not (prices and prices[0].get('genset')):  # у прайса-склада ДГУ наличие — в самом прайсе
+    if prices and prices[0].get('genset'):
+        GensetMatch.unpriced(offs)
+    elif stock:  # у прайса-склада ДГУ наличие — в самом прайсе
         stats['stock'] = apply_stock(offs, stock)
     return {
         'shop': feed.get('name') or '',

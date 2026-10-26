@@ -3033,6 +3033,7 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tup
     sumr: dict[str, Any] = {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
     sidx = feed_files.stock_index(stock) if stock else None
     revs = store.catalog_revs()  # правку менеджера за время проверки не затираем
+    genset = any(price.get('genset') for price in prices)
     for doc in _maker_cards(store, feed):
         attrs = doc.get('attrs') or {}
         sumr['cards'] += 1
@@ -3042,6 +3043,17 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tup
             sumr[key].append(
                 {'id': doc['id'], 'name': doc.get('name'), 'why': why, 'rows': [price['name'] for price in rows[:3]]}
             )
+            if genset and feed_files.GensetMatch.lost(doc, rows, feed['id'], today):
+                try:
+                    store.catalog_put(
+                        doc['id'],
+                        json.dumps(doc, ensure_ascii=False),
+                        author or ('Фид «{}»'.format(feed['name'])),
+                        revs.get(doc['id']),
+                    )
+                    sumr['updated'] += 1
+                except Conflict:
+                    pass  # позицию изменили во время проверки — обновится при следующей
             continue
         price = rows[0]
         before = json.dumps(

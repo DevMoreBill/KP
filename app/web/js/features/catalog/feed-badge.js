@@ -10,7 +10,7 @@ export class FeedBadge {
       return `в наличии ${num(stock.qty)} шт.${stock.transit ? ` + ${num(stock.transit)} в пути` : ''}`;
     if (stock.transit) return `в пути ${num(stock.transit)} шт.${stock.eta ? ` (${stock.eta})` : ''}`;
     if (stock.prod) return `в производстве ${num(stock.prod)} шт.`;
-    return stock.available ? 'под заказ' : 'нет в наличии';
+    return stock.available || stock.order ? 'под заказ' : 'нет в наличии';
   }
 
   /**

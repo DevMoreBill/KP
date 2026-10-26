@@ -97,6 +97,10 @@ class Stock:
     AWAY = re.compile(r'стамбул|турци|китай', re.I)
     PROD = re.compile(r'производств', re.I)
     DATE = re.compile(r'(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?')
+    WHEN = re.compile(
+        r'\d|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр|нед|конец|середин|начал', re.I
+    )
+    ORDER = {'qty': 0, 'available': False, 'order': True}
 
     @classmethod
     def add(cls, state: dict, status: str) -> None:
@@ -111,12 +115,16 @@ class Stock:
             eta = f'{int(date.group(1)):02d}.{int(date.group(2)):02d}'
             if not state['eta'] or (eta[3:], eta[:2]) < (state['eta'][3:], state['eta'][:2]):
                 state['eta'] = eta
-        elif status and not state['etaText']:
-            state['etaText'] = re.sub(r'^прибыти[ея]\s*', '', status, flags=re.I)[:TEXT_MAX]
+        elif status:
+            key = (
+                'etaText' if cls.WHEN.search(status) else 'etaNote'
+            )  # «оплачена», «в Стамбуле» — срок, только если другого нет
+            if not state[key]:
+                state[key] = re.sub(r'^прибыти[ея]\s*', '', status, flags=re.I)[:TEXT_MAX]
 
     @staticmethod
     def empty() -> dict:
-        return {'qty': 0, 'wh': {}, 'transit': 0, 'prod': 0, 'eta': '', 'etaText': ''}
+        return {'qty': 0, 'wh': {}, 'transit': 0, 'prod': 0, 'eta': '', 'etaText': '', 'etaNote': ''}
 
     @staticmethod
     def info(state: dict) -> dict:
@@ -125,8 +133,8 @@ class Stock:
         for key in ('transit', 'prod', 'eta', 'promo'):
             if state.get(key):
                 out[key] = state[key]
-        if not state.get('eta') and state.get('etaText'):
-            out['eta'] = state['etaText']
+        if not state.get('eta') and (state.get('etaText') or state.get('etaNote')):
+            out['eta'] = state.get('etaText') or state['etaNote']
         if state['wh']:
             out['wh'] = sorted(([place, qty] for place, qty in state['wh'].items()), key=lambda pair: -pair[1])
         return out
@@ -336,7 +344,7 @@ class GensetBook:
             'dealer': round(item['dealer'], 2) if item.get('dealer') else None,
             'disc': item.get('disc'),
             'genset': {'exec': item['exec'], 'alt': item['alt']},
-            'stockInfo': Stock.info(state) if state else None,
+            'stockInfo': Stock.info(state) if state else dict(Stock.ORDER),  # машин на складе нет — под заказ
         }
 
 
@@ -391,12 +399,34 @@ class GensetMatch:
             for key in ('transit', 'prod'):
                 if state.get(key):
                     out[key] = out.get(key, 0) + state[key]
-            for key in ('eta', 'promo'):
+            for key in ('eta', 'promo', 'order'):
                 if state.get(key) and not out.get(key):
                     out[key] = state[key]
             for place, qty in state.get('wh') or []:
                 places[place] = places.get(place, 0) + qty
         out['available'] = out['qty'] > 0
+        if out['qty'] or out.get('transit') or out.get('prod'):
+            out.pop('order', None)
         if places:
             out['wh'] = sorted(([place, qty] for place, qty in places.items()), key=lambda pair: -pair[1])
         return out
+
+    @staticmethod
+    def unpriced(offers: list) -> None:
+        """Позиции парса, которых нет в прайсе-складе, — не в наличии (прежнее наличие не остаётся)."""
+        for offer in offers:
+            if not offer.get('stockInfo'):
+                offer.update(stockInfo={'qty': 0, 'available': False}, qty=0, available=False, nostock=False)
+
+    @staticmethod
+    def lost(doc: dict, rows: list, feed_id: str, today: str) -> bool:
+        """Карточка без цены в прайсе-складе: наличие её строк (без машин — под заказ); модели нет — не в наличии, если
+        наличие раньше дал этот фид. → изменилось ли."""
+        if not rows and (doc.get('priceLink') or {}).get('feed') != feed_id:
+            return False
+        info = GensetMatch.stock(rows) or {'qty': 0, 'available': False}
+        was = doc.get('stock') or {}
+        if {key: val for key, val in was.items() if key not in ('at', 'gone')} == info:
+            return False
+        doc['stock'] = dict(info, at=today, gone=False)
+        return True

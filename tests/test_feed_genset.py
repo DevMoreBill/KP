@@ -21,6 +21,7 @@ UNITS = [
     ['HG 138 BC', 'B2', 100, 'Baudouin / Evotec / Datakom', 'На складе в Стамбуле', 'в кожухе', '24', 'Турция', 26200, '', 0.3],
     ['HG 275 ВD', 'C1', 200, 'Baudouin / Evotec', 'в производстве до 01.12.2026', 'в кожухе', '24', '', 41000, 28700, 0.3],
     ['HG 41 WL', 'D1', 30, 'Weichai / Leroy-Somer / ComAp', 'середина ноября', 'в кожухе', '24', '', 8280, 5796, 0.3],
+    ['HG 41 WL', 'D2', 30, 'Weichai / Leroy-Somer / ComAp', 'оплачена', 'в кожухе', '24', '', 8280, 5796, 0.3],
 ]
 MODEL_HEAD = [
     {4: '50 HZ / 400V', 7: 'Валюта', 8: 'Генератор открытый (с автоматом защиты от КЗ)'},
@@ -114,7 +115,9 @@ class GensetSheetsTest(unittest.TestCase):
         self.assertIsNone(rows['HG 138 BC в кожухе']['dealer'])  # нет «Цены Дилер» — закупка по «% скидки»
         prod = rows['HG 275 ВD в кожухе']['stockInfo']
         self.assertEqual((prod['prod'], prod['eta']), (1, '01.12'))
-        self.assertEqual(rows['HG 41 WL в кожухе']['stockInfo']['eta'], 'середина ноября')
+        paid = rows['HG 41 WL в кожухе']['stockInfo']
+        self.assertEqual((paid['transit'], paid['eta']), (2, 'середина ноября'))  # «оплачена» — не срок
+        self.assertEqual(rows['HG 45 CH открытого исполнения']['stockInfo'], {'qty': 0, 'available': False, 'order': True})
 
     def test_models_sheet_without_units(self):
         rows = self.rows(drop=('Cклад Hertz',))
@@ -164,7 +167,8 @@ class GensetFeedTest(unittest.TestCase):
 
     def run_feed(self, sheets):
         feeds = self.feeds
-        rec = feeds.feed_save(self.st, {'kind': 'files', 'name': 'HERTZ (ООО ГИС)', 'maker': 'HERTZ', 'priceKind': 'rrc', 'cur': 'EUR'})
+        rec = feeds.feed_get(self.st, 'hertz-ooo-gis') or feeds.feed_save(
+            self.st, {'kind': 'files', 'name': 'HERTZ (ООО ГИС)', 'maker': 'HERTZ', 'priceKind': 'rrc', 'cur': 'EUR'})
         feeds.feed_file_put(self.st, rec['id'], 'price', Book.xlsx(sheets), 'hertz.xlsx')
         feeds.check_feed(self.st, feeds.feed_get(self.st, rec['id']), 'тест', log=lambda *a: None)
         return {doc['id']: json.loads(self.st.one('SELECT doc FROM catalog WHERE id=?', (doc['id'],))[0]) for doc in self.cards}
@@ -190,6 +194,19 @@ class GensetFeedTest(unittest.TestCase):
         self.feeds._CACHE.clear()
         hg45 = self.run_feed(sheets)[self.cards[0]['id']]
         self.assertEqual((hg45['rrc']['price'], hg45['cost'], hg45['stock']['qty']), (1300000, 845000, 2))
+
+
+    def test_sold_out_resets_stock(self):
+        self.run_feed(hertz_sheets(2))
+        sheets = hertz_sheets(5)
+        units = next(rows for name, rows in sheets if name == 'Cклад Hertz')
+        units[:] = [row for row in units if not row or row[0] not in ('HG 45 CH', 'HG 138 BC')]
+        self.feeds._CACHE.clear()
+        got = self.run_feed(sheets)
+        hg45 = got[self.cards[0]['id']]
+        self.assertEqual((hg45['rrc']['price'], hg45['stock']['qty'], hg45['stock'].get('order')), (1250000, 0, True))
+        self.assertEqual(got[self.cards[1]['id']]['stock']['qty'], 0)  # машину продали — модели нет в прайсе
+        self.assertTrue(got[self.cards[2]['id']]['stock']['order'])  # «по запросу» — под заказ
 
 
 class GensetPagesTest(unittest.TestCase):
