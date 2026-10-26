@@ -96,7 +96,9 @@ jobs:
           node-version: '22'
 
       - name: Проверки программы, часть ${{ matrix.shard }} из 3 (tests/run_all.py)
-        run: python tests/run_all.py --no-static --strict --shard=${{ matrix.shard }}/3
+        run: |
+          python -m pip install pyflakes==4.0.0
+          python tests/run_all.py --no-static --strict --shard=${{ matrix.shard }}/3
 
   # EXE собирается только по команде владельца (17.10): запуск вручную (workflow_dispatch) или метка v*; при отправке — только проверки
   build:
