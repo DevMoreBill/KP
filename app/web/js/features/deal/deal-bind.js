@@ -207,6 +207,7 @@ export class DealBind {
       KpState.persist();
       DealWin.render();
     }
+    if (field.dataset.oprice != null) DealWin.render(); // цена опции — итоги, маржа и график
     if (field.dataset.kppI != null) {
       const item = S.items[+field.dataset.kppI];
       if (!Number.isNaN(Price.parse(item._priceText))) delete item._priceText;

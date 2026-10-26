@@ -5,6 +5,7 @@ import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Currency } from '../kp/currency.js';
 import { Fmt, Price } from '../../core/str.js';
+import { OptionSale } from '../kp/option-sale.js';
 
 /** Вкладка «Цена КП и валюта»: цены позиций, валюта и курсы ЦБ правятся здесь же и сразу меняют КП; прикидка другой цены. */
 export class DealPrice {
@@ -85,7 +86,7 @@ export class DealPrice {
     const short = Currency.short(cur);
     const rows = S.items
       .filter(item => String(item.name || '').trim())
-      .map(item => DealPrice._row(item, short))
+      .map(item => DealPrice._row(item, short) + DealPrice._options(item))
       .join('');
     if (!rows) return '';
     const rub = cur !== 'RUB' && kpData.sumRub ? `<small>≈ ${Fmt.rub(kpData.sumRub)}</small>` : '';
@@ -99,6 +100,20 @@ export class DealPrice {
     const disc = KPGen.unitDisc(item);
     return `<tr><td class="c-nm"><b>${esc(item.name)}</b><small>${esc(item.qty)} шт.${disc ? ` · скидка ${KPGen.money(disc)} ${short}/ед.` : ''}</small></td>
         <td class="c-cost"><input type="text" inputmode="decimal" class="num" data-kpp-i="${index}" value="${esc(text)}" placeholder="0,00" aria-label="Цена за единицу с НДС, ${short}"></td>
-        <td class="num">${KPGen.money(KpState.itemSum(item))}</td></tr>`;
+        <td class="num" data-sum="${index}">${KPGen.money(KpState.itemSum(item))}</td></tr>`;
+  }
+
+  // опции и услуги позиции — строкой «доп.» под ней, как в закупке: цена продажи с валютой, сумма в валюте КП
+  static _options(item) {
+    const index = S.items.indexOf(item);
+    return (item.options || [])
+      .map((option, j) =>
+        option.name
+          ? `<tr class="dl-opt"><td class="c-nm"><b><i class="dl-optm">доп.</i>${esc(option.name)}</b><small>${esc(option.qty)} ${esc(option.unit || 'шт.')} · к «${esc(item.name)}»</small></td>
+        <td class="c-cost">${OptionSale.field(index, j, option)}</td>
+        <td class="num" data-osum="${index}.${j}">${OptionSale.sum(option)}</td></tr>`
+          : '',
+      )
+      .join('');
   }
 }

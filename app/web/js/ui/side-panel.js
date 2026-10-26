@@ -211,11 +211,11 @@ export class SidePanel {
   /** Суммы позиций и опций на месте, без перерисовки формы; панель и черновик. */
   static updateLive() {
     S.items.forEach((item, i) => {
-      const sum = document.querySelector(`[data-sum="${i}"]`);
-      if (sum) sum.textContent = KPGen.money(KpState.itemSum(item));
+      const sum = KPGen.money(KpState.itemSum(item));
+      document.querySelectorAll(`[data-sum="${i}"]`).forEach(cell => (cell.textContent = sum));
       (item.options || []).forEach((opt, j) => {
-        const cell = document.querySelector(`[data-osum="${i}.${j}"]`);
-        if (cell) cell.textContent = opt.price ? KPGen.money((+opt.qty || 0) * opt.price) : '—';
+        const text = OptionSale.sum(opt);
+        document.querySelectorAll(`[data-osum="${i}.${j}"]`).forEach(cell => (cell.textContent = text));
       });
     });
     if (CatalogEditor.session) return;
