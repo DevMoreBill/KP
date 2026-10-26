@@ -245,7 +245,7 @@ export class Catalog {
     }
     CatAttrs.mark(Catalog.cache);
     CatalogSearch.drop();
-    this.renderDatalist();
+    (window.requestIdleCallback || setTimeout)(() => this.renderDatalist()); // весь каталог — не на пути запуска
     this.warm();
   }
 

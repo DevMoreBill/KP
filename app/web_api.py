@@ -1,5 +1,6 @@
 """Маршруты HTTP-API: контроллеры разделов с @route и маршрутизатор (первый подходящий по пути и методу)."""
 
+import base64
 import contextlib
 import hashlib
 import json
@@ -141,10 +142,31 @@ class CbrCache:
     """Курсы и ключевая ставка ЦБ: удачный ответ — в базу; ЦБ недоступен — последний сохранённый (stale)."""
 
     RETRY = 600
+    FRESH = 1800  # ЦБ меняет курс раз в день: каждое окно и запуск не ходят на cbr.ru (до 15 с ожидания)
     _failed: dict = {}
+    _lock = threading.Lock()
+
+    @classmethod
+    def _fresh(cls, key) -> dict | None:
+        last = store().kv_get(key)
+        if not isinstance(last, dict) or last.get('error'):
+            return None
+        try:
+            age = (datetime.now() - datetime.fromisoformat(last.get('fetched') or '')).total_seconds()
+        except ValueError:
+            return None
+        return last if 0 <= age < cls.FRESH else None
 
     @classmethod
     def get(cls, key, fetch) -> dict:
+        fresh = cls._fresh(key)
+        if fresh:
+            return fresh
+        with cls._lock:  # одновременные окна ждут один запрос к ЦБ, а не шлют каждый свой
+            return cls._fresh(key) or cls._ask(key, fetch)
+
+    @classmethod
+    def _ask(cls, key, fetch) -> dict:
         res = None
         if time.time() - cls._failed.get(key, 0) >= cls.RETRY:
             try:
@@ -286,30 +308,55 @@ class Router:
 
 
 class WebIndex:
-    """index.html с меткой версии в адресе каждого файла интерфейса: браузер хранит файлы, пока они не изменятся."""
+    """index.html с меткой версии в адресе каждого файла интерфейса: браузер хранит файлы, пока они не изменятся.
+    Модули, которые подключают друг друга (import), получают метку через карту импорта — без неё браузер при каждом
+    запуске переспрашивает сервер о каждом из сотен модулей."""
 
     REF = re.compile(r'((?:src|href)=")(/web/[^"?#]+)(")')
-    cache: dict = {}  # {(метка index.html, метки файлов): готовые байты}
+    MODULE = re.compile(r'<script type="module"')
+    JS_ROOT = 'js'
+    cache: dict = {}  # {(метки index.html и файлов): (готовые байты, CSP)}
 
     @staticmethod
     def tag(path) -> str:
         stat = os.stat(path)
         return f'{stat.st_mtime_ns:x}-{stat.st_size:x}'
 
+    @staticmethod
+    def short(tag: str) -> str:
+        return '%08x' % (zlib.crc32(tag.encode()) & 0xFFFFFFFF)
+
     @classmethod
-    def build(cls, path: str) -> bytes:
+    def _modules(cls) -> list[tuple[str, str]]:
+        """[(адрес /web/js/…, метка)] всех скриптов интерфейса."""
+        root = os.path.join(WEB_DIR, cls.JS_ROOT)
+        out = []
+        for folder, _, files in os.walk(root):
+            for name in files:
+                if name.endswith('.js'):
+                    path = os.path.join(folder, name)
+                    rel = os.path.relpath(path, WEB_DIR).replace(os.sep, '/')
+                    out.append(('/web/' + rel, cls.tag(path)))
+        return sorted(out)
+
+    @classmethod
+    def _import_map(cls, modules: list[tuple[str, str]]) -> str:
+        imports = {url: f'{url}?v={cls.short(tag)}' for url, tag in modules}
+        return '<script type="importmap">' + json.dumps({'imports': imports}, separators=(',', ':')) + '</script>\n'
+
+    @classmethod
+    def build(cls, path: str) -> tuple[bytes, str]:
+        """→ (страница, CSP с хешем карты импорта)."""
         with open(path, 'rb') as handle:
             html = handle.read().decode('utf-8')
         refs = [(match.group(2), web_file(match.group(2)[len('/web/') :])) for match in cls.REF.finditer(html)]
-        key = (cls.tag(path), *tuple(cls.tag(x) if x else '' for _, x in refs))
+        modules = cls._modules()
+        ref_tags = [cls.tag(x) if x else '' for _, x in refs]
+        key = (cls.tag(path), *ref_tags, *modules)
         hit = cls.cache.get(key)
         if hit is None:
-            tags = {
-                u: '%08x' % (zlib.crc32(tag.encode()) & 0xFFFFFFFF)
-                for (u, x), tag in zip(refs, key[1:], strict=False)
-                if tag
-            }
-            hit = cls.REF.sub(
+            tags = {u: cls.short(tag) for (u, _), tag in zip(refs, ref_tags, strict=True) if tag}
+            page = cls.REF.sub(
                 lambda ref: (
                     ref.group(1)
                     + ref.group(2)
@@ -317,7 +364,15 @@ class WebIndex:
                     + ref.group(3)
                 ),
                 html,
-            ).encode('utf-8')
+            )
+            imap = cls._import_map(modules)
+            first = cls.MODULE.search(page)
+            if first:
+                page = page[: first.start()] + imap + page[first.start() :]
+            body = imap[len('<script type="importmap">') : -len('</script>\n')]
+            digest = base64.b64encode(hashlib.sha256(body.encode('utf-8')).digest()).decode('ascii')
+            csp = CSP.replace("script-src 'self'", f"script-src 'self' 'sha256-{digest}'", 1)
+            hit = (page.encode('utf-8'), csp)
             cls.cache = {key: hit}
         return hit
 
@@ -332,7 +387,8 @@ class StaticController(Controller):
         if not path:
             return self.not_found()
         if idx:
-            return self.send_file(path, WEB_TYPES['.html'], 'no-cache', CSP, data=WebIndex.build(path))
+            page, csp = WebIndex.build(path)
+            return self.send_file(path, WEB_TYPES['.html'], 'no-cache', csp, data=page)
         # адрес с меткой версии (из index.html) не меняется, пока не изменится файл, — хранится в браузере год
         return self.send_file(
             path, WEB_TYPES[os.path.splitext(path)[1].lower()], self.YEAR if self.query.get('v') else 'no-cache'

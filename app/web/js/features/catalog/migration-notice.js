@@ -32,14 +32,11 @@ export class MigrationNotice {
       }
     };
     dialog.showModal();
+    dialog.addEventListener('close', seen, { once: true }); // и закрытие по Esc — иначе сообщение при каждом запуске
     dialog.querySelectorAll('[data-close]').forEach(button => {
-      button.onclick = () => {
-        seen();
-        dialog.close();
-      };
+      button.onclick = () => dialog.close();
     });
     dialog.querySelector('[data-mig]').onclick = () => {
-      seen();
       dialog.close();
       CatalogWindow.open({});
     };

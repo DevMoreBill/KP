@@ -82,6 +82,27 @@ class ApiTest(unittest.TestCase):
         st, _, _ = self.J('GET', u.split('?')[0], who='', extra={'If-None-Match': hd2['ETag']})
         self.assertEqual(st, 304)
 
+    def test_01c_import_map(self):
+        """Модули, подключаемые через import, — с меткой версии по карте импорта (иначе каждый запуск переспрашивает сотни файлов);
+        карта разрешена в CSP своим хешем, а не 'unsafe-inline'."""
+        import base64
+        import hashlib
+        import re
+        st, html, hd = self.J('GET', '/', who='')
+        found = re.search(r'<script type="importmap">(.*?)</script>', html, re.S)
+        self.assertTrue(found)
+        self.assertLess(found.start(), html.index('<script type="module"'), 'карта — до первого модуля')
+        imports = json.loads(found.group(1))['imports']
+        self.assertEqual(imports['/web/js/core/util.js'][: len('/web/js/core/util.js?v=')], '/web/js/core/util.js?v=')
+        self.assertTrue(all(re.fullmatch(r'/web/js/.+\.js\?v=[0-9a-f]{8}', v) for v in imports.values()))
+        self.assertGreater(len(imports), 100)
+        digest = base64.b64encode(hashlib.sha256(found.group(1).encode('utf-8')).digest()).decode()
+        csp = hd.get('Content-Security-Policy', '')
+        self.assertIn(f"'sha256-{digest}'", csp)
+        self.assertNotIn('unsafe-inline', csp.split('script-src')[1].split(';')[0])
+        st, _, hd = self.J('GET', imports['/web/js/core/util.js'], who='', raw=True)
+        self.assertEqual((st, hd.get('Cache-Control')), (200, 'public, max-age=31536000, immutable'))
+
     # ---------------------------------------------------------------- 2. каталог
     def test_02_catalog_sync(self):
         st, b, hd = self.J('GET', '/api/catalog', raw=True)
