@@ -3,6 +3,7 @@ import { AdminInbox, AdminReadiness } from './admin-inbox.js';
 import { SettingsWindow } from './settings-window.js';
 import { Debounce } from '../../core/debounce.js';
 import { Catalog } from '../catalog/catalog-store.js';
+import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { Toast } from '../../core/toast.js';
 import { ModerationList, ModerationView } from '../catalog/moderation.js';
 import { Journal } from '../kp/journal.js';
@@ -274,6 +275,7 @@ export class AuditTab {
   static PAGE = 50;
   static SEARCH_WAIT = 300;
   static ROLLBACK = ['edit_product', 'approve_edit'];
+  static rows = [];
 
   /**
    * Вкладка.
@@ -287,6 +289,7 @@ export class AuditTab {
       state.fl || AdminApi.get('audit/filters'),
     ]);
     state.fl = lists;
+    this.rows = reply.items;
     const pages = Math.max(1, Math.ceil(reply.total / this.PAGE));
     main.innerHTML = `<div class="st-filters">${this._select('user', lists.users, 'Все пользователи')}${this._select('action', lists.actions, 'Все действия', AuditLabels.ACT)}${this._select('entity', lists.entities, 'Все объекты', AuditLabels.ENT)}
       <input type="date" data-af="from" value="${esc(filter.from || '')}" aria-label="С даты"><input type="date" data-af="to" value="${esc(filter.to || '')}" aria-label="По дату">
@@ -314,7 +317,9 @@ export class AuditTab {
 
   static _diff(row) {
     if (!row.before && !row.after) return '';
-    const keys = [...new Set([...Object.keys(row.before || {}), ...Object.keys(row.after || {})])];
+    const keys = [...new Set([...Object.keys(row.before || {}), ...Object.keys(row.after || {})])].filter(
+      key => !key.startsWith('_'),
+    );
     const cell = (side, key) => (side && key in side ? AuditLabels.value(side[key]) : '');
     const lines = keys
       .map(key => `<tr><td>${esc(key)}</td><td>${cell(row.before, key)}</td><td>${cell(row.after, key)}</td></tr>`)
@@ -322,17 +327,34 @@ export class AuditTab {
     return `<table class="st-diff"><tr><th>Поле</th><th>Было</th><th>Стало</th></tr>${lines}</table>`;
   }
 
+  static _openRefused(main, id) {
+    const row = this.rows.find(item => item.id === id);
+    if (!row) return;
+    CatalogEditor.openNew(JSON.parse(JSON.stringify(row.after._card)), () => {
+      Catalog.refresh();
+      Toast.show('Позиция сохранена в каталог');
+      this.render(main);
+    });
+  }
+
   static _summary(row, failed) {
     return `<summary><span class="t">${esc(Fmt.dateTime(row.timestamp))}</span><b>${esc(AuditLabels.ACT[row.action] || row.action)}</b>
-        <span class="muted">${esc(AuditLabels.ENT[row.entityType] || row.entityType || '')} ${esc(row.entityId || '')}</span><span class="u">${esc(row.userName || '')}${row.userRole === 'admin' ? ' · админ' : ''}</span>${failed ? '<span class="bad-t">отклонено</span>' : ''}</summary>`;
+        <span class="muted">${esc(AuditLabels.ENT[row.entityType] || row.entityType || '')} ${esc((row.after && row.after['Наименование']) || row.entityId || '')}</span><span class="u">${esc(row.userName || '')}${row.userRole === 'admin' ? ' · админ' : ''}</span>${failed ? '<span class="bad-t">отклонено</span>' : ''}</summary>`;
   }
 
   static _entry(row) {
     const failed = row.result === 'failed';
     return `<details class="st-log ${failed ? 'fail' : ''}">${this._summary(row, failed)}
-        <div class="st-logb">${this._diff(row)}
+        <div class="st-logb">${this._diff(row)}${this._refused(row)}
         <p class="muted">IP ${esc(row.ip || '—')} · ${esc(row.userAgent || '')}</p>
         ${this.ROLLBACK.includes(row.action) && row.before ? `<button class="btn" type="button" data-rb="${row.id}">Откатить эту правку</button>` : ''}</div></details>`;
+  }
+
+  // отклонённая карточка товара: открыть её и добавить в каталог самому
+  static _refused(row) {
+    const card = row.result === 'failed' && row.after && row.after._card;
+    if (!card || typeof card !== 'object' || !card.id) return '';
+    return `<button class="btn" type="button" data-refused="${row.id}">Открыть карточку и добавить в каталог…</button>`;
   }
 
   static _bind(main) {
@@ -361,6 +383,11 @@ export class AuditTab {
     if (page) {
       state.page += +page.dataset.pg;
       this.render(main);
+      return;
+    }
+    const refused = event.target.closest('[data-refused]');
+    if (refused) {
+      this._openRefused(main, +refused.dataset.refused);
       return;
     }
     const rollback = event.target.closest('[data-rb]');

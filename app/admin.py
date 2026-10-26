@@ -776,6 +776,28 @@ class CardQuality:
         return DupFinder(self.store).find(self.after, self.cid)
 
 
+class RefusedCard:
+    """Отклонённое сохранение карточки — в журнал: причина, что хотели сохранить и карточка целиком (_card), чтобы
+    администратор мог открыть её и добавить сам."""
+
+    CARD_LIMIT = 300000
+
+    @classmethod
+    def log(cls, handler, store, before: dict | None, after: dict, cid: str, reason: str) -> None:
+        found = after.get('attrs')
+        attrs: dict = found if isinstance(found, dict) else {}
+        brief = {
+            'Причина отказа': reason,
+            'Наименование': after.get('name') or '',
+            'Категория': attrs.get('cat') or '',
+            'Производитель': attrs.get('maker') or '',
+            'Модель': attrs.get('model') or '',
+            '_card': _short(after, cls.CARD_LIMIT),
+        }
+        action = 'edit_product' if before else 'create_product'
+        log(handler, store, action, 'product', cid, None, {k: v for k, v in brief.items() if v}, result='failed')
+
+
 def _put_product(handler, store, cid, admin) -> None:
     """Единая точка сохранения товара: модерация (черновик) или сразу в каталог; всё — в журнал."""
     after = _body_obj(handler)
@@ -797,17 +819,14 @@ def _put_product(handler, store, cid, admin) -> None:
         and not auto
         and not perm(handler, 'catEdit' if before is not None else 'catAdd')
     ):
-        log(handler, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
-        return handler.send(
-            403,
-            'text/plain; charset=utf-8',
-            f'Нет права {"редактировать" if before is not None else "добавлять"} оборудование в каталоге — обратитесь к администратору',
-        )
+        reason = f'Нет права {"редактировать" if before is not None else "добавлять"} оборудование в каталоге — обратитесь к администратору'
+        RefusedCard.log(handler, store, before, after, cid, reason)
+        return handler.send(403, 'text/plain; charset=utf-8', reason)
     quality = CardQuality(store, before, after, cid, CardSource.of(handler.headers.get('X-KP-Edit')))
     gaps = quality.gaps() if not auto and quality.enabled else []
     from_kp = handler.headers.get('X-KP-Edit') == 'auto'
     if gaps and not from_kp:
-        log(handler, store, 'edit_product' if before else 'create_product', 'product', cid, result='failed')
+        RefusedCard.log(handler, store, before, after, cid, CardRules.text(gaps))
         return handler.send(400, 'text/plain; charset=utf-8', CardRules.text(gaps))
     # модерация не касается администратора и менеджера с правом «Правки без модерации»
     mod = moderation(store).get('enabled') and not admin and not (login_on(handler) and perm(handler, 'catSelfMod'))

@@ -106,6 +106,11 @@ class ServerTest(unittest.TestCase):
         st, body = self.http.req('POST', '/api/catalog/check', {'id': 'q-new-1', 'doc': card(photo=None)}, headers=self.H)[:2]
         self.assertEqual(st, 200)
         self.assertEqual(Http.js(body)['missing'], ['главное фото'])
+        st, log = self.admin('GET', '/api/admin/audit?action=create_product&q=q-new-1')
+        refused = [row for row in log['items'] if row['entityId'] == 'q-new-1' and row['result'] == 'failed']
+        self.assertTrue(refused, 'отказ — в журнале')
+        self.assertIn('главное фото', refused[0]['after']['Причина отказа'])
+        self.assertEqual(refused[0]['after']['_card']['name'], card(photo=None)['name'], 'карточка целиком — открыть и добавить')
 
     def test_2_duplicate_goes_to_moderation(self):
         self.assertEqual(self.admin('POST', '/api/admin/moderation', {'enabled': False})[0], 200)

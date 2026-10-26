@@ -113,7 +113,6 @@ export class CardRules {
    * @returns {Promise<{missing: string[], dups: Array<{id: string, name: string, why: string}>}>}
    */
   static async check(doc, id) {
-    if (!this.enabled()) return { missing: [], dups: [] };
     const answer = await Api.request('/api/catalog/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
