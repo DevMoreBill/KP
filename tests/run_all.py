@@ -9,12 +9,14 @@
    возврат к прежней версии при неудачном обновлении. Рабочая база не используется.
 
 Ключи: --quick — без долгих наборов (фаззинг, обновления, безопасность); --no-static — без статических проверок;
+--shard=K/N — K-я из N частей наборов, поделённых по времени (tests/suite_times.json; так CI идёт параллельно);
 --changed — только то, что затронуто незакоммиченными правками (git): pyflakes и ESLint по изменённым файлам, наборы
 по карте в Changed (сервер — где упомянут модуль; интерфейс — проверки в Node и кнопок; CSS — только статические) и
-правила проекта (test_project) — для мелких правок; перед сборкой — полный прогон (--strict). Имена наборов — только они (python tests/run_all.py test_api test_security). Код выхода 0 — всё прошло.
+правила проекта (test_project) — для мелких правок; полный набор делает CI при отправке (тремя частями, --shard). Имена наборов — только они (python tests/run_all.py test_api test_security). Код выхода 0 — всё прошло.
 """
 import glob
 import importlib.util
+import json
 import os
 import shutil
 import re
@@ -25,6 +27,32 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
+
+
+class Shard:
+    """Часть наборов для параллельного запуска в CI (--shard 2/3): наборы делятся по замеренному времени
+    (tests/suite_times.json, без замера — DEFAULT с) так, чтобы части шли примерно одинаково; каждый набор — ровно в одной части."""
+    TIMES = os.path.join(HERE, 'suite_times.json')
+    DEFAULT = 5
+
+    def __init__(self, spec):
+        part, total = spec.split('/')
+        self.part, self.total = int(part), int(total)
+        if not 1 <= self.part <= self.total:
+            raise SystemExit('--shard K/N: K от 1 до N')
+
+    def pick(self, names):
+        try:
+            with open(self.TIMES, encoding='utf-8') as f:
+                times = json.load(f)
+        except (OSError, ValueError):
+            times = {}
+        loads = [[0, []] for _ in range(self.total)]
+        for name in sorted(names, key=lambda n: (-times.get(n, self.DEFAULT), n)):
+            lightest = min(loads, key=lambda load: load[0])
+            lightest[0] += times.get(name, self.DEFAULT)
+            lightest[1].append(name)
+        return sorted(loads[self.part - 1][1])
 
 
 class Changed:
@@ -135,10 +163,12 @@ class Runner:
             names = Changed.suites(self.touched, names)
         if '--quick' in self.flags:
             names = [n for n in names if n not in self.SLOW]
-        return names
+        shard = next((f.split('=', 1)[1] for f in self.flags if f.startswith('--shard=')), None)
+        return Shard(shard).pick(names) if shard else names
 
     def units(self):
         sys.path.insert(0, HERE)
+        sys.path.insert(1, os.path.join(REPO, 'app'))  # модули сервера — для любого набора, а не только после того, кто их подключил
         names = self.suites()
         suite = unittest.defaultTestLoader.loadTestsFromNames(names)
         if self.touched is not None:

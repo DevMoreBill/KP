@@ -13,13 +13,35 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  # проверки кода при каждой отправке: pyflakes, ESLint (с необъявленными именами), наборы tests/ на стенде со сгенерированной
-  # базой (без данных пользователя); EXE собирается, только если они прошли
-  tests:
+  # сборка того же коммита, что уже проверен при отправке, проверки не повторяет (они идут ~6 мин): ищется успешный запуск
+  # этого рабочего процесса по событию push с тем же коммитом
+  gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 3
+    outputs:
+      tested: ${{ steps.find.outputs.tested }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tested=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            n=$(gh api "repos/${{ github.repository }}/actions/workflows/build-exe.yml/runs?event=push&status=success&head_sha=${{ github.sha }}&per_page=1" --jq '.total_count' || echo 0)
+            [ "${n:-0}" -gt 0 ] && tested=true
+          fi
+          echo "tested=$tested" >> "$GITHUB_OUTPUT"
+          echo "Коммит ${{ github.sha }} уже проверен при отправке: $tested"
+
+  # статические проверки: репозиторий, pyflakes, ESLint (с необъявленными именами), оформление (Ruff, mypy, Prettier)
+  static:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       PYTHONUTF8: '1'
     steps:
@@ -49,13 +71,42 @@ jobs:
           python -m pip install ruff==0.15.8 mypy==2.4.0
           python tests/code_style.py
 
-      - name: Проверки программы (tests/run_all.py)
-        run: python tests/run_all.py --no-static --strict
+  # наборы tests/ на стенде со сгенерированной базой (без данных пользователя) — тремя параллельными частями по времени
+  # (tests/suite_times.json, run_all.py --shard); EXE собирается, только если всё прошло
+  tests:
+    needs: gate
+    if: needs.gate.outputs.tested != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Проверки программы, часть ${{ matrix.shard }} из 3 (tests/run_all.py)
+        run: python tests/run_all.py --no-static --strict --shard=${{ matrix.shard }}/3
 
   # EXE собирается только по команде владельца (17.10): запуск вручную (workflow_dispatch) или метка v*; при отправке — только проверки
   build:
-    needs: tests
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: [gate, static, tests]
+    # проверки прошли сейчас или этот коммит уже проверен при отправке (тогда static и tests пропущены)
+    if: >-
+      always() && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.gate.result == 'success' &&
+      ((needs.static.result == 'success' && needs.tests.result == 'success') ||
+       (needs.gate.outputs.tested == 'true' && needs.static.result == 'skipped' && needs.tests.result == 'skipped'))
     runs-on: windows-latest
     strategy:
       fail-fast: false

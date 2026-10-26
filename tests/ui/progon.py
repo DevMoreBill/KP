@@ -1781,6 +1781,75 @@ class Report:
         return '\n'.join(lines)
 
 
+class ProgonPlan:
+    """Прогон по изменённому с прошлой сборки (--changed [--since v3.218.1]): этапы — разделов, файлы которых менялись,
+    режимы — по виду правок. Логика JS — ПК; вёрстка (CSS, HTML) — ПК и телефон; цвета и темы — ещё тёмные; общее
+    (core/, ui/, main.js, index.html, общие стили, сам прогон) — все этапы. Только сервер — прогон не нужен (его проверяют
+    наборы tests/). Полный прогон всех режимов — по просьбе или при большой переделке интерфейса."""
+
+    WEB = 'app/web/'
+    COMMON = re.compile(r'^(app/web/(index\.html|js/(main|boot)\.js|js/(ui|core)/|css/(base|tabs|layout|compact|mobile)\.css)|tests/ui/)')
+    THEME = re.compile(r'^app/web/(css/base\.css|js/core/theme\.js|js/boot\.js)')
+    PHONE = re.compile(r'^app/web/(css/|index\.html|js/ui/mobile\.js)')
+    STATION = r'(layout|calc|draw|eskd|view|kit|station|req|rules|rules-doc|tz|tz-out)'
+    SECTIONS = (
+        (r'^app/web/(js/features/(catalog|wizard)/|css/catalog\.css)', ('cat', 'editor', 'dbl')),
+        (r'^(app/web/(js/features/(kp|doc)/|js/docx/|css/(client|items|preview|track|pricing|datepicker)\.css)|templates/)',
+         ('client', 'steps', 'price', 'preview', 'save', 'files', 'mail', 'journal', 'kptabs')),
+        (r'^app/web/(js/features/deal/|css/(deal|geo)\.css)', ('deal', 'price')),
+        (r'^app/web/(js/features/crm/|css/cabinet\.css)', ('cabinet', 'regs', 'mirror')),
+        (r'^app/web/(js/features/admin/|css/(settings|template-designer|template-editor)\.css)', ('settings', 'bitrix')),
+        (r'^app/web/(js/features/' + STATION + '/|rules/)', ('station',)),
+        (r'^app/web/(js/features/help\.js|css/help\.css)', ('misc',)),
+    )
+
+    def __init__(self, since: str = '') -> None:
+        self.since = since or self._last_build()
+        if not self._git('rev-parse', '--verify', '--quiet', self.since + '^{commit}'):
+            raise SystemExit('--since: нет такой метки или коммита: %s' % self.since)
+        self.files = self._files()
+
+    @staticmethod
+    def _git(*args) -> str:
+        r = subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        return r.stdout.strip() if r.returncode == 0 else ''
+
+    def _last_build(self) -> str:
+        """Последний выпуск (метка v*) — с него и считаются правки."""
+        return self._git('describe', '--tags', '--abbrev=0', '--match', 'v*') or 'HEAD'
+
+    def _files(self) -> list:
+        names = set(self._git('diff', '--name-only', self.since).splitlines())
+        names |= set(self._git('ls-files', '--others', '--exclude-standard').splitlines())
+        return sorted(name for name in names if name.startswith((self.WEB, 'templates/', 'tests/ui/')))
+
+    def stages(self) -> list:
+        if any(self.COMMON.match(name) for name in self.files):
+            return list(Modes.STAGES)
+        picked = {stage for pattern, stages in self.SECTIONS for stage in stages
+                  if any(re.match(pattern, name) for name in self.files)}
+        unknown = [name for name in self.files if not any(re.match(pattern, name) for pattern, _ in self.SECTIONS)]
+        if unknown:  # файл интерфейса вне известных разделов — проверяется всё
+            return list(Modes.STAGES)
+        return [stage for stage in Modes.STAGES if stage in picked]
+
+    def modes(self) -> list:
+        if not self.files:
+            return []
+        modes = ['pc']
+        if any(self.PHONE.match(name) for name in self.files):
+            modes.append('ph')
+        if any(self.THEME.match(name) for name in self.files):
+            modes += ['pcd', 'phd']
+        return modes
+
+    def text(self) -> str:
+        if not self.files:
+            return 'С %s интерфейс не менялся — прогон не нужен (сервер проверяют наборы tests/).' % self.since
+        return 'С %s изменено файлов интерфейса: %d → режимы %s, этапы %s' % (
+            self.since, len(self.files), ','.join(self.modes()), ','.join(self.stages()))
+
+
 class Progon:
     """Запуск: по стенду и процессу на режим → сводка."""
 
@@ -1794,7 +1863,13 @@ class Progon:
         a.add_argument('--cfg', default='', help=argparse.SUPPRESS)
         a.add_argument('--resume', action='store_true', help=argparse.SUPPRESS)
         a.add_argument('--stage-max', type=float, default=10, help='предел этапа, мин (дольше — «завис», режим продолжается)')
+        a.add_argument('--changed', action='store_true', help='только этапы и режимы, затронутые правками с прошлой сборки')
+        a.add_argument('--since', default='', help='с какой метки считать правки для --changed (по умолчанию — последняя v*)')
         self.a = a.parse_args(argv)
+        self.plan = ProgonPlan(self.a.since) if self.a.changed and not self.a.worker else None
+        if self.plan:
+            print(self.plan.text(), flush=True)
+            self.a.modes, self.a.stages = ','.join(self.plan.modes()), ','.join(self.plan.stages())
         self.modes = [m for m in self.a.modes.split(',') if m]
         bad = [m for m in self.modes if m not in Modes.ALL]
         if bad:
@@ -1863,6 +1938,8 @@ class Progon:
     def main(self):
         if self.a.worker:
             return self.worker()
+        if self.plan and not self.modes:
+            return 0
         os.makedirs(self.out, exist_ok=True)
         stands, procs, paths = [], {}, {}
         try:
