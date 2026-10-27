@@ -5,6 +5,7 @@ import { esc } from '../../core/util.js';
 import { DimInput } from '../../core/dim-input.js';
 import { Makers } from './makers.js';
 import { CardRules } from './card-rules.js';
+import { CardGaps } from './card-gaps.js';
 /**
  * Варианты выбора параметра позиции: значение не из списка категории («2/1» в ступенях Remeza, «Прямой» в приводе) остаётся
  * в списке — иначе окно показало бы «—» и при сохранении карточки стёрло бы его.
@@ -56,6 +57,15 @@ export class AttrsBlock {
     return `${esc(field.label)}${field.unit ? `, ${esc(field.unit)}` : ''}${need}`;
   }
 
+  // не заполнено обязательное (после отказа в сохранении) — красная рамка и подпись
+  static _bad(field) {
+    return field.bad ? ' ed-gapf' : '';
+  }
+
+  static _note(field) {
+    return field.bad ? CardGaps.fieldNote() : '';
+  }
+
   static _input({ path, attrs, auto }, field) {
     const value = attrs[field.key] ?? '';
     const guess = auto[field.key];
@@ -64,10 +74,10 @@ export class AttrsBlock {
       const opts = AttrChoices.list(field, value)
         .map(choice => `<option${String(value) === String(choice) ? ' selected' : ''}>${esc(choice)}</option>`)
         .join('');
-      return `<label class="f"><span>${this._label(field)}</span><select data-p="${path}.${field.key}"><option value="">${hint ? `${esc(hint)} (авто)` : '—'}</option>${opts}</select></label>`;
+      return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span><select data-p="${path}.${field.key}"><option value="">${hint ? `${esc(hint)} (авто)` : '—'}</option>${opts}</select>${this._note(field)}</label>`;
     }
     if (DimRow.matches(field.key, field.label)) {
-      return `<label class="f"><span>${this._label(field)}</span>${DimInput.html(`data-p="${path}.${field.key}"`, value, { ph: hint, label: field.label })}</label>`;
+      return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span>${DimInput.html(`data-p="${path}.${field.key}"`, value, { ph: hint, label: field.label })}${this._note(field)}</label>`;
     }
     return this._text({ path, value, hint }, field);
   }
@@ -75,7 +85,7 @@ export class AttrsBlock {
   // текстовое поле; list — подсказки (вписать или выбрать), need — обязательно для новой позиции каталога
   static _text({ path, value, hint }, field) {
     const list = field.list ? ` list="${field.list}"` : '';
-    return `<label class="f"><span>${this._label(field)}</span><input type="text" ${field.num ? 'inputmode="decimal"' : ''} data-p="${path}.${field.key}" value="${esc(value)}" placeholder="${esc(hint || field.ph || '')}" autocomplete="off"${list}></label>`;
+    return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span><input type="text" ${field.num ? 'inputmode="decimal"' : ''} data-p="${path}.${field.key}" value="${esc(value)}" placeholder="${esc(hint || field.ph || '')}" autocomplete="off"${list}>${this._note(field)}</label>`;
   }
 
   static _groups(type) {
@@ -100,7 +110,11 @@ export class AttrsBlock {
     const cat = auto.cat;
     const type = EquipTypes.byId(cat);
     const need = field => field.need || (CardRules.isMain(item) && CardRules.required(field.key, cat));
-    const input = field => this._input({ path, attrs: item.attrs || {}, auto }, { ...field, need: need(field) });
+    const input = field =>
+      this._input(
+        { path, attrs: item.attrs || {}, auto },
+        { ...field, need: need(field), bad: CardGaps.badField(item, field.key) },
+      );
     const groups = [...this._groups(type).entries()]
       .map(
         ([group, fields]) => `<p class="agrp">${esc(group)}</p><div class="attrs">${fields.map(input).join('')}</div>`,
@@ -108,7 +122,7 @@ export class AttrsBlock {
       .join('');
     return `<div><div class="sub">Категория и параметры${UiKit.tip(`Набор параметров зависит от категории «${esc(type.name)}». Они работают в фильтрах каталога, на титуле и в карточке. Пустые поля заполняются из характеристик — серым показано, что будет подставлено.`)} <button class="btn ghost" type="button" data-a="autoAttrs" data-i="${i}">Определить по характеристикам</button>
       <button class="btn ghost" type="button" data-a="attrsToGroups" data-i="${i}">Сформировать таблицу характеристик</button></div>
-   <div class="attrs"><label class="f"><span>${this._label({ label: 'Категория', need: need({ key: 'cat' }) })}</span><select data-p="${path}.cat" data-retype="${i}">${EquipTypes.optionsHtml(cat)}</select></label>
+   <div class="attrs"><label class="f${this._bad({ bad: CardGaps.badField(item, 'cat') })}"><span>${this._label({ label: 'Категория', need: need({ key: 'cat' }) })}</span><select data-p="${path}.cat" data-retype="${i}">${EquipTypes.optionsHtml(cat)}</select>${this._note({ bad: CardGaps.badField(item, 'cat') })}</label>
    ${input({ key: Makers.FIELD, label: 'Производитель', list: Makers.LIST_ID, need: true, ph: 'Выберите из списка или впишите' })}${input({ key: 'series', label: 'Серия' })}${input({ key: 'model', label: 'Модель' })}</div>
    ${groups}${Makers.datalist()}</div>`;
   }

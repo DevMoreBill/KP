@@ -11,6 +11,7 @@ import { $, Uid, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Makers } from './makers.js';
 import { CardRules } from './card-rules.js';
+import { CardGaps } from './card-gaps.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.
@@ -198,7 +199,9 @@ export class CatalogEditor {
         button.disabled = false;
         button.textContent = this.saveLabel();
       }
-      Toast.show(`Не удалось сохранить в каталог: ${error.message || error}`);
+      const text = String(error.message || error);
+      if (text.startsWith(CardRules.text([]))) this.askMissing(0, text.slice(CardRules.text([]).length).split(', '));
+      else Toast.show(`Не удалось сохранить в каталог: ${text}`);
       return null;
     }
     if (doc._pending)
@@ -260,14 +263,11 @@ export class CatalogEditor {
    * @param {string[]} missing
    */
   static askMissing(index, missing) {
-    const onlyPhoto = missing.length === 1 && missing[0] === CardRules.PHOTO;
-    ItemEditor.current.tab = onlyPhoto ? 'desc' : 'main';
+    CardGaps.show();
+    const gaps = CardGaps.list(S.items[index]);
+    ItemEditor.current.tab = (gaps[0] && gaps[0].tab) || 'main';
     ItemEditor.render();
-    const attrs = S.items[index].attrs || {};
-    const empty = CardRules.keys(attrs.cat).filter(([key]) => attrs[key] == null || String(attrs[key]).trim() === '');
-    for (const [key] of empty) $(`#edlg [data-p="items.${index}.attrs.${key}"]`)?.classList.add('bad');
-    if (empty.length)
-      setTimeout(() => $(`#edlg [data-p="items.${index}.attrs.${empty[0][0]}"]`)?.focus(), this.FOCUS_DELAY);
+    if (gaps[0]) ItemEditor.goGap(gaps[0].tab, gaps[0].key);
     Toast.show(CardRules.text(missing));
   }
 

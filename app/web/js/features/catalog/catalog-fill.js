@@ -354,8 +354,8 @@ export class CatalogSync {
       return true;
     }
     if (found.missing.length) {
-      if (ItemEditor.current) CatalogEditor.askMissing(index, found.missing);
-      else Toast.show(`${CardRules.text(found.missing)} — «Изменить» у позиции`);
+      if (!ItemEditor.current) ItemEditor.open(index); // карточка позиции: что не заполнено — красным, с переходом к полю
+      CatalogEditor.askMissing(index, found.missing);
       return false;
     }
     return !found.dups.length || CardRules.askDups(found.dups, { admin: AdminSession.on });

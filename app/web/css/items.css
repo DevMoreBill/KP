@@ -601,3 +601,16 @@ dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
 .sq-steps .now button{border-color:var(--navy);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--navy) inset}
 .sq-steps .now i{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
 .mob .sq-steps button{flex-direction:column;gap:2px;padding:6px 4px;text-align:center;font-size:12.5px}
+/* почему карточка каталога не сохраняется (CardGaps): полоса под вкладками, «!» на вкладке, красные поля и фото */
+.ed-gaps{flex-shrink:0;margin:10px 20px 0;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:color-mix(in srgb,var(--danger) 9%,var(--card));color:var(--ink);font-size:14px;line-height:1.5}
+.ed-gaps>b{color:var(--danger)}
+.ed-gaps.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 9%,var(--card))}
+.ed-gapgo{margin:4px 6px 0 0;padding:4px 10px;border:1px solid var(--danger);border-radius:999px;background:var(--card);color:var(--danger);font:inherit;font-weight:600;cursor:pointer;touch-action:manipulation}
+.ed-gapgo::before{content:"✕ "}
+.ed-gaphint{display:block;margin-top:6px;color:var(--muted);font-size:13px}
+.ed-gapdot{display:inline-block;min-width:16px;height:16px;margin-left:4px;border-radius:50%;background:var(--danger);color:#fff;font-size:11px;line-height:16px;text-align:center}
+label.f.ed-gapf>span{color:var(--danger)}
+label.f.ed-gapf input,label.f.ed-gapf select{border-color:var(--danger);box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 25%,transparent)}
+.ed-gapnote{display:block;margin-top:3px;color:var(--danger);font-size:12.5px;font-style:normal;font-weight:600}
+.ed-gapphoto.bad{padding:6px;border:2px solid var(--danger);border-radius:12px}
+.ed-gapphoto.bad .ed-gapnote{margin:6px 2px 0}

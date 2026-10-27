@@ -1,4 +1,5 @@
 import { AiTab } from './ai-tab.js';
+import { CardGaps } from './card-gaps.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { CatalogEditor } from './catalog-edit.js';
 import { CatalogWindow } from './catalog-window.js';
@@ -74,6 +75,7 @@ export class ItemEditor {
     const item = S.items[i];
     if (item && Logos.auto(item)) KpState.persist();
     ItemEditor.current = { i, tab: tab || (item && Kit.station(item) ? 'kit' : 'main') };
+    CardGaps.reset();
     const dialog = $('#edlg');
     this.render();
     AppTabs.show(dialog, 'item', item && Kit.station(item) ? 'Станция' : 'Позиция');
@@ -83,6 +85,7 @@ export class ItemEditor {
   static close() {
     const dialog = $('#edlg');
     ItemEditor.current = null;
+    CardGaps.reset();
     if (dialog.open) dialog.close();
     FormView.render();
     KpState.persist();
@@ -136,7 +139,7 @@ export class ItemEditor {
     return this.tabs(item)
       .map(
         ([key, label]) =>
-          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${label}${key === 'layout' ? StationUi.badge(item) : ''}</button>`,
+          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${label}${key === 'layout' ? StationUi.badge(item) : ''}${CardGaps.tabMark(item, key)}</button>`,
       )
       .join('');
   }
@@ -169,7 +172,7 @@ export class ItemEditor {
     Morph.apply(
       dialog,
       `<div class="dlg-h">${head}</div>
-    <div class="ed-tabs">${this._tabsHtml(item)}</div>
+    <div class="ed-tabs">${this._tabsHtml(item)}</div>${CardGaps.banner(item)}
     <div class="ed-b">${body}</div>`,
     );
     dialog.querySelector('.ed-b').scrollTop = switched ? 0 : top;
@@ -177,11 +180,38 @@ export class ItemEditor {
     this._refocus(dialog, path, active);
   }
 
+  static FOCUS_DELAY = 60;
+
+  /**
+   * Перейти к незаполненному: вкладка и поле (фото — рамка главного фото).
+   * @param {string} tab
+   * @param {string} key
+   */
+  static goGap(tab, key) {
+    ItemEditor.current.tab = tab;
+    this.render();
+    setTimeout(() => {
+      const dialog = $('#edlg');
+      const target =
+        key === CardGaps.PHOTO
+          ? dialog.querySelector('.ed-gapphoto')
+          : dialog.querySelector(`[data-p="items.${ItemEditor.current.i}.attrs.${CSS.escape(key)}"]`);
+      if (!target) return;
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (target.matches('input, select, textarea')) target.focus({ preventScroll: true });
+    }, this.FOCUS_DELAY);
+  }
+
   static _click(event) {
     const dialog = event.target.closest('#edlg');
     if (!dialog) return;
     if (event.target.closest('[data-edclose]')) {
       this.close();
+      return;
+    }
+    const gap = event.target.closest('[data-gapgo]');
+    if (gap) {
+      this.goGap(gap.dataset.gapgo, gap.dataset.gapkey);
       return;
     }
     const tab = event.target.closest('[data-edtab]');
@@ -237,6 +267,7 @@ export class ItemEditor {
     document.addEventListener('close', event => this._closed(event), true);
     document.addEventListener('change', event => {
       const field = event.target;
+      if (CardGaps.shown && field.closest('#edlg')) requestAnimationFrame(() => this.render()); // полоса «не заполнено» — по факту
       if (field.dataset.gat == null) return;
       const pic = S.items[+field.dataset.gat].gallery[+field.dataset.j];
       pic.at = field.value === 'free' ? 'free' : field.value;

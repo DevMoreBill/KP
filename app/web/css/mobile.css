@@ -400,3 +400,6 @@ span.mb-back{border:0}
 .mob .stp-ms select{font-size:16px;font-weight:600;min-height:44px}
 /* крупный режим (меню «Ещё»): весь интерфейс крупнее на 15 % */
 html.big.mob body{zoom:1.15}
+.mob .ed-gaps{margin:8px 12px 0;padding:8px 10px;font-size:13.5px;line-height:1.35}
+.mob .ed-gapgo{margin:4px 4px 0 0;padding:3px 9px;min-height:32px}
+.mob .ed-gaphint{display:none}

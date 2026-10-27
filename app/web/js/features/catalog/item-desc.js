@@ -11,6 +11,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { Kit } from '../kit/kit.js';
 import { StationUi } from '../station/station-ui.js';
 import { esc } from '../../core/util.js';
+import { CardGaps } from './card-gaps.js';
 
 /** Вкладка «Описание и фото»: главное фото и логотип, блоки описания со своими фото, схемы и другие изображения. */
 export class DescTab {
@@ -145,7 +146,7 @@ export class DescTab {
     });
     const logo = ImageDrop.html({ img: item.logo, kind: 'logo', i, text: this._logoText(item), small: true });
     return `<div class="ed-sec"><p class="sub">${station ? 'Главное фото станции и логотип' : 'Главное фото и логотип'}</p>${this._stationPhoto(item, i)}
-     <div class="media2"><div>${photo}${this._mainPick(item, i)}${UiKit.field('Подпись под фото', `${path}.photoCaption`, { ph: 'Исполнение в кожухе' })}</div>
+     <div class="media2"><div><div class="ed-gapphoto${CardGaps.badPhoto(item) ? ' bad' : ''}">${photo}${CardGaps.photoNote(item)}</div>${this._mainPick(item, i)}${UiKit.field('Подпись под фото', `${path}.photoCaption`, { ph: 'Исполнение в кожухе' })}</div>
        <div>${logo}</div></div></div>`;
   }
 
