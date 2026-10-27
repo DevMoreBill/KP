@@ -8,17 +8,44 @@ from client_match import ContactKey
 
 
 class BitrixCompanyFind:
-    """Где искать компанию до создания: по ИНН в реквизитах, по телефону и почте (как контроль дублей портала —
-    иначе новая компания им же удаляется), по названию без формы собственности, кавычек и регистра."""
+    """Компания клиента в Битриксе — только подтверждённая: по ИНН в реквизитах; по телефону или почте самой компании
+    (не её контактных лиц — они бывают общими у нескольких компаний), если такая компания одна, её ИНН не другой и в
+    названии есть общее слово; по названию без формы собственности и кавычек, если такая компания одна и ИНН не другой.
+    Телефон или почта, занятые другой компанией, отмечаются в conflicts — новая компания создаётся без них (иначе её
+    удалит контроль дублей портала), в чужую карточку ничего не пишется."""
 
     COMPANY = 4  # ENTITY_TYPE_ID компании в реквизитах
-    COMM_MAX = 10  # телефонов и почт клиента в одном запросе поиска дублей
+    COMM_MAX = 10
     NAME_ROWS = 10
+    WORD_MIN = 3
     FORMS = re.compile(r'\b(ооо|оао|зао|пао|ао|нао|ип|тоо|фгуп|муп|гуп|ано|нко|ук)\b')
     QUOTES = re.compile(r'[«»"\'“”„]')
+    COMMON = frozenset(
+        (
+            'компания',
+            'группа',
+            'завод',
+            'торговый',
+            'дом',
+            'фирма',
+            'холдинг',
+            'предприятие',
+            'производственная',
+            'производственное',
+            'производственный',
+            'научно',
+            'управляющая',
+            'рус',
+            'русь',
+            'россия',
+            'центр',
+            'сервис',
+        )
+    )
 
     def __init__(self, api) -> None:
         self.api = api
+        self.conflicts: dict[str, set[str]] = {'phone': set(), 'email': set()}
 
     def by_inn(self, inn: str) -> str:
         rows = self.api.list(
@@ -28,34 +55,68 @@ class BitrixCompanyFind:
         )
         return str(rows[0].get('ENTITY_ID') or '') if rows else ''
 
-    def by_comm(self, client: dict) -> tuple[str, str]:
-        """(id компании, чем нашлась) — по телефонам и почтам клиента и его контактов; не нашлась — ('', '')."""
-        for kind, label, values in (
-            ('EMAIL', 'почте', self._values(client, 'email', ContactKey.email)),
-            ('PHONE', 'телефону', self._values(client, 'phone', ContactKey.phone)),
+    def by_comm(self, client: dict, inn: str, name: str) -> tuple[str, str]:
+        """(id компании, чем нашлась) — по телефону и почте самой компании клиента; не подтвердилась — ('', '')."""
+        for key, kind, label, norm in (
+            ('email', 'EMAIL', 'почте', ContactKey.email),
+            ('phone', 'PHONE', 'телефону', ContactKey.phone),
         ):
-            if not values:
+            value = str(client.get(key) or '').strip()
+            if not value or not norm(value):
                 continue
-            found = self.api.call(
-                'crm.duplicate.findbycomm', {'entity_type': 'COMPANY', 'type': kind, 'values': values}
-            )
-            ids = found.get('COMPANY') if isinstance(found, dict) else None
-            if ids:
-                return str(ids[0]), label
+            ids = self.owners('COMPANY', kind, value)
+            if not ids:
+                continue
+            sure = [cid for cid in ids if self._ours(cid, inn, name)]
+            if len(sure) == 1:
+                return sure[0], label
+            self.conflicts[key].add(norm(value))  # занят другой компанией или неоднозначно — не наш, не трогаем
         return '', ''
 
-    def by_name(self, name: str) -> str:
+    def by_name(self, name: str, inn: str) -> str:
         core = self.core(name)
         if not core:
             return ''
-        exact = self.api.list('crm.company.list', {'filter': {'TITLE': name}, 'select': ['ID']}, limit=2)
-        if exact:
-            return str(exact[0].get('ID') or '')
         rows = self.api.list(
             'crm.company.list', {'filter': {'%TITLE': core}, 'select': ['ID', 'TITLE']}, limit=self.NAME_ROWS
         )
         same = [row for row in rows if self.core(row.get('TITLE')) == core]
-        return str(same[0].get('ID') or '') if len(same) == 1 else ''
+        if len(same) != 1:
+            return ''
+        cid = str(same[0].get('ID') or '')
+        return cid if self._inn_fits(cid, inn) else ''
+
+    def owners(self, entity: str, kind: str, value: str) -> list[str]:
+        """Чьи (компаний или контактов Битрикса) этот телефон или почта."""
+        found = self.api.call('crm.duplicate.findbycomm', {'entity_type': entity, 'type': kind, 'values': [value]})
+        ids = found.get(entity) if isinstance(found, dict) else None
+        return [str(x) for x in ids or []]
+
+    def free(self, key: str, value: Any) -> bool:
+        """Телефон или почту можно записать в новую компанию: не заняты другой компанией."""
+        norm = ContactKey.email if key == 'email' else ContactKey.phone
+        return norm(value) not in self.conflicts[key]
+
+    def _ours(self, cid: str, inn: str, name: str) -> bool:
+        if not self._inn_fits(cid, inn):
+            return False
+        if inn and self._inns(cid):
+            return True  # ИНН совпал
+        rows = self.api.list('crm.company.list', {'filter': {'ID': cid}, 'select': ['ID', 'TITLE']}, limit=1)
+        return bool(rows) and bool(self.words(rows[0].get('TITLE')) & self.words(name))
+
+    def _inn_fits(self, cid: str, inn: str) -> bool:
+        """ИНН компании Битрикса не противоречит клиенту (нет реквизитов или нет ИНН у клиента — не противоречит)."""
+        inns = self._inns(cid)
+        return not inn or not inns or inn in inns
+
+    def _inns(self, cid: str) -> set[str]:
+        rows = self.api.list(
+            'crm.requisite.list',
+            {'filter': {'ENTITY_ID': cid, 'ENTITY_TYPE_ID': self.COMPANY}, 'select': ['ID', 'RQ_INN']},
+            limit=5,
+        )
+        return {re.sub(r'\D', '', str(row.get('RQ_INN') or '')) for row in rows} - {''}
 
     @classmethod
     def core(cls, name: Any) -> str:
@@ -63,15 +124,11 @@ class BitrixCompanyFind:
         text = cls.QUOTES.sub(' ', str(name or '').lower().replace('ё', 'е'))
         return ' '.join(cls.FORMS.sub(' ', text).split())
 
-    @staticmethod
-    def _values(client: dict, key: str, norm) -> list[str]:
-        rows = [client, *[row for row in client.get('contacts') or [] if isinstance(row, dict)]]
-        seen: dict[str, str] = {}
-        for row in rows:
-            value = str(row.get(key) or '').strip()
-            if value and norm(value) and norm(value) not in seen:
-                seen[norm(value)] = value
-        return list(seen.values())[: BitrixCompanyFind.COMM_MAX]
+    @classmethod
+    def words(cls, name: Any) -> set[str]:
+        """Значимые слова названия (без формы собственности и общих слов вроде «компания», «завод»)."""
+        words = re.findall(r'[a-zа-я0-9]+', cls.core(name))
+        return {word for word in words if len(word) >= cls.WORD_MIN and word not in cls.COMMON}
 
 
 class BitrixCompanyCheck:

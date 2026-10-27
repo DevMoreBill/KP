@@ -872,19 +872,19 @@ class BitrixSync:
         client = self._client_of(deal, inn)
         cid = find.by_inn(inn) if inn and comp_rules['find'] in ('inn', 'inn_name') else ''
         if not cid:
-            cid, how = find.by_comm(client)
+            cid, how = find.by_comm(client, inn, client.get('name') or name)
             if cid:
                 self.log.add(
                     f'Компания «{name}» найдена в Битрикс24 по {how} — новая не создаётся', mid=deal.get('managerId')
                 )
         if not cid and name and comp_rules['find'] in ('inn_name', 'name'):
-            cid = find.by_name(client.get('name') or name) or find.by_name(name)
+            cid = find.by_name(client.get('name') or name, inn) or find.by_name(name, inn)
         if not cid:
             if not comp_rules['create'] or not self.rules.can(
                 'company', 'out'
             ):  # создавать компании в Битриксе — нельзя
                 return None
-            cid = self._company_add(deal, client, inn, name)
+            cid = self._company_add(deal, client, inn, name, find)
             self.log.add(
                 'В Битрикс24 создана компания «{}»{}'.format(name, f' (ИНН {inn})' if inn else ''),
                 mid=deal.get('managerId'),
@@ -906,23 +906,25 @@ class BitrixSync:
                 doc = json.loads(row[0]) if row and row[0] else None
         return doc if isinstance(doc, dict) else {}
 
-    def _company_add(self, deal, client, inn, name) -> str:
-        cons = [x for x in (client.get('contacts') or []) if isinstance(x, dict) and x.get('name')]
-        phones = [x['phone'] for x in cons if x.get('phone')][:3]
-        mails = [x['email'] for x in cons if x.get('email')][:3]
+    def _company_add(self, deal, client, inn, name, find: BitrixCompanyFind) -> str:
+        """Новая компания: телефон и почта — только самой компании и не занятые другой (телефоны контактных лиц —
+        в их контактах: они бывают общими у нескольких компаний)."""
+        comm = {key: client[key] for key in ('phone', 'email') if client.get(key) and find.free(key, client[key])}
         fields = {
             'TITLE': client.get('name') or name,
             'OPENED': 'Y',
             'COMPANY_TYPE': 'CUSTOMER',
-            'PHONE': [{'VALUE': phone, 'VALUE_TYPE': 'WORK'} for phone in [client.get('phone'), *phones] if phone][:3],
-            'EMAIL': [{'VALUE': mail, 'VALUE_TYPE': 'WORK'} for mail in [client.get('email'), *mails] if mail][:3],
+            'PHONE': [{'VALUE': comm['phone'], 'VALUE_TYPE': 'WORK'}] if comm.get('phone') else [],
+            'EMAIL': [{'VALUE': comm['email'], 'VALUE_TYPE': 'WORK'}] if comm.get('email') else [],
         }
         uid = self._user_of(deal.get('managerId'))
         if uid:
             fields['ASSIGNED_BY_ID'] = uid
         cid = self.api.call('crm.company.add', {'fields': fields})
-        sent = {key: client[key] for key in ('phone', 'email') if client.get(key)}
-        self.links.put('file', f'comm|{cid}', str(cid), sent)  # телефон и почта уже в новой компании
+        sent = {
+            key: client[key] for key in ('phone', 'email') if client.get(key)
+        }  # занятые другой — и потом не дописывать
+        self.links.put('file', f'comm|{cid}', str(cid), sent)
         comp_rules = self.rules.company()
         if inn and comp_rules['reqs']:
             preset = self._preset()

@@ -7,13 +7,15 @@ import re
 from pathlib import Path
 from typing import Any
 
+from bitrix_companies import BitrixCompanyFind
 from client_match import ClientMatch, ContactKey
 
 
 class BitrixClients:
     """Слияние клиента Битрикса с базой: реквизиты юрлица — из программы (актуальны), контакты Битрикса — дописываются.
 
-    Компания без ИНН ищется по контактам: одно совпадение — та же компания, несколько — выбор в сделке («clientPick»),
+    Компания без ИНН ищется по контактам: одно совпадение с общим словом в названии — та же компания, иначе — выбор в
+    сделке («clientPick»; контактное лицо бывает общим у нескольких компаний),
     ни одного — новый клиент с пометкой «без ИНН».
     """
 
@@ -189,7 +191,7 @@ class BitrixClients:
             client = self._by_inn(out['inn']) or self._new(info)
             return self._linked(out, self._merge(client, info['people']))
         found = self._by_contacts(info['people'])
-        if len(found) == 1:
+        if len(found) == 1 and self._same_firm(out['company'] and out['name'], found[0].get('name')):
             client = self.store.client_get(found[0]['id']) or {}
             return self._linked(out, self._merge(client, info['people']))
         if found:
@@ -197,6 +199,12 @@ class BitrixClients:
         if not (out['name'] or info['people']):
             return out
         return self._linked(out, self._merge(self._new(info), info['people']))
+
+    @staticmethod
+    def _same_firm(theirs: Any, ours: Any) -> bool:
+        """Компания Битрикса — тот же клиент, что найден по контакту: в названиях общее значимое слово (контактное лицо
+        бывает общим у нескольких компаний — иначе выбор в сделке). Контакт без компании — по контакту."""
+        return not theirs or bool(BitrixCompanyFind.words(theirs) & BitrixCompanyFind.words(ours))
 
     @staticmethod
     def _linked(out: dict, client: dict) -> dict:
@@ -303,32 +311,54 @@ class BitrixClientOut:
         return found if isinstance(found, dict) else {}
 
     def company_comm(self, company_id: str, client: dict) -> None:
-        """Телефон и почта компании из справочника — в компанию Битрикса (дописываются, прежние не трогаются)."""
+        """Телефон и почта компании из справочника — в компанию Битрикса: только дописываются и только не занятые
+        другой компанией (прежние не трогаются, чужие карточки не меняются)."""
         key = f'comm|{company_id}'
         link = self.links.get('file', key)
         sent = dict((link or {}).get('sent') or {})
         fields: dict[str, list] = {}
+        find = BitrixCompanyFind(self.api)
         for field, kind in (('phone', 'PHONE'), ('email', 'EMAIL')):
             value = str(client.get(field) or '').strip()
-            if value and sent.get(field) != value:
+            if not value or sent.get(field) == value:
+                continue
+            sent[field] = value
+            owners = find.owners('COMPANY', kind, value)
+            if not owners:
                 fields[kind] = [{'VALUE': value, 'VALUE_TYPE': 'WORK'}]
-                sent[field] = value
         if fields:
             self.api.call('crm.company.update', {'id': company_id, 'fields': fields})
+        if sent != (link or {}).get('sent'):
             self.links.put('file', key, company_id, sent)
 
     def people(self, company_id: str, client: dict, manager_id: str | None) -> list[str]:
-        """Контакты клиента → контакты Битрикса этой компании: найденные по телефону или почте, иначе новые."""
+        """Контакты клиента → контакты Битрикса этой компании: найденный по телефону или почте — только с тем же ФИО
+        (контактные лица бывают общими у нескольких компаний, а телефон приёмной — у разных людей); телефон или почта у
+        другого человека — контакт не создаётся и чужая карточка не меняется (до правки телефона или почты в программе)."""
         out = []
         rows = [row for row in client.get('contacts') or [] if isinstance(row, dict) and row.get('name')]
         for row in rows[: self.PEOPLE_MAX]:
-            link = self.links.get('file', self.person_key(client, row))
-            bx_id = link['bx'] if link else self._find(row) or self._add(company_id, row, manager_id)
-            if not link:
-                self._join(company_id, bx_id)
-                self.remember(self.links, client, row, bx_id, company_id, self.comm(row))
-            else:
+            key, comm = self.person_key(client, row), self.comm(row)
+            link = self.links.get('file', key)
+            if link and link['bx']:
                 self._fill_comm(client, row, link)
+                out.append(str(link['bx']))
+                continue
+            if link and (link['sent'] or {}).get('comm') == comm:
+                continue  # прежде занят другим человеком — пока данные те же, не пробуем
+            bx_id, busy = self._find(row)
+            if busy:
+                self.links.put('file', key, '', {'company': str(company_id), 'comm': comm, 'busy': True})
+                self.sync.log.add(
+                    f'Контакт «{row["name"]}»: телефон или почта в Битрикс24 у другого человека — контакт не создан, '
+                    'чужая карточка не изменена',
+                    'warn',
+                    mid=manager_id,
+                )
+                continue
+            bx_id = bx_id or self._add(company_id, row, manager_id)
+            self._join(company_id, bx_id)
+            self.remember(self.links, client, row, bx_id, company_id, comm)
             out.append(str(bx_id))
         return out
 
@@ -338,7 +368,8 @@ class BitrixClientOut:
         return {'phone': ContactKey.phone(row.get('phone')), 'email': ContactKey.email(row.get('email'))}
 
     def _fill_comm(self, client: dict, row: dict, link: dict) -> None:
-        """Телефон и почту, дописанные в программе после отправки контакта, — в контакт Битрикса (чего там ещё нет)."""
+        """Телефон и почту, дописанные в программе после отправки контакта, — в контакт Битрикса (чего там ещё нет и что
+        не записано у другого контакта)."""
         sent = dict((link.get('sent') or {}).get('comm') or {})
         now = self.comm(row)
         if all(not value or sent.get(key) == value for key, value in now.items()):
@@ -352,10 +383,13 @@ class BitrixClientOut:
                 ContactKey.email(item.get('VALUE')) for item in found.get('EMAIL') or [] if isinstance(item, dict)
             },
         }
+        find = BitrixCompanyFind(self.api)
         fields = {
             kind: [{'VALUE': str(row.get(key) or '').strip(), 'VALUE_TYPE': 'WORK'}]
             for key, kind in (('phone', 'PHONE'), ('email', 'EMAIL'))
-            if now[key] and now[key] not in have[key]
+            if now[key]
+            and now[key] not in have[key]
+            and not set(find.owners('CONTACT', kind, str(row.get(key) or '').strip())) - {str(link['bx'])}
         }
         if fields:
             self.api.call('crm.contact.update', {'id': link['bx'], 'fields': fields})
@@ -375,17 +409,32 @@ class BitrixClientOut:
             data['comm'] = comm
         links.put('file', cls.person_key(client, row), str(bx_id), data)
 
-    def _find(self, row: dict) -> str:
+    def _find(self, row: dict) -> tuple[str, bool]:
+        """(контакт Битрикса с тем же телефоном или почтой и тем же ФИО, телефон или почта у другого человека)."""
+        find = BitrixCompanyFind(self.api)
+        ids: list[str] = []
         for kind, value in (('PHONE', row.get('phone')), ('EMAIL', row.get('email'))):
-            if not value:
-                continue
-            found = self.api.call(
-                'crm.duplicate.findbycomm', {'entity_type': 'CONTACT', 'type': kind, 'values': [value]}
-            )
-            ids = (found or {}).get('CONTACT') if isinstance(found, dict) else None
-            if ids:
-                return str(ids[0])
-        return ''
+            if value:
+                ids += [x for x in find.owners('CONTACT', kind, str(value).strip()) if x not in ids]
+        if not ids:
+            return '', False
+        people = self.api.list(
+            'crm.contact.list',
+            {'filter': {'ID': ids}, 'select': ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME']},
+            limit=len(ids),
+        )
+        same = [str(person['ID']) for person in people if self.same_person(row.get('name'), person)]
+        return (same[0], False) if same else ('', True)
+
+    @staticmethod
+    def same_person(name: Any, person: dict) -> bool:
+        """ФИО совпадает: общих слов не меньше двух (или всё имя, если в одном из ФИО одно слово)."""
+        ours = set(ContactKey.words(name))
+        theirs = set(
+            ContactKey.words(' '.join(str(person.get(key) or '') for key in ('LAST_NAME', 'NAME', 'SECOND_NAME')))
+        )
+        common = ours & theirs
+        return bool(common) and len(common) >= min(2, len(ours), len(theirs))
 
     def _add(self, company_id: str, row: dict, manager_id: str | None) -> str:
         parts = str(row['name']).split()

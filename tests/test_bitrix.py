@@ -102,11 +102,14 @@ class SyncTest(SyncBase):
         self.assertNotIn(FakeBitrix.KEY, json.dumps(BitrixLog(self.st).tail(), ensure_ascii=False))
 
     def test_company_found_by_email_or_name_no_duplicate(self):
-        """Компания уже есть в Битриксе без реквизитов и под другим написанием — находится по почте, иначе по названию
-        без формы и кавычек; новая (её удалил бы контроль дублей портала) не создаётся, контакт тоже ищется (27.10)."""
+        """Компания уже есть в Битриксе без реквизитов и под другим написанием — находится по почте самой компании (в
+        названии общее слово), иначе по названию без формы и кавычек; дубль не создаётся, контакт с тем же ФИО и почтой —
+        тот же (27.10)."""
         from bitrix import BitrixQueue
         f = self.fake
-        old = f.handle('crm.company.add', {'fields': {'TITLE': '"АЛЬФА" ООО (Москва)', 'EMAIL': [{'VALUE': 'S@alfa.ru'}]}})['result']
+        alfa = dict(self.st.client_get('inn7700000001'), email='office@alfa.ru')
+        self.st.client_put('inn7700000001', alfa, 'тест')
+        old = f.handle('crm.company.add', {'fields': {'TITLE': '"АЛЬФА" ООО (Москва)', 'EMAIL': [{'VALUE': 'Office@alfa.ru'}]}})['result']
         f.handle('crm.contact.add', {'fields': {'NAME': 'Пётр', 'LAST_NAME': 'Сидоров', 'EMAIL': [{'VALUE': 's@alfa.ru'}]}})
         did = self.kp('26-0031')
         BitrixQueue.touch(self.st, 'deal', did)
@@ -121,13 +124,43 @@ class SyncTest(SyncBase):
         BitrixQueue.touch(self.st, 'deal', did2)
         self.sync().run()
         self.assertEqual(len(f.companies), 2)
-        self.assertEqual(str([d for d in f.deals.values() if str(d.get('COMPANY_ID')) == str(nps)][0]['COMPANY_ID']), str(nps))
+        self.assertTrue([d for d in f.deals.values() if str(d.get('COMPANY_ID')) == str(nps)])
+
+    def test_shared_contacts_never_touch_other_cards(self):
+        """Почта клиента — у другой компании (другой ИНН), контактное лицо с той же почтой — другой человек: сделка не
+        привязывается к чужой компании, её карточка и чужой контакт не меняются; новая компания — без занятой почты,
+        контакт не создаётся (его удалил бы контроль дублей) (27.10)."""
+        from bitrix import BitrixQueue
+        f = self.fake
+        alfa = dict(self.st.client_get('inn7700000001'), email='zakupki@holding.ru', phone='+7 (495) 000-00-01')
+        self.st.client_put('inn7700000001', alfa, 'тест')
+        gamma = f.handle('crm.company.add', {'fields': {'TITLE': 'ООО «Гамма»', 'EMAIL': [{'VALUE': 'zakupki@holding.ru'}],
+                                                         'PHONE': [{'VALUE': '+7 495 000-00-02'}]}})['result']
+        f.handle('crm.requisite.add', {'fields': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': gamma, 'RQ_INN': '7700000099'}})
+        other = f.handle('crm.contact.add', {'fields': {'NAME': 'Иван', 'LAST_NAME': 'Иванов', 'EMAIL': [{'VALUE': 's@alfa.ru'}]}})['result']
+        before = json.dumps([f.companies[str(gamma)], f.contacts[str(other)]], sort_keys=True, ensure_ascii=False)
+        did = self.kp('26-0033')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        deal = list(f.deals.values())[0]
+        self.assertNotEqual(str(deal['COMPANY_ID']), str(gamma), 'не к чужой компании')
+        mine = f.companies[str(deal['COMPANY_ID'])]
+        self.assertEqual(mine.get('EMAIL'), [], 'занятая почта в новую компанию не записана')
+        self.assertEqual([x['VALUE'] for x in mine.get('PHONE')], ['+7 (495) 000-00-01'])
+        self.assertEqual(json.dumps([f.companies[str(gamma)], f.contacts[str(other)]], sort_keys=True, ensure_ascii=False), before,
+                         'чужие карточки не изменены')
+        self.assertEqual(len(f.contacts), 1, 'контакт с чужой почтой не создан')
+        self.assertNotIn(str(other), f.deal_people.get(str(deal['ID']), []), 'чужой человек к сделке не привязан')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        self.assertEqual((len(f.companies), len(f.contacts)), (2, 1), 'повторная отправка ничего не создаёт')
 
     def test_deleted_company_relinked(self):
         """Компанию, созданную программой, удалил контроль дублей портала: раз в сутки связь проверяется, сделка уходит
         заново к оригиналу (по почте), новых дублей нет."""
         from bitrix import BitrixConf, BitrixLinks, BitrixQueue
         f = self.fake
+        self.st.client_put('inn7700000001', dict(self.st.client_get('inn7700000001'), email='office@alfa.ru'), 'тест')
         did = self.kp('26-0041')
         BitrixQueue.touch(self.st, 'deal', did)
         self.sync().run()
@@ -135,7 +168,7 @@ class SyncTest(SyncBase):
         del f.companies[made]  # удалил контроль дублей (реквизиты — вместе с компанией, как на портале)
         for rid in [rid for rid, req in f.requisites.items() if str(req.get('ENTITY_ID')) == str(made)]:
             del f.requisites[rid]
-        orig = f.handle('crm.company.add', {'fields': {'TITLE': 'Альфа (оригинал)', 'EMAIL': [{'VALUE': 's@alfa.ru'}]}})['result']
+        orig = f.handle('crm.company.add', {'fields': {'TITLE': 'Альфа (оригинал)', 'EMAIL': [{'VALUE': 'office@alfa.ru'}]}})['result']
         BitrixConf(self.st).mark(companyCheck='2000-01-01')
         res = self.sync().run()
         self.assertEqual(res['failed'], 0, res)
