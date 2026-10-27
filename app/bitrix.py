@@ -17,6 +17,7 @@ from typing import Any
 
 from bitrix_clients import BitrixClientOut, BitrixClients
 from bitrix_comms import BitrixComms
+from bitrix_companies import BitrixCompanyCheck, BitrixCompanyFind
 from bitrix_docs import BitrixDealDocs
 from bitrix_mirror import BitrixMirror
 from bitrix_my import MyCompanies
@@ -784,6 +785,8 @@ class BitrixSync:
                 self.log.add(f'Нет связи с Битрикс24: {exc}', 'error')
                 res['error'] = str(exc)
                 return res
+            if push:
+                self._company_check()
             sched = self.rules.sched()
             for kind, local, tries in self.queue.due(sched['batch'], sched['tries']) if push else []:
                 try:
@@ -826,6 +829,16 @@ class BitrixSync:
         finally:
             self.LOCK.release()
 
+    def _company_check(self) -> None:
+        """Раз в сутки — связанные компании не удалены в Битриксе (иначе сделки уходят к удалённой компании)."""
+        check = BitrixCompanyCheck(self)
+        if not check.due() or not self.rules.can('company', 'out'):
+            return
+        try:
+            check.run()
+        except BitrixError as exc:
+            self.log.add(f'Проверка компаний в Битрикс24 не выполнена: {exc}', 'warn')
+
     def _prepare(self) -> None:
         """Свои поля сделки, включённые в карте полей, — создать в Битриксе один раз (новые — когда их включат)."""
         conf = self.conf.get()
@@ -845,7 +858,8 @@ class BitrixSync:
             self.conf.mark(fieldsOk=True, fieldsMade=sorted(set(made) | set(codes)))
 
     def company(self, deal) -> str | None:
-        """Компания сделки в Битриксе: по ИНН в реквизитах (дублей не создаётся), иначе по названию; нет — создаётся."""
+        """Компания сделки в Битриксе: по ИНН в реквизитах, по телефону и почте клиента (как контроль дублей портала),
+        по названию без формы и кавычек; нет — создаётся (если правила разрешают)."""
         inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
         name = str(deal.get('client') or '').strip()
         key = inn or name.lower()
@@ -854,24 +868,23 @@ class BitrixSync:
         link = self.links.get('company', key)
         if link:
             return link['bx']
-        comp_rules = self.rules.company()
-        cid = None
-        if inn and comp_rules['find'] in ('inn', 'inn_name'):
-            req = self.api.list(
-                'crm.requisite.list',
-                {'filter': {'RQ_INN': inn, 'ENTITY_TYPE_ID': 4}, 'select': ['ID', 'ENTITY_ID']},
-                limit=5,
-            )
-            cid = req[0].get('ENTITY_ID') if req else None
+        comp_rules, find = self.rules.company(), BitrixCompanyFind(self.api)
+        client = self._client_of(deal, inn)
+        cid = find.by_inn(inn) if inn and comp_rules['find'] in ('inn', 'inn_name') else ''
+        if not cid:
+            cid, how = find.by_comm(client)
+            if cid:
+                self.log.add(
+                    f'Компания «{name}» найдена в Битрикс24 по {how} — новая не создаётся', mid=deal.get('managerId')
+                )
         if not cid and name and comp_rules['find'] in ('inn_name', 'name'):
-            found = self.api.list('crm.company.list', {'filter': {'TITLE': name}, 'select': ['ID']}, limit=2)
-            cid = found[0].get('ID') if found else None
+            cid = find.by_name(client.get('name') or name) or find.by_name(name)
         if not cid:
             if not comp_rules['create'] or not self.rules.can(
                 'company', 'out'
             ):  # создавать компании в Битриксе — нельзя
                 return None
-            cid = self._company_add(deal, inn, name)
+            cid = self._company_add(deal, client, inn, name)
             self.log.add(
                 'В Битрикс24 создана компания «{}»{}'.format(name, f' (ИНН {inn})' if inn else ''),
                 mid=deal.get('managerId'),
@@ -879,7 +892,12 @@ class BitrixSync:
         self.links.put('company', key, cid)
         return str(cid)
 
-    def _client(self, inn, name) -> dict:
+    def _client_of(self, deal: dict, inn: str) -> dict:
+        """Клиент сделки из справочника: по карточке сделки, иначе по ИНН."""
+        found = self.store.client_get(deal['clientId']) if deal.get('clientId') else None
+        return found if isinstance(found, dict) else self._client(inn)
+
+    def _client(self, inn) -> dict:
         doc = None
         if inn:
             doc = self.store.client_get('inn' + inn)
@@ -888,8 +906,7 @@ class BitrixSync:
                 doc = json.loads(row[0]) if row and row[0] else None
         return doc if isinstance(doc, dict) else {}
 
-    def _company_add(self, deal, inn, name) -> str:
-        client = self._client(inn, name)
+    def _company_add(self, deal, client, inn, name) -> str:
         cons = [x for x in (client.get('contacts') or []) if isinstance(x, dict) and x.get('name')]
         phones = [x['phone'] for x in cons if x.get('phone')][:3]
         mails = [x['email'] for x in cons if x.get('email')][:3]
@@ -937,23 +954,10 @@ class BitrixSync:
                     )
                 except BitrixError:
                     pass  # адрес — не главное: компания и реквизиты уже есть
-        for x in cons[:3] if self.rules.allow(comp_rules['contacts'], 'out') else []:
-            parts = str(x['name']).split()
-            person_id = self.api.call(
-                'crm.contact.add',
-                {
-                    'fields': {
-                        'LAST_NAME': parts[0] if len(parts) > 1 else '',
-                        'NAME': ' '.join(parts[1:]) if len(parts) > 1 else parts[0],
-                        'POST': x.get('post') or '',
-                        'COMPANY_ID': cid,
-                        'OPENED': 'Y',
-                        'PHONE': [{'VALUE': x['phone'], 'VALUE_TYPE': 'WORK'}] if x.get('phone') else [],
-                        'EMAIL': [{'VALUE': x['email'], 'VALUE_TYPE': 'WORK'}] if x.get('email') else [],
-                    }
-                },
-            )
-            BitrixClientOut.remember(self.links, client, x, person_id, cid, BitrixClientOut.comm(x))
+        if self.rules.allow(
+            comp_rules['contacts'], 'out'
+        ):  # контакты — сначала поиск по телефону и почте, как у сделки
+            BitrixClientOut(self).people(str(cid), client, deal.get('managerId'))
         return cid
 
     def _preset(self) -> Any:

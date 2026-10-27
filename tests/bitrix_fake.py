@@ -103,6 +103,9 @@ class FakeBitrix:
             if isinstance(v, list):                      # список значений — «одно из»
                 if str(row.get(k) if row.get(k) is not None else '') not in {str(x) for x in v}:
                     return False
+            elif k.startswith('%'):                      # «содержит», без учёта регистра
+                if str(v).lower() not in str(row.get(k[1:]) or '').lower():
+                    return False
             elif k.startswith('>='):
                 if not str(row.get(k[2:]) or '') >= str(v):
                     return False
@@ -246,9 +249,11 @@ class FakeBitrix:
             return {'result': True}
         if m == 'crm.duplicate.findbycomm':
             want = {''.join(ch for ch in str(v) if ch.isalnum()).lower() for v in b.get('values') or []}
-            ids = [int(i) for i, c in self.contacts.items()
+            ent = b.get('entity_type') or 'CONTACT'
+            rows = self.companies if ent == 'COMPANY' else self.contacts
+            ids = [int(i) for i, c in rows.items()
                    if any(''.join(ch for ch in str(x.get('VALUE')) if ch.isalnum()).lower() in want for x in c.get(b.get('type')) or [])]
-            return {'result': {'CONTACT': ids} if ids else []}
+            return {'result': {ent: ids} if ids else []}
         if m == 'crm.company.contact.add':
             self.company_people.setdefault(str(b['id']), []).append(str(f['CONTACT_ID']))
             return {'result': True}

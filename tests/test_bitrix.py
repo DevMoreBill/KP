@@ -101,6 +101,49 @@ class SyncTest(SyncBase):
         self.assertNotIn('FILES', f.comments[-1], 'файлы те же — не прикладываются повторно')
         self.assertNotIn(FakeBitrix.KEY, json.dumps(BitrixLog(self.st).tail(), ensure_ascii=False))
 
+    def test_company_found_by_email_or_name_no_duplicate(self):
+        """Компания уже есть в Битриксе без реквизитов и под другим написанием — находится по почте, иначе по названию
+        без формы и кавычек; новая (её удалил бы контроль дублей портала) не создаётся, контакт тоже ищется (27.10)."""
+        from bitrix import BitrixQueue
+        f = self.fake
+        old = f.handle('crm.company.add', {'fields': {'TITLE': '"АЛЬФА" ООО (Москва)', 'EMAIL': [{'VALUE': 'S@alfa.ru'}]}})['result']
+        f.handle('crm.contact.add', {'fields': {'NAME': 'Пётр', 'LAST_NAME': 'Сидоров', 'EMAIL': [{'VALUE': 's@alfa.ru'}]}})
+        did = self.kp('26-0031')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        self.assertEqual(len(f.companies), 1, 'дубль компании не создан')
+        self.assertEqual(str(list(f.deals.values())[0]['COMPANY_ID']), str(old))
+        self.assertEqual(len(f.contacts), 1, 'дубль контакта не создан')
+        # без почты и телефона — по названию без формы и кавычек
+        self.st.client_put('inn7700000002', {'id': 'inn7700000002', 'name': 'ООО «НПС Снабжение»', 'inn': '7700000002'}, 'тест')
+        nps = f.handle('crm.company.add', {'fields': {'TITLE': '"НПС СНАБЖЕНИЕ" ООО'}})['result']
+        did2 = self.kp('26-0032', client='ООО «НПС Снабжение»', clientInn='7700000002')
+        BitrixQueue.touch(self.st, 'deal', did2)
+        self.sync().run()
+        self.assertEqual(len(f.companies), 2)
+        self.assertEqual(str([d for d in f.deals.values() if str(d.get('COMPANY_ID')) == str(nps)][0]['COMPANY_ID']), str(nps))
+
+    def test_deleted_company_relinked(self):
+        """Компанию, созданную программой, удалил контроль дублей портала: раз в сутки связь проверяется, сделка уходит
+        заново к оригиналу (по почте), новых дублей нет."""
+        from bitrix import BitrixConf, BitrixLinks, BitrixQueue
+        f = self.fake
+        did = self.kp('26-0041')
+        BitrixQueue.touch(self.st, 'deal', did)
+        self.sync().run()
+        made = list(f.companies)[0]
+        del f.companies[made]  # удалил контроль дублей (реквизиты — вместе с компанией, как на портале)
+        for rid in [rid for rid, req in f.requisites.items() if str(req.get('ENTITY_ID')) == str(made)]:
+            del f.requisites[rid]
+        orig = f.handle('crm.company.add', {'fields': {'TITLE': 'Альфа (оригинал)', 'EMAIL': [{'VALUE': 's@alfa.ru'}]}})['result']
+        BitrixConf(self.st).mark(companyCheck='2000-01-01')
+        res = self.sync().run()
+        self.assertEqual(res['failed'], 0, res)
+        self.assertEqual(BitrixLinks(self.st).get('company', '7700000001')['bx'], str(orig))
+        self.assertEqual(str(list(f.deals.values())[0]['COMPANY_ID']), str(orig))
+        self.assertEqual(len(f.companies), 1, 'новых дублей нет')
+        self.assertEqual(BitrixConf(self.st).get()['companyCheck'], date.today().isoformat())
+
     def test_comment_to_timeline(self):
         """Комментарий ленты сделки уходит в ленту сделки Битрикса один раз; пустой и слишком длинный — ошибка."""
         from bitrix import BitrixQueue

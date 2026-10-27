@@ -11,6 +11,7 @@
     "app/backup_webdav.py",
     "app/bitrix.py",
     "app/bitrix_clients.py",
+    "app/bitrix_companies.py",
     "app/bitrix_diff.py",
     "app/bitrix_docs.py",
     "app/bitrix_mirror.py",
