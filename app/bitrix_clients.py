@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bitrix_companies import BitrixCompanyFind
+from client_contacts import ClientContacts
 from client_match import ClientMatch, ContactKey
 
 
@@ -249,11 +250,23 @@ class BitrixClients:
         changed = not self.store.client_get(doc['id'])
         if self.rules.allow(self.rules.company()['contacts'], 'in'):
             for person in people:
+                if ClientContacts.is_gone(doc, person) or self.junk(person):
+                    continue  # удалён в программе или пустой («1» без телефона и почты) — не добавлять
                 changed = self._add(rows, person) or changed
+            kept = [row for row in rows if not self.junk(row)]
+            changed = changed or len(kept) != len(rows)
+            rows = kept
         if changed:
             doc['contacts'] = rows[: self.CONTACTS_MAX]
             self.store.client_put(doc['id'], doc, self.sync.WHO)
         return doc
+
+    @staticmethod
+    def junk(person: dict) -> bool:
+        """Пустой контакт: в имени нет букв и нет ни телефона, ни почты (такие в Битрикс24 бывают — «1», «-»)."""
+        name = str(person.get('name') or '')
+        letters = any(char.isalpha() for char in name)
+        return not letters and not ContactKey.phone(person.get('phone')) and not ContactKey.email(person.get('email'))
 
     @staticmethod
     def _add(rows: list, person: dict) -> bool:

@@ -31,6 +31,7 @@ FEATURES = {
     'saveDlg': (True, 'Окно «КП сохранено»'),
     'mgrLine': (True, '«Менеджер» строкой'),
     'clientCard': (True, 'Карточка клиента'),
+    'contactDelete': (True, 'Удаление контактов клиента'),
     'kpFiles': (True, 'Справочные документы к КП'),
     'dealDocs': (True, 'Документы сделки'),
     'intake': (True, 'Заявка из письма или ТЗ'),
@@ -116,6 +117,7 @@ NEEDS.update(
         'carriers': 'deal',
         'reminders': 'track',
         'autosave': 'drafts',
+        'contactDelete': 'clientCard',
     }
 )
 
@@ -131,6 +133,7 @@ ROUTES = [
     ('GET', re.compile(r'^/api/kp/[A-Za-z0-9_-]+/versions(/\d+)?$'), 'versions'),
     (None, re.compile(r'^/api/drafts(/.*)?$'), 'drafts'),
     (None, re.compile(r'^/api/presets(/.*)?$'), 'presets'),
+    (None, re.compile(r'^/api/clientcard/contact/remove$'), 'contactDelete'),
     (None, re.compile(r'^/api/clientcard(/.*)?$'), 'clientCard'),
     (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/files(/.*)?$'), 'kpFiles'),
     (None, re.compile(r'^/api/crm/deal/d\d{1,9}/files(/.*)?$'), 'dealDocs'),

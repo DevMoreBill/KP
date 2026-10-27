@@ -259,6 +259,11 @@ class ApiTest(unittest.TestCase):
         kid = self.ctx['kid']
         d = self.ok_json('GET', '/api/clientcard?inn=' + self.sample.clients[0]['inn'])
         self.assertTrue(any(x.get('id') == kid for x in d.get('kps', [])), d)
+        cid = self.sample.clients[0]['id']
+        self.ok_json('POST', '/api/clientcard/contact', {'id': cid, 'contact': {'name': 'Контакт прогона'}})
+        rows = self.ok_json('POST', '/api/clientcard/contact/remove', {'id': cid, 'was': 'Контакт прогона'})['contacts']
+        self.assertFalse(any(x.get('name') == 'Контакт прогона' for x in rows), 'контакт удалён')
+        self.assertEqual(self.J('POST', '/api/clientcard/contact/remove', {'id': cid, 'was': 'Контакт прогона'})[0], 400, 'второй раз — понятная ошибка')
         r = self.ok_json('PUT', '/api/drafts/tstd1', {'state': {'client': 'Черновик прогона', 'items': [{}, {}]}, 'sum': 100, 'cur': 'RUB'})
         self.assertEqual(r['row']['positions'], 2)
         self.assertTrue(any(x['id'] == 'tstd1' for x in self.ok_json('GET', '/api/drafts')['items']))

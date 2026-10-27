@@ -204,6 +204,9 @@ dialog.st-confirm.kf-dlg{width:min(760px,calc(100vw - 32px));max-width:none}
 .ccc-h b{font-size:14px}
 .ccc-h .muted{font-size:12.5px;overflow-wrap:anywhere}
 .ccc-e{flex:none;min-width:32px;min-height:32px;color:var(--navy)}
+.ccc-acts{display:flex;flex:none;gap:2px}
+.ccc-d{color:var(--danger)}
+.ccc-dl{color:var(--danger);margin-right:auto}
 .ccc-a{display:inline-flex;align-items:center;gap:7px;min-height:26px;color:var(--navy);font-weight:600;font-size:13.5px;text-decoration:none;overflow-wrap:anywhere}
 .ccc-a>span{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:color-mix(in srgb,var(--navy) 12%,transparent);font-size:11px}
 .ccc-a:hover{text-decoration:underline}

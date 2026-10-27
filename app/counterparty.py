@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
+from client_contacts import ClientContacts
 from defaults import SrvVal
 from net import Net
 
@@ -561,7 +562,8 @@ class Counterparties:
                 client.get('objects'),
                 lambda obj: norm(obj.get('purpose')) + '|' + norm(obj.get('address')),
             )
-            client['contacts'] = merge(old.get('contacts'), client.get('contacts'), lambda obj: norm(obj.get('name')))
+            fresh = [row for row in dicts(client.get('contacts')) if not ClientContacts.is_gone(old, row)]
+            client['contacts'] = merge(old.get('contacts'), fresh, lambda obj: norm(obj.get('name')))
         client['kpCount'] = int(old.get('kpCount', 0)) + (1 if client.pop('_usedInKp', False) else 0)
         client['id'] = cid
         client['createdAt'] = old.get('createdAt') or datetime.now().isoformat(timespec='seconds')
@@ -569,6 +571,8 @@ class Counterparties:
         if not client.get('check') and old.get('check'):
             client['check'] = old['check']
         client['notes'] = old.get('notes') or []  # заметки о клиенте ведёт карточка клиента (/api/clientcard/note)
+        if ClientContacts.gone(old):
+            client[ClientContacts.GONE] = ClientContacts.gone(old)
         client['_rev'] = self.store.client_put(cid, client, author, base_rev)
         return client
 

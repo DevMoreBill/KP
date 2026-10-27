@@ -85,6 +85,24 @@ class BitrixClientsTest(SyncBase):
         self.clients().of_company('501')
         self.assertEqual(len(self.st.client_get('inn7700000001')['contacts']), len(doc['contacts']), 'без повторов')
 
+    def test_gone_and_junk_not_added(self):
+        from client_contacts import ClientContacts
+        self.company('501', 'Альфа (Битрикс)', '7700000001')
+        self.person('601', 'Кузнецова', 'Мария', '8 (916) 555-44-33', company='501')
+        self.person('602', '', '1', company='501')
+        self.person('603', '', '1', company='501')
+        self.person('604', 'Сидоров', 'Пётр', '8 900 111 22 33', company='501')
+        doc = self.st.client_get('inn7700000001')
+        doc['contacts'] = [*doc.get('contacts', []), {'name': '1'}, {'name': '1'}]
+        self.st.client_put('inn7700000001', doc)
+        ClientContacts(self.st).remove('inn7700000001', 'Сидоров Пётр', 'Иванова')
+        for _round in range(2):
+            self.clients().of_company('501')
+        names = [row.get('name') for row in self.st.client_get('inn7700000001')['contacts']]
+        self.assertNotIn('Сидоров Пётр', names, 'удалённый в программе не возвращается обменом')
+        self.assertNotIn('1', names, 'пустые «1» не загружаются, прежние убираются')
+        self.assertIn('Кузнецова Мария', names)
+
     def test_without_inn(self):
         self.company('502', 'Альфа без реквизитов')
         self.person('602', 'Сидоров', 'Пётр', '8 900 111 22 33', company='502')

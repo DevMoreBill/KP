@@ -46,6 +46,12 @@ class FeaturesHelpTest(unittest.TestCase):
         self.assertIsNone(access.blocked('POST', '/api/crm/deal/d1/files', who))
         access.save({'myDay': False})
         self.assertEqual(access.blocked('POST', '/api/crm/deal/d1/files', who), 'Кабинет менеджера')
+        self.assertIsNone(access.blocked('POST', '/api/clientcard/contact/remove', who))
+        access.save({'contactDelete': False})
+        self.assertEqual(access.blocked('POST', '/api/clientcard/contact/remove', who), 'Удаление контактов клиента')
+        self.assertIsNone(access.blocked('POST', '/api/clientcard/contact', who), 'правка контактов остаётся')
+        access.save({'contactDelete': True, 'clientCard': False})
+        self.assertEqual(access.blocked('POST', '/api/clientcard/contact/remove', who), 'Карточка клиента')
 
 
 if __name__ == '__main__':

@@ -1901,6 +1901,19 @@ class ClientCardController(Controller):
             raise BadRequest(str(exc)) from None
         return self.send_json({'ok': True, 'contacts': rows})
 
+    @route(r'/api/clientcard/contact/remove', 'POST')  # {id, was: ФИО} — только в программе, в Битрикс24 не удаляется
+    def contact_remove(self) -> Any:
+        data = self.json_body()
+        cid = safe_id(str(data.get('id') or '')[:64])
+        try:
+            rows, gone = ClientContacts(store()).remove(cid, str(data.get('was') or ''), admin.actor(self.handler)[1])
+        except LookupError as exc:
+            return self.text(404, str(exc))
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from None
+        admin.log(self.handler, store(), 'delete_contact', 'client', cid, before=gone)
+        return self.send_json({'ok': True, 'contacts': rows})
+
     @route(r'/api/companycard/parse', 'POST')
     def company_parse(self) -> Any:
         """Карточка предприятия: JSON {text} или файл (?name=…: PDF, Word, Excel, TXT) → реквизиты и сверка с ФНС."""

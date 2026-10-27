@@ -1,11 +1,13 @@
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 import { DealCard } from '../crm/deal-card.js';
 
 /**
- * «Контакты» в карточке клиента: звонок и письмо нажатием, «✎» — правка на месте, «＋ Контакт» — новый (первым в списке).
- * Сервер — /api/clientcard/contact (ClientContacts); удаления у менеджера нет.
+ * «Контакты» в карточке клиента: звонок и письмо нажатием, «✎» — правка на месте, «＋ Контакт» — новый (первым в списке),
+ * «✕» — удалить (только в программе: в Битрикс24 контакт остаётся, обмен его не вернёт). Сервер — /api/clientcard/contact
+ * и /api/clientcard/contact/remove (ClientContacts).
  */
 export class ClientContactsView {
   static SHOWN = 8;
@@ -46,6 +48,11 @@ export class ClientContactsView {
     if (edit) return this._redraw(ctx, Number(edit.dataset.ccce));
     if (target.closest('[data-ccca]')) return this._redraw(ctx, 'new');
     if (target.closest('[data-cccx]')) return this._redraw(ctx, null);
+    const remove = target.closest('[data-cccd]');
+    if (remove) {
+      this._remove(ctx, remove.dataset.cccd);
+      return true;
+    }
     const save = target.closest('[data-cccs]');
     if (save) {
       this._save(ctx, save.closest('.ccc-f'));
@@ -76,9 +83,18 @@ export class ClientContactsView {
       ? `<a class="ccc-a" href="mailto:${esc(row.email)}" title="Написать"><span aria-hidden="true">✉</span>${esc(row.email)}</a>`
       : '';
     const pen = clientId
-      ? `<button class="icon ccc-e" type="button" data-ccce="${index}" aria-label="Изменить контакт ${esc(row.name)}" title="Изменить">✎</button>`
+      ? `<span class="ccc-acts"><button class="icon ccc-e" type="button" data-ccce="${index}" aria-label="Изменить контакт ${esc(row.name)}" title="Изменить">✎</button>${this._delIcon(row)}</span>`
       : '';
     return `<div class="ccc"><div class="ccc-h"><div><b>${esc(row.name)}</b>${row.post ? `<span class="muted">${esc(row.post)}</span>` : ''}</div>${pen}</div>${phone}${mail}</div>`;
+  }
+
+  static _canDelete() {
+    return FEAT.on('contactDelete');
+  }
+
+  static _delIcon(row) {
+    if (!this._canDelete()) return '';
+    return `<button class="icon ccc-e ccc-d" type="button" data-cccd="${esc(row.name)}" aria-label="Удалить контакт ${esc(row.name)}" title="Удалить из программы (в Битрикс24 останется)">✕</button>`;
   }
 
   static _form(row, index) {
@@ -88,7 +104,7 @@ export class ClientContactsView {
     ).join('');
     const title = index === 'new' ? 'Новый контакт' : 'Изменить контакт';
     return `<div class="ccc-f" data-ccci="${index}" data-cccw="${esc(row.name || '')}" role="group" aria-label="${title}"><b class="ccc-t">${title}</b>${inputs}
-      <div class="row"><button class="btn" type="button" data-cccx>Отмена</button><span class="sp"></span><button class="btn primary" type="button" data-cccs>Сохранить</button></div></div>`;
+      <div class="row">${index === 'new' || !this._canDelete() ? '' : `<button class="btn ghost ccc-dl" type="button" data-cccd="${esc(row.name || '')}">Удалить контакт</button>`}<button class="btn" type="button" data-cccx>Отмена</button><span class="sp"></span><button class="btn primary" type="button" data-cccs>Сохранить</button></div></div>`;
   }
 
   static _redraw(ctx, editing) {
@@ -96,6 +112,32 @@ export class ClientContactsView {
     const first = ctx.modal.$('#ccPeople [data-cccf="name"]');
     if (first) first.focus();
     return true;
+  }
+
+  static async _remove(ctx, name) {
+    if (
+      !confirm(
+        `Удалить контакт «${name}» из программы?\n\nВ Битрикс24 контакт останется — там ничего не удаляется, и обмен его обратно не добавит.`,
+      )
+    )
+      return;
+    try {
+      const answer = await Api.request('/api/clientcard/contact/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ id: ctx.client.id, was: name }),
+      });
+      ctx.client.contacts = answer.contacts || [];
+      this._redraw(ctx, null);
+      Toast.show('Контакт удалён из программы');
+      this._dealReload(ctx);
+    } catch (error) {
+      Toast.show(`Не удалено: ${error.message || error}`);
+    }
+  }
+
+  static _dealReload(ctx) {
+    if (DealCard.modal && DealCard.deal && DealCard.deal.clientId === ctx.client.id) DealCard.reload();
   }
 
   static async _save(ctx, form) {
@@ -118,7 +160,7 @@ export class ClientContactsView {
       ctx.client.contacts = answer.contacts || [];
       this._redraw(ctx, null);
       Toast.show(spot === 'new' ? 'Контакт добавлен' : 'Контакт сохранён');
-      if (DealCard.modal && DealCard.deal && DealCard.deal.clientId === ctx.client.id) DealCard.reload();
+      this._dealReload(ctx);
     } catch (error) {
       Toast.show(`Не сохранено: ${error.message || error}`);
     }

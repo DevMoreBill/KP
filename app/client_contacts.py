@@ -1,4 +1,4 @@
-"""Контакты клиента в карточке клиента: менеджер правит существующий контакт или добавляет новый (без удаления)."""
+"""Контакты клиента в карточке клиента: менеджер правит, добавляет и удаляет контакт (в Битрикс24 ничего не удаляется)."""
 
 import re
 from typing import Any
@@ -14,6 +14,8 @@ class ClientContacts:
     PHONE_MIN = 10
     PHONE_MAX = 15
     MAX = 30
+    GONE = 'contactsGone'  # удалённые в программе: обмен с Битрикс24 и сохранение КП их не возвращают
+    GONE_MAX = 200
 
     def __init__(self, store) -> None:
         self.store = store
@@ -28,6 +30,7 @@ class ClientContacts:
             rows = [dict(row) for row in client.get('contacts') or [] if isinstance(row, dict)]
             spot = self._spot(rows, target)
             self._unique(rows, person['name'], spot)
+            self._revive(client, person['name'])
             if spot is None:
                 if len(rows) >= self.MAX:
                     raise ValueError(f'У клиента уже {self.MAX} контактов — исправьте один из них')
@@ -38,6 +41,44 @@ class ClientContacts:
             doc['contacts'] = rows
             self.store.client_put(cid, doc, author)
         return rows
+
+    def remove(self, cid: str, was: Any, author: str) -> tuple[list[dict], dict]:
+        """Удалить контакт по ФИО → (контакты, удалённый). Только в программе: в Битрикс24 контакт остаётся, обмен и
+        сохранение КП его больше не добавляют (пока менеджер не впишет такой же контакт сам)."""
+        with self.store.lock:
+            client = self.store.client_get(cid)
+            if not isinstance(client, dict) or not client:
+                raise LookupError('Клиент не найден в справочнике')
+            rows = [dict(row) for row in client.get('contacts') or [] if isinstance(row, dict)]
+            key = self.key(was)
+            gone = next((row for row in rows if self.key(row.get('name')) == key), None)
+            if not key or gone is None:
+                raise ValueError('Контакт уже удалён или изменён — откройте карточку клиента заново')
+            doc = {name: value for name, value in client.items() if name != '_rev'}
+            doc['contacts'] = [row for row in rows if row is not gone]
+            mark = {field: str(gone.get(field) or '') for field in ('name', 'phone', 'email')}
+            doc[self.GONE] = [mark, *self.gone(client)][: self.GONE_MAX]
+            self.store.client_put(cid, doc, author)
+        return doc['contacts'], gone
+
+    @classmethod
+    def gone(cls, client: dict) -> list[dict]:
+        """Удалённые в программе контакты клиента."""
+        rows = client.get(cls.GONE) if isinstance(client, dict) else None
+        return [row for row in rows or [] if isinstance(row, dict)]
+
+    @classmethod
+    def is_gone(cls, client: dict, person: Any) -> bool:
+        """Контакт удалён в программе (по ФИО) — не добавлять его снова автоматически."""
+        key = cls.key((person or {}).get('name') if isinstance(person, dict) else '')
+        return bool(key) and any(cls.key(row.get('name')) == key for row in cls.gone(client))
+
+    @classmethod
+    def _revive(cls, client: dict, name: str) -> None:
+        """Менеджер сам вписал контакт с ФИО удалённого — запрет на его возврат снимается."""
+        key = cls.key(name)
+        if any(cls.key(row.get('name')) == key for row in cls.gone(client)):
+            client[cls.GONE] = [row for row in cls.gone(client) if cls.key(row.get('name')) != key]
 
     def clean(self, raw: Any) -> dict:
         """Поля контакта после проверки: ФИО обязательно, телефон — 10–15 цифр, почта — адрес."""
