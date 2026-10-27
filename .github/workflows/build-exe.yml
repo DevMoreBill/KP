@@ -515,6 +515,7 @@ jobs:
           Copy-Item -LiteralPath 'Инструкция.txt' -Destination $pkg
           Copy-Item -LiteralPath 'docs\Руководство менеджера.pdf' -Destination $pkg
           Copy-Item -LiteralPath 'docs\Памятка КП за 5 минут.pdf' -Destination $pkg
+          Copy-Item -LiteralPath 'docs\Руководство по Битрикс24.pdf' -Destination $pkg
           New-Item -ItemType Directory -Force -Path "$pkg\install" | Out-Null
           Copy-Item -LiteralPath 'install\Установить в C KP.cmd', 'install\install-full.ps1', 'install\kp-common.ps1' -Destination "$pkg\install"
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force

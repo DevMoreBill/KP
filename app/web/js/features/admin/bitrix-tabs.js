@@ -42,16 +42,11 @@ export class BitrixManagers {
         ...portal.categories.map(cat => [cat.id, cat.name]),
       ],
     };
-    const fallback = [
-      ['', 'загружать без ответственного'],
-      ['skip', 'не загружать'],
-      ...(state.managers || []).map(manager => [manager.id, `отдать: ${manager.name}`]),
-    ];
     return `<div class="st-card"><p class="sub">Менеджеры программы ↔ пользователи Битрикса</p>
       <div class="tzi-tw"><table class="tzi-t bx-mt"><thead><tr><th>Менеджер</th><th>Пользователь Битрикса</th><th>Участвует</th><th>Направление${UiKit.tip('<p>Своё направление менеджера действует вместе с общим (берётся более строгое).</p><p>Пример: общее «в обе стороны», у стажёра — «только в Битрикс»: его сделки уходят в Битрикс, а правки коллег из Битрикса к нему не приходят.</p>')}</th><th>Воронка новых сделок${UiKit.tip('<p>Куда в Битриксе попадают новые сделки этого менеджера из программы. Пусто — основная воронка.</p><p>Пример: сервисному инженеру — воронка «Заявки в Сервис».</p>')}</th></tr></thead><tbody>
       ${portal.managers.map(manager => this._row(manager, ctx)).join('')}</tbody></table></div>
       <p class="muted">Не участвует — его сделки и дела не уходят в Битрикс и не приходят из него. «Только из Битрикса» — у него правки остаются в программе.</p>
-      <div class="bx-map" style="margin-top:10px"><label>Новая сделка Битрикса, ответственный которой не сопоставлен${UiKit.tip('<p>Пользователь Битрикса не найден среди менеджеров программы (новый сотрудник, бот, сайт).</p><p>«Без ответственного» — сделка появится у руководителя во «Весь отдел»; «отдать: …» — сразу этому менеджеру; «не загружать» — останется только в Битриксе.</p>')}</label>${panel.sel('id="bxFb"', fallback, rules.fallback || '', 'Без сопоставленного ответственного')}</div>
+      <p class="muted">Новая сделка Битрикс24 с несопоставленным ответственным — «Сделки → Общие правила».</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveMgr" data-autosave>Сохранить</button></div></div>`;
   }
 
@@ -67,7 +62,7 @@ export class BitrixManagers {
         if (field('user').value) users[id] = field('user').value;
         mgr[id] = { on: field('on').checked, dir: field('dir').value, cat: field('cat').value };
       });
-      panel.save({ users, mgr, fallback: panel.one('#bxFb').value });
+      panel.save({ users, mgr });
     };
   }
 }

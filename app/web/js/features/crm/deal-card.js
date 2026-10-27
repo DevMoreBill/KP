@@ -409,7 +409,7 @@ export class DealCard {
       .map(row => `<option value="${esc(row.id)}"${row.id === current ? ' selected' : ''}>${esc(row.title)}</option>`)
       .join('');
     const tip = UiKit.tip(
-      '<p>Чьи реквизиты стоят в сделке Битрикс24 («Реквизиты вашей компании»). По умолчанию — как в «Настройках → Битрикс24 → Что передаётся».</p>',
+      '<p>Чьи реквизиты стоят в сделке Битрикс24 («Реквизиты вашей компании»). По умолчанию — как в «Настройках → Битрикс24 → Клиенты → Компании».</p>',
     );
     return `<label class="f"><span>Наша компания${tip}</span><select data-dkf="myCompany">${blank}${options}</select></label>`;
   }

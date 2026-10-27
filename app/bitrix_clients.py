@@ -191,7 +191,7 @@ class BitrixClients:
         if out['inn']:
             client = self._by_inn(out['inn']) or self._new(info)
             return self._linked(out, self._merge(client, info['people']))
-        found = self._by_contacts(info['people'])
+        found = self._by_contacts(info['people']) if self.rules.company()['byPeople'] else []
         if len(found) == 1 and self._same_firm(out['company'] and out['name'], found[0].get('name')):
             client = self.store.client_get(found[0]['id']) or {}
             return self._linked(out, self._merge(client, info['people']))
@@ -248,18 +248,27 @@ class BitrixClients:
         doc = {key: value for key, value in client.items() if key != '_rev'}
         rows = [dict(row) for row in (doc.get('contacts') or []) if isinstance(row, dict)]
         changed = not self.store.client_get(doc['id'])
-        if self.rules.allow(self.rules.company()['contacts'], 'in'):
+        rules = self.rules.contacts()
+        if self.rules.allow(rules['dir'], 'in'):
             for person in people:
-                if ClientContacts.is_gone(doc, person) or self.junk(person):
-                    continue  # удалён в программе или пустой («1» без телефона и почты) — не добавлять
+                if not self._wanted(doc, person, rules):
+                    continue
                 changed = self._add(rows, person) or changed
-            kept = [row for row in rows if not self.junk(row)]
+            kept = [row for row in rows if not (rules['junk'] and self.junk(row))]
             changed = changed or len(kept) != len(rows)
             rows = kept
         if changed:
             doc['contacts'] = rows[: self.CONTACTS_MAX]
             self.store.client_put(doc['id'], doc, self.sync.WHO)
         return doc
+
+    @classmethod
+    def _wanted(cls, doc: dict, person: dict, rules: dict) -> bool:
+        """Контакт Битрикса загружать в карточку клиента: не удалён в программе, не пустой («1»), с телефоном или почтой
+        (если контакты без них не загружаются)."""
+        if ClientContacts.is_gone(doc, person) or (rules['junk'] and cls.junk(person)):
+            return False
+        return rules['bare'] or bool(ContactKey.phone(person.get('phone')) or ContactKey.email(person.get('email')))
 
     @staticmethod
     def junk(person: dict) -> bool:
@@ -294,7 +303,6 @@ class BitrixClientOut:
     """Клиент сделки по регламенту → Битрикс24: телефон и почта компании, контакты (привязаны к компании и сделке),
     файл КП — в поле «ТКП / счёт». Каждое значение отправляется один раз (отметки в связях обмена)."""
 
-    PEOPLE_MAX = 3
     PDF = 'КП (PDF)'
     WORD = 'КП (Word)'
 
@@ -311,11 +319,12 @@ class BitrixClientOut:
         client = self._client(deal)
         if not client:
             return
-        if self.rules.can('company', 'out'):
+        if self.rules.can('company', 'out') and self.rules.company()['fill']:
             self.company_comm(company_id, client)
-        if self.rules.allow(self.rules.company()['contacts'], 'out'):
+        people_rules = self.rules.contacts()
+        if self.rules.allow(people_rules['dir'], 'out'):
             people = self.people(company_id, client, deal.get('managerId'))
-            if people:
+            if people and people_rules['deal']:
                 self.bind_deal(deal['id'], bid, people[0])
 
     def _client(self, deal: dict) -> dict:
@@ -349,12 +358,14 @@ class BitrixClientOut:
         (контактные лица бывают общими у нескольких компаний, а телефон приёмной — у разных людей); телефон или почта у
         другого человека — контакт не создаётся и чужая карточка не меняется (до правки телефона или почты в программе)."""
         out = []
+        rules = self.rules.contacts()
         rows = [row for row in client.get('contacts') or [] if isinstance(row, dict) and row.get('name')]
-        for row in rows[: self.PEOPLE_MAX]:
+        for row in rows[: rules['max']]:
             key, comm = self.person_key(client, row), self.comm(row)
             link = self.links.get('file', key)
             if link and link['bx']:
-                self._fill_comm(client, row, link)
+                if rules['fill']:
+                    self._fill_comm(client, row, link)
                 out.append(str(link['bx']))
                 continue
             if link and (link['sent'] or {}).get('comm') == comm:
@@ -369,6 +380,8 @@ class BitrixClientOut:
                     mid=manager_id,
                 )
                 continue
+            if not bx_id and not rules['create']:
+                continue  # в Битриксе такого контакта нет, а создавать контакты правило не разрешает
             bx_id = bx_id or self._add(company_id, row, manager_id)
             self._join(company_id, bx_id)
             self.remember(self.links, client, row, bx_id, company_id, comm)

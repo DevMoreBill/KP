@@ -89,7 +89,7 @@ class BitrixApi:
         except urllib.error.HTTPError as exc:
             raw = exc.read() or b''
             data = self._json(raw)
-            if data.get('error'):
+            if 'error' in data:  # «Not found» Битрикс присылает с пустым кодом ошибки
                 raise self._error(data) from exc
             if exc.code in (401, 403):
                 raise BitrixError(
@@ -102,7 +102,7 @@ class BitrixApi:
                 'Битрикс24 недоступен: {}'.format(str(why)[:160].replace(self.url, self.host + '/…')), 'NET'
             ) from exc
         data = self._json(raw)
-        if data.get('error'):
+        if 'error' in data:
             raise self._error(data)
         if 'result' not in data:
             raise BitrixError('Битрикс24 прислал непонятный ответ', 'BAD')
@@ -164,7 +164,7 @@ class BitrixConf:
     def api(self, opener=None) -> 'BitrixApi':
         data = self.get()
         if not data.get('url'):
-            raise BitrixError('Адрес вебхука не задан — «Настройки → Связи → Битрикс24 → Связь и включение»')
+            raise BitrixError('Адрес вебхука не задан — «Настройки → Битрикс24 → Обмен → Подключение и состояние»')
         return BitrixApi(data['url'], opener)
 
     def poll(self) -> int:
@@ -326,6 +326,9 @@ class BitrixLinks:
 
     def count(self, kind) -> int:
         return self.store.scalar('SELECT COUNT(*) FROM bx_link WHERE kind=?', (kind,))
+
+    def forget(self, kind, local) -> None:
+        self.store.write('DELETE FROM bx_link WHERE kind=? AND local_id=?', (kind, str(local)))
 
 
 class BitrixQueue:
@@ -832,7 +835,7 @@ class BitrixSync:
     def _company_check(self) -> None:
         """Раз в сутки — связанные компании не удалены в Битриксе (иначе сделки уходят к удалённой компании)."""
         check = BitrixCompanyCheck(self)
-        if not check.due() or not self.rules.can('company', 'out'):
+        if not self.rules.company()['check'] or not check.due() or not self.rules.can('company', 'out'):
             return
         try:
             check.run()
@@ -871,7 +874,7 @@ class BitrixSync:
         comp_rules, find = self.rules.company(), BitrixCompanyFind(self.api)
         client = self._client_of(deal, inn)
         cid = find.by_inn(inn) if inn and comp_rules['find'] in ('inn', 'inn_name') else ''
-        if not cid:
+        if not cid and comp_rules['byComm']:
             cid, how = find.by_comm(client, inn, client.get('name') or name)
             if cid:
                 self.log.add(
@@ -957,7 +960,7 @@ class BitrixSync:
                 except BitrixError:
                     pass  # адрес — не главное: компания и реквизиты уже есть
         if self.rules.allow(
-            comp_rules['contacts'], 'out'
+            self.rules.contacts()['dir'], 'out'
         ):  # контакты — сначала поиск по телефону и почте, как у сделки
             BitrixClientOut(self).people(str(cid), client, deal.get('managerId'))
         return cid
@@ -1163,6 +1166,8 @@ class BitrixSync:
         link = self.links.get('deal', did)
         if not rules.can('deal', 'out', mid):
             return  # обмен только из Битрикса (весь или у этого менеджера) — в Битрикс не пишем
+        if link and link['sent'].get('gone'):
+            return  # удалена в Битриксе, связь снята по правилу — в Битрикс больше не отправляется
         kps = self._kps(did)
 
         def out(k) -> bool:
@@ -1211,7 +1216,13 @@ class BitrixSync:
             )
         else:
             bid = link['bx']
-            bx_deal = self.api.call('crm.deal.get', {'id': bid}) or {}
+            try:
+                bx_deal = self.api.call('crm.deal.get', {'id': bid}) or {}
+            except BitrixError as exc:
+                if not GoneDeal.is_gone(exc):
+                    raise
+                GoneDeal(self).handle(deal, bid, exc)
+                return
             moved = self.mirror.cat(deal)
             if moved and moved != str(bx_deal.get('CATEGORY_ID') or '0'):
                 bx_deal = self._move(deal, bid, bx_deal, moved)
@@ -1552,7 +1563,7 @@ class BitrixSync:
             self.links.put('file', key, bid, {'c': cid})
 
     def _kp_payload(self, k) -> list[tuple[str, bytes, str]]:
-        """Файлы КП, включённые в «Что передаётся» и не больше предела, — (имя, данные, подпись)."""
+        """Файлы КП, включённые в «Товары и файлы КП» и не больше предела, — (имя, данные, подпись)."""
         send_rules = self.rules.send()
         enabled = {v: send_rules['files'][key] for key, v in BitrixRules.FILES.items()}
         out = []
@@ -1782,7 +1793,8 @@ class BitrixSync:
     def _new_deal(self, bx_deal, mid: str | None = None) -> dict:
         """Новая сделка воронки обмена; в кабинете — «Новые сделки из Битрикс24», пока ответственный не откроет."""
         deal = self._import_deal(bx_deal, mid)
-        DealBook(self.store).flag(deal['id'], bxNew=True)
+        if self.rules.deals()['newFlag']:
+            DealBook(self.store).flag(deal['id'], bxNew=True)
         return deal
 
     def _import_deal(self, bx_deal, mid: str | None = None, company: dict | None = None) -> dict:
@@ -1866,10 +1878,13 @@ class BitrixSync:
         subj = subj[len('Отменено — ') :] if cancel else subj
         kind = next((k for k, label in self.KIND.items() if subj.startswith(label + ': ')), None)
         title = subj[len(self.KIND[kind]) + 2 :] if kind else subj
-        if not kind and not task_rules['other'] and not self.links.local('task', activity.get('ID')):
+        known = self.links.local('task', activity.get('ID'))
+        if not kind and not task_rules['other'] and not known:
             return 0  # дела Битрикса, заведённые не программой, — по правилу не загружать
         kind = kind or {'1': 'meet', '2': 'call', '4': 'mail'}.get(str(activity.get('TYPE_ID')), 'task')
         if task_rules['kinds'].get(kind) == 'off':
+            return 0
+        if not known and not self._task_wanted(activity, kind, task_rules):
             return 0
         due = BitrixTime.local(activity.get('DEADLINE')) or Val.now()
         time_text = due[11:16] if due[11:16] not in ('', '00:00', '18:00') else ''
@@ -1911,6 +1926,13 @@ class BitrixSync:
             tasks.update(task['id'], {'state': state})
         self.links.put('task', task['id'], activity['ID'], sent)
         return 1
+
+    @staticmethod
+    def _task_wanted(activity: dict, kind: str, task_rules: dict) -> bool:
+        """Новое дело из Битрикса загружать: вид разрешён, а выполненное — если выполненные загружаются."""
+        if not task_rules['in'].get(kind, True):
+            return False
+        return task_rules['done'] or activity.get('COMPLETED') != 'Y'
 
     def people(self, did) -> int:
         """Контакты сделки и её компании из Битрикса — в карточку клиента (сделка загружена раньше, контактов нет).
@@ -1973,6 +1995,40 @@ class BitrixSync:
             'at': link['at'],
             'url': '{}/crm/deal/details/{}/'.format(portal, link['bx']) if portal else '',
         }
+
+
+class GoneDeal:
+    """Связанная сделка удалена в Битриксе — по правилу «Сделки → Удалённая в Битриксе»: снять связь (в Битрикс больше не
+    отправлять), создать заново или оставить ошибку в «Не отправлено»."""
+
+    WORDS = ('not found', 'не найден')
+
+    def __init__(self, sync) -> None:
+        self.sync = sync
+
+    @classmethod
+    def is_gone(cls, exc: 'BitrixError') -> bool:
+        text = str(exc).lower()
+        return exc.code in ('', 'NOT_FOUND') and any(word in text for word in cls.WORDS)
+
+    def handle(self, deal: dict, bid: str, exc: 'BitrixError') -> None:
+        how = self.sync.rules.deals()['gone']
+        if how == 'keep':
+            raise exc
+        number, mid = deal.get('number'), deal.get('managerId')
+        links = self.sync.links
+        for kind in ('deal', 'rows'):
+            links.forget(kind, deal['id'])
+        if how == 'recreate':
+            self.sync.log.add(f'Сделка № {number} удалена в Битрикс24 (была {bid}) — создаётся заново', 'warn', mid=mid)
+            self.sync.push_deal(deal['id'])
+            return
+        links.put('deal', deal['id'], '', {'gone': bid})
+        self.sync.log.add(
+            f'Сделка № {number} удалена в Битрикс24 (была {bid}) — связь снята, в Битрикс24 больше не отправляется',
+            'warn',
+            mid=mid,
+        )
 
 
 class BitrixDryApi:

@@ -47,6 +47,12 @@ class BitrixRules:
     TASK_KINDS = {'call': 'Звонок', 'meet': 'Встреча', 'mail': 'Письмо', 'task': 'Задача'}
     TASK_AS = ('todo', 'call', 'meet', 'off')  # дело Битрикса: универсальное, звонок, встреча; не передавать
     FIND = ('inn', 'inn_name', 'name')
+    GONE = (
+        'unlink',
+        'recreate',
+        'keep',
+    )  # сделка удалена в Битриксе: снять связь, создать заново, ошибка в «Не отправлено»
+    PEOPLE = (1, 10, 3)
     MY_ID = re.compile(r'^\d{0,12}$')
     BX_FIELD = re.compile(r'^[A-Z][A-Z0-9_]{1,60}$')
     TIME = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
@@ -158,18 +164,47 @@ class BitrixRules:
         return {
             'find': company.get('find') if company.get('find') in self.FIND else 'inn_name',
             'create': company.get('create', True) is not False,
-            'contacts': company.get('contacts') if company.get('contacts') in DIRS else 'both',
+            'contacts': self.contacts()['dir'],
             'reqs': company.get('reqs', True) is not False,
             'my': str(company.get('my') or '') if self.MY_ID.match(str(company.get('my') or '')) else '',
+            'byComm': company.get('byComm', True) is not False,
+            'fill': company.get('fill', True) is not False,
+            'check': company.get('check', True) is not False,
+            'byPeople': company.get('byPeople', True) is not False,
+        }
+
+    def contacts(self) -> dict:
+        """Контакты (контактные лица клиента): направление — своё, прежде было у компаний (company.contacts)."""
+        mine = self.conf.get('contacts') or {}
+        old = (self.conf.get('company') or {}).get('contacts')
+        direction = mine.get('dir') if mine.get('dir') in DIRS else (old if old in DIRS else 'both')
+        return {
+            'dir': direction,
+            'create': mine.get('create', True) is not False,
+            'fill': mine.get('fill', True) is not False,
+            'deal': mine.get('deal', True) is not False,
+            'max': self._int(mine.get('max'), self.PEOPLE),
+            'bare': mine.get('bare', True) is not False,
+            'junk': mine.get('junk', True) is not False,
+        }
+
+    def deals(self) -> dict:
+        mine = self.conf.get('deals') or {}
+        return {
+            'newFlag': mine.get('newFlag', True) is not False,
+            'gone': mine.get('gone') if mine.get('gone') in self.GONE else 'unlink',
         }
 
     def tasks(self) -> dict:
         tasks = self.conf.get('tasks') or {}
         k = picked if isinstance(picked := tasks.get('kinds'), dict) else {}
+        k_in = picked if isinstance(picked := tasks.get('in'), dict) else {}
         return {
             'kinds': {x: (k.get(x) if k.get(x) in self.TASK_AS else 'todo') for x in self.TASK_KINDS},
             'cancel': tasks.get('cancel', True) is not False,
             'other': tasks.get('other', True) is not False,
+            'in': {x: (k_in.get(x, True) is not False) for x in self.TASK_KINDS},
+            'done': tasks.get('done', True) is not False,
         }
 
     def sched(self) -> dict:
@@ -215,6 +250,8 @@ class BitrixRules:
             'fields': {field[0]: self.field(field[0]) for field in self.FIELDS},
             'send': self.send(),
             'company': self.company(),
+            'contacts': self.contacts(),
+            'deals': self.deals(),
             'tasks': self.tasks(),
             'sched': self.sched(),
             'spec': [
@@ -322,17 +359,36 @@ class BitrixRules:
             new['company'] = {
                 'find': pick(company.get('find'), cls.FIND, 'поиск компании') or 'inn_name',
                 'create': company.get('create', True) is not False,
-                'contacts': pick(company.get('contacts'), DIRS, 'контакты') or 'both',
+                'contacts': pick(company.get('contacts'), DIRS, 'контакты')
+                or (new.get('company') or {}).get('contacts')
+                or 'both',
                 'reqs': company.get('reqs', True) is not False,
                 'my': MyCompanies.clean(company.get('my')),
+                **{key: company.get(key, True) is not False for key in ('byComm', 'fill', 'check', 'byPeople')},
+            }
+        if 'contacts' in data:
+            people = data['contacts'] if isinstance(data['contacts'], dict) else {}
+            new['contacts'] = {
+                'dir': pick(people.get('dir'), DIRS, 'контакты') or 'both',
+                'max': cls._num(people.get('max'), cls.PEOPLE, 'Контактов клиента в Битрикс'),
+                **{key: people.get(key, True) is not False for key in ('create', 'fill', 'deal', 'bare', 'junk')},
+            }
+        if 'deals' in data:
+            deals = data['deals'] if isinstance(data['deals'], dict) else {}
+            new['deals'] = {
+                'newFlag': deals.get('newFlag', True) is not False,
+                'gone': pick(deals.get('gone'), cls.GONE, 'удалённая в Битриксе сделка') or 'unlink',
             }
         if 'tasks' in data:
             tasks = data['tasks'] if isinstance(data['tasks'], dict) else {}
             kinds = picked if isinstance(picked := tasks.get('kinds'), dict) else {}
+            kinds_in = picked if isinstance(picked := tasks.get('in'), dict) else {}
             new['tasks'] = {
                 'kinds': {x: pick(kinds.get(x), cls.TASK_AS, 'вид дела') or 'todo' for x in cls.TASK_KINDS},
                 'cancel': tasks.get('cancel', True) is not False,
                 'other': tasks.get('other', True) is not False,
+                'in': {x: kinds_in.get(x, True) is not False for x in cls.TASK_KINDS},
+                'done': tasks.get('done', True) is not False,
             }
         if 'sched' in data:
             send = data['sched'] if isinstance(data['sched'], dict) else {}

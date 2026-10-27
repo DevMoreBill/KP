@@ -7,6 +7,7 @@
 "test_audit_fixes": 11,
 "test_backup": 5,
 "test_bitrix": 34,
+"test_bitrix_fine": 16,
 "test_cab_layout": 1,
 "test_carrier_api": 2,
 "test_catalog_extras": 1,

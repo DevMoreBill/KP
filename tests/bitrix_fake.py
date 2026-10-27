@@ -79,7 +79,7 @@ class FakeBitrix:
                     return self._out(400, {'error': 'ERROR_METHOD_NOT_FOUND', 'error_description': 'Method not found!'})
                 except ValueError as e:
                     return self._out(400, {'error': 'ERROR_CORE', 'error_description': str(e)})
-                self._out(200, res)
+                self._out(400 if 'error' in res else 200, res)
 
             def _out(self, code, obj):
                 raw = json.dumps(obj, ensure_ascii=False).encode('utf-8')
@@ -187,6 +187,8 @@ class FakeBitrix:
                                  ASSIGNED_BY_ID=str(f.get('ASSIGNED_BY_ID') or '1'), CATEGORY_ID=str(f.get('CATEGORY_ID') or 0))
             return {'result': int(i)}
         if m == 'crm.deal.get':
+            if str(b['id']) not in self.deals:
+                return {'error': '', 'error_description': 'Not found'}
             return {'result': self.deals[str(b['id'])]}
         if m == 'crm.deal.update':
             d = self.deals[str(b['id'])]

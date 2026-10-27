@@ -3,7 +3,7 @@ import { BitrixPanel } from './bitrix-panel.js';
 import { UiKit } from '../../ui/ui-kit.js';
 import { esc } from '../../core/util.js';
 
-/** «Связь и включение»: адрес вебхука (ключ — только на сервере), проверка, обмен кнопками. */
+/** «Подключение и состояние»: адрес вебхука (ключ — только на сервере), проверка, обмен кнопками. */
 export class BitrixLink {
   static MODE = { both: 'в обе стороны', in: 'только из Битрикса в программу', out: 'только из программы в Битрикс' };
   static POLL_SEC = 90;
@@ -12,7 +12,7 @@ export class BitrixLink {
 
   static _status(state, rules) {
     if (!state.on)
-      return 'Задайте адрес вебхука, нажмите «Проверить связь», настройте «Направление обмена», «Менеджеры», «Воронки и этапы» — и включите.';
+      return 'Задайте адрес вебхука, нажмите «Проверить связь», настройте «Направление обмена», «Менеджеры», «Воронки и этапы» — и включите. Подробно — «Руководство».';
     const mode = this.MODE[rules.mode] || 'в обе стороны';
     const minutes = Math.round(((state.pollSec || this.POLL_SEC) / this.MINUTE) * this.TENTHS) / this.TENTHS;
     const hours = rules.sched && rules.sched.from ? `, с ${esc(rules.sched.from)} до ${esc(rules.sched.to)}` : '';
@@ -156,23 +156,33 @@ export class BitrixLink {
   }
 }
 
-/** «Направление обмена»: общее и по видам данных. */
+/** «Направление обмена»: общее и сводка по видам данных (меняются в их пунктах). */
 export class BitrixFlow {
   static KINDS = [
-    ['deal', 'Сделки', 'название, этап, дата, ответственный, сумма, экономика, новые сделки'],
-    ['task', 'Дела', 'звонки, встречи, письма, задачи по сделкам'],
-    [
-      'company',
-      'Компании и контакты',
-      'компания сделки в Битриксе; компании, телефоны и почта из Битрикса — в справочник клиентов',
-    ],
+    ['deal', 'Сделки', 'название, этап, дата, ответственный, сумма, экономика, новые сделки', 'deals'],
+    ['company', 'Компании', 'компания сделки в Битрикс24; компании Битрикс24 — в справочник клиентов', 'company'],
+    ['contacts', 'Контакты', 'контактные лица клиента — в компанию Битрикс24 и обратно', 'contacts'],
+    ['task', 'Дела', 'звонки, встречи, письма, задачи по сделкам', 'tasks'],
   ];
   static WHY = {
-    in: 'В Битрикс ничего не пишется. Изменения и новые сделки из Битрикса приходят в программу; правки менеджера в программе остаются в программе (изменят в Битриксе — придёт значение Битрикса).',
-    out: 'Программа только отправляет: сделки, КП, экономику и дела. Изменения, сделанные в Битриксе, в программу не приходят.',
+    in: 'В Битрикс24 ничего не пишется. Изменения и новые сделки из Битрикс24 приходят в программу; правки менеджера в программе остаются в программе (изменят в Битрикс24 — придёт значение Битрикс24).',
+    out: 'Программа только отправляет: сделки, КП, экономику и дела. Изменения, сделанные в Битрикс24, в программу не приходят.',
   };
   static BOTH =
-    'Сделки, КП, экономика и дела уходят в Битрикс; стадии, даты, ответственные, дела и новые сделки приходят обратно. Кто главный при правке с обеих сторон — в «Поля сделки».';
+    'Сделки, КП, экономика и дела уходят в Битрикс24; стадии, даты, ответственные, дела и новые сделки приходят обратно. Кто главный при правке с обеих сторон — в «Поля сделки».';
+
+  static _dir(kind, rules) {
+    if (kind === 'contacts') return (rules.contacts || {}).dir || 'both';
+    return (rules.flow || {})[kind] || '';
+  }
+
+  static _row([kind, label, hint, tab], rules) {
+    const panel = BitrixPanel;
+    const own = this._dir(kind, rules);
+    const text = own ? panel.DIR[own] : `как общее: ${(panel.DIR[rules.mode] || '').toLowerCase()}`;
+    return `<tr><td><b>${esc(label)}</b><small class="muted">${esc(hint)}</small></td><td>${esc(text)}</td>
+      <td><button class="btn ghost sm" type="button" data-bxtab="${tab}">Изменить →</button></td></tr>`;
+  }
 
   /**
    * Вкладка.
@@ -187,17 +197,14 @@ export class BitrixFlow {
           `<button type="button" data-bxmode="${dir}" class="${rules.mode === dir ? 'on' : ''}" aria-pressed="${rules.mode === dir}">${esc(panel.DIR[dir])}</button>`,
       )
       .join('');
-    const kinds = this.KINDS.map(
-      ([key, label, hint]) =>
-        `<div class="bx-map"><label>${esc(label)}<small class="muted">${esc(hint)}</small></label>${panel.sel(`data-bxflow="${key}"`, panel.dirOpts(['both', 'in', 'out', 'off'], `как общее: ${(panel.DIR[rules.mode] || '').toLowerCase()}`), (rules.flow || {})[key] || '', label)}</div>`,
-    ).join('');
-    return `<div class="st-card"><p class="sub">Направление обмена</p>
+    const rows = this.KINDS.map(entry => this._row(entry, rules)).join('');
+    return `<div class="st-card"><p class="sub">Общее направление</p>
       <div class="seg bx-seg" role="radiogroup">${modes}</div>
-      <p class="muted bx-why">${this.WHY[rules.mode] || this.BOTH}</p></div>
-    <div class="st-card"><p class="sub">По видам данных${UiKit.tip('<p>Можно задать своё направление каждому виду данных поверх общего.</p><p>Пример: общее — «в обе стороны», а «Компании и контакты» — «только из Битрикса в программу»: сделки и дела обмениваются в обе стороны, а компании в Битриксе программа не создаёт и не правит — только забирает их контакты в справочник клиентов.</p>')}</p>
-      ${kinds}
-      <p class="muted">Свои направления у менеджеров — в «Менеджеры» (действует и общее, и своё).</p>
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow" data-autosave>Сохранить</button></div></div>`;
+      <p class="muted bx-why">${this.WHY[rules.mode] || this.BOTH}</p>
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveFlow" data-autosave>Сохранить</button></div></div>
+    <div class="st-card"><p class="sub">По видам данных${UiKit.tip('<p>Каждому виду данных можно задать своё направление поверх общего — в его пункте меню.</p><p>Пример: общее — «в обе стороны», а «Компании» — «только из Битрикс24 в программу»: сделки и дела обмениваются в обе стороны, а компании в Битрикс24 программа не создаёт и не правит — только забирает их в справочник клиентов.</p>')}</p>
+      <div class="tzi-tw"><table class="tzi-t bx-kinds"><thead><tr><th>Что</th><th>Направление</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted">Ещё строже — у отдельных менеджеров («Менеджеры») и у отдельных полей сделки («Поля сделки»): действует самое строгое из общего, вида данных, менеджера и поля.</p></div>`;
   }
 
   /** События вкладки. */
@@ -212,70 +219,22 @@ export class BitrixFlow {
           other.classList.toggle('on', other === button);
           other.setAttribute('aria-pressed', other === button);
         });
+        panel.one('#bxSaveFlow').click();
       };
     });
-    panel.one('#bxSaveFlow').onclick = () => {
-      const flow = {};
-      panel.all('[data-bxflow]').forEach(select => {
-        if (select.value) flow[select.dataset.bxflow] = select.value;
-      });
-      panel.save({ mode, flow });
-    };
+    panel.one('#bxSaveFlow').onclick = () => panel.save({ mode });
   }
 }
 
-/** «Что передаётся»: товары, файлы КП, компании, дела. */
+/** «Товары и файлы КП»: что кроме полей уходит в сделку Битрикс24. */
 export class BitrixSend {
   static FILES = [
     ['word', 'КП (Word)'],
     ['pdf', 'КП (PDF)'],
-    ['refs', 'Справочные документы'],
+    ['refs', 'Справочные документы КП'],
     ['econ', 'Экономика сделки (Excel)'],
   ];
-  static TASKS = [
-    ['call', 'Звонок'],
-    ['meet', 'Встреча'],
-    ['mail', 'Письмо'],
-    ['task', 'Задача'],
-  ];
   static FILE_MB = 20;
-
-  static _company(company) {
-    const panel = BitrixPanel;
-    return `<div class="st-card"><p class="sub">Компании</p>
-      <div class="bx-map"><label>Искать компанию в Битриксе${UiKit.tip('<p>Как найти в Битриксе компанию клиента сделки программы, чтобы не создать дубль.</p><p>«По ИНН, затем по названию» — сначала реквизиты (ИНН 7701234567), не нашлась — точное название («ООО «Ромашка»»).</p>')}</label>${panel.sel('id="bxFind"', Object.entries(panel.FIND), company.find || 'inn_name', 'Поиск компании')}</div>
-      ${panel.chk('id="bxCreate"', company.create !== false, 'Не нашлась — создать компанию в Битриксе')}
-      ${panel.chk('id="bxReqs"', company.reqs !== false, 'С реквизитами (ИНН, КПП, ОГРН, адрес)')}
-      ${this._my(company)}
-      <div class="bx-map"><label>Контакты (телефон, почта)${UiKit.tip('<p>Обмен контактами клиента. «В обе стороны» — контакты из КП уходят в компанию Битрикса, а телефоны, почта и сотрудники компании Битрикса дописываются в справочник клиентов программы (без повторов, реквизиты программы не меняются).</p>')}</label>${panel.sel('id="bxCons"', panel.dirOpts(['both', 'in', 'out', 'off']), company.contacts || 'both', 'Контакты')}</div></div>`;
-  }
-
-  // наша компания — реквизиты продавца в сделке Битрикса (MYCOMPANY_ID)
-  static _my(company) {
-    const panel = BitrixPanel;
-    const list = panel.state.myCompanies || [];
-    const prefer = list.find(row => /пневмотех/i.test(row.title));
-    const auto = prefer ? `Автоматически — ${prefer.title}` : 'Как в Битрикс24 (компания портала по умолчанию)';
-    const options = [['', auto], ...list.map(row => [row.id, row.title])];
-    const tip = UiKit.tip(
-      '<p>Чьи реквизиты стоят в сделке Битрикса («Реквизиты вашей компании»). Новая сделка из программы получает эту компанию; менеджер может выбрать другую в карточке сделки («Наша компания»).</p><p>Список — компании портала с отметкой «моя компания». Не видно нужной — «Обновить список».</p>',
-    );
-    return `<div class="bx-map"><label>Наша компания в сделке${tip}</label>${panel.sel('id="bxMy"', options, company.my || '', 'Наша компания')}</div>
-      <div class="row"><button class="btn ghost sm" type="button" id="bxMyLoad">Обновить список наших компаний</button>${list.length ? '' : '<span class="muted">список ещё не загружен — нажмите «Проверить связь» или эту кнопку</span>'}</div>`;
-  }
-
-  static _tasks(tasks) {
-    const panel = BitrixPanel;
-    const kinds = this.TASKS.map(
-      ([key, label]) =>
-        `<div class="bx-map"><label>${esc(label)} → в Битриксе</label>${panel.sel(`data-bxtask="${key}"`, Object.entries(panel.TASK_AS), (tasks.kinds || {})[key] || 'todo', label)}</div>`,
-    ).join('');
-    return `<div class="st-card"><p class="sub">Дела${UiKit.tip('<p>Каким делом Битрикса становится дело программы. «Дело (универсальное)» — новое дело Битрикса с крайним сроком; «звонок», «встреча» — дела этих видов (в старых версиях Битрикса); «не передавать» — дело остаётся только в программе.</p>')}</p>
-      ${kinds}
-      ${panel.chk('id="bxCancel"', tasks.cancel !== false, 'Передавать отмену дела («Отменено — …»)')}
-      ${panel.chk('id="bxOther"', tasks.other !== false, 'Загружать дела, заведённые в Битриксе вручную')}
-      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSend" data-autosave>Сохранить</button></div></div>`;
-  }
 
   /**
    * Вкладка.
@@ -283,55 +242,51 @@ export class BitrixSend {
    */
   static html() {
     const panel = BitrixPanel;
-    const rules = panel.rules();
-    const send = rules.send || {};
+    const send = panel.rules().send || {};
     const files = send.files || {};
+    const how = [
+      ['kp', 'позиции последнего КП (цены со скидкой, с НДС)'],
+      ['sum', 'одной строкой — итог КП'],
+    ];
     return `<div class="st-card"><p class="sub">Товары сделки</p>
-      ${panel.chk('id="bxRows"', send.rows !== false, 'Передавать товары')}
-      <div class="bx-map"><label>Как${UiKit.tip('<p>«Позиции последнего КП» — каждая позиция строкой с ценой со скидкой и НДС, как в документе КП.</p><p>«Одной строкой» — «КП № 2026-015» на итоговую сумму: удобно, если в Битриксе товары не ведут.</p>')}</label>${panel.sel(
-        'id="bxRowsHow"',
-        [
-          ['kp', 'позиции последнего КП (цены со скидкой, с НДС)'],
-          ['sum', 'одной строкой — итог КП'],
-        ],
-        send.rowsHow || 'kp',
-        'Товары',
-      )}</div></div>
+      ${panel.opt({
+        control: panel.toggle('id="bxRows"', send.rows !== false, 'Передавать товары'),
+        label: 'Передавать товары',
+        what: 'Вкладка «Товары» сделки Битрикс24 заполняется по последнему КП сделки и обновляется при каждом новом КП.',
+        off: 'товары сделки в Битрикс24 ведут вручную; сумма сделки по-прежнему передаётся (см. «Поля сделки»).',
+      })}
+      ${panel.opt({
+        control: panel.sel('id="bxRowsHow"', how, send.rowsHow || 'kp', 'Товары'),
+        label: 'Как',
+        what: '«Позиции последнего КП» — каждая позиция строкой с ценой со скидкой и НДС, как в документе КП. «Одной строкой» — «КП № 2026-015» на итоговую сумму.',
+        example:
+          'В Битрикс24 нет каталога товаров — «одной строкой»: в сделке одна понятная строка вместо десятка позиций.',
+      })}</div>
     <div class="st-card"><p class="sub">Файлы КП — в ленту сделки</p>
-      <div class="bx-chips">${this.FILES.map(([key, label]) => panel.chk(`data-bxfile="${key}"`, files[key] !== false, esc(label))).join('')}</div>
-      <div class="bx-map"><label>Файл больше, МБ, — не отправлять</label><input type="number" id="bxMB" min="1" max="100" inputmode="numeric" value="${send.fileMB || this.FILE_MB}"></div></div>
-    ${this._company(rules.company || {})}
-    ${this._tasks(rules.tasks || {})}`;
+      ${panel.opt({
+        control: `<div class="bx-chips">${this.FILES.map(([key, label]) => panel.chk(`data-bxfile="${key}"`, files[key] !== false, esc(label))).join('')}</div>`,
+        label: 'Какие файлы отправлять',
+        what: 'Сохранили КП — файлы появляются в ленте сделки Битрикс24 комментарием с суммой и экономикой КП. Каждый файл отправляется один раз; новое КП — новые файлы.',
+      })}
+      ${panel.opt({
+        control: `<input type="number" id="bxMB" min="1" max="100" inputmode="numeric" value="${send.fileMB || this.FILE_MB}" aria-label="Предел файла, МБ">`,
+        label: 'Файл больше, МБ, — не отправлять',
+        what: 'Защита от тяжёлых вложений: такой файл не уходит, а в журнале обмена появляется запись.',
+      })}
+      <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveSend" data-autosave>Сохранить</button></div></div>`;
   }
 
   /** События вкладки. */
   static bind() {
     const panel = BitrixPanel;
-    panel.one('#bxMyLoad').onclick = () =>
-      panel.run(
-        () => AdminApi.post('bitrix/my', {}),
-        reply => `Наших компаний на портале: ${(reply.myCompanies || []).length}`,
-      );
     panel.one('#bxSaveSend').onclick = () => {
       const one = selector => panel.one(selector);
       const files = {};
       panel.all('[data-bxfile]').forEach(box => {
         files[box.dataset.bxfile] = box.checked;
       });
-      const kinds = {};
-      panel.all('[data-bxtask]').forEach(select => {
-        kinds[select.dataset.bxtask] = select.value;
-      });
       panel.save({
         send: { rows: one('#bxRows').checked, rowsHow: one('#bxRowsHow').value, files, fileMB: one('#bxMB').value },
-        company: {
-          find: one('#bxFind').value,
-          create: one('#bxCreate').checked,
-          reqs: one('#bxReqs').checked,
-          contacts: one('#bxCons').value,
-          my: one('#bxMy').value,
-        },
-        tasks: { kinds, cancel: one('#bxCancel').checked, other: one('#bxOther').checked },
       });
     };
   }

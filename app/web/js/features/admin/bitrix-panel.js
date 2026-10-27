@@ -1,10 +1,13 @@
 import { AdminApi } from './admin-core.js';
+import { BitrixMenu } from './bitrix-menu.js';
 import { BitrixFields, BitrixLog, BitrixManagers, BitrixOld, BitrixStages } from './bitrix-tabs.js';
 import { BitrixFlow, BitrixLink, BitrixSchedule, BitrixSend } from './bitrix-link.js';
 import { BitrixRegs } from './bitrix-regs.js';
 import { BitrixEcon } from './bitrix-econ.js';
 import { StDirty } from './settings-tools.js';
 import { MirrorPanel } from '../crm/mirror-panel.js';
+import { BitrixCompanies, BitrixContacts, BitrixDeals, BitrixTasks } from './bitrix-objects.js';
+import { BitrixGuide } from './bitrix-guide.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 
@@ -26,22 +29,9 @@ export class BitrixPanel {
     ['log', 'Проверка без записи и включение'],
   ];
   static full = false; // «Все настройки» вместо мастера
-  // после подключения: первым — «Состояние обмена», остальное — «Тонкая настройка»
-  static MAIN = ['link', 'mirror'];
-  static TABS = [
-    ['link', 'Связь и включение'],
-    ['mirror', 'Кабинет как в Битрикс24'],
-    ['flow', 'Направление обмена'],
-    ['mgr', 'Менеджеры'],
-    ['cats', 'Воронки и этапы'],
-    ['fields', 'Поля сделки'],
-    ['regs', 'Регламент сделки'],
-    ['econ', 'Экономика сделки'],
-    ['send', 'Что передаётся'],
-    ['sched', 'Расписание'],
-    ['log', 'Журнал и проверка'],
-    ['old', 'Старые сделки'],
-  ];
+  static GROUPS = BitrixMenu.GROUPS;
+  static TABS = BitrixMenu.TABS;
+  static INTRO = BitrixMenu.INTRO;
   static DIR = {
     both: 'В обе стороны',
     in: 'Только из Битрикса в программу',
@@ -54,7 +44,7 @@ export class BitrixPanel {
   static FIND = { inn: 'только по ИНН', inn_name: 'по ИНН, затем по названию', name: 'только по названию' };
   static NEED_C = ['mgr', 'cats', 'fields']; // вкладкам нужны списки из Битрикса
   static STORE = 'kp.bxtab';
-  static NO_URL = 'Сначала задайте адрес вебхука в пункте «Связь и включение».';
+  static NO_URL = 'Сначала задайте адрес вебхука в пункте «Обмен → Подключение и состояние».';
 
   static _views() {
     return {
@@ -70,6 +60,11 @@ export class BitrixPanel {
       sched: BitrixSchedule,
       log: BitrixLog,
       old: BitrixOld,
+      deals: BitrixDeals,
+      company: BitrixCompanies,
+      contacts: BitrixContacts,
+      tasks: BitrixTasks,
+      guide: BitrixGuide,
     };
   }
 
@@ -168,6 +163,41 @@ export class BitrixPanel {
   }
 
   /**
+   * Настройка с описанием: слева — название, что делает, пример и «если выключить», справа — поле.
+   * @param {{control: string, label: string, what: string, example?: string, off?: string}} opt
+   * @returns {string}
+   */
+  static opt({ control, label, what, example = '', off = '' }) {
+    const sample = example ? `<p class="bx-ex"><b>Пример.</b> ${example}</p>` : '';
+    const offText = off ? `<p class="bx-ex"><b>Если выключить.</b> ${off}</p>` : '';
+    return `<div class="bx-opt"><div class="bx-opt-t"><b>${label}</b><p>${what}</p>${sample}${offText}</div><div class="bx-opt-c">${control}</div></div>`;
+  }
+
+  /**
+   * Переключатель «включено» для opt().
+   * @param {string} attrs
+   * @param {boolean} checked
+   * @param {string} label
+   * @returns {string}
+   */
+  static toggle(attrs, checked, label) {
+    return `<label class="sw"><input type="checkbox" ${attrs}${checked ? ' checked' : ''} aria-label="${esc(label)}"><span>${checked ? 'включено' : 'выключено'}</span></label>`;
+  }
+
+  /**
+   * Направления по видам данных с одним изменённым (сервер принимает весь набор).
+   * @param {string} kind
+   * @param {string} value
+   * @returns {object}
+   */
+  static flowWith(kind, value) {
+    const flow = { ...(this.rules().flow || {}) };
+    if (value) flow[kind] = value;
+    else delete flow[kind];
+    return Object.fromEntries(Object.entries(flow).filter(([, dir]) => dir));
+  }
+
+  /**
    * Варианты направления.
    * @param {string[]} list
    * @param {string} [first] подпись пустого варианта «как общее»
@@ -215,14 +245,14 @@ export class BitrixPanel {
     const tab = tabs.some(entry => entry[0] === this.tab) ? this.tab : tabs[0][0];
     const need = this.NEED_C.includes(tab) && !this.portal;
     StDirty.set(false); // вкладка нарисована заново из сохранённого — набранное прежде не ждёт сохранения
-    const bar = wizard ? this._steps(tab) : this._bar(tab);
     const view = this._views()[tab];
     const body = need
       ? `<div class="st-card"><p class="muted">${this.state.hasUrl ? 'Загружаю списки из Битрикс24 (воронки, стадии, пользователи, поля)…' : this.NO_URL}</p></div>`
       : view.html();
-    this.main.innerHTML = `${bar}
-      ${note ? `<p class="msg${note.err ? ' err' : ''}" style="text-align:left">${esc(note.t)}</p>` : ''}
-      ${body}${wizard ? this._next(tab) : ''}`;
+    const msg = note ? `<p class="msg${note.err ? ' err' : ''}" style="text-align:left">${esc(note.t)}</p>` : '';
+    this.main.innerHTML = wizard
+      ? `${this._steps(tab)}${msg}${body}${this._next(tab)}`
+      : `<div class="bx-lay">${this._nav(tab)}<div class="bx-body">${this._intro(tab)}${msg}${body}</div></div>`;
     this._bindBar();
     if (!need) view.bind();
   }
@@ -257,13 +287,24 @@ export class BitrixPanel {
     if (this.NEED_C.includes(this.tab)) this.loadPortal();
   }
 
-  // после подключения: «Состояние обмена» и «Кабинет как в Битрикс24», остальное — «Тонкая настройка»
-  static _bar(tab) {
+  // меню по предметам: группа — заголовок, пункты — кнопки
+  static _nav(tab) {
     const button = ([key, label]) =>
-      `<button type="button" role="tab" data-bxtab="${key}" class="${key === tab ? 'on' : ''}" aria-selected="${key === tab}">${esc(key === 'link' ? 'Состояние обмена' : label)}</button>`;
-    const main = this.TABS.filter(([key]) => this.MAIN.includes(key));
-    const fine = this.TABS.filter(([key]) => !this.MAIN.includes(key));
-    return `<div class="bx-tabs" role="tablist">${main.map(button).join('')}<span class="bx-fine-h">Тонкая настройка:</span>${fine.map(button).join('')}</div>`;
+      `<button type="button" role="tab" data-bxtab="${key}" class="${key === tab ? 'on' : ''}" aria-selected="${key === tab}">${esc(label)}</button>`;
+    const groups = this.GROUPS.map(
+      ([title, tabs]) => `<div class="bx-ng"><p class="bx-nt">${esc(title)}</p>${tabs.map(button).join('')}</div>`,
+    ).join('');
+    return `<nav class="bx-nav" role="tablist" aria-label="Битрикс24">${groups}</nav>`;
+  }
+
+  static _intro(tab) {
+    const label = (this.TABS.find(([key]) => key === tab) || [])[1] || '';
+    const group = (this.GROUPS.find(([, tabs]) => tabs.some(([key]) => key === tab)) || [])[0] || '';
+    const more =
+      tab === 'guide'
+        ? ''
+        : ` <button class="btn ghost sm" type="button" data-bxtab="guide">Как это работает →</button>`;
+    return `<div class="bx-intro"><p class="bx-crumb">Битрикс24 · ${esc(group)}</p><h3>${esc(label)}</h3><p class="muted">${esc(this.INTRO[tab] || '')}${more}</p></div>`;
   }
 
   static _steps(tab) {
