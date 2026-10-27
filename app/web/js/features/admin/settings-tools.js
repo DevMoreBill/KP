@@ -157,7 +157,7 @@ export class SettingsSearch {
         t: this.norm(`${entry.label} ${entry.text || ''} ${entry.where || ''}`),
       });
     for (const tab of AdminNav.tabs()) {
-      const group = AdminNav.GROUPS.find(row => row.tabs.includes(tab));
+      const group = AdminNav.groups().find(row => row.tabs.some(entry => entry.key === tab.key));
       add({
         label: tab.label,
         where: group ? group.title : '',
@@ -195,7 +195,18 @@ export class SettingsSearch {
     this._defaults(add);
     this._backup(add);
     this._more(add);
-    return out;
+    return this._allowed(out);
+  }
+
+  // только то, что видно вошедшему администратору (вкладки без доступа в меню не показываются)
+  static _allowed(entries) {
+    const open = new Set(
+      AdminNav.tabs().flatMap(tab => [tab.key, ...(tab.panels || []).map(panel => `${tab.key}:${panel.key}`)]),
+    );
+    return entries.filter(entry => {
+      const [root, part] = String(AdminNav.ALIAS[entry.tab] || entry.tab || '').split(':');
+      return open.has(root) && (!part || root !== 'catalog' || open.has(`${root}:${part}`));
+    });
   }
 
   static _defaults(add) {
@@ -691,7 +702,7 @@ export class StAutoSave {
   }
 
   static _changed(target) {
-    if (!target.closest || !target.closest('#stMain .st-body')) return;
+    if (!target.closest || !target.closest('#stMain .st-body') || target.closest('#stMain.st-ro')) return; // только просмотр — не сохранять
     if (!target.matches('input,select,textarea') || target.matches(StDirty.SKIP) || target.matches(this.OWN)) return;
     const button = this._button(target);
     if (!button) return;

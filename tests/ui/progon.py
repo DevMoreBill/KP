@@ -63,8 +63,10 @@ class Modes:
         p = os.environ.get('KP_CHROMIUM')
         if p and os.path.isfile(p):
             return p
-        found = sorted(glob.glob('/opt/pw-browsers/chromium-*/chrome-linux/chrome'))
-        return found[-1] if found else None
+        found = sorted(glob.glob('/opt/pw-browsers/chromium-*/chrome-linux*/chrome'))
+        if found:
+            return found[-1]
+        return '/opt/pw-browsers/chromium' if os.path.isfile('/opt/pw-browsers/chromium') else None
 
 
 class GlQueue:

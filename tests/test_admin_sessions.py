@@ -59,7 +59,7 @@ class AdminSessionsTest(unittest.TestCase):
         self.assertTrue(self.can_read(c1), 'после перезапуска сессия действует')
         self.assertTrue(self.can_change(c1, h1), 'и токен CSRF тоже')
         # вторая учётная запись: смена пароля закрывает её другие сессии, удаление — все
-        st, b, _ = self.stand.http.req('POST', '/api/admin/users', {'action': 'add', 'login': 'second', 'name': 'Второй', 'password': 'Second123'},
+        st, b, _ = self.stand.http.req('POST', '/api/admin/users', {'action': 'add', 'login': 'second', 'name': 'Второй', 'password': 'Second123', 'main': True},
                                        cookie=c1, headers=h1)
         self.assertEqual(st, 200, b)
         c2, h2 = self.login('second', 'Second123')

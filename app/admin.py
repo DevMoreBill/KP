@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any
 
 import auth_users
+from admin_rights import AdminRights
 from catalog_quality import CardRules, DupFinder
 from config import BadRequest
 from data_file import Load
@@ -117,7 +118,10 @@ def check_login(login) -> None:
 
 
 def public_account(u) -> dict:
-    return {k: u.get(k) for k in ('login', 'name', 'created', 'by', 'lastLogin')}
+    out = {k: u.get(k) for k in ('login', 'name', 'created', 'by', 'lastLogin')}
+    out['main'] = AdminRights.is_main(u)
+    out['rights'] = AdminRights.clean(u.get('rights'))
+    return out
 
 
 def check_new_password(password) -> None:
@@ -880,6 +884,26 @@ def _refuse(handler, store=None, action=None, etype=None, eid=None, text=DENIED)
     return True
 
 
+class RightsCheck:
+    """Права вошедшего в «Настройки» администратора (admin_rights): отказ — 403 с причиной, попытка изменения — в журнал."""
+
+    def __init__(self, handler, store) -> None:
+        self.handler, self.store = handler, store
+
+    def refused(self, method: str, path: str) -> bool:
+        sess = AdminSessions.of(self.handler)
+        if sess is None:
+            return False
+        body = _body_obj(self.handler) if AdminRights.needs_body(method, path) else None
+        why = AdminRights(accounts(self.store)).refuse(sess.get('login', ''), method, path, body)
+        if not why:
+            return False
+        if method not in AdminRights.READ:
+            log(self.handler, self.store, 'admin_denied', 'admin', path[:120], after={'reason': why}, result='failed')
+        self.handler.send(403, 'text/plain; charset=utf-8', why)
+        return True
+
+
 def guard(handler, store, method, path) -> Any:
     """Вызывается до обычного маршрута."""
     from settings_history import SettingsHistory
@@ -890,6 +914,8 @@ def guard(handler, store, method, path) -> Any:
         return True
     if path.startswith('/api/auth/'):
         auth_api(handler, store, method, path[len('/api/auth/') :])
+        return True
+    if RightsCheck(handler, store).refused(method, path):  # права администратора — по вкладкам и действиям
         return True
     # вход менеджеров по паролю: без входа — только экран входа; кто работает — по сессии
     handler._kp_login = auth_users.enabled(store)
@@ -1350,6 +1376,7 @@ class AdminApi:
                     'name': sess.get('name', '') if sess else '',
                     'canSetup': not users and handler.is_local(),
                     'idleMinutes': SrvVal.get(store, 'srv.adminIdleMin'),
+                    'rights': AdminRights(users).view(sess.get('login', '')) if sess else None,
                 }
             )
         if sub == 'setup' and method == 'POST':
@@ -1410,6 +1437,8 @@ class AdminApi:
             if method != 'GET':
                 log(handler, store, 'admin_request', 'admin', sub, result='failed', admin=False)
             return self.err(401, 'Войдите в «Настройки» — сессия закрыта или истекла')
+        if RightsCheck(handler, store).refused(method, '/api/admin/' + sub):
+            return None
         try:
             return self.route(method, sub, query)
         except ValueError as exc:
@@ -1799,7 +1828,9 @@ class AdminApi:
         if sub == 'users':
             if method == 'POST':
                 return self.ok(self.users(self.data(), actor_login))
-            return self.ok({'items': [public_account(u) for u in accounts(store)], 'me': actor_login})
+            return self.ok(
+                {'items': [public_account(u) for u in accounts(store)], 'me': actor_login, **AdminRights.schema()}
+            )
         if sub == 'stats':
             return self.ok(stats(store))
         if sub == 'audit':
@@ -2315,10 +2346,12 @@ class AdminApi:
                 'pw': hash_password(data['password']),
                 'created': _now(),
                 'by': actor_login,
+                'main': bool(data.get('main')),
+                'rights': AdminRights.clean(data.get('rights')),
             }
             users.append(u)
             save_accounts(store, users)
-            self.log('create_admin', 'admin', login, None, {'login': login, 'name': u['name']})
+            self.log('create_admin', 'admin', login, None, {'login': login, 'name': u['name'], 'main': u['main']})
             return {'ok': True}
         if not u:
             raise ValueError('Учётная запись не найдена')
@@ -2334,6 +2367,8 @@ class AdminApi:
             self.log('edit_admin', 'admin', u['login'], before, {'login': u['login'], 'name': u['name']})
             AdminSessions.rename(login, u['login'], u['name'])
             return {'ok': True}
+        if act == 'rights':
+            return self._rights(users, u, data)
         if act == 'password':
             check_new_password(data.get('password') or '')
             u['pw'] = hash_password(data['password'])
@@ -2346,6 +2381,8 @@ class AdminApi:
         if act == 'delete':
             if len(users) <= 1:
                 raise ValueError('Нельзя удалить единственного администратора')
+            if AdminRights.is_main(u) and self._mains(users) <= 1:
+                raise ValueError('Это единственный главный администратор — сначала назначьте главным другого')
             if u['login'].lower() == actor_login.lower():
                 raise ValueError('Нельзя удалить свою учётную запись — войдите под другим администратором')
             users.remove(u)
@@ -2354,6 +2391,21 @@ class AdminApi:
             self.log('delete_admin', 'admin', u['login'], {'login': u['login'], 'name': u.get('name', '')}, None)
             return {'ok': True}
         raise ValueError('Неизвестное действие')
+
+    @staticmethod
+    def _mains(users: list) -> int:
+        return sum(1 for acc in users if AdminRights.is_main(acc))
+
+    def _rights(self, users: list, u: dict, data: dict) -> dict:
+        """Главный или права по вкладкам и действиям; последнего главного разжаловать нельзя."""
+        before = {'main': AdminRights.is_main(u), 'rights': AdminRights.clean(u.get('rights'))}
+        main = bool(data.get('main'))
+        if before['main'] and not main and self._mains(users) <= 1:
+            raise ValueError('Это единственный главный администратор — сначала назначьте главным другого')
+        u['main'], u['rights'] = main, AdminRights.clean(data.get('rights'))
+        save_accounts(self.store, users)
+        self.log('edit_admin_rights', 'admin', u['login'], before, {'main': main, 'rights': u['rights']})
+        return {'ok': True}
 
     def listing(self, etype, query_text) -> dict:
         store, query_low = self.store, query_text.lower()

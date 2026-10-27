@@ -165,6 +165,8 @@ export class AuditLabels {
     create_admin: 'Новый администратор',
     edit_admin: 'Изменение администратора',
     delete_admin: 'Удаление администратора',
+    edit_admin_rights: 'Права администратора',
+    admin_denied: 'Отказ: нет прав администратора',
     logout: 'Выход из «Настроек»',
     set_password: 'Смена пароля',
     reset_password: 'Сброс пароля (временный)',

@@ -1,5 +1,6 @@
 import { S } from './core/state.js';
 import { MyDay } from './features/kp/my-day.js';
+import { SectionMemory } from './ui/section-memory.js';
 import { MigrationNotice } from './features/catalog/migration-notice.js';
 import { Reminders } from './features/kp/reminders.js';
 import { Drafts } from './features/kp/drafts.js';
@@ -115,9 +116,11 @@ export class App {
     Drafts.start();
     Reminders.load();
     Reminders.poll();
-    // кабинет — точка входа всегда (сообщение об обновлении базы — поверх него); без кабинета — каталог
+    // кабинет — точка входа (сообщение об обновлении базы — поверх него); обновили страницу — тот же раздел, что был
     const cabinet = MyDay.start();
-    if (MigrationNotice.show(Srv.info.migrations) || cabinet) return;
+    const back = SectionMemory.restore();
+    SectionMemory.listen();
+    if (MigrationNotice.show(Srv.info.migrations) || cabinet || back) return;
     if (!S.items.length && Catalog.cache.length) CatalogWindow.open({});
   }
 }

@@ -1,3 +1,4 @@
+import { AdminRightsEditor } from './admin-rights-editor.js';
 import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
 import { CopyText } from '../../core/files.js';
 import { Modal } from '../../core/modal.js';
@@ -41,7 +42,7 @@ export class SecurityTab {
 /** Администраторы: логин, имя, пароль. */
 export class AdminsTab {
   static PW_MIN = 8;
-  static ACTIONS = { delete: '_delete', edit: '_edit', password: '_password' };
+  static ACTIONS = { delete: '_delete', edit: '_edit', password: '_password', rights: '_rights' };
 
   /**
    * Вкладка.
@@ -55,9 +56,10 @@ export class AdminsTab {
       <div class="grid g3"><label class="f"><span>Логин</span><input type="text" id="uL" required placeholder="ivanov" autocomplete="off"></label>
       <label class="f"><span>Имя</span><input type="text" id="uN" placeholder="Иванов И. И."></label>
       <label class="f"><span>Пароль</span><input type="password" id="uP" required autocomplete="new-password" placeholder="не короче ${this._min()}, буквы и цифры"></label></div>
+      <label class="cab-ck"><input type="checkbox" id="uM"> Главный администратор (может всё). Без галочки — после «Добавить» откроются права: какие разделы и действия ему доступны</label>
       <p class="msg err" id="uE" style="text-align:left"></p><button class="btn primary" type="submit">Добавить</button></form>
-      <p class="muted">Каждый администратор входит под своим логином; в журнале действий видно, кто что изменил.</p></div>`;
-    $('#uAdd').onsubmit = event => this._add(main, event);
+      <p class="muted">Каждый администратор входит под своим логином; в журнале действий видно, кто что изменил. Права проверяет сервер: закрытого раздела нет в меню, а «только просмотр» не даёт ничего сохранить.</p></div>`;
+    $('#uAdd').onsubmit = event => this._add(main, event, reply);
     main.onclick = event => this._click(main, event, reply);
   }
 
@@ -71,20 +73,21 @@ export class AdminsTab {
       reply.items.length > 1 && user.login !== reply.me
         ? '<button class="btn danger" type="button" data-uact="delete">Удалить</button>'
         : '';
-    return `<div class="st-row" data-ulogin="${esc(user.login)}"><div><b>${esc(user.name || user.login)}</b><span class="muted">${info}</span></div>
-      <div class="acts"><button class="btn" type="button" data-uact="edit">Изменить</button><button class="btn" type="button" data-uact="password">Пароль</button>${remove}</div></div>`;
+    const rights = `<span class="${user.main ? 'ok-t' : 'muted'}">Права: ${esc(AdminRightsEditor.summary(user, reply))}</span>`;
+    return `<div class="st-row" data-ulogin="${esc(user.login)}"><div><b>${esc(user.name || user.login)}</b><span class="muted">${info}</span>${rights}</div>
+      <div class="acts"><button class="btn" type="button" data-uact="rights">Права</button><button class="btn" type="button" data-uact="edit">Изменить</button><button class="btn" type="button" data-uact="password">Пароль</button>${remove}</div></div>`;
   }
 
-  static async _add(main, event) {
+  static async _add(main, event, reply) {
     event.preventDefault();
+    const login = $('#uL').value.trim();
+    const name = $('#uN').value.trim();
+    const isMain = $('#uM').checked;
     try {
-      await AdminApi.post('users', {
-        action: 'add',
-        login: $('#uL').value.trim(),
-        name: $('#uN').value.trim(),
-        password: $('#uP').value,
-      });
+      await AdminApi.post('users', { action: 'add', login, name, password: $('#uP').value, main: isMain });
       Toast.show('Администратор добавлен');
+      if (!isMain)
+        await this._rights(login, { login, name, main: false, rights: { sections: {}, actions: [] } }, reply);
       this.render(main);
     } catch (error) {
       $('#uE').textContent = error.message;
@@ -128,6 +131,14 @@ export class AdminsTab {
     Toast.show('Сохранено');
     if (login === reply.me)
       AdminState.status = { ...AdminState.status, login: values.newLogin, name: values.name || values.newLogin };
+    return true;
+  }
+
+  static async _rights(login, user, reply) {
+    const chosen = await AdminRightsEditor.open(user, reply);
+    if (!chosen) return false;
+    await AdminApi.post('users', { action: 'rights', login, main: chosen.main, rights: chosen.rights });
+    Toast.show('Права сохранены');
     return true;
   }
 

@@ -1,5 +1,6 @@
 import { BitrixMenu } from './bitrix-menu.js';
 import { AdminSystem } from './admin-system.js';
+import { AdminRightsView } from './admin-rights.js';
 import { BitrixPanel } from './bitrix-panel.js';
 import { ChinaFreightTab } from './china-freight.js';
 import { DangerZone } from './danger-zone.js';
@@ -313,7 +314,15 @@ export class AdminNav {
    * @returns {object[]}
    */
   static tabs() {
-    return [this.HOME, ...this.GROUPS.flatMap(group => group.tabs)];
+    return [this.HOME, ...this.groups().flatMap(group => group.tabs)];
+  }
+
+  /**
+   * Разделы меню с вкладками, доступными вошедшему администратору.
+   * @returns {object[]}
+   */
+  static groups() {
+    return AdminRightsView.groups(this.GROUPS);
   }
 
   /**
@@ -348,7 +357,7 @@ export class AdminNav {
   }
 
   static _group(tab) {
-    return this.GROUPS.find(group => group.tabs.includes(tab));
+    return this.groups().find(group => group.tabs.some(row => row.key === tab.key));
   }
 
   /**
@@ -379,7 +388,9 @@ export class AdminNav {
    * @returns {string}
    */
   static html(current) {
-    const groups = this.GROUPS.map(group => this._groupHtml(group, current)).join('');
+    const groups = this.groups()
+      .map(group => this._groupHtml(group, current))
+      .join('');
     return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, current)}${groups}${this._rare(current)}</nav>`;
   }
 
@@ -396,7 +407,7 @@ export class AdminNav {
 
   // редкое (администраторы, тарифы, файл настроек, система, опасная зона) — под «Дополнительно», раскрыто, если открыто оттуда
   static _rare(current) {
-    const rare = this.GROUPS.flatMap(group =>
+    const rare = this.groups().flatMap(group =>
       group.tabs.filter(tab => tab.rare).map(tab => ({ ...tab, label: `${group.icon} ${tab.label}` })),
     );
     const buttons = rare.map(tab => this.btn(tab, current)).join('');
@@ -421,10 +432,12 @@ export class AdminNav {
   // на телефоне — разделы плитками под входящими (меню-полоса сверху там узкая)
   static _tiles() {
     if (!document.documentElement.classList.contains('mob')) return '';
-    const tiles = this.GROUPS.map(
-      group =>
-        `<button type="button" class="st-gt" data-sttab="${group.tabs[0].key}"><b>${esc(`${group.icon} ${group.title}`)}</b><span class="muted">${esc(group.desc)}</span></button>`,
-    ).join('');
+    const tiles = this.groups()
+      .map(
+        group =>
+          `<button type="button" class="st-gt" data-sttab="${group.tabs[0].key}"><b>${esc(`${group.icon} ${group.title}`)}</b><span class="muted">${esc(group.desc)}</span></button>`,
+      )
+      .join('');
     return `<p class="sub st-hm">Разделы</p><div class="st-gtiles">${tiles}</div>`;
   }
 
@@ -466,7 +479,8 @@ export class AdminNav {
     const bar = panel
       ? `<div class="bx-tabs st-ptabs" role="tablist">${tab.panels.map(row => `<button type="button" role="tab" data-stpanel="${row.key}" class="${row.key === panel.key ? 'on' : ''}" aria-selected="${row.key === panel.key}" title="${esc(row.hint)}">${esc(row.label)}</button>`).join('')}</div>`
       : '';
-    main.innerHTML = `<header class="st-th"><span class="muted" title="${esc((group && group.desc) || '')}">${esc(group ? group.title : 'Настройки')}</span><div class="st-th-r"><h4>${esc(tab.label)}</h4></div><p class="muted">${esc(shown.hint)}</p></header>${bar}<div class="st-body"><p class="empty">Загружаю…</p></div>`;
+    const note = this._readOnly(main, shown);
+    main.innerHTML = `<header class="st-th"><span class="muted" title="${esc((group && group.desc) || '')}">${esc(group ? group.title : 'Настройки')}</span><div class="st-th-r"><h4>${esc(tab.label)}</h4></div><p class="muted">${esc(shown.hint)}</p></header>${note}${bar}<div class="st-body"><p class="empty">Загружаю…</p></div>`;
     const body = main.querySelector('.st-body');
     main.querySelectorAll('[data-stpanel]').forEach(button => {
       button.onclick = async () => {
@@ -477,6 +491,15 @@ export class AdminNav {
     });
     await (shown.parts ? this.stack(body, shown.parts) : shown.open(body, panel ? pick : click));
     if (hist) this._history(main, shown.key);
+  }
+
+  // вкладка только для просмотра: пометка сверху, изменения не сохраняются сами (сервер всё равно откажет)
+  static _readOnly(main, shown) {
+    const readOnly = AdminRightsView.level(shown) === 'view';
+    main.classList.toggle('st-ro', readOnly);
+    return readOnly
+      ? '<p class="st-ronote">Только просмотр: изменения в этом разделе не сохраняются. Права выдаёт главный администратор.</p>'
+      : '';
   }
 
   // открытая панель вкладки с панелями (иначе null)
