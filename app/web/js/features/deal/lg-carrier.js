@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealTerms } from './deal-terms.js';
 import { InputNum } from './input-num.js';
@@ -106,7 +107,7 @@ export class LgCarrier {
       .map(error => {
         const link =
           error.url && !error.skip
-            ? ` <a href="${esc(error.url)}" target="_blank" rel="noopener">посчитать на сайте ↗</a>`
+            ? ` <a href="${SafeLink.href(error.url)}" target="_blank" rel="noopener">посчитать на сайте ↗</a>`
             : '';
         return `<li class="${error.skip ? 'muted' : ''}"><b>${esc(error.src)}:</b> ${esc(error.msg)}${link}</li>`;
       })

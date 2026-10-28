@@ -1,6 +1,7 @@
 // Показ денег (app/web/js/core/money.js, Money): одно место для всей программы — целые рубли, копейки, коротко «млн/тыс.»;
 // округление половины от нуля одинаково для прибыли и убытка, «−0» не бывает, минус «−», нет данных — прочерк; прежние
-// имена (Fmt.rub, CrmFmt, LgFmt.rub, DealFmt.rub, DealValues.rub) выводят то же, что Money.
+// имена (Fmt.rub, CrmFmt, LgFmt.rub, DealFmt.rub, DealValues.rub) выводят то же, что Money. Здесь же — мелкие проверки
+// безопасности общих помощников интерфейса (аудит 28.10: esc, SafeLink, предпросмотр Word, адрес портала в подсказках).
 // Запуск из корня репозитория: node tests/js/money.js — код выхода 0, если всё прошло (tests/test_deal_logistics.py).
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
@@ -42,6 +43,33 @@ check('рубли во всех разделах — через Money', ()=>{
   assert.ok(/static rub\(value\) \{\s*return Money\.int\(value\);/.test(dc), 'DealValues.rub');
   const own=[fmt, cab, lg, deal, dc].join('\n').match(/Math\.round\([^)]*\)\.toLocaleString\('ru-RU'\)\+' ?(₽|руб\.)'/g);
   assert.ok(!own, 'свой показ рублей мимо Money: '+own);
+});
+
+check('esc — экранирование для HTML (аудит FE-005: и одинарная кавычка)', ()=>{
+  const { esc }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'util.js'));
+  assert.strictEqual(esc(`a'b"<c>&`), 'a&#39;b&quot;&lt;c&gt;&amp;');
+  assert.strictEqual(esc(null), '');
+});
+
+check('SafeLink — внешние адреса в ссылках только http(s) (аудит FE-006)', ()=>{
+  const { SafeLink }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'safe-link.js'));
+  assert.strictEqual(SafeLink.href('https://bitrix24.example.ru/x?a=1&b=2'), 'https://bitrix24.example.ru/x?a=1&amp;b=2');
+  for (const bad of ['javascript:alert(1)', ' JavaScript:alert(1)', 'file:///c:/x', 'data:text/html,x', '', null]) assert.strictEqual(SafeLink.href(bad), '#', String(bad));
+  assert.strictEqual(SafeLink.file('/img/book/a.pdf'), '/img/book/a.pdf');
+  assert.strictEqual(SafeLink.file('data:application/pdf;base64,AA'), 'data:application/pdf;base64,AA');
+  for (const bad of ['//evil.example/x', 'javascript:x', 'data:text/html,<b>']) assert.strictEqual(SafeLink.file(bad), '#', bad);
+  assert.ok(!/href="\$\{esc\(\(check && check\.rusprofile\)/.test(JS('features/kp/party-check.js')), 'rusprofile — через SafeLink');
+  assert.ok(!/href="\$\{esc\(file\.src\)/.test(JS('features/kit/paint-view.js')), 'буклет — через SafeLink');
+  const files=['features/crm/deal-feed.js', 'features/crm/deal-parts.js', 'features/crm/cab-deals.js', 'features/kp/party-check.js', 'features/admin/feed-panel.js', 'features/admin/china-freight.js', 'features/admin/admin-system.js'];
+  for (const f of files) assert.ok(!/href="\$\{esc\((row\.record|link\.url|deal\.bxUrl|check\.\w*[uU]rl|feed\.url|rate\.src|offer\.srcUrl|last\.url)/.test(JS(f)), f+': внешний адрес в href мимо SafeLink');
+});
+
+check('предпросмотр Word — без вложенного HTML (аудит FE-011)', ()=>{
+  assert.ok(/renderAltChunks:\s*false/.test(JS('features/doc/preview-docx.js')));
+});
+
+check('в подсказках — пример адреса Битрикс24, не портал компании (аудит FE-012)', ()=>{
+  assert.ok(!/bitrix24\.kompr\.ru/.test(JS('features/admin/bitrix-link.js')));
 });
 
 if (!process.exitCode) console.log('Money: проверок пройдено — '+n);

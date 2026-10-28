@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
@@ -160,7 +161,7 @@ export class DealFeed {
       .join(' · ');
     const note = row.note ? `<span class="fd-text">${esc(row.note)}</span>` : '';
     const record = row.record
-      ? ` <a class="fd-rec" href="${esc(row.record)}" target="_blank" rel="noopener noreferrer">▶ Запись разговора</a>`
+      ? ` <a class="fd-rec" href="${SafeLink.href(row.record)}" target="_blank" rel="noopener noreferrer">▶ Запись разговора</a>`
       : '';
     return `<span class="fd-bh">${head}${record}</span>${note}`;
   }

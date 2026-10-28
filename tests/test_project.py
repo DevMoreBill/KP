@@ -85,6 +85,14 @@ class ProjectRules(unittest.TestCase):
         finally:
             sys.path.pop(0)
         self.assertEqual(RepoGuard(REPO).run(), [])
+        # INF-022: вебхук Битрикс24 и закрытый ключ в файле — находятся
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        with open(os.path.join(folder, 'notes.txt'), 'w', encoding='utf-8') as file:
+            file.write('url = https://bitrix24.company.ru/rest/12/' + 'a1b2c3d4e5f6g7h8/\n-----BEGIN OPENSSH ' + 'PRIVATE KEY-----\n'
+                       'пример: https://bitrix24.example.ru/rest/1/q8w7e6r5t4y3/\n')
+        found = [why for _path, why in RepoGuard(folder).run()]
+        self.assertEqual(len(found), 2, found)
 
 
 if __name__ == '__main__':

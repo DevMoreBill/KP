@@ -50,7 +50,10 @@ export class MigrationNotice {
   static _html(done) {
     const catalog = this._report(done, this.CATALOG);
     const images = this._report(done, this.IMAGES);
-    const backup = done.map(row => row.backup).filter(Boolean)[0];
+    // только имя архива: путь к папкам сервера менеджеру не нужен
+    const backup = String(done.map(row => row.backup).filter(Boolean)[0] || '')
+      .split(/[\\/]/)
+      .pop();
     return `<div class="dlg-h"><h3>Каталог обновлён</h3><button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
    <div class="dlg-b">${catalog ? this._catalog(catalog) : ''}
    ${images ? this._images(images) : ''}

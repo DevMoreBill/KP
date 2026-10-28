@@ -144,6 +144,8 @@ def rows_of(doc: dict) -> Iterator[tuple[str, str]]:
 class CatDetect:
     """Категория по названию — как в программе (core/types.js detectCat): по порядку типов, ДГУ — последней."""
 
+    TEXT_MAX = 200  # шаблоны администратора — по началу текста, как в браузере (SpecValues.PATTERN_TEXT)
+
     @classmethod
     def of(cls, doc, types) -> str:
         """Без ДГУ: «генератор» в названии запчасти или опции не делает позицию установкой."""
@@ -153,12 +155,13 @@ class CatDetect:
     def with_dgu(cls, doc, types) -> str:
         return cls._detect(doc, types, next((tdef for tdef in types if tdef.get('id') == 'dgu'), None))
 
-    @staticmethod
-    def _detect(doc, types, dgu) -> str:
-        for text in (
+    @classmethod
+    def _detect(cls, doc, types, dgu) -> str:
+        for full in (
             ' '.join(str(x or '') for x in (doc.get('name'), doc.get('pageTitle'))),
             str((doc.get('hint') or {}).get('title') or ''),
         ):
+            text = full[: cls.TEXT_MAX]
             for tdef in types:
                 if tdef.get('id') == 'dgu' or not tdef.get('match'):
                     continue

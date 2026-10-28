@@ -100,6 +100,9 @@ class SecurityTest(unittest.TestCase):
         st, b, _ = self.req('GET', '/api/kp/%s/state' % self.K2[0], cookie=self.U2)
         self.assertEqual(st, 200)
         self.assertNotIn('deal', json.loads(b), 'без права «экономика сделки» расчёт не отдаётся')
+        audit = json.loads(self.admin_req('GET', '/api/admin/audit?limit=500')[1])['items']
+        denied = [row for row in audit if row.get('action') == 'access_denied' and row.get('entityId') == k2]
+        self.assertEqual(len(denied), 1, 'BE-011: попытка открыть чужое КП — в журнале, повторы за 10 минут — одной записью')
 
     def test_03_manager_is_not_admin(self):
         for method, p, body in [('GET', '/api/integrations/export', None), ('PUT', '/api/integrations', {'dadataKey': 'x'}), ('PUT', '/api/uitexts', {'a': 'b'}),
@@ -254,6 +257,17 @@ class SecurityTest(unittest.TestCase):
         self.assertTrue(f1['clientCard'] and not f2['clientCard'] and not f1['drafts'] and not f2['drafts'], (f1, f2))
         self.admin_req('POST', '/api/admin/features', {'values': {'clientCard': None, 'drafts': None}})
         self.req('POST', '/api/drafts/dsec1/delete', {}, cookie=self.U1)
+
+    def test_09b_ping_without_server_paths(self):
+        """FE-010 (по ревью): по сети в /api/ping — имя архива копии без папок сервера."""
+        import sqlite3
+        conn = sqlite3.connect(self.stand.db)
+        conn.execute('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)',
+                     ('migrations', json.dumps([{'id': 'x', 'backup': 'C:\\KP\\data\\backup\\kp-before-migration.zip'}])))
+        conn.commit()
+        conn.close()
+        body = json.loads(self.req('GET', '/api/ping', cookie=self.U1)[1])
+        self.assertEqual(body['migrations'][0]['backup'], 'kp-before-migration.zip')
 
     def test_10_prefs_are_personal(self):
         st, b, _ = self.req('PUT', '/api/me/prefs', {'theme': 'dark', 'mailSign': 'подпись m1'}, cookie=self.U1, headers={'X-KP-User-Id': self.M2[0]})

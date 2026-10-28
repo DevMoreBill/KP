@@ -67,8 +67,9 @@ class KpTransfer:
             raise ValueError('КП уже закреплено за этим менеджером')
         card = self._manager(mid)
         name = str(card.get('name') or '')
-        self._put_state(kid, mid, card, author)
-        self._put_meta(kid, mid, card, author)
+        with self.store.lock:  # чтение и запись КП одним шагом: сохранение КП между ними не теряется
+            self._put_state(kid, mid, card, author)
+            self._put_meta(kid, mid, card, author)
         moved = None
         if plan['deal'] and deal is DealMove.WITH:
             did = plan['deal']['id']

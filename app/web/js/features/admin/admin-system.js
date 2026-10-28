@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { AdminApi, AdminDialog } from './admin-core.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
@@ -155,7 +156,7 @@ export class AdminSystem {
     const asset = last.asset
       ? `<button class="btn${again ? '' : ' primary'}" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(last.asset.name)}${last.asset.size ? ` · ${Fmt.size(last.asset.size)}` : ''} · перед установкой — копия базы, после — перезапуск</span>`
       : '<p class="muted">В выпуске нет архива обновления — скачайте полный комплект с GitHub.</p>';
-    return `<div class="up-new"><p>Доступна версия ${this._ver(last.version)}${last.published ? ` от ${esc(KPGen.ruDate(last.published.slice(0, this.DATE)))}` : ''}.${last.url ? ` <a href="${esc(last.url)}" target="_blank" rel="noopener noreferrer">Выпуск на GitHub ↗</a>` : ''}</p>
+    return `<div class="up-new"><p>Доступна версия ${this._ver(last.version)}${last.published ? ` от ${esc(KPGen.ruDate(last.published.slice(0, this.DATE)))}` : ''}.${last.url ? ` <a href="${SafeLink.href(last.url)}" target="_blank" rel="noopener noreferrer">Выпуск на GitHub ↗</a>` : ''}</p>
           ${last.notes ? `<details class="up-notes" open><summary>Что нового</summary><pre>${esc(last.notes)}</pre></details>` : ''}
           ${again ? '<p class="bad-t">Эта версия уже не запустилась на этом компьютере — подробности выше.</p>' : ''}
           ${asset}</div>`;

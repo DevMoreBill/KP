@@ -7,6 +7,7 @@ import re
 import zipfile
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from images import EXTS, ImageStore
 
@@ -134,6 +135,39 @@ class DataBundle:
         return count
 
 
+class SecretFields:
+    """Ключи, пароли и адреса, куда они уходят (вебхук, SMTP, API нейросети, Яндекс Диск), — в файле настроек."""
+
+    WHOLE = ('integrations', 'carrierApi')
+    FIELDS = {
+        'bitrix': ('url',),
+        'mail': ('host', 'port', 'security', 'login', 'password'),
+    }
+    NESTED = {'settings': (('ai', ('key', 'base')), ('backup2', ('dav', 'kind', 'path')))}
+
+    @classmethod
+    def keep(cls, key: str, value: Any, cur: Any) -> Any:
+        """Значение раздела из файла, где эти поля — как в текущей базе."""
+        if not isinstance(value, dict):
+            return value
+        cur = cur if isinstance(cur, dict) else {}
+        out = cls._same(value, cur, cls.FIELDS.get(key, ()))
+        for part, fields in cls.NESTED.get(key, ()):
+            if isinstance(out.get(part), dict):
+                out[part] = cls._same(out[part], cur.get(part) if isinstance(cur.get(part), dict) else {}, fields)
+        return out
+
+    @staticmethod
+    def _same(value: dict, cur: dict, fields: tuple) -> dict:
+        out = dict(value)
+        for field in fields:
+            if field in cur:
+                out[field] = cur[field]
+            else:
+                out.pop(field, None)
+        return out
+
+
 class SettingsSecrets:
     """Секреты внутри настройки «settings»: пароль Яндекс Диска второй папки — никогда в файл, ключ нейросети — только «с ключами»."""
 
@@ -192,13 +226,17 @@ class ProgramSettings:
     def count(self, data: dict) -> int:
         return sum(1 for k in self.KEYS if isinstance(data, dict) and data.get(k) is not None)
 
-    def apply(self, data):
-        """Записать настройки из копии; секреты текущей базы сохраняются. → сколько разделов настроек записано."""
+    def apply(self, data, keys: 'Keys | None' = None) -> int:
+        """Записать настройки из копии; секреты текущей базы сохраняются. → сколько разделов настроек записано.
+
+        keys=WITHOUT (нет права «Ключи и пароли») — и адреса, куда уходят пароль и ключ (сервер почты, API нейросети), текущие."""
         count = 0
         for k in self.KEYS:
             v = data.get(k) if isinstance(data, dict) else None
             if v is None:
                 continue
+            if keys is Keys.WITHOUT:
+                v = SecretFields.keep(k, v, self.store.kv_get(k))
             if isinstance(v, dict) and k in self.SECRET:
                 cur = self.store.kv_get(k) or {}
                 v = dict(
@@ -357,14 +395,21 @@ class SettingsFile:
             'sections': out,
         }
 
-    def apply(self, data: bytes, picked=None) -> dict:
-        """Записать выбранные разделы (picked — список ключей; None — все). → {applied: [...], errors: [...]}"""
+    def apply(self, data: bytes, picked=None, keys: Keys = Keys.WITH) -> dict:
+        """Записать выбранные разделы (picked — список ключей; None — все). → {applied: [...], errors: [...]}
+
+        keys=WITHOUT (у администратора нет права «Ключи и пароли») — ключи, пароли и адреса, куда они уходят, остаются текущими."""
         parsed = self.read(data)
         store, applied, errors = self.store, [], []
         for k, label in self.PARTS:
             v = parsed['sections'].get(k)
             if v is None or (picked is not None and k not in picked):
                 continue
+            if keys is not Keys.WITH:
+                if k in SecretFields.WHOLE:
+                    errors.append(f'{label}: не загружено — нужно право «Ключи и пароли»')
+                    continue
+                v = SecretFields.keep(k, v, store.kv_get(k))
             try:
                 self._put(k, v)
                 applied.append(label)

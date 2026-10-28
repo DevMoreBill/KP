@@ -105,6 +105,7 @@ class SrvVal:
         'srv.vacuumDays': (30, 7, 365),
         # вход и сессии (защита — только в безопасных пределах)
         'srv.adminIdleMin': (15, 5, 240),
+        'srv.adminMaxHours': (12, 1, 72),
         'srv.userSessionDays': (30, 1, 365),
         'srv.userShortHours': (12, 1, 72),
         'srv.loginFails': (5, 3, 20),

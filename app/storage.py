@@ -474,6 +474,8 @@ class DbZip:
     MEMBER = 'kp.sqlite3'
     LEVEL = 6
     CHUNK = 1 << 20
+    RESERVE = 1 << 30  # распаковка оставляет на диске свободным 1 ГБ (архив-«бомба» не заполнит диск) …
+    RESERVE_SHARE = 10  # … или десятую часть свободного, если места мало
 
     @staticmethod
     def is_zip(path) -> bool:
@@ -519,11 +521,14 @@ class DbZip:
             name = cls.member(z)
             if not name:
                 raise ValueError('В архиве нет файла базы (.sqlite3)')
+            free = shutil.disk_usage(os.path.dirname(os.path.abspath(dst))).free
+            budget = free - min(cls.RESERVE, free // cls.RESERVE_SHARE)
+            written = 0
             with z.open(name) as src_file, open(dst, 'wb') as dst_file:
-                while True:
-                    chunk = src_file.read(cls.CHUNK)
-                    if not chunk:
-                        break
+                while chunk := src_file.read(cls.CHUNK):
+                    written += len(chunk)
+                    if written > budget:
+                        raise ValueError('Файл базы в архиве не помещается на диск — освободите место и повторите')
                     dst_file.write(chunk)
         return dst
 
@@ -936,6 +941,11 @@ class Store:
 
     def one(self, sql, args=()) -> tuple | None:
         return self.conn().execute(sql, args).fetchone()
+
+    @staticmethod
+    def ident(name: str) -> str:
+        """Имя таблицы или столбца из sqlite_master в SQL — в кавычках, кавычка внутри удвоена (имена из загруженной базы)."""
+        return '"' + str(name).replace('"', '""') + '"'
 
     def scalar(self, sql, args=()) -> Any:
         """Первое значение первой строки (COUNT, MAX…); строки нет — None."""
@@ -1443,7 +1453,7 @@ class Store:
         for (table,) in self.all(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         ):
-            out[table] = self.scalar(f'SELECT COUNT(*) FROM "{table}"')
+            out[table] = self.scalar(f'SELECT COUNT(*) FROM {self.ident(table)}')
         return out
 
     def kp_all_meta(self) -> list:
@@ -2098,8 +2108,10 @@ class Store:
             src.close()
         return dst
 
-    def restore_sqlite(self, src, log=lambda text: None) -> str:
-        """Заменить содержимое базы файлом SQLite «на ходу» встроенным backup (файл и WAL руками не подменяются)."""
+    def restore_sqlite(self, src, log=lambda text: None, keep_kv: tuple = ()) -> str:
+        """Заменить содержимое базы файлом SQLite «на ходу» встроенным backup (файл и WAL руками не подменяются).
+
+        keep_kv — ключи kv, которые остаются как в текущей базе (учётные записи администраторов при загрузке не главным)."""
         chk = sqlite3.connect(src, timeout=30)
         try:
             res = [row[0] for row in chk.execute('PRAGMA integrity_check').fetchall()]
@@ -2115,6 +2127,9 @@ class Store:
             tmp = os.path.join(tmpdir, 'restore.sqlite3')
             tmp_conn = sqlite3.connect(tmp)
             chk.backup(tmp_conn)
+            self._drop_foreign_code(tmp_conn)
+            self._keep_kv(tmp_conn, keep_kv)
+            tmp_conn.commit()
             tmp_conn.close()
         finally:
             chk.close()
@@ -2158,6 +2173,21 @@ class Store:
             conn.commit()
         log(f'База заменена из файла {src}, прежняя сохранена: {bak}')
         return bak
+
+    def _drop_foreign_code(self, conn: sqlite3.Connection) -> None:
+        """Триггеры и представления загружаемой базы, которых нет у программы, — удалить (свои вернут схема и миграции)."""
+        own = set(self.conn().execute("SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','view')"))
+        rows = conn.execute("SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','view')").fetchall()
+        for kind, name, sql in rows:
+            if (kind, name, sql) not in own:
+                conn.execute('DROP {} IF EXISTS "{}"'.format(kind.upper(), name.replace('"', '""')))
+
+    def _keep_kv(self, conn: sqlite3.Connection, keys: tuple) -> None:
+        for key in keys:
+            row = self.conn().execute('SELECT value FROM kv WHERE key = ?', (key,)).fetchone()
+            conn.execute('DELETE FROM kv WHERE key = ?', (key,))
+            if row is not None:
+                conn.execute('INSERT INTO kv (key, value) VALUES (?, ?)', (key, row[0]))
 
     def migrate_json(self, data_dir: str, log=lambda text: None) -> int:
         """Однократно переносит каталог, журнал, контрагентов, проверки, ключи и типы из файлов в базу."""

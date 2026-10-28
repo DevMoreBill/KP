@@ -140,7 +140,8 @@ class AdminSessions:
 
     KV_KEY = 'adminSessions'
     SAVE_EVERY = 60
-    FIELDS = ('csrf', 'last', 'ip', 'login', 'name')
+    FIELDS = ('csrf', 'last', 'ip', 'login', 'name', 'start')
+    HOUR = 3600
     items = None  # {хеш токена: {csrf, last, ip, login, name, saved}}
 
     @staticmethod
@@ -161,7 +162,7 @@ class AdminSessions:
             logins = {u['login'].lower() for u in accounts(store)}
             raw = store.kv_get(cls.KV_KEY) or {}
             cls.items = {
-                k: dict(v, saved=v.get('last', 0))
+                k: dict(v, saved=v.get('last', 0), start=v.get('start') or v.get('last', 0))
                 for k, v in (raw.items() if isinstance(raw, dict) else [])
                 if isinstance(v, dict)
                 and now - float(v.get('last') or 0) <= idle
@@ -198,11 +199,20 @@ class AdminSessions:
             sess = cls._all().get(k)
             if not sess:
                 return None
-            if time.time() - sess['last'] > SrvVal.get(cls._store(), 'srv.adminIdleMin') * 60:
+            if cls._expired(sess):
                 cls._all().pop(k, None)
                 cls._save()
                 return None
             return sess
+
+    @classmethod
+    def _expired(cls, sess: dict) -> bool:
+        """Бездействие дольше srv.adminIdleMin или вход старше srv.adminMaxHours (даже при работе)."""
+        store, now = cls._store(), time.time()
+        idle = now - sess['last'] > SrvVal.get(store, 'srv.adminIdleMin') * 60
+        return (
+            idle or now - float(sess.get('start') or sess['last']) > SrvVal.get(store, 'srv.adminMaxHours') * cls.HOUR
+        )
 
     @classmethod
     def of(cls, handler) -> dict | None:
@@ -221,6 +231,7 @@ class AdminSessions:
             cls._all()[cls.key(tok)] = {
                 'csrf': csrf,
                 'last': time.time(),
+                'start': time.time(),
                 'ip': _client_ip(handler),
                 'login': (user or {}).get('login', ''),
                 'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор',
@@ -884,18 +895,84 @@ def _refuse(handler, store=None, action=None, etype=None, eid=None, text=DENIED)
     return True
 
 
+class DeniedLog:
+    """Отказ в доступе к чужому КП или сделке — в журнал действий, одна запись на человека и запись за 10 минут
+    (перебор адресов не раздувает журнал)."""
+
+    PAUSE = 600
+    LIMIT = 5000
+    seen: dict = {}
+
+    @classmethod
+    def note(cls, handler, store, etype: str, eid: str) -> None:
+        who = actor(handler, False)[0] or _client_ip(handler)
+        key, now = (who, etype, eid), time.time()
+        with LOCK:
+            if now - cls.seen.get(key, 0) < cls.PAUSE:
+                return
+            if len(cls.seen) > cls.LIMIT:
+                cls.seen.clear()
+            cls.seen[key] = now
+        log(handler, store, 'access_denied', etype, eid, result='failed')
+
+
 class RightsCheck:
     """Права вошедшего в «Настройки» администратора (admin_rights): отказ — 403 с причиной, попытка изменения — в журнал."""
 
     def __init__(self, handler, store) -> None:
         self.handler, self.store = handler, store
 
+    def _moved(self, path: str, body: dict) -> dict:
+        """«moved» — адрес, куда уйдёт сохранённый пароль или ключ, меняется (сервер почты, логин, адреса перевозчиков)."""
+        if path == '/api/logistics/carriers':
+            from logistics_api import CarrierApi
+
+            return dict(body, moved=CarrierApi.moved(self.store, body))
+        if path == '/api/admin/ai':
+            from ai_llm import DEFAULT_BASE
+
+            cur = ((self.store.kv_get('settings') or {}).get('ai') or {}).get('base') or DEFAULT_BASE
+            new = body.get('base') or DEFAULT_BASE
+            return (
+                body
+                if not AdminRights.same_value(new, cur)
+                else {key: val for key, val in body.items() if key != 'base'}
+            )
+        if path in ('/api/admin/maint/mirror', '/api/admin/maint/mirror/check'):
+            return dict(body, moved='1' if self._mirror_moved(body) else '')
+        if path == '/api/admin/mail':
+            cur = self.store.kv_get('mail') or {}
+            moved = [
+                key for key in ('host', 'login') if key in body and not AdminRights.same_value(body[key], cur.get(key))
+            ]
+            return dict(body, moved='1' if moved and cur.get('password') else '')
+        return body
+
+    def _mirror_moved(self, body: dict) -> bool:
+        """Вторая папка копий — в другое место: копия базы со всеми ключами уходит туда (как выгрузка базы целиком)."""
+        cur = (self.store.kv_get('settings') or {}).get('backup2') or {}
+        kind = 'dav' if body.get('kind') == 'dav' else 'folder'
+        if kind != ('dav' if cur.get('kind') == 'dav' else 'folder'):
+            return True
+        if kind == 'folder':
+            return not AdminRights.same_value(body.get('path'), cur.get('path'))
+        new, old = body.get('dav') or {}, cur.get('dav') or {}
+        if AdminRights.given(new.get('password')):
+            return True  # новый пароль Яндекс Диска — тоже «Ключи и пароли»
+        return any(not AdminRights.same_value(new.get(key), old.get(key)) for key in ('url', 'login', 'folder'))
+
     def refused(self, method: str, path: str) -> bool:
         sess = AdminSessions.of(self.handler)
         if sess is None:
             return False
-        body = _body_obj(self.handler) if AdminRights.needs_body(method, path) else None
-        why = AdminRights(accounts(self.store)).refuse(sess.get('login', ''), method, path, body)
+        body = self._moved(path, _body_obj(self.handler)) if AdminRights.needs_body(method, path) else None
+        # разбор — как у маршрутов (web_api.dispatch, AdminApi): повторённый параметр — последнее значение и тут
+        query = dict(
+            urllib.parse.parse_qsl(
+                urllib.parse.urlsplit(self.handler.path).query, keep_blank_values=True, encoding='utf-8'
+            )
+        )
+        why = AdminRights(accounts(self.store)).refuse(sess.get('login', ''), method, path, body, query)
         if not why:
             return False
         if method not in AdminRights.READ:
@@ -952,6 +1029,7 @@ def guard(handler, store, method, path) -> Any:
         return _refuse(handler, text=f'Функция «{off}» выключена администратором')
     match = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/', path)
     if match and not kp_access(handler, store, match.group(1)):
+        DeniedLog.note(handler, store, 'kp', match.group(1))
         return _refuse(handler, text='Это КП другого менеджера — нет доступа. Права выдаёт администратор')
     if path == '/api/types' and method == 'PUT' and not perm(handler, 'catEdit'):
         return _refuse(handler, text='Нет права менять категории оборудования — обратитесь к администратору')
@@ -2014,7 +2092,7 @@ class AdminApi:
             if sub == 'settings-file' and method == 'POST':
                 picked = [x for x in (query.get('sections') or '').split(',') if x] if 'sections' in query else None
                 body = self.handler.body()
-                res = settings_file.apply(self.settings_doc(data_file, body), picked)
+                res = settings_file.apply(self.settings_doc(data_file, body), picked, self._keys_right())
                 res['images'] = self.settings_images(data_file, body)
                 self.log('import_settings', 'settings', 'file', None, res)
                 return self.ok(res)
@@ -2823,6 +2901,21 @@ class AdminApi:
             self.handler.attachment('kp_{}.zip'.format(datetime.now().strftime('%Y-%m-%d_%H%M'))),
         )
 
+    def _keys_right(self) -> Any:
+        """Файл настроек загружает администратор с правом «Ключи и пароли» — ключи и адреса из файла, иначе — текущие."""
+        from data_bundle import Keys
+
+        login = (AdminSessions.of(self.handler) or {}).get('login', '')
+        return Keys.WITH if AdminRights(accounts(self.store)).has_action(login, 'secrets') else Keys.WITHOUT
+
+    ADMIN_KEYS = ('admins', 'admin', AdminSessions.KV_KEY)
+
+    def _kept_on_import(self) -> tuple:
+        """Не главный администратор загружает базу — учётные записи администраторов и их сессии остаются текущими."""
+        login = (AdminSessions.of(self.handler) or {}).get('login', '')
+        acc = AdminRights(accounts(self.store)).account(login)
+        return () if acc is not None and AdminRights.is_main(acc) else self.ADMIN_KEYS
+
     def import_sqlite(self, data, name='') -> dict:
         """Файл базы целиком (.sqlite3 или .zip с ним): проверка, копия текущей базы, замена содержимого «на ходу»."""
         import io
@@ -2852,7 +2945,7 @@ class AdminApi:
                 feeds.busy(fid) for fid in list(feeds.JOBS)
             ):  # фоновая загрузка писала бы старые карточки в новую базу
                 raise ValueError('Идёт загрузка или проверка фида — дождитесь её окончания и загрузите файл базы снова')
-            bak = self.store.restore_sqlite(tmp)
+            bak = self.store.restore_sqlite(tmp, keep_kv=self._kept_on_import())
         finally:
             for ext in ('', '-wal', '-shm', '-journal'):
                 try:
@@ -3127,7 +3220,7 @@ class AdminApi:
                     for x in ok:
                         put(lambda x: store.client_put(x['id'], x), x)
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
-            ProgramSettings(store).apply(sec['settings'])
+            ProgramSettings(store).apply(sec['settings'], self._keys_right())
         if apply:
             self.log(
                 'import_db',

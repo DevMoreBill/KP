@@ -21,6 +21,9 @@ class RepoGuard:
     # «"checkoKey": "значение"» / checkoKey='значение' — ключ, записанный в файл (пустые и подстановки ${…} не считаются)
     KEY_VALUE = re.compile(r'''["']?(%s)["']?\s*[:=]\s*["']([^"'\s${}]{8,})["']''' % '|'.join(KEY_NAMES))
     TOKENS = re.compile(r'\b(ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9]{32,})\b')
+    # вебхук Битрикс24 с ключом (кроме примеров на example-адресах) и закрытые ключи
+    WEBHOOK = re.compile(r'https?://(?![^/\s"\']*example)[^/\s"\']+/rest/\d+/[A-Za-z0-9]{10,}/')
+    PRIVATE = re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----')
     TEXT_MAX = 5 * 1024 * 1024
 
     def __init__(self, root):
@@ -68,6 +71,9 @@ class RepoGuard:
         for m in self.TOKENS.finditer(text):
             line = text.count('\n', 0, m.start()) + 1
             self.add(rel, 'строка %d: похоже на токен доступа (%s…)' % (line, m.group(1)[:6]))
+        for pattern, why in ((self.WEBHOOK, 'адрес вебхука Битрикс24 с ключом'), (self.PRIVATE, 'закрытый ключ')):
+            for m in pattern.finditer(text):
+                self.add(rel, 'строка %d: %s' % (text.count('\n', 0, m.start()) + 1, why))
 
     def run(self):
         for rel in self.files():

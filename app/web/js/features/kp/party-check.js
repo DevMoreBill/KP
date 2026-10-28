@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { ClientStore, Inn } from './client-store.js';
 import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
@@ -99,7 +100,7 @@ export class PartyCheck {
     const check = S.check;
     const inn = Inn.digits(S.clientInn);
     if (!Inn.valid(inn)) return '';
-    const rusprofile = `<a class="btn ghost" href="${esc((check && check.rusprofile) || this.rusprofile(inn))}" target="_blank" rel="noopener" title="Открыть карточку организации в Rusprofile (в браузере)">Rusprofile</a>`;
+    const rusprofile = `<a class="btn ghost" href="${SafeLink.href((check && check.rusprofile) || this.rusprofile(inn))}" target="_blank" rel="noopener" title="Открыть карточку организации в Rusprofile (в браузере)">Rusprofile</a>`;
     if (!check) return this._ask();
     if (check.error) return this._error(check, rusprofile);
     this._autoQueued(check, inn);
@@ -171,7 +172,7 @@ export class PartyCheck {
       )
       .join('');
     const source = check.finSource
-      ? `<p class="muted chk-fin">Бухотчётность: ${check.finUrl ? `<a href="${esc(check.finUrl)}" target="_blank" rel="noopener">${esc(check.finSource)}</a>` : esc(check.finSource)}</p>`
+      ? `<p class="muted chk-fin">Бухотчётность: ${check.finUrl ? `<a href="${SafeLink.href(check.finUrl)}" target="_blank" rel="noopener">${esc(check.finSource)}</a>` : esc(check.finSource)}</p>`
       : '';
     return `<table class="fin"><tr><th>Год</th><th>Выручка</th><th>Чистая прибыль</th></tr>${rows}</table>${source}`;
   }
@@ -185,7 +186,7 @@ export class PartyCheck {
   static _details(check, inn, rusprofile) {
     const quota = check.quotaNow;
     const links = (check.links || []).length
-      ? `<p class="chk-links"><span class="muted">Проверить вручную (бесплатно):</span> ${check.links.map(link => `<a href="${esc(link.url)}" target="_blank" rel="noopener">${esc(link.name)}</a>`).join(' · ')}</p>`
+      ? `<p class="chk-links"><span class="muted">Проверить вручную (бесплатно):</span> ${check.links.map(link => `<a href="${SafeLink.href(link.url)}" target="_blank" rel="noopener">${esc(link.name)}</a>`).join(' · ')}</p>`
       : '';
     return `<details class="chk ${check.score}">${this._summary(check)}
       ${check.note ? `<p class="chk-note">${esc(check.note)}</p>` : ''}
@@ -197,7 +198,7 @@ export class PartyCheck {
         .join('')}</dl>
       ${this._finances(check)}
       ${links}
-      <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="checkRun" data-force="1">Обновить проверку</button><a class="btn ghost" href="${esc(check.url || `https://checko.ru/search?query=${inn}`)}" target="_blank" rel="noopener">Открыть на checko.ru</a>${rusprofile}${quota ? `<span class="muted">${this._left(quota)}</span>` : ''}</div></details>`;
+      <div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-a="checkRun" data-force="1">Обновить проверку</button><a class="btn ghost" href="${SafeLink.href(check.url || `https://checko.ru/search?query=${inn}`)}" target="_blank" rel="noopener">Открыть на checko.ru</a>${rusprofile}${quota ? `<span class="muted">${this._left(quota)}</span>` : ''}</div></details>`;
   }
 
   /** Проверить контрагента (свежая проверка из хранилища отдела не тратит запросы). */

@@ -155,6 +155,8 @@ class ModerationDesk:
             )
         else:
             before_diff, after_diff = diff(_loads(pend['before']), _loads(pend['after']), AUTO_KEYS)
+            if not self.store.pending_claim(eid):  # уже принята (или принимается) — «Отклонить» её не перекрывает
+                return {'ok': False, 'message': 'Правка уже рассмотрена'}
             self.store.pending_set(eid, 'rejected', self.author, reason)
             self.log('reject_edit', 'product', pend['productId'], before_diff, dict(after_diff, __reason__=reason))
         return {'ok': True}

@@ -169,6 +169,20 @@ class ModerationTest(unittest.TestCase):
         self.assertEqual((d['spec'], d['price']), ('новое', 250))
         self.assertFalse(desk.review(eid, 'approve')['ok'], 'второе «Принять» ничего не пишет')
 
+    def test_reject_does_not_override_approving(self):
+        """DB-016: «Отклонить», пришедшее одновременно с «Принять», не перекрывает принятую правку."""
+        import catalog_admin
+        st = TempStore(self).store
+        before = {'name': 'Компрессор', 'spec': 'старое'}
+        st.catalog_put('p1', json.dumps(before))
+        eid = st.pending_add('p1', 'edit', json.dumps(before), json.dumps(dict(before, spec='новое')), 'u', 'Менеджер')
+        stale = st.pending_get(eid)
+        self.assertTrue(st.pending_claim(eid))  # «Принять» уже заняло правку
+        st.pending_get = lambda _eid: stale       # «Отклонить» прочитал правку до этого
+        desk = catalog_admin.ModerationDesk(st, 'admin', lambda *a, **k: None)
+        self.assertFalse(desk.review(eid, 'reject', 'нет')['ok'])
+        self.assertEqual(st.one('SELECT status FROM pending_edits WHERE id=?', (eid,))[0], 'approving')
+
 
 class FilesTest(unittest.TestCase):
     def test_nan_in_files(self):
@@ -200,12 +214,28 @@ class FilesTest(unittest.TestCase):
                 for n, t in (extra or {}).items():
                     z.writestr(n, t)
             return b.getvalue()
+        DocxCheck.check(docx({'word/header1.xml': '<w:hdr><w:r><w:instrText> PAGE </w:instrText></w:r><w:t>LINK</w:t></w:hdr>'}))
+        DocxCheck.check(docx({'word/header1.xml': '<w:hdr><w:instrText> HYPERLINK "https://pnevmoteh.ru" </w:instrText></w:hdr>'}))
         DocxCheck.check(docx({'word/_rels/document.xml.rels': '<Relationships><Relationship Id="r1" Type="http://x/hyperlink" '
                                                                  'Target="https://pnevmoteh.ru" TargetMode="External"/></Relationships>'}))
         for bad in (b'{\\rtf1}', docx({'word/vbaProject.bin': 'x'}),
                     docx(ct='application/vnd.ms-word.document.macroEnabled.main+xml'),
                     docx({'word/_rels/settings.xml.rels': '<Relationships><Relationship Id="r1" Type="http://x/attachedTemplate" '
-                                                          'Target="\\\\host\\share\\t.dotm" TargetMode="External"/></Relationships>'})):
+                                                          'Target="\\\\host\\share\\t.dotm" TargetMode="External"/></Relationships>'}),
+                    # BE-006: внешняя картинка и поле, загружающее файл (код поля разбит на части)
+                    docx({'word/_rels/document.xml.rels': '<Relationships><Relationship Id="r2" Type="http://x/image" '
+                                                          'Target="\\\\10.0.0.5\\s\\a.png" TargetMode="External"/></Relationships>'}),
+                    docx({'word/header1.xml': '<w:hdr><w:r><w:instrText> INCLUDE</w:instrText></w:r>'
+                                              '<w:r><w:instrText>PICTURE "http://evil/x.png"</w:instrText></w:r></w:hdr>'}),
+                    # по ревью: поле сразу за полем, одинарные кавычки, другой префикс, сноски, колонтитул КП, Type='…'
+                    docx({'word/header2.xml': '<w:hdr><w:instrText>PAGE x</w:instrText><w:instrText>INCLUDEPICTURE "\\\\h\\a"</w:instrText></w:hdr>'}),
+                    docx({'word/footer1.xml': "<w:ftr><w:fldSimple w:instr='INCLUDETEXT \"http://evil/x\"'/></w:ftr>"}),
+                    docx({'word/footnotes.xml': '<x:fn><x:instrText>LINK Excel.Sheet "\\\\h\\a.xlsx"</x:instrText></x:fn>'}),
+                    docx({'word/header_kp.xml': '<w:hdr><w:instrText>DDEAUTO cmd "/c x"</w:instrText></w:hdr>'}),
+                    docx({'word/header3.xml': '<w:hdr><w:instrText>HYPER</w:instrText><w:instrText>LINK Excel "\\\\h\\a"</w:instrText></w:hdr>'}),
+                    docx({'word/header4.xml': '<w:hdr><w:instrText>PAGE x</w:instrText><w:instrText>DDE cmd "/c x"</w:instrText></w:hdr>'}),
+                    docx({'word/_rels/document.xml.rels': "<Relationships><Relationship Id='r3' Type='http://x/image' "
+                                                          "Target='http://evil/a.png' TargetMode='External'/></Relationships>"})):
             with self.assertRaises(ValueError):
                 DocxCheck.check(bad)
 
@@ -214,6 +244,104 @@ class FilesTest(unittest.TestCase):
         for n in ('update/app/D:/x.py', 'update/a/../b', '/update/x', 'update/a\\x'):
             self.assertTrue(P._unsafe(n), n)
         self.assertFalse(P._unsafe('update/app/x.py'))
+
+
+class EmailRegexTest(unittest.TestCase):
+    def test_long_text_fast(self):
+        """BE-007: длинная строка без «@» (вставленная карточка, письмо) разбирается быстро, адреса находятся как раньше."""
+        import time
+        from company_card import CompanyCard
+        from deal_intake import IntakeRules
+        for pattern in (CompanyCard.EMAIL, IntakeRules.EMAIL):
+            start = time.monotonic()
+            pattern.findall('a' * 100000)
+            self.assertLess(time.monotonic() - start, 1)
+            self.assertEqual(pattern.findall('Пишите: ivan.petrov+kp@mail.ru, (sales@pnevmo-tex.ru).'),
+                             ['ivan.petrov+kp@mail.ru', 'sales@pnevmo-tex.ru'])
+
+
+class UnpackLimitTest(unittest.TestCase):
+    def test_no_room(self):
+        """DB-009: архив базы, который не помещается на диск с запасом, не распаковывается до конца."""
+        import os
+        import shutil
+        import tempfile
+        from storage import DbZip
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        box = io.BytesIO()
+        with zipfile.ZipFile(box, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('kp.sqlite3', b'\0' * (3 << 20))
+        dst = os.path.join(folder, 'x.sqlite3')
+        DbZip.unpack(io.BytesIO(box.getvalue()), dst)
+        self.assertEqual(os.path.getsize(dst), 3 << 20)
+        saved = DbZip.RESERVE
+        DbZip.RESERVE, share = shutil.disk_usage(folder).free - (1 << 20), DbZip.RESERVE_SHARE
+        DbZip.RESERVE_SHARE = 1
+        try:
+            with self.assertRaises(ValueError):
+                DbZip.unpack(io.BytesIO(box.getvalue()), dst)
+        finally:
+            DbZip.RESERVE, DbZip.RESERVE_SHARE = saved, share
+
+
+class DealNumberTest(unittest.TestCase):
+    def test_taken_number_skipped(self):
+        """DB-010: счётчик сделок отстал (копия базы) — новая сделка не перезаписывает существующую."""
+        from crm import DealBook
+        st = TempStore(self).store
+        book = DealBook(st)
+        first = book.create({'title': 'Первая', 'client': 'ООО «А»'}, 'm1', 'М', 'тест')
+        st.kv_set('crm.seq', 0)
+        second = book.create({'title': 'Вторая', 'client': 'ООО «Б»'}, 'm1', 'М', 'тест')
+        self.assertNotEqual(first['id'], second['id'])
+        self.assertEqual(book.get(first['id'])['title'], 'Первая')
+
+
+class IdentTest(unittest.TestCase):
+    def test_odd_table_names(self):
+        """BE-020: таблица с кавычкой в имени (из загруженной базы) не ломает обслуживание и счёт записей."""
+        import maintenance
+        st = TempStore(self).store
+        conn = st.conn()
+        conn.execute('CREATE TABLE "we""ird" ("co""l" TEXT)')
+        conn.execute('INSERT INTO "we""ird" VALUES (?)', ('/img/a/b.png',))
+        conn.commit()
+        self.assertIn('a/b.png', maintenance._referenced(st))
+        self.assertEqual(st.table_counts()['we"ird'], 1)
+
+
+class DocxNameTest(unittest.TestCase):
+    def test_all_numbers_taken(self):
+        """BE-021: занято «… (2)» … «(99)» — файл не перезаписывает чужой, а получает номер своего КП."""
+        from web_api import KpController
+        free = KpController.free_name('4567892 КП.docx', 'Иванов', 'k77', lambda rel: '(k77)' not in rel)
+        self.assertEqual(free, 'Иванов/4567892 КП (k77).docx')
+        self.assertEqual(KpController.free_name('a.docx', '', 'k1', lambda rel: rel == 'a.docx'), 'a (2).docx')
+
+
+class TrackRaceTest(unittest.TestCase):
+    def test_status_and_mail_both_kept(self):
+        """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""
+        from kp_track import DealTrack
+        st = TempStore(self).store
+        st.kp_set('k1', 'state', json.dumps({'number': 'k1'}), 'тест')
+        read, threads = st.kp_track_get, []
+
+        def slow_get(kid):
+            value = read(kid)
+            if not threads:
+                threads.append(threading.Thread(target=DealTrack(st).mark_sent, args=('k1', ['a@b.ru'], [], 'почта')))
+                threads[0].start()
+                threads[0].join(0.3)
+            return value
+
+        st.kp_track_get = slow_get
+        DealTrack(st).update('k1', {'followUp': {'date': '2026-11-01', 'note': 'перезвонить'}}, 'менеджер')
+        threads[0].join(5)
+        track = read('k1')
+        self.assertTrue(track.get('sent'), 'письмо отмечено')
+        self.assertEqual((track.get('followUp') or {}).get('date'), '2026-11-01', 'напоминание осталось')
 
 
 if __name__ == '__main__':

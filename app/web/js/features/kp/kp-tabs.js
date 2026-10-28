@@ -9,6 +9,7 @@ import { FormView } from '../../ui/form-view.js';
 import { Steps } from '../../ui/steps.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
+import { KpSave } from '../doc/kp-save.js';
 import { StationImages } from '../station/station-images.js';
 
 /**
@@ -240,7 +241,7 @@ export class KpTabs {
       Toast.show('Сначала сохраните или закройте позицию каталога');
       return false;
     }
-    if (!this.busy && !Drafts.paused) return true;
+    if (!this.busy && !Drafts.paused && !KpSave.busy) return true; // сборка файла идёт до паузы черновика
     Toast.show('Подождите — КП ещё сохраняется');
     return false;
   }

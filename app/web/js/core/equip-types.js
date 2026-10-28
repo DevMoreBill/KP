@@ -1,5 +1,6 @@
 import { Api } from './net.js';
 import { Attrs } from './item-attrs.js';
+import { SpecValues } from './spec-values.js';
 import { Uid, esc } from './util.js';
 
 /**
@@ -94,7 +95,7 @@ export class EquipTypes {
   // шаблон типа задаёт администратор: ошибочный — не совпадение
   static _test(pattern, text) {
     try {
-      return new RegExp(pattern, 'i').test(text);
+      return new RegExp(pattern, 'i').test(String(text).slice(0, SpecValues.PATTERN_TEXT));
     } catch {
       return false;
     }

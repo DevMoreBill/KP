@@ -54,7 +54,7 @@ class BitrixApi:
         url = str(url or '').strip()
         if not self.URL.match(url):
             raise BitrixError(
-                'Адрес вебхука — вида https://bitrix24.kompr.ru/rest/1/ключ/ (в Битриксе: Разработчикам → '
+                'Адрес вебхука — вида https://ваш-портал.bitrix24.ru/rest/1/ключ/ (в Битриксе: Разработчикам → '
                 'Другое → Входящий вебхук)'
             )
         self.url = url.rstrip('/') + '/'

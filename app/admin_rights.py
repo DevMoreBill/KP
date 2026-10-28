@@ -21,6 +21,9 @@ class Rule:
     write: str = ''
     always: str = ''
     peek: tuple = ()  # изменение с этими полями тела — ещё и действие write (например, адрес вебхука)
+    also: str = ''  # ещё одно действие для любого запроса (база целиком — это и все ключи API)
+    # ((параметр адреса, значение в списке через запятую, действие), …): файл настроек с ключами
+    query_needs: tuple = ()
 
 
 def rule(pattern: str, section: str, **kw: Any) -> Rule:
@@ -82,12 +85,12 @@ class AdminRights:
         rule(ADM + r'update(/.*)?$', 'updates', write='updates'),
         rule(ADM + r'history(/.*)?$', 'changes'),
         rule(ADM + r'settings-file/preview$', 'changes'),
-        rule(ADM + r'settings-file$', 'changes', write='db'),
+        rule(ADM + r'settings-file$', 'changes', write='db', query_needs=(('keys', '1', 'secrets'),)),
         rule(ADM + r'connections$', 'services'),
-        rule(ADM + r'ai(/test)?$', 'services', write='secrets', peek=('key', 'apiKey')),
+        rule(ADM + r'ai(/test)?$', 'services', write='secrets', peek=('key', 'apiKey', 'base')),
         rule(ADM + r'access(/.*)?$', 'managers'),
         rule(ADM + r'(rules/stations|features|lists|defaults)$', 'params'),
-        rule(ADM + r'mail$', 'mail', write='secrets', peek=('password', 'clearPassword')),
+        rule(ADM + r'mail$', 'mail', write='secrets', peek=('password', 'clearPassword', 'moved')),
         rule(ADM + r'mail/test$', 'mail'),
         rule(ADM + r'bitrix(/.*)?$', 'bitrix', write='secrets', peek=('url',)),
         rule(ADM + r'audit(/.*)?$', 'audit'),
@@ -101,10 +104,10 @@ class AdminRights:
         rule(ADM + r'list/supplier$', 'db-supplier'),
         rule(ADM + r'trash(/.*)?$', 'trash', write='delete'),
         rule(ADM + r'(moderation|pending(/.*)?)$', 'moderation'),
-        rule(ADM + r'export/sqlite$', 'backup', always='db'),
+        rule(ADM + r'export/sqlite$', 'backup', always='db', also='secrets'),
         rule(ADM + r'export(/.*)?$', 'backup'),
         rule(ADM + r'import(/.*)?$', 'backup', write='db'),
-        rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('dav', 'password')),
+        rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('password', 'moved')),
         rule(ADM + r'maint(/.*)?$', 'backup'),
         rule(ADM + r'migrations(/.*)?$', 'danger', write='db'),
         rule(r'^/api/catalog/trash(/.*)?$', 'goods', write='delete'),
@@ -112,6 +115,7 @@ class AdminRights:
         rule(r'^/api/catalog/export(/.*)?$', 'goods'),
         rule(r'^/api/catalog/[A-Za-z0-9_-]{1,64}$', 'goods'),
         rule(r'^/api/types$', 'types'),
+        rule(r'^/api/logistics/carriers$', 'carriers', write='secrets', peek=('moved',)),
         rule(r'^/api/logistics(/refresh|/carriers.*|/china.*)?$', 'carriers'),
         rule(r'^/api/onec(/.*)?$', 'services', write='secrets', peek=('password',)),
         rule(r'^/api/(requisites|doctpl/.*)$', 'ourdocs'),
@@ -121,6 +125,10 @@ class AdminRights:
         rule(r'^/api/templates/(folder|[A-Za-z0-9_-]+/(file|restore|copy|reset|delete|open))$', 'templates'),
     )
     ADMIN_PATH = '/api/admin/'
+    UNLISTED = rule(r'$^', MAIN)
+    # код шаблона выполняется в окне каждого, кто строит КП (и главного администратора) — меняет только главный
+    CODE_FILE = re.compile(r'^skeleton(-[\d-]+)?\.js$')
+    CODE_PATH = re.compile(r'^/api/templates/[A-Za-z0-9_-]+/(file|restore)$')
 
     def __init__(self, accounts: list) -> None:
         self.accounts = accounts
@@ -183,9 +191,15 @@ class AdminRights:
         found = cls.rule_of(path)
         return method not in cls.READ and found is not None and (bool(found.peek) or path == '/api/admin/delete')
 
-    def refuse(self, login: str, method: str, path: str, body: dict | None = None) -> str:
-        """Почему администратору нельзя этот запрос ('' — можно)."""
+    @staticmethod
+    def same_value(new: Any, cur: Any) -> bool:
+        return str(new or '').strip().rstrip('/') == str(cur or '').strip().rstrip('/')
+
+    def refuse(self, login: str, method: str, path: str, body: dict | None = None, query: dict | None = None) -> str:
+        """Почему администратору нельзя этот запрос ('' — можно); query — параметры адреса (имя файла шаблона)."""
         found = self.rule_of(path)
+        if found is None and path.startswith(self.ADMIN_PATH):
+            found = self.UNLISTED  # адрес «Настроек» без строки в таблице — только главному (новое не открывается само)
         if found is None or found.section in (FREE, HOME):
             return ''
         if not path.startswith(self.ADMIN_PATH) and method in self.READ and not found.always:
@@ -195,10 +209,20 @@ class AdminRights:
             return 'Учётная запись администратора не найдена — войдите заново'
         if self.is_main(acc):
             return ''
+        if found is self.UNLISTED:
+            return 'Это действие «Настроек» доступно только главному администратору'
         if found.section == MAIN:
             return 'Администраторами и их правами управляет главный администратор'
+        if self._template_code(method, path, query or {}):
+            return 'Код шаблона (skeleton.js) меняет только главный администратор: он выполняется у всех, кто строит КП'
         rights = self.clean(acc.get('rights'))
-        return self._why(rights, found, method, path, body or {})
+        why = self._why(rights, found, method, path, body or {})
+        if why:
+            return why
+        for param, token, action in found.query_needs:
+            if token in str((query or {}).get(param) or '').split(','):
+                why = why or self._lacks(rights, action)
+        return why or (self._lacks(rights, found.also) if found.also else '')
 
     def _why(self, rights: dict, found: Rule, method: str, path: str, body: dict) -> str:
         section = self._section(found, path, body)
@@ -210,9 +234,24 @@ class AdminRights:
         if write and level != self.EDIT:
             return f'Раздел «{label}» открыт только для просмотра — изменения не сохраняются'
         need = found.always or (found.write if write and self._needs_write_action(found, path, body) else '')
-        if need and need not in rights['actions']:
-            return f'Нет права «{self.ACTIONS[need]}» — его выдаёт главный администратор'
-        return ''
+        return self._lacks(rights, need) if need else ''
+
+    def _lacks(self, rights: dict, action: str) -> str:
+        if action in rights['actions']:
+            return ''
+        return f'Нет права «{self.ACTIONS[action]}» — его выдаёт главный администратор'
+
+    def has_action(self, login: str, action: str) -> bool:
+        """Главный или отмечено действие."""
+        acc = self.account(login)
+        if acc is None:
+            return False
+        return self.is_main(acc) or action in self.clean(acc.get('rights'))['actions']
+
+    @classmethod
+    def _template_code(cls, method: str, path: str, query: dict) -> bool:
+        name = str(query.get('name') or '')
+        return method not in cls.READ and bool(cls.CODE_PATH.match(path)) and bool(cls.CODE_FILE.match(name))
 
     def _section(self, found: Rule, path: str, body: dict) -> str:
         if path == '/api/admin/delete':
@@ -223,12 +262,12 @@ class AdminRights:
     def _needs_write_action(found: Rule, path: str, body: dict) -> bool:
         if path == '/api/admin/delete':
             return True
-        return not found.peek or any(AdminRights._given(body.get(key)) for key in found.peek)
+        return not found.peek or any(AdminRights.given(body.get(key)) for key in found.peek)
 
     @staticmethod
-    def _given(value: Any) -> bool:
+    def given(value: Any) -> bool:
         """Значение задано заново: не пусто и не «звёздочки», которыми экран показывает сохранённый пароль."""
         if isinstance(value, dict):
-            return any(AdminRights._given(item) for item in value.values())
+            return any(AdminRights.given(item) for item in value.values())
         text = str(value or '').strip()
         return bool(text) and not set(text) <= {'•', '*'}

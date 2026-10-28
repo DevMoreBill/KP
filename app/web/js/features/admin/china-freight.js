@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { ChinaRateBook } from './china-rates.js';
 import { StDirty } from './settings-tools.js';
 import { FileSave } from '../../core/files.js';
@@ -174,7 +175,7 @@ export class ChinaFreightTab {
   static _rowTail(rate) {
     const state = this.data;
     const ref = rate.ref
-      ? `<input type="hidden" data-c="ref" value="1"><small class="muted">ориентир${rate.src ? ` · <a href="${esc(rate.src)}" target="_blank" rel="noopener">источник</a>` : ''}</small>`
+      ? `<input type="hidden" data-c="ref" value="1"><small class="muted">ориентир${rate.src ? ` · <a href="${SafeLink.href(rate.src)}" target="_blank" rel="noopener">источник</a>` : ''}</small>`
       : '';
     return `
       <td><select data-c="cur" aria-label="Валюта">${this.curs(rate.cur || 'CNY')}</select></td>
@@ -218,7 +219,7 @@ export class ChinaFreightTab {
 
   static _offer(offer) {
     return `<tr>
-        <td><b>${esc(offer.src)}</b>${offer.srcUrl ? ` <a href="${esc(offer.srcUrl)}" target="_blank" rel="noopener" title="Источник">↗</a>` : ''}${offer.until ? `<br><small class="muted">до ${esc(this.day(offer.until))}</small>` : ''}</td><td>${esc(this.data.scopes[offer.scope] || '')}</td><td>${this.money(offer)}</td>
+        <td><b>${esc(offer.src)}</b>${offer.srcUrl ? ` <a href="${SafeLink.href(offer.srcUrl)}" target="_blank" rel="noopener" title="Источник">↗</a>` : ''}${offer.until ? `<br><small class="muted">до ${esc(this.day(offer.until))}</small>` : ''}</td><td>${esc(this.data.scopes[offer.scope] || '')}</td><td>${this.money(offer)}</td>
         <td><b>${Fmt.rub(offer.cv)}</b>${offer.cvParts.length > 1 ? `<br><small class="muted">${esc(offer.cvParts.map(part => `${part[0]} ${Fmt.rub(part[1])}`).join(' + '))}</small>` : ''}</td>
         <td>${this._days(offer)}</td><td class="muted">${esc(offer.note || '')}${this.warns(offer)}</td></tr>`;
   }

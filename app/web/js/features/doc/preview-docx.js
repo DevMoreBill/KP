@@ -15,6 +15,7 @@ export class PreviewDocx {
     renderHeaders: true,
     renderFooters: true,
     useBase64URL: true,
+    renderAltChunks: false, // вложенный HTML документа (altChunk) — не показывать: шаблоны его не используют
   };
   static PARTS = /^word\/(document|header\d*|footer\d*|header_kp|footer_kp)\.xml$/;
   static NO_BREAK_HYPHEN = '<w:noBreakHyphen/>';

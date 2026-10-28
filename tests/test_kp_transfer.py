@@ -41,6 +41,39 @@ class TransferTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             KpTransfer(self.st).move('k1', 'nobody', 'тест')
 
+    def test_save_during_move_not_lost(self):
+        """DB-004: сохранение КП, пришедшее, пока передача читает КП, не затирается — оно ждёт и получает «конфликт»."""
+        import threading
+        from kp_transfer import KpTransfer
+        rev = self.st.conn().execute('SELECT rev FROM kp WHERE id=?', ('k1',)).fetchone()[0]
+        edited = json.dumps({'number': 'k1', 'authorId': 'm1', 'managerId': 'm1', 'items': ['новое']}, ensure_ascii=False)
+        result = {}
+
+        def client_save():
+            try:
+                self.st.kp_set('k1', 'state', edited, 'менеджер', base_rev=rev)
+                result['saved'] = True
+            except Exception as exc:  # конфликт правок
+                result['conflict'] = type(exc).__name__
+
+        read = self.st.kp_get
+        threads = []
+
+        def slow_get(kid, field):
+            value = read(kid, field)
+            if field == 'state' and not threads:
+                threads.append(threading.Thread(target=client_save))
+                threads[0].start()
+                threads[0].join(0.3)
+            return value
+
+        self.st.kp_get = slow_get
+        KpTransfer(self.st).move('k1', 'm2', 'тест')
+        threads[0].join(5)
+        state = json.loads(read('k1', 'state'))
+        self.assertFalse(result.get('saved') and 'новое' not in state.get('items', []), 'правка менеджера потеряна')
+        self.assertEqual(state['authorId'] if 'conflict' in result else 'm2', 'm2')
+
     def test_deal_with_others_kept(self):
         from crm import DealBook
         from kp_transfer import DealMove, KpTransfer

@@ -97,6 +97,36 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req('PUT', '/api/customs', {'key': [1]})[0], 400)
         self.assertIn(self.req('PUT', '/api/types', {'types': 5})[0], (400, 403))
 
+    def test_08_types_patterns(self):
+        """FE-002: шаблон категории с повтором внутри повтора «вешает» браузер у всех — сервер его не сохраняет."""
+        from equipment_types import TypePatterns, load_types_builtin
+        TypePatterns.check(load_types_builtin(), [])
+        bad = {'add': [{'id': 'evil', 'name': 'Злая', 'match': '(a+)+$', 'fields': []}]}
+        status, body = self.req('PUT', '/api/types', bad)[:2]
+        self.assertIn(status, (400, 403))
+        if status == 400:
+            self.assertIn('повтор', body)
+        for bad in ('(\\w+\\s?)+$', '(a|a)+$', '(?:(?:\\d+)\\.?)+x', '(x){2,}y', '\\d*' * 13, '\\d*' * 6 + 'x',
+                    '\\d{0,999}' * 4 + 'x', '|'.join(['\\d*\\d*\\d*x'] * 4), '\\d{0,19}' * 6 + 'x', '\\d?' * 30 + 'x',
+                    '\\d*\\d*[\\d|]*\\d*x', '(?:\\d*){6}x', '(\\d+){6}x',
+                    '\\\\*\\\\*\\\\*\\\\*x', '(\\d*)?(\\d*)?(\\d*)?x',
+                    '[]|\\d*\\d*\\d*\\d*x]', '[^]*\\d*\\d*\\d*x]'):  # по ревью — и без вложенного повтора
+            with self.subTest(bad), self.assertRaises(ValueError):
+                TypePatterns.check([{'id': 'x', 'fields': [{'key': 'p', 'find': bad}]}], [])
+        TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор|GA\\s*\\d+|компрессор(ы)?', 'fields': []}], [])
+        import time
+        from catalog_migrate import CatDetect
+        start = time.monotonic()  # сервер тоже — по первым 200 знакам (сохранённый отделом опасный шаблон не вешает обновление)
+        CatDetect.of({'name': '1' * 5000}, [{'id': 'x', 'match': '\\d*\\d*\\d*x'}])
+        self.assertLess(time.monotonic() - start, 2)
+        from station_rules import StationRules
+        from kit import TempStore
+        rules = StationRules(TempStore(self).store)
+        data = rules.bundled()
+        data['series'] = [dict(data['series'][0], match='(a|a)+$')]
+        with self.assertRaises(ValueError):
+            rules.save(json.dumps(data).encode('utf-8'), 'тест')
+
 
 class UnitTest(unittest.TestCase):
     def test_settings_history_keeps_field_keys(self):

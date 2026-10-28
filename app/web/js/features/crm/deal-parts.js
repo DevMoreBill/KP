@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { Money } from '../../core/money.js';
@@ -73,7 +74,7 @@ export class DealParts {
     const hint = esc(`Сделка ${link.id} в Битрикс24 · синхронизировано ${Fmt.dateTime(link.at)}`);
     const name = `Б24 · ${esc(link.id)}`;
     return link.url
-      ? `<a class="dk-bxc" href="${esc(link.url)}" target="_blank" rel="noopener" title="${hint} — открыть">${name} ↗</a>`
+      ? `<a class="dk-bxc" href="${SafeLink.href(link.url)}" target="_blank" rel="noopener" title="${hint} — открыть">${name} ↗</a>`
       : `<span class="dk-bxc" title="${hint}">${name}</span>`;
   }
 
