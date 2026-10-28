@@ -232,6 +232,8 @@ class FilesTest(unittest.TestCase):
                     docx({'word/footer1.xml': "<w:ftr><w:fldSimple w:instr='INCLUDETEXT \"http://evil/x\"'/></w:ftr>"}),
                     docx({'word/footnotes.xml': '<x:fn><x:instrText>LINK Excel.Sheet "\\\\h\\a.xlsx"</x:instrText></x:fn>'}),
                     docx({'word/header_kp.xml': '<w:hdr><w:instrText>DDEAUTO cmd "/c x"</w:instrText></w:hdr>'}),
+                    docx({'word/header3.xml': '<w:hdr><w:instrText>HYPER</w:instrText><w:instrText>LINK Excel "\\\\h\\a"</w:instrText></w:hdr>'}),
+                    docx({'word/header4.xml': '<w:hdr><w:instrText>PAGE x</w:instrText><w:instrText>DDE cmd "/c x"</w:instrText></w:hdr>'}),
                     docx({'word/_rels/document.xml.rels': "<Relationships><Relationship Id='r3' Type='http://x/image' "
                                                           "Target='http://evil/a.png' TargetMode='External'/></Relationships>"})):
             with self.assertRaises(ValueError):

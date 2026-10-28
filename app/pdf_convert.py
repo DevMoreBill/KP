@@ -276,15 +276,16 @@ class DocxCheck:
         for name in parts:
             if z.getinfo(name).file_size > cls.MAX:
                 raise ValueError('это не документ Word (.docx)')
-            if cls.BAD_FIELD.search(cls._fields(z.read(name).decode('utf-8', 'replace'))):
+            codes = cls._fields(z.read(name).decode('utf-8', 'replace'))
+            # и подряд (поле разбито на куски), и по одному (соседнее поле не «прячет» начало: «HYPER» + «LINK …»)
+            if any(cls.BAD_FIELD.search(text + ' ') for text in [''.join(codes), *codes]):
                 raise ValueError('в документе поле, загружающее внешний файл, — не преобразуется')
 
     @staticmethod
-    def _fields(xml: str) -> str:
+    def _fields(xml: str) -> list[str]:
         """Тексты кодов полей Word (instrText и fldSimple) — только они загружают файлы, обычный текст — нет."""
         parts = DocxCheck.INSTR_TEXT.findall(xml)
-        parts += [double or single for double, single in DocxCheck.INSTR_ATTR.findall(xml)]
-        return ''.join(parts) + ' '
+        return parts + [double or single for double, single in DocxCheck.INSTR_ATTR.findall(xml)]
 
 
 def convert_bytes(data: bytes, cloud_key: str | None = None) -> bytes:
