@@ -203,14 +203,14 @@ class WebDavStore:
         name, size = os.path.basename(path), os.path.getsize(path)
         free = self.free()
         if free is not None and free < size:
-            raise DiskFull(self.REFUSED[self.NO_SPACE].format(size=self._mb(size)))
+            raise DiskFull(self.REFUSED[self.NO_SPACE].format(size=self._megabytes(size)))
         try:
             self.upload(self._url(name), path, self._auth(), self.UPLOAD_TIMEOUT)
         except urllib.error.HTTPError as exc:
             raise self._refused(exc.code, size) from exc
         except (ConnectionError, ssl.SSLError, urllib.error.URLError) as exc:
             raise RuntimeError(
-                f'Яндекс Диск оборвал загрузку архива ({self._mb(size)}): {Net.why(exc)} — повторите «Копировать сейчас»; '
+                f'Яндекс Диск оборвал загрузку архива ({self._megabytes(size)}): {Net.why(exc)} — повторите «Копировать сейчас»; '
                 'если повторяется — проверьте свободное место на диске («Проверить диск»)'
             ) from exc
         if dict(self.listing()).get(name) != size:
@@ -218,11 +218,13 @@ class WebDavStore:
         return size
 
     def _refused(self, code: int, size: int) -> RuntimeError:
-        text = self.REFUSED.get(code, f'Яндекс Диск отказал в загрузке (ошибка {code})').format(size=self._mb(size))
+        text = self.REFUSED.get(code, f'Яндекс Диск отказал в загрузке (ошибка {code})').format(
+            size=self._megabytes(size)
+        )
         return DiskFull(text) if code == self.NO_SPACE else RuntimeError(text)
 
     @staticmethod
-    def _mb(size: int) -> str:
+    def _megabytes(size: int) -> str:
         return f'{size / 1048576:.0f} МБ'
 
     def listing(self) -> list[tuple[str, int]]:
