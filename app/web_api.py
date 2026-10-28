@@ -620,7 +620,12 @@ class SystemController(Controller):
                 'host': socket.gethostname(),
                 'port': self.server.server_address[1],
                 'items': store().catalog_count(),
-                'migrations': (store().kv_get('migrations') or [])[-2:],
+                'migrations': [
+                    dict(row, backup=re.split(r'[\\/]', str(row.get('backup') or ''))[-1])
+                    if far and isinstance(row, dict)
+                    else row
+                    for row in (store().kv_get('migrations') or [])[-2:]
+                ],  # с другого компьютера — только имя архива, без папок сервера (как dataDir)
             }
         )
 
