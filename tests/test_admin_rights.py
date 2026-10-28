@@ -84,6 +84,24 @@ class AdminRightsUnitTest(unittest.TestCase):
         self.assertIn('integrations', SecretFields.WHOLE)
         self.assertIsNot(Keys.WITH, Keys.WITHOUT)
 
+    def test_unlisted_admin_path_main_only(self):
+        """BE-009: адрес «Настроек», которого нет в таблице прав, — только главному."""
+        acc = self.rights({key: 'edit' for key in AdminRights.section_keys()}, list(AdminRights.ACTIONS))
+        self.assertIn('только главному', acc.refuse('kat', 'POST', '/api/admin/new-thing'))
+        self.assertEqual(acc.refuse('boss', 'POST', '/api/admin/new-thing'), '')
+        self.assertEqual(acc.refuse('kat', 'GET', '/api/catalog-unlisted'), '', 'адреса программы — как раньше')
+
+    def test_admin_routes_listed(self):
+        """Каждый адрес AdminApi — в таблице прав (иначе администратору с правами он закрыт)."""
+        import os
+        import re
+        with open(os.path.join(os.path.dirname(__file__), '..', 'app', 'admin.py'), encoding='utf-8') as file:
+            code = file.read()
+        api = code[code.index('class AdminApi'):]
+        subs = set(re.findall(r"sub == '([^']+)'", api)) | set(re.findall(r"sub\.startswith\(\s*'([^']+)'", api))
+        missing = [sub for sub in sorted(subs) if AdminRights.rule_of('/api/admin/' + sub) is None]
+        self.assertEqual(missing, [])
+
     def test_clean(self):
         got = AdminRights.clean({'sections': {'goods': 'edit', 'x': 'edit', 'audit': 'root'}, 'actions': ['db', 'hack']})
         self.assertEqual(got, {'sections': {'goods': 'edit'}, 'actions': ['db']})

@@ -124,6 +124,7 @@ class AdminRights:
         rule(r'^/api/templates/(folder|[A-Za-z0-9_-]+/(file|restore|copy|reset|delete|open))$', 'templates'),
     )
     ADMIN_PATH = '/api/admin/'
+    UNLISTED = rule(r'$^', MAIN)
     # код шаблона выполняется в окне каждого, кто строит КП (и главного администратора) — меняет только главный
     CODE_FILE = re.compile(r'^skeleton(-[\d-]+)?\.js$')
     CODE_PATH = re.compile(r'^/api/templates/[A-Za-z0-9_-]+/(file|restore)$')
@@ -196,6 +197,8 @@ class AdminRights:
     def refuse(self, login: str, method: str, path: str, body: dict | None = None, query: dict | None = None) -> str:
         """Почему администратору нельзя этот запрос ('' — можно); query — параметры адреса (имя файла шаблона)."""
         found = self.rule_of(path)
+        if found is None and path.startswith(self.ADMIN_PATH):
+            found = self.UNLISTED  # адрес «Настроек» без строки в таблице — только главному (новое не открывается само)
         if found is None or found.section in (FREE, HOME):
             return ''
         if not path.startswith(self.ADMIN_PATH) and method in self.READ and not found.always:
@@ -205,6 +208,8 @@ class AdminRights:
             return 'Учётная запись администратора не найдена — войдите заново'
         if self.is_main(acc):
             return ''
+        if found is self.UNLISTED:
+            return 'Это действие «Настроек» доступно только главному администратору'
         if found.section == MAIN:
             return 'Администраторами и их правами управляет главный администратор'
         if self._template_code(method, path, query or {}):
