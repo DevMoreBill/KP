@@ -685,12 +685,15 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          # имя тега — переменной окружения, не текстом сценария (в нём бывают кавычки и $(…))
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           $ver = '${{ steps.ver.outputs.v }}'
           # выпуск — только с подписанным архивом обновления (иначе установленные программы его не примут)
           python .github/scripts/sign_update.py check 'dist\Обновление КП.zip'
           if ($LASTEXITCODE -ne 0) { throw 'Архив обновления не подписан: добавьте секрет KP_UPDATE_KEY (Settings → Secrets and variables → Actions)' }
-          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { "v$ver" }
+          $tag = if ($env:REF.StartsWith('refs/tags/')) { $env:REF_NAME } else { "v$ver" }
           New-Item -ItemType Directory -Force -Path rel | Out-Null
           Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.exe" -Destination "rel\KP-Konstruktor-$ver-win64.exe"
           Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.zip" -Destination "rel\KP-Konstruktor-$ver-win64.zip"
