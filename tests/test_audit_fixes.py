@@ -97,6 +97,19 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req('PUT', '/api/customs', {'key': [1]})[0], 400)
         self.assertIn(self.req('PUT', '/api/types', {'types': 5})[0], (400, 403))
 
+    def test_08_types_patterns(self):
+        """FE-002: шаблон категории с повтором внутри повтора «вешает» браузер у всех — сервер его не сохраняет."""
+        from equipment_types import TypePatterns, load_types_builtin
+        TypePatterns.check(load_types_builtin(), [])
+        bad = {'add': [{'id': 'evil', 'name': 'Злая', 'match': '(a+)+$', 'fields': []}]}
+        status, body = self.req('PUT', '/api/types', bad)[:2]
+        self.assertIn(status, (400, 403))
+        if status == 400:
+            self.assertIn('повтор', body)
+        with self.assertRaises(ValueError):
+            TypePatterns.check([{'id': 'x', 'fields': [{'key': 'p', 'find': '(\\w+\\s?)+$'}]}], [])
+        TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор', 'fields': []}], [])
+
 
 class UnitTest(unittest.TestCase):
     def test_settings_history_keeps_field_keys(self):

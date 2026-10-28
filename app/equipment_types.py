@@ -57,4 +57,50 @@ def save_user_types(body: bytes) -> None:
             raise ValueError('У каждого типа нужен id: латиница, цифры и «_»')
         if not isinstance(item.get('fields', []), list):
             raise ValueError('fields должен быть списком')
+    TypePatterns.check(types, (store().kv_get('types') or {}).get('types') or [])
     store().kv_set('types', {'version': 1, 'types': types})
+
+
+class TypePatterns:
+    """Шаблоны категорий (match) и полей (find) выполняются в браузере каждого: только безопасные выражения."""
+
+    MAX = 300
+    # повтор группы, внутри которой тоже повтор, — «катастрофический» перебор на длинной строке (браузер зависает)
+    NESTED = re.compile(r'\((?:[^()\\]|\\.)*?(?<!\\)[+*](?:[^()\\]|\\.)*\)[+*{]')
+    BACKREF = re.compile(r'\\[1-9]|\\k<')
+
+    @classmethod
+    def check(cls, types: list, saved: list) -> None:
+        """ValueError с названием категории и поля — если новый шаблон длинный, с ошибкой или опасный (встроенные и уже
+        сохранённые не проверяются: прежние настройки отдела сохраняются как были)."""
+        builtin = set(cls._patterns(load_types_builtin())) | set(cls._patterns(saved))
+        for item in types:
+            for where, pattern in cls._own(item):
+                if pattern not in builtin:
+                    cls._one(pattern, where)
+
+    @staticmethod
+    def _own(item: dict) -> list[tuple[str, str]]:
+        name = str(item.get('name') or item.get('id') or '')[:60]
+        out = [(name, item['match'])] if isinstance(item.get('match'), str) and item['match'] else []
+        for field in item.get('fields') or []:
+            if isinstance(field, dict) and isinstance(field.get('find'), str) and field['find']:
+                out.append((f'{name} → {str(field.get("label") or field.get("key") or "")[:60]}', field['find']))
+        return out
+
+    @classmethod
+    def _patterns(cls, types: list) -> list[str]:
+        return [pattern for item in types if isinstance(item, dict) for _where, pattern in cls._own(item)]
+
+    @classmethod
+    def _one(cls, pattern: str, where: str) -> None:
+        if len(pattern) > cls.MAX:
+            raise ValueError(f'«{where}»: шаблон длиннее {cls.MAX} знаков')
+        if cls.NESTED.search(pattern) or cls.BACKREF.search(pattern):
+            raise ValueError(
+                f'«{where}»: шаблон с повтором внутри повтора или обратной ссылкой может «повесить» браузер — упростите его'
+            )
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f'«{where}»: ошибка в шаблоне ({exc})') from None
