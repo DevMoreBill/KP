@@ -222,6 +222,20 @@ class FilesTest(unittest.TestCase):
         self.assertFalse(P._unsafe('update/app/x.py'))
 
 
+class EmailRegexTest(unittest.TestCase):
+    def test_long_text_fast(self):
+        """BE-007: длинная строка без «@» (вставленная карточка, письмо) разбирается быстро, адреса находятся как раньше."""
+        import time
+        from company_card import CompanyCard
+        from deal_intake import IntakeRules
+        for pattern in (CompanyCard.EMAIL, IntakeRules.EMAIL):
+            start = time.monotonic()
+            pattern.findall('a' * 100000)
+            self.assertLess(time.monotonic() - start, 1)
+            self.assertEqual(pattern.findall('Пишите: ivan.petrov+kp@mail.ru, (sales@pnevmo-tex.ru).'),
+                             ['ivan.petrov+kp@mail.ru', 'sales@pnevmo-tex.ru'])
+
+
 class TrackRaceTest(unittest.TestCase):
     def test_status_and_mail_both_kept(self):
         """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""
