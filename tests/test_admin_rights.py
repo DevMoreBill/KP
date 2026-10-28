@@ -108,6 +108,51 @@ class AdminRightsStandTest(unittest.TestCase):
         self.assertEqual(self.call(boss, 'POST', '/api/admin/users', {'action': 'rights', 'login': 'kat', 'main': True})[0], 200)
         self.assertEqual(self.call(kat, 'GET', '/api/admin/system')[0], 200)
 
+    def test_import_keeps_admins(self):
+        """DB-001: не главный с правом «База данных» загружает базу, где он главный, — учётные записи остаются текущими;
+        чужие триггеры из файла не переносятся."""
+        import os
+        import sqlite3
+        import tempfile
+        boss = self.login(*Stand.ADMIN)
+        rights = {'sections': {'backup': 'edit'}, 'actions': ['db']}
+        self.call(boss, 'POST', '/api/admin/users',
+                  {'action': 'add', 'login': 'dba', 'name': 'База', 'password': 'pass1234', 'rights': rights})
+        dba = self.login('dba', 'pass1234')
+        st, raw, _ = self.stand.http.req('GET', '/api/admin/export/sqlite', cookie=dba[0], headers=dba[1], raw=True)
+        self.assertEqual(st, 200)
+        path = os.path.join(tempfile.mkdtemp(), 'kp.sqlite3')
+        with open(path, 'wb') as file:
+            file.write(raw if raw[:6] == b'SQLite' else self._unzip(raw))
+        conn = sqlite3.connect(path)
+        admins = json.loads(conn.execute("SELECT value FROM kv WHERE key='admins'").fetchone()[0])
+        for user in admins['users']:
+            if user['login'] == 'dba':
+                user['main'] = True
+        conn.execute("UPDATE kv SET value=? WHERE key='admins'", (json.dumps(admins),))
+        conn.execute("CREATE TRIGGER evil AFTER INSERT ON kp BEGIN UPDATE kv SET value='x' WHERE key='admins'; END")
+        conn.commit()
+        conn.close()
+        with open(path, 'rb') as file:
+            body = file.read()
+        st, out, _ = self.stand.http.req('POST', '/api/admin/import/sqlite?name=kp.sqlite3', body, cookie=dba[0],
+                                         headers=dict(dba[1], **{'Content-Type': 'application/octet-stream'}))
+        self.assertEqual(st, 200, out)
+        status = json.loads(self.call(dba, 'GET', '/api/admin/status')[1])
+        self.assertFalse(status['rights']['main'], 'главным не стал')
+        check = sqlite3.connect(self.stand.db)
+        names = [row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type='trigger'")]
+        check.close()
+        self.assertNotIn('evil', names)
+        self.assertIn('kp_rev_ins', names, 'свои триггеры на месте')
+
+    @staticmethod
+    def _unzip(raw):
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(raw)) as box:
+            return box.read([n for n in box.namelist() if n.endswith('.sqlite3')][0])
+
     def test_skeleton_refused_on_server(self):
         boss = self.login(*Stand.ADMIN)
         rights = {'sections': {'templates': 'edit'}, 'actions': []}

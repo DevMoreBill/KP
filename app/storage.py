@@ -2098,8 +2098,10 @@ class Store:
             src.close()
         return dst
 
-    def restore_sqlite(self, src, log=lambda text: None) -> str:
-        """Заменить содержимое базы файлом SQLite «на ходу» встроенным backup (файл и WAL руками не подменяются)."""
+    def restore_sqlite(self, src, log=lambda text: None, keep_kv: tuple = ()) -> str:
+        """Заменить содержимое базы файлом SQLite «на ходу» встроенным backup (файл и WAL руками не подменяются).
+
+        keep_kv — ключи kv, которые остаются как в текущей базе (учётные записи администраторов при загрузке не главным)."""
         chk = sqlite3.connect(src, timeout=30)
         try:
             res = [row[0] for row in chk.execute('PRAGMA integrity_check').fetchall()]
@@ -2115,6 +2117,9 @@ class Store:
             tmp = os.path.join(tmpdir, 'restore.sqlite3')
             tmp_conn = sqlite3.connect(tmp)
             chk.backup(tmp_conn)
+            self._drop_foreign_code(tmp_conn)
+            self._keep_kv(tmp_conn, keep_kv)
+            tmp_conn.commit()
             tmp_conn.close()
         finally:
             chk.close()
@@ -2158,6 +2163,21 @@ class Store:
             conn.commit()
         log(f'База заменена из файла {src}, прежняя сохранена: {bak}')
         return bak
+
+    def _drop_foreign_code(self, conn: sqlite3.Connection) -> None:
+        """Триггеры и представления загружаемой базы, которых нет у программы, — удалить (свои вернут схема и миграции)."""
+        own = set(self.conn().execute("SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','view')"))
+        rows = conn.execute("SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','view')").fetchall()
+        for kind, name, sql in rows:
+            if (kind, name, sql) not in own:
+                conn.execute('DROP {} IF EXISTS "{}"'.format(kind.upper(), name.replace('"', '""')))
+
+    def _keep_kv(self, conn: sqlite3.Connection, keys: tuple) -> None:
+        for key in keys:
+            row = self.conn().execute('SELECT value FROM kv WHERE key = ?', (key,)).fetchone()
+            conn.execute('DELETE FROM kv WHERE key = ?', (key,))
+            if row is not None:
+                conn.execute('INSERT INTO kv (key, value) VALUES (?, ?)', (key, row[0]))
 
     def migrate_json(self, data_dir: str, log=lambda text: None) -> int:
         """Однократно переносит каталог, журнал, контрагентов, проверки, ключи и типы из файлов в базу."""

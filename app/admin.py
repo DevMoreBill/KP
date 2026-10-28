@@ -2826,6 +2826,14 @@ class AdminApi:
             self.handler.attachment('kp_{}.zip'.format(datetime.now().strftime('%Y-%m-%d_%H%M'))),
         )
 
+    ADMIN_KEYS = ('admins', 'admin', AdminSessions.KV_KEY)
+
+    def _kept_on_import(self) -> tuple:
+        """Не главный администратор загружает базу — учётные записи администраторов и их сессии остаются текущими."""
+        login = (AdminSessions.of(self.handler) or {}).get('login', '')
+        acc = AdminRights(accounts(self.store)).account(login)
+        return () if acc is not None and AdminRights.is_main(acc) else self.ADMIN_KEYS
+
     def import_sqlite(self, data, name='') -> dict:
         """Файл базы целиком (.sqlite3 или .zip с ним): проверка, копия текущей базы, замена содержимого «на ходу»."""
         import io
@@ -2855,7 +2863,7 @@ class AdminApi:
                 feeds.busy(fid) for fid in list(feeds.JOBS)
             ):  # фоновая загрузка писала бы старые карточки в новую базу
                 raise ValueError('Идёт загрузка или проверка фида — дождитесь её окончания и загрузите файл базы снова')
-            bak = self.store.restore_sqlite(tmp)
+            bak = self.store.restore_sqlite(tmp, keep_kv=self._kept_on_import())
         finally:
             for ext in ('', '-wal', '-shm', '-journal'):
                 try:
