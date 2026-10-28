@@ -117,5 +117,19 @@ class _Resp:
         return False
 
 
+class RedirectTest(unittest.TestCase):
+    def test_key_not_sent_to_other_site(self):
+        """BE-015: перенаправление на другой сайт — без Authorization и токенов; на тот же — как было."""
+        import urllib.request
+        from net import CrossHostRedirect
+        handler = CrossHostRedirect()
+        req = urllib.request.Request('https://api.example.ru/v1/x', headers={'Authorization': 'Bearer K', 'X-Api-Key': 'K2'})
+        other = handler.redirect_request(req, None, 302, 'Found', {}, 'https://files.example.com/a')
+        self.assertNotIn('Authorization', other.headers)
+        self.assertNotIn('X-api-key', other.headers)
+        same = handler.redirect_request(req, None, 302, 'Found', {}, 'https://api.example.ru/v2/x')
+        self.assertEqual(same.headers.get('Authorization'), 'Bearer K')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

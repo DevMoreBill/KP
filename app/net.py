@@ -5,7 +5,24 @@ import re
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from typing import Any
+
+
+class CrossHostRedirect(urllib.request.HTTPRedirectHandler):
+    """Перенаправление на другой сайт — без заголовков с ключами (urllib переносит их туда по умолчанию)."""
+
+    SECRET_HEADERS = ('Authorization', 'Nrgapi-devtoken', 'X-api-key', 'Cookie')
+
+    def redirect_request(self, req, stream, code, msg, headers, newurl) -> Any:
+        new_req = super().redirect_request(req, stream, code, msg, headers, newurl)
+        moved = urllib.parse.urlsplit(req.full_url).netloc != urllib.parse.urlsplit(newurl).netloc
+        if new_req is not None and moved:
+            for name in self.SECRET_HEADERS:
+                new_req.headers.pop(name, None)
+                new_req.unredirected_hdrs.pop(name, None)
+        return new_req
 
 
 class Net:
@@ -45,7 +62,7 @@ class Net:
         merged.update(headers or {})
         meth = method or ('POST' if data is not None else 'GET')
         tries = 1 + (retries if retries is not None else (1 if meth == 'GET' else 0))
-        open_ = opener.open if opener is not None else urllib.request.urlopen
+        open_ = (opener or urllib.request.build_opener(CrossHostRedirect())).open
         for k in range(tries):
             req = urllib.request.Request(url, data=data, headers=merged, method=meth)
             try:
