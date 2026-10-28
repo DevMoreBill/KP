@@ -100,7 +100,7 @@ export class PartyCheck {
     const check = S.check;
     const inn = Inn.digits(S.clientInn);
     if (!Inn.valid(inn)) return '';
-    const rusprofile = `<a class="btn ghost" href="${esc((check && check.rusprofile) || this.rusprofile(inn))}" target="_blank" rel="noopener" title="Открыть карточку организации в Rusprofile (в браузере)">Rusprofile</a>`;
+    const rusprofile = `<a class="btn ghost" href="${SafeLink.href((check && check.rusprofile) || this.rusprofile(inn))}" target="_blank" rel="noopener" title="Открыть карточку организации в Rusprofile (в браузере)">Rusprofile</a>`;
     if (!check) return this._ask();
     if (check.error) return this._error(check, rusprofile);
     this._autoQueued(check, inn);

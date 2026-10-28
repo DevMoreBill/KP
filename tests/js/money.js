@@ -55,6 +55,11 @@ check('SafeLink — внешние адреса в ссылках только h
   const { SafeLink }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'safe-link.js'));
   assert.strictEqual(SafeLink.href('https://bitrix24.example.ru/x?a=1&b=2'), 'https://bitrix24.example.ru/x?a=1&amp;b=2');
   for (const bad of ['javascript:alert(1)', ' JavaScript:alert(1)', 'file:///c:/x', 'data:text/html,x', '', null]) assert.strictEqual(SafeLink.href(bad), '#', String(bad));
+  assert.strictEqual(SafeLink.file('/img/book/a.pdf'), '/img/book/a.pdf');
+  assert.strictEqual(SafeLink.file('data:application/pdf;base64,AA'), 'data:application/pdf;base64,AA');
+  for (const bad of ['//evil.example/x', 'javascript:x', 'data:text/html,<b>']) assert.strictEqual(SafeLink.file(bad), '#', bad);
+  assert.ok(!/href="\$\{esc\(\(check && check\.rusprofile\)/.test(JS('features/kp/party-check.js')), 'rusprofile — через SafeLink');
+  assert.ok(!/href="\$\{esc\(file\.src\)/.test(JS('features/kit/paint-view.js')), 'буклет — через SafeLink');
   const files=['features/crm/deal-feed.js', 'features/crm/deal-parts.js', 'features/crm/cab-deals.js', 'features/kp/party-check.js', 'features/admin/feed-panel.js', 'features/admin/china-freight.js', 'features/admin/admin-system.js'];
   for (const f of files) assert.ok(!/href="\$\{esc\((row\.record|link\.url|deal\.bxUrl|check\.\w*[uU]rl|feed\.url|rate\.src|offer\.srcUrl|last\.url)/.test(JS(f)), f+': внешний адрес в href мимо SafeLink');
 });

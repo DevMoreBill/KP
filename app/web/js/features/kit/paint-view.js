@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { ContainerPart } from './container-part.js';
 import { Kit } from './kit.js';
 import { ImageFiles } from '../catalog/images.js';
@@ -84,7 +85,7 @@ export class PaintView {
     if (book) {
       control =
         file && file.src
-          ? `<a href="${esc(file.src)}" target="_blank" rel="noopener">📎 ${esc(file.name || 'буклет')}</a> <button type="button" class="lnk" data-a="paintFileDel" ${at}>убрать</button>`
+          ? `<a href="${SafeLink.file(file.src)}" target="_blank" rel="noopener">📎 ${esc(file.name || 'буклет')}</a> <button type="button" class="lnk" data-a="paintFileDel" ${at}>убрать</button>`
           : `<button type="button" class="btn sm" data-a="paintFile" ${at}>Файл буклета — PDF или картинка</button>`;
     }
     return `<div class="kc-book"><label class="stl-chk"><input type="checkbox" data-kitbook="${index}.${j}"${book ? ' checked' : ''}> Окраска по буклету заказчика</label>${UiKit.tip('В КП — строка «Окраска — по буклету цветовых решений заказчика». Файл буклета (PDF или картинка) уходит в ТЗ на сборку. Цвета выше — для 3D-вида и как ориентир сборщику.')}
