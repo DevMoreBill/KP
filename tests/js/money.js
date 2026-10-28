@@ -44,4 +44,10 @@ check('рубли во всех разделах — через Money', ()=>{
   assert.ok(!own, 'свой показ рублей мимо Money: '+own);
 });
 
+check('esc — экранирование для HTML (аудит FE-005: и одинарная кавычка)', ()=>{
+  const { esc }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'util.js'));
+  assert.strictEqual(esc(`a'b"<c>&`), 'a&#39;b&quot;&lt;c&gt;&amp;');
+  assert.strictEqual(esc(null), '');
+});
+
 if (!process.exitCode) console.log('Money: проверок пройдено — '+n);

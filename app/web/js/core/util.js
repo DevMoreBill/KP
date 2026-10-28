@@ -8,7 +8,8 @@ export const esc = text =>
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;'); // и в атрибуте в одинарных кавычках
 
 // по местному времени: toISOString дал бы дату по Гринвичу — ночью это вчерашний день
 export const isoDay = date =>
