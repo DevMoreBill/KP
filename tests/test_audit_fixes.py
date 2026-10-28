@@ -114,6 +114,11 @@ class ServerTest(unittest.TestCase):
             with self.subTest(bad), self.assertRaises(ValueError):
                 TypePatterns.check([{'id': 'x', 'fields': [{'key': 'p', 'find': bad}]}], [])
         TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор|GA\\s*\\d+|компрессор(ы)?', 'fields': []}], [])
+        import time
+        from catalog_migrate import CatDetect
+        start = time.monotonic()  # сервер тоже — по первым 200 знакам (сохранённый отделом опасный шаблон не вешает обновление)
+        CatDetect.of({'name': '1' * 5000}, [{'id': 'x', 'match': '\\d*\\d*\\d*x'}])
+        self.assertLess(time.monotonic() - start, 2)
         from station_rules import StationRules
         from kit import TempStore
         rules = StationRules(TempStore(self).store)
