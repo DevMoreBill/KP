@@ -1,6 +1,7 @@
 // Показ денег (app/web/js/core/money.js, Money): одно место для всей программы — целые рубли, копейки, коротко «млн/тыс.»;
 // округление половины от нуля одинаково для прибыли и убытка, «−0» не бывает, минус «−», нет данных — прочерк; прежние
-// имена (Fmt.rub, CrmFmt, LgFmt.rub, DealFmt.rub, DealValues.rub) выводят то же, что Money.
+// имена (Fmt.rub, CrmFmt, LgFmt.rub, DealFmt.rub, DealValues.rub) выводят то же, что Money. Здесь же — мелкие проверки
+// безопасности общих помощников интерфейса (аудит 28.10: esc, SafeLink, предпросмотр Word, адрес портала в подсказках).
 // Запуск из корня репозитория: node tests/js/money.js — код выхода 0, если всё прошло (tests/test_deal_logistics.py).
 'use strict';
 const vm=require('vm'), fs=require('fs'), path=require('path'), assert=require('assert');
@@ -60,6 +61,10 @@ check('SafeLink — внешние адреса в ссылках только h
 
 check('предпросмотр Word — без вложенного HTML (аудит FE-011)', ()=>{
   assert.ok(/renderAltChunks:\s*false/.test(JS('features/doc/preview-docx.js')));
+});
+
+check('в подсказках — пример адреса Битрикс24, не портал компании (аудит FE-012)', ()=>{
+  assert.ok(!/bitrix24\.kompr\.ru/.test(JS('features/admin/bitrix-link.js')));
 });
 
 if (!process.exitCode) console.log('Money: проверок пройдено — '+n);

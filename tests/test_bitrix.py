@@ -387,9 +387,9 @@ class SyncTest(SyncBase):
     def test_conf_checks(self):
         from bitrix import BitrixApi, BitrixConf, BitrixError
         with self.assertRaises(BitrixError):
-            BitrixApi('https://bitrix24.kompr.ru/')
-        BitrixApi('https://bitrix24.kompr.ru/rest/1/q8w7e6r5t4y3/')
-        self.assertEqual(BitrixApi.mask('https://bitrix24.kompr.ru/rest/1/q8w7e6r5t4y3/'), 'https://bitrix24.kompr.ru/rest/1/••••y3/'.replace('••••y3', '••••4y3'))
+            BitrixApi('https://bitrix24.example.ru/')
+        BitrixApi('https://bitrix24.example.ru/rest/1/q8w7e6r5t4y3/')
+        self.assertEqual(BitrixApi.mask('https://bitrix24.example.ru/rest/1/q8w7e6r5t4y3/'), 'https://bitrix24.example.ru/rest/1/••••y3/'.replace('••••y3', '••••4y3'))
         v = BitrixConf(self.st).view()
         self.assertNotIn(FakeBitrix.KEY, json.dumps(v))
         with self.assertRaises(ValueError):

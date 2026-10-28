@@ -35,13 +35,13 @@ export class BitrixLink {
 
   static _connect(state, portal) {
     return `<div class="st-card"><p class="sub">Подключение</p>
-      <label class="f"><span>Адрес входящего вебхука ${state.hasUrl ? `<b class="ok-t">задан: ${esc(state.url)}</b>` : ''}</span><input type="password" id="bxUrl" autocomplete="off" placeholder="${state.hasUrl ? 'Новый адрес — заменит текущий' : 'https://bitrix24.kompr.ru/rest/1/ключ/'}"></label>
+      <label class="f"><span>Адрес входящего вебхука ${state.hasUrl ? `<b class="ok-t">задан: ${esc(state.url)}</b>` : ''}</span><input type="password" id="bxUrl" autocomplete="off" placeholder="${state.hasUrl ? 'Новый адрес — заменит текущий' : 'https://ваш-портал.bitrix24.ru/rest/1/ключ/'}"></label>
       <div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="bxTest">${state.hasUrl ? 'Проверить связь' : 'Сохранить и проверить'}</button>${state.hasUrl ? '<button class="btn ghost" type="button" id="bxDel">Удалить адрес</button>' : ''}</div>
       ${portal ? `<p class="ok-t" style="margin:8px 0 0">Связь есть: ${esc(portal.user)}${portal.admin ? ' (администратор портала)' : ''}</p>` : ''}
       <details class="more"><summary>Как получить адрес вебхука</summary><ol class="muted">
         <li>В Битрикс24 под администратором: «Приложения» → «Разработчикам» → «Другое» → «Входящий вебхук».</li>
         <li>Права: «CRM (crm)», «Пользователи (user)», «Диск (disk)» — для файлов КП; сохраните.</li>
-        <li>Скопируйте «Вебхук для вызова rest api» (вида https://bitrix24.kompr.ru/rest/1/…/) и вставьте сюда. Никому не пересылайте: по этому адресу открыта CRM.</li>
+        <li>Скопируйте «Вебхук для вызова rest api» (вида https://ваш-портал.bitrix24.ru/rest/1/…/) и вставьте сюда. Никому не пересылайте: по этому адресу открыта CRM.</li>
         <li>Сервер программы должен открывать адрес Битрикса (проверка — кнопкой выше).</li></ol></details></div>`;
   }
 
