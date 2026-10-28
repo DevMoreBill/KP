@@ -40,6 +40,16 @@ class ServerLogTest(unittest.TestCase):
         self.assertIn('Traceback', errs[0]['detail'])
         self.assertEqual(log.count_since(24), 1)
 
+    def test_secrets_masked(self):
+        """INF-019: ключи, вебхук Битрикс24, заголовок Authorization и пароль в JSON — не в журнал."""
+        log = self.log()
+        log.info('GET https://api.example/x?token=SECRET1&q=1 · https://portal.example/rest/1/SECRET2/crm.deal.add')
+        log.info('Authorization: Bearer SECRET3 {"password": "SECRET4", "name": "Иван"}')
+        text = ' '.join(r['text'] for r in log.records())
+        for secret in ('SECRET1', 'SECRET2', 'SECRET3', 'SECRET4'):
+            self.assertNotIn(secret, text)
+        self.assertIn('Иван', text)
+
     def test_rotation(self):
         log = self.log()
         log.MAX = 2000

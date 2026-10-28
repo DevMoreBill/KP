@@ -14,6 +14,7 @@ from typing import Any
 import defaults
 import workcal
 from counterparty import http_json
+from server_log import LogMask
 
 FIND_DEPTH = 6
 
@@ -323,7 +324,7 @@ class Http:
     """Запрос к сервису перевозчика и понятный текст его ошибки (ключи и токены из текста убраны)."""
 
     # ключи и токены в адресе (?token=…) и в тексте ответа не показываются и не пишутся в журнал
-    SECRET = re.compile(r'(?i)((?:token|access_token|appkey|api_?key|key|secret|password|client_secret)=)[^&\s"\'<>]+')
+    SECRET = LogMask.QUERY
 
     @staticmethod
     def call(url, data=None, headers=None, method=None) -> Any:

@@ -9,6 +9,24 @@ import traceback
 from datetime import datetime, timedelta
 
 
+class LogMask:
+    """Ключи, токены и пароли — не в журнал сервера: в адресе, вебхуке Битрикс24, заголовке и JSON — звёздочками."""
+
+    QUERY = re.compile(r'(?i)((?:token|access_token|appkey|api_?key|key|secret|password|client_secret)=)[^&\s"\'<>]+')
+    WEBHOOK = re.compile(r'(/rest/\d+/)[^/\s"\'<>]+')
+    HEADER = re.compile(
+        r'(?i)((?:authorization|nrgapi-devtoken|x-api-key)["\']?\s*[:=]\s*["\']?(?:basic |bearer |token )?)[^\s"\',}]+'
+    )
+    FIELD = re.compile(r'(?i)(["\'](?:password|pass|pwd|key|apiKey|token|secret)["\']\s*:\s*["\'])[^"\']+')
+
+    @classmethod
+    def hide(cls, text: object) -> str:
+        out = cls.QUERY.sub(r'\1***', str(text or ''))
+        out = cls.WEBHOOK.sub(r'\1***', out)
+        out = cls.HEADER.sub(r'\1***', out)
+        return cls.FIELD.sub(r'\1***', out)
+
+
 class ServerLog:
     NAME = 'kp.log'
     MAX = 1 << 20  # байт в файле до перехода на новый
@@ -47,7 +65,7 @@ class ServerLog:
                 pass
 
     def write(self, level: str, text) -> None:
-        lines = str(text).rstrip().split('\n')
+        lines = LogMask.hide(text).rstrip().split('\n')
         head = f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}  {level:<6} {lines[0].rstrip()}\n'
         rec = head + ''.join(f'    {x.rstrip()}\n' for x in lines[1:] if x.strip())
         with self.lock:
