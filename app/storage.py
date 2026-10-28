@@ -474,7 +474,8 @@ class DbZip:
     MEMBER = 'kp.sqlite3'
     LEVEL = 6
     CHUNK = 1 << 20
-    RESERVE = 1 << 30  # распаковка оставляет на диске свободным хотя бы 1 ГБ (архив-«бомба» не заполнит диск)
+    RESERVE = 1 << 30  # распаковка оставляет на диске свободным 1 ГБ (архив-«бомба» не заполнит диск) …
+    RESERVE_SHARE = 10  # … или десятую часть свободного, если места мало
 
     @staticmethod
     def is_zip(path) -> bool:
@@ -520,7 +521,8 @@ class DbZip:
             name = cls.member(z)
             if not name:
                 raise ValueError('В архиве нет файла базы (.sqlite3)')
-            budget = shutil.disk_usage(os.path.dirname(os.path.abspath(dst))).free - cls.RESERVE
+            free = shutil.disk_usage(os.path.dirname(os.path.abspath(dst))).free
+            budget = free - min(cls.RESERVE, free // cls.RESERVE_SHARE)
             written = 0
             with z.open(name) as src_file, open(dst, 'wb') as dst_file:
                 while chunk := src_file.read(cls.CHUNK):

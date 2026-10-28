@@ -44,9 +44,9 @@ class ServerLogTest(unittest.TestCase):
         """INF-019: ключи, вебхук Битрикс24, заголовок Authorization и пароль в JSON — не в журнал."""
         log = self.log()
         log.info('GET https://api.example/x?token=SECRET1&q=1 · https://portal.example/rest/1/SECRET2/crm.deal.add')
-        log.info('Authorization: Bearer SECRET3 {"password": "SECRET4", "name": "Иван"}')
+        log.info('Authorization: Bearer SECRET3 {"password": "SECRET4", "name": "Иван"} https://user:SECRET5@dav.example/')
         text = ' '.join(r['text'] for r in log.records())
-        for secret in ('SECRET1', 'SECRET2', 'SECRET3', 'SECRET4'):
+        for secret in ('SECRET1', 'SECRET2', 'SECRET3', 'SECRET4', 'SECRET5'):
             self.assertNotIn(secret, text)
         self.assertIn('Иван', text)
 

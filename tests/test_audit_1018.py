@@ -274,12 +274,13 @@ class UnpackLimitTest(unittest.TestCase):
         DbZip.unpack(io.BytesIO(box.getvalue()), dst)
         self.assertEqual(os.path.getsize(dst), 3 << 20)
         saved = DbZip.RESERVE
-        DbZip.RESERVE = shutil.disk_usage(folder).free - (1 << 20)
+        DbZip.RESERVE, share = shutil.disk_usage(folder).free - (1 << 20), DbZip.RESERVE_SHARE
+        DbZip.RESERVE_SHARE = 1
         try:
             with self.assertRaises(ValueError):
                 DbZip.unpack(io.BytesIO(box.getvalue()), dst)
         finally:
-            DbZip.RESERVE = saved
+            DbZip.RESERVE, DbZip.RESERVE_SHARE = saved, share
 
 
 class DealNumberTest(unittest.TestCase):

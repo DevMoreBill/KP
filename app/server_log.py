@@ -17,6 +17,7 @@ class LogMask:
     HEADER = re.compile(
         r'(?i)((?:authorization|nrgapi-devtoken|x-api-key)["\']?\s*[:=]\s*["\']?(?:basic |bearer |token )?)[^\s"\',}]+'
     )
+    USERINFO = re.compile(r'(\w+://[^/\s:@]+:)[^@\s/]+@')
     FIELD = re.compile(r'(?i)(["\'](?:password|pass|pwd|key|apiKey|token|secret)["\']\s*:\s*["\'])[^"\']+')
 
     @classmethod
@@ -24,6 +25,7 @@ class LogMask:
         out = cls.QUERY.sub(r'\1***', str(text or ''))
         out = cls.WEBHOOK.sub(r'\1***', out)
         out = cls.HEADER.sub(r'\1***', out)
+        out = cls.USERINFO.sub(r'\1***@', out)
         return cls.FIELD.sub(r'\1***', out)
 
 
