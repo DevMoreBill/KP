@@ -169,6 +169,20 @@ class ModerationTest(unittest.TestCase):
         self.assertEqual((d['spec'], d['price']), ('новое', 250))
         self.assertFalse(desk.review(eid, 'approve')['ok'], 'второе «Принять» ничего не пишет')
 
+    def test_reject_does_not_override_approving(self):
+        """DB-016: «Отклонить», пришедшее одновременно с «Принять», не перекрывает принятую правку."""
+        import catalog_admin
+        st = TempStore(self).store
+        before = {'name': 'Компрессор', 'spec': 'старое'}
+        st.catalog_put('p1', json.dumps(before))
+        eid = st.pending_add('p1', 'edit', json.dumps(before), json.dumps(dict(before, spec='новое')), 'u', 'Менеджер')
+        stale = st.pending_get(eid)
+        self.assertTrue(st.pending_claim(eid))  # «Принять» уже заняло правку
+        st.pending_get = lambda _eid: stale       # «Отклонить» прочитал правку до этого
+        desk = catalog_admin.ModerationDesk(st, 'admin', lambda *a, **k: None)
+        self.assertFalse(desk.review(eid, 'reject', 'нет')['ok'])
+        self.assertEqual(st.one('SELECT status FROM pending_edits WHERE id=?', (eid,))[0], 'approving')
+
 
 class FilesTest(unittest.TestCase):
     def test_nan_in_files(self):
