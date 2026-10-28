@@ -14,8 +14,15 @@ from kit import TempStore
 class FakeDav:
     """WebDAV в памяти: MKCOL, PUT, PROPFIND (Depth 1), DELETE."""
 
-    def __init__(self):
-        self.files, self.calls = {}, []
+    def __init__(self, free=None):
+        self.files, self.calls, self.free = {}, [], free
+
+    def upload(self, url, path, headers, timeout):
+        assert headers.get('Authorization', '').startswith('Basic ')
+        size = os.path.getsize(path)
+        if self.free is not None and size > self.free - sum(self.files.values()):
+            raise urllib.error.HTTPError(url, 507, 'full', {}, None)
+        self.files[url.rsplit('/', 1)[-1]] = size
 
     def __call__(self, url, data=None, headers=None, method='GET', timeout=None):
         self.calls.append((method, url))
@@ -31,6 +38,8 @@ class FakeDav:
         if method == 'DELETE':
             self.files.pop(name, None)
             return b''
+        if headers.get('Depth') == '0':
+            return b'<d:multistatus/>'  # места не сообщает — отказ придёт кодом 507 на загрузке
         rows = ''.join(f'<d:response><d:href>/Копии/{n}</d:href><d:getcontentlength>{size}</d:getcontentlength></d:response>'
                        for n, size in self.files.items())
         return f'<d:multistatus><d:response><d:href>/Копии/</d:href></d:response>{rows}</d:multistatus>'.encode()
@@ -42,7 +51,7 @@ class WebDavTest(unittest.TestCase):
     def test_put_listing_prune(self):
         from backup_webdav import WebDavStore
         fake = FakeDav()
-        disk = WebDavStore(self.CONF, fake)
+        disk = WebDavStore(self.CONF, fake, fake.upload)
         disk.ensure()
         disk.ensure()  # папка уже есть — 405 не ошибка
         folder = tempfile.mkdtemp()
@@ -54,6 +63,45 @@ class WebDavTest(unittest.TestCase):
         self.assertEqual([name for name, _size in disk.listing()][0], 'kp-2026-10-22.zip', 'новые первыми')
         disk.prune(2)
         self.assertEqual(sorted(fake.files), ['kp-2026-10-21.zip', 'kp-2026-10-22.zip'])
+
+    def test_disk_full_prunes_and_retries(self):
+        """Нет места (507) — понятная причина; копия по расписанию удаляет старые сверх «Хранить» и пробует ещё раз."""
+        from backup_mirror import MirrorBackup
+        from backup_webdav import DiskFull, WebDavStore
+        fake = FakeDav(free=300)
+        disk = WebDavStore(self.CONF, fake, fake.upload)
+        folder = tempfile.mkdtemp()
+        paths = []
+        for day in ('2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23'):
+            paths.append(os.path.join(folder, f'kp-{day}.zip'))
+            with open(paths[-1], 'wb') as file:
+                file.write(b'x' * 100)
+        for path in paths[:3]:
+            disk.put(path)
+        with self.assertRaises(DiskFull) as caught:
+            disk.put(paths[3])
+        self.assertIn('нет места', str(caught.exception))
+        self.assertEqual(MirrorBackup._dav_put(disk, paths[3], 3), 100)
+        self.assertEqual(sorted(fake.files), ['kp-2026-10-21.zip', 'kp-2026-10-22.zip', 'kp-2026-10-23.zip'])
+
+    def test_upload_answer_before_file(self):
+        """«Expect: 100-continue»: отказ диска читается до отправки архива, «100 Continue» и молчание — отправлять."""
+        import socket
+        from backup_webdav import DavUpload
+        for answer, code in ((b'HTTP/1.1 507 Insufficient Storage\r\nContent-Length: 0\r\n\r\n', 507),
+                             (b'HTTP/1.1 100 Continue\r\n\r\n', None), (b'', None)):
+            client, server = socket.socketpair()
+            with client, server:
+                server.sendall(answer)
+                DavUpload.WAIT_CONTINUE, saved = 0.2, DavUpload.WAIT_CONTINUE
+                try:
+                    self.assertEqual(DavUpload._early(client, client.makefile('rb')), code, answer)
+                finally:
+                    DavUpload.WAIT_CONTINUE = saved
+        client, server = socket.socketpair()
+        with client, server:
+            server.sendall(b'HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 201 Created\r\n\r\n')
+            self.assertEqual(DavUpload._status(client.makefile('rb')), 201, 'промежуточный 100 пропускается')
 
     def test_clean(self):
         from backup_webdav import WebDavStore

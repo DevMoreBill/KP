@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime
 
 import maintenance
-from backup_webdav import WebDavStore
+from backup_webdav import DiskFull, WebDavStore
 from deal_files import DealFiles
 from defaults import SrvVal
 from kp_files import KpFiles
@@ -132,13 +132,12 @@ class MirrorBackup:
             return self.check(dst.get('path'))
         self._dav_allowed()
         dav = WebDavStore.clean(dict(dst.get('dav') or {}, password=self._password(dst)), self.config()['dav'])
-        self._dav_check(dav)
-        return {'ok': True, 'path': 'Яндекс Диск: ' + dav['folder'], 'free': None}
+        return {'ok': True, 'path': 'Яндекс Диск: ' + dav['folder'], 'free': self._dav_check(dav)}
 
     @staticmethod
-    def _dav_check(dav: dict) -> None:
+    def _dav_check(dav: dict) -> int | None:
         try:
-            WebDavStore(dav).check()
+            return WebDavStore(dav).check()
         except Exception as exc:
             raise ValueError('Яндекс Диск недоступен: ' + Net.why(exc)) from exc
 
@@ -217,12 +216,21 @@ class MirrorBackup:
             self._verify_zip(src)
             disk = WebDavStore(conf['dav'])
             disk.ensure()
-            rec.update(ok=True, file=os.path.basename(src), bytes=disk.put(src))
+            rec.update(ok=True, file=os.path.basename(src), bytes=self._dav_put(disk, src, conf['keep']))
             disk.prune(conf['keep'])
         except Exception as exc:
             rec.update(ok=False, error=Net.why(exc) if not isinstance(exc, RuntimeError) else str(exc)[:300])
         maintenance._save(self.store, backup2=rec)
         return rec
+
+    @staticmethod
+    def _dav_put(disk: WebDavStore, src: str, keep: int) -> int:
+        """Нет места — сначала удаляются старые копии сверх «Хранить» (одна остаётся), затем ещё одна попытка."""
+        try:
+            return disk.put(src)
+        except DiskFull:
+            disk.prune(max(keep - 1, 1))
+            return disk.put(src)
 
     def _run(self, conf: dict, source) -> dict:
         if conf['kind'] == self.DAV:
