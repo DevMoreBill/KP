@@ -108,10 +108,11 @@ class ServerTest(unittest.TestCase):
             self.assertIn('повтор', body)
         for bad in ('(\\w+\\s?)+$', '(a|a)+$', '(?:(?:\\d+)\\.?)+x', '(x){2,}y', '\\d*' * 13, '\\d*' * 6 + 'x',
                     '\\d{0,999}' * 4 + 'x', '|'.join(['\\d*\\d*\\d*x'] * 4), '\\d{0,19}' * 6 + 'x', '\\d?' * 30 + 'x',
-                    '\\d*\\d*[\\d|]*\\d*x', '(?:\\d*){6}x', '(\\d+){6}x'):  # по ревью — и без вложенного повтора
+                    '\\d*\\d*[\\d|]*\\d*x', '(?:\\d*){6}x', '(\\d+){6}x',
+                    '\\\\*\\\\*\\\\*\\\\*x', '(\\d*)?(\\d*)?(\\d*)?x'):  # по ревью — и без вложенного повтора
             with self.subTest(bad), self.assertRaises(ValueError):
                 TypePatterns.check([{'id': 'x', 'fields': [{'key': 'p', 'find': bad}]}], [])
-        TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор|GA\\s*\\d+', 'fields': []}], [])
+        TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор|GA\\s*\\d+|компрессор(ы)?', 'fields': []}], [])
         from station_rules import StationRules
         from kit import TempStore
         rules = StationRules(TempStore(self).store)

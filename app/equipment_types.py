@@ -65,15 +65,12 @@ class TypePatterns:
     """Шаблоны категорий (match) и полей (find) выполняются в браузере каждого: только безопасные выражения."""
 
     MAX = 300
-    # повтор группы, внутри которой тоже повтор, — «катастрофический» перебор на длинной строке (браузер зависает)
-    # повтор группы «(…)+», «(…)*», «(…){n,}» — основа «катастрофического» перебора ((a|a)+, (\d+\.?)+): не принимается;
-    # «(…)?» и повторы отдельных знаков (\S*, \s+) — можно
-    NESTED = re.compile(r'\)[+*{]')  # и «(…){n}» — тело группы выполняется n раз
-    # повтор — «+», «*», любое «{m,n}» и «?» (необязательный знак): у каждого перебор вариантов (ревью: \d{0,19} × 6 — 105 с)
-    UNBOUNDED = re.compile(r'(?<!\\)[+*]|\{\d*,\d*\}|(?<![\\(+*}?])\?')
-    UNBOUNDED_MAX = 4
-    # повторы подряд в одной ветке («\d*\d*\d*…») — перебор растёт как длина строки в степени их числа: не больше 2
+    # перебор растёт как длина строки в степени числа повторов подряд («\d*\d*\d*…»), а повтор группы, внутри которой
+    # тоже повтор, — «катастрофически» ((a|a)+, (\d+\.?)+, (?:\d*){6}): повтор группы не принимается вовсе, повторов
+    # отдельных знаков («+», «*», «?», «{m,n}») — не больше 2 в варианте (между «|») и 8 во всём шаблоне
+    UNBOUNDED_MAX = 8
     BRANCH_MAX = 2
+    QUANT = re.compile(r'[*+?]|\{\d*(,\d*)?\}')
     BACKREF = re.compile(r'\\[1-9]|\\k<')
 
     @classmethod
@@ -106,27 +103,34 @@ class TypePatterns:
     def _patterns(cls, types: list) -> list[str]:
         return [pattern for item in types if isinstance(item, dict) for _where, pattern in cls._own(item)]
 
-    @staticmethod
-    def _branches(pattern: str) -> list[str]:
-        """Варианты шаблона верхнего уровня (по «|» вне скобок)."""
-        out: list[str] = []
-        depth, cur, pos = 0, '', 0
+    @classmethod
+    def _scan(cls, pattern: str) -> tuple[list[int], bool]:
+        """Проход по шаблону: число повторов в каждом варианте верхнего уровня и есть ли повтор группы. Пары «\\x» и
+        наборы «[…]» — один знак (их «*», «|», скобки не считаются)."""
+        counts, depth, pos, prev, nested = [0], 0, 0, '', False
         while pos < len(pattern):
-            char = pattern[pos]
+            char, quant = pattern[pos], cls.QUANT.match(pattern, pos)
+            if quant and prev in ('atom', 'group'):
+                nested = nested or (prev == 'group' and quant.group(0) != '?')  # «(…)?» — не больше одного раза
+                counts[-1] += 1
+                pos, prev = quant.end(), 'quant'
+                pos += pattern[pos : pos + 1] == '?'  # ленивый повтор — тот же повтор
+                continue
+            step, prev = 1, 'atom'
             if char == '\\':
-                cur, pos = cur + pattern[pos : pos + 2], pos + 2
-                continue
-            if char == '[':  # набор знаков «[…]» — целиком: «|» и скобки в нём не делят шаблон
-                end = TypePatterns._class_end(pattern, pos)
-                cur, pos = cur + pattern[pos:end], end
-                continue
-            depth += {'(': 1, ')': -1}.get(char, 0)
-            if char == '|' and depth == 0:
-                out, cur = [*out, cur], ''
-            else:
-                cur += char
-            pos += 1
-        return [*out, cur]
+                step = 2
+            elif char == '[':
+                step = cls._class_end(pattern, pos) - pos
+            elif char == '(':
+                depth, prev = depth + 1, 'open'
+                step += pattern[pos + 1 : pos + 2] == '?'  # (?: (?= (?! (?<…: «?» — не повтор
+            elif char == ')':
+                depth, prev = depth - 1, 'group'
+            elif char == '|':
+                prev = 'open'
+                counts += [0] if depth == 0 else []
+            pos += step
+        return counts, nested
 
     @staticmethod
     def _class_end(pattern: str, start: int) -> int:
@@ -142,16 +146,19 @@ class TypePatterns:
     def _one(cls, pattern: str, where: str) -> None:
         if len(pattern) > cls.MAX:
             raise ValueError(f'«{where}»: шаблон длиннее {cls.MAX} знаков')
-        if cls.NESTED.search(pattern) or cls.BACKREF.search(pattern):
+        counts, nested = cls._scan(pattern)
+        if nested or cls.BACKREF.search(pattern):
             raise ValueError(
-                f'«{where}»: повтор группы «(…)+» / «(…)*» или обратная ссылка могут «повесить» браузер — '
+                f'«{where}»: повтор группы «(…)+» / «(…){{n}}» или обратная ссылка могут «повесить» браузер — '
                 'повторяйте отдельные знаки (\\S*, \\s+), а не группы'
             )
-        if len(cls.UNBOUNDED.findall(pattern)) > cls.UNBOUNDED_MAX:
-            raise ValueError(f'«{where}»: больше {cls.UNBOUNDED_MAX} повторов «+» и «*» — упростите шаблон')
-        if any(len(cls.UNBOUNDED.findall(branch)) > cls.BRANCH_MAX for branch in cls._branches(pattern)):
+        if sum(counts) > cls.UNBOUNDED_MAX:
             raise ValueError(
-                f'«{where}»: больше {cls.BRANCH_MAX} повторов «+» и «*» в одном варианте (между «|») — разбейте его на варианты'
+                f'«{where}»: больше {cls.UNBOUNDED_MAX} повторов «+», «*», «?», «{{…}}» — упростите шаблон'
+            )
+        if max(counts) > cls.BRANCH_MAX:
+            raise ValueError(
+                f'«{where}»: больше {cls.BRANCH_MAX} повторов в одном варианте (между «|») — разбейте его на варианты'
             )
         try:
             re.compile(pattern)
