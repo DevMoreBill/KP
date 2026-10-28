@@ -181,10 +181,14 @@ class DealBook:
 
     @staticmethod
     def _next_number(conn) -> int:
-        conn.execute(
-            "INSERT INTO kv (key, value) VALUES ('crm.seq', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1"
-        )
-        return int(conn.execute("SELECT value FROM kv WHERE key='crm.seq'").fetchone()[0])
+        """Следующий номер сделки; номер, уже занятый сделкой (счётчик из старой копии базы), пропускается."""
+        while True:
+            conn.execute(
+                "INSERT INTO kv (key, value) VALUES ('crm.seq', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1"
+            )
+            num = int(conn.execute("SELECT value FROM kv WHERE key='crm.seq'").fetchone()[0])
+            if not conn.execute('SELECT 1 FROM deals WHERE id=?', (f'd{num}',)).fetchone():
+                return num
 
     def _log(self, deal, author: str, **what) -> None:
         hist = picked if isinstance(picked := deal.get('history'), list) else []

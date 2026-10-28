@@ -260,6 +260,19 @@ class UnpackLimitTest(unittest.TestCase):
             DbZip.RESERVE = saved
 
 
+class DealNumberTest(unittest.TestCase):
+    def test_taken_number_skipped(self):
+        """DB-010: счётчик сделок отстал (копия базы) — новая сделка не перезаписывает существующую."""
+        from crm import DealBook
+        st = TempStore(self).store
+        book = DealBook(st)
+        first = book.create({'title': 'Первая', 'client': 'ООО «А»'}, 'm1', 'М', 'тест')
+        st.kv_set('crm.seq', 0)
+        second = book.create({'title': 'Вторая', 'client': 'ООО «Б»'}, 'm1', 'М', 'тест')
+        self.assertNotEqual(first['id'], second['id'])
+        self.assertEqual(book.get(first['id'])['title'], 'Первая')
+
+
 class TrackRaceTest(unittest.TestCase):
     def test_status_and_mail_both_kept(self):
         """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""
