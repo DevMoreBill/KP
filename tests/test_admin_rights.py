@@ -175,6 +175,26 @@ class AdminRightsStandTest(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(raw)) as box:
             return box.read([n for n in box.namelist() if n.endswith('.sqlite3')][0])
 
+    def test_secret_destinations(self):
+        """BE-003: адрес, куда уходит сохранённый ключ или пароль, меняет только право «Ключи и пароли»."""
+        boss = self.login(*Stand.ADMIN)
+        self.assertEqual(self.call(boss, 'POST', '/api/admin/mail', {'host': 'smtp.ok.ru', 'login': 'kp', 'password': 'pw'})[0], 200)
+        rights = {'sections': {'mail': 'edit', 'services': 'edit', 'carriers': 'edit'}, 'actions': []}
+        self.call(boss, 'POST', '/api/admin/users',
+                  {'action': 'add', 'login': 'svc', 'name': 'Сервисы', 'password': 'pass1234', 'rights': rights})
+        svc = self.login('svc', 'pass1234')
+        self.assertEqual(self.call(svc, 'POST', '/api/admin/mail', {'host': 'smtp.ok.ru', 'fromName': 'КП'})[0], 200,
+                         'тот же сервер — можно')
+        st, body, _ = self.call(svc, 'POST', '/api/admin/mail', {'host': 'smtp.evil.example'})
+        self.assertEqual(st, 403, body)
+        self.assertEqual(self.call(svc, 'POST', '/api/admin/ai', {'model': 'deepseek-chat', 'base': ''})[0], 200)
+        self.assertEqual(self.call(svc, 'POST', '/api/admin/ai', {'base': 'https://evil.example'})[0], 403)
+        st, body, _ = self.call(svc, 'PUT', '/api/logistics/carriers',
+                                {'cdek': {'on': True, 'urls': {'base': 'https://evil.example/v2'}}})
+        self.assertEqual(st, 403, body)
+        self.assertEqual(self.call(svc, 'PUT', '/api/logistics/carriers',
+                                   {'cdek': {'on': False, 'urls': {'base': ''}}})[0], 200, 'включение — можно')
+
     def test_skeleton_refused_on_server(self):
         boss = self.login(*Stand.ADMIN)
         rights = {'sections': {'templates': 'edit'}, 'actions': []}

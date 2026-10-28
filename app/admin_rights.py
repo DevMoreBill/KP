@@ -85,10 +85,10 @@ class AdminRights:
         rule(ADM + r'settings-file/preview$', 'changes'),
         rule(ADM + r'settings-file$', 'changes', write='db', secret_query='keys'),
         rule(ADM + r'connections$', 'services'),
-        rule(ADM + r'ai(/test)?$', 'services', write='secrets', peek=('key', 'apiKey')),
+        rule(ADM + r'ai(/test)?$', 'services', write='secrets', peek=('key', 'apiKey', 'base')),
         rule(ADM + r'access(/.*)?$', 'managers'),
         rule(ADM + r'(rules/stations|features|lists|defaults)$', 'params'),
-        rule(ADM + r'mail$', 'mail', write='secrets', peek=('password', 'clearPassword')),
+        rule(ADM + r'mail$', 'mail', write='secrets', peek=('password', 'clearPassword', 'moved')),
         rule(ADM + r'mail/test$', 'mail'),
         rule(ADM + r'bitrix(/.*)?$', 'bitrix', write='secrets', peek=('url',)),
         rule(ADM + r'audit(/.*)?$', 'audit'),
@@ -113,6 +113,7 @@ class AdminRights:
         rule(r'^/api/catalog/export(/.*)?$', 'goods'),
         rule(r'^/api/catalog/[A-Za-z0-9_-]{1,64}$', 'goods'),
         rule(r'^/api/types$', 'types'),
+        rule(r'^/api/logistics/carriers$', 'carriers', write='secrets', peek=('moved',)),
         rule(r'^/api/logistics(/refresh|/carriers.*|/china.*)?$', 'carriers'),
         rule(r'^/api/onec(/.*)?$', 'services', write='secrets', peek=('password',)),
         rule(r'^/api/(requisites|doctpl/.*)$', 'ourdocs'),
@@ -186,6 +187,10 @@ class AdminRights:
         """Проверке нужно тело запроса (читается, только если нужно: большие файлы маршрут читает сам)."""
         found = cls.rule_of(path)
         return method not in cls.READ and found is not None and (bool(found.peek) or path == '/api/admin/delete')
+
+    @staticmethod
+    def same_value(new: Any, cur: Any) -> bool:
+        return str(new or '').strip().rstrip('/') == str(cur or '').strip().rstrip('/')
 
     def refuse(self, login: str, method: str, path: str, body: dict | None = None, query: dict | None = None) -> str:
         """Почему администратору нельзя этот запрос ('' — можно); query — параметры адреса (имя файла шаблона)."""

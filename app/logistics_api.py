@@ -199,6 +199,20 @@ class CarrierApi:
         }
 
     @classmethod
+    def moved(cls, store, direction: Any) -> dict:
+        """Адреса API, которые запрос меняет (ключи перевозчиков уйдут на них): {код: {поле: адрес}}."""
+        out: dict = {}
+        if not isinstance(direction, dict):
+            return out
+        for cid, v in direction.items():
+            urls = v.get('urls') if isinstance(v, dict) else None
+            for field, url in (urls if isinstance(urls, dict) else {}).items():
+                new = str(url or '').strip()
+                if new and new != cls._default(cid, field) and new != cls.url(store, cid, field):
+                    out.setdefault(str(cid), {})[str(field)] = new
+        return out
+
+    @classmethod
     def save(cls, store, direction, author: str = '') -> dict:
         """d: {код: {on: bool, urls: {поле: адрес или '' — по умолчанию}}}; неизвестное — ошибка."""
         if not isinstance(direction, dict):

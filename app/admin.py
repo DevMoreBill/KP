@@ -890,11 +890,35 @@ class RightsCheck:
     def __init__(self, handler, store) -> None:
         self.handler, self.store = handler, store
 
+    def _moved(self, path: str, body: dict) -> dict:
+        """«moved» — адрес, куда уйдёт сохранённый пароль или ключ, меняется (сервер почты, логин, адреса перевозчиков)."""
+        if path == '/api/logistics/carriers':
+            from logistics_api import CarrierApi
+
+            return dict(body, moved=CarrierApi.moved(self.store, body))
+        if path == '/api/admin/ai':
+            from ai_llm import DEFAULT_BASE
+
+            cur = ((self.store.kv_get('settings') or {}).get('ai') or {}).get('base') or DEFAULT_BASE
+            new = body.get('base') or DEFAULT_BASE
+            return (
+                body
+                if not AdminRights.same_value(new, cur)
+                else {key: val for key, val in body.items() if key != 'base'}
+            )
+        if path == '/api/admin/mail':
+            cur = self.store.kv_get('mail') or {}
+            moved = [
+                key for key in ('host', 'login') if key in body and not AdminRights.same_value(body[key], cur.get(key))
+            ]
+            return dict(body, moved='1' if moved and cur.get('password') else '')
+        return body
+
     def refused(self, method: str, path: str) -> bool:
         sess = AdminSessions.of(self.handler)
         if sess is None:
             return False
-        body = _body_obj(self.handler) if AdminRights.needs_body(method, path) else None
+        body = self._moved(path, _body_obj(self.handler)) if AdminRights.needs_body(method, path) else None
         query = {
             key: vals[0] for key, vals in urllib.parse.parse_qs(urllib.parse.urlsplit(self.handler.path).query).items()
         }
