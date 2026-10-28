@@ -106,10 +106,18 @@ class ServerTest(unittest.TestCase):
         self.assertIn(status, (400, 403))
         if status == 400:
             self.assertIn('повтор', body)
-        for bad in ('(\\w+\\s?)+$', '(a|a)+$', '(?:(?:\\d+)\\.?)+x', '(x){2,}y', '\\d*' * 13, '\\d*' * 6 + 'x'):  # по ревью — и без вложенного повтора
+        for bad in ('(\\w+\\s?)+$', '(a|a)+$', '(?:(?:\\d+)\\.?)+x', '(x){2,}y', '\\d*' * 13, '\\d*' * 6 + 'x',
+                    '\\d{0,999}' * 4 + 'x', '|'.join(['\\d*\\d*\\d*x'] * 4)):  # по ревью — и без вложенного повтора
             with self.subTest(bad), self.assertRaises(ValueError):
                 TypePatterns.check([{'id': 'x', 'fields': [{'key': 'p', 'find': bad}]}], [])
-        TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор', 'fields': []}], [])
+        TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор|GA\\s*\\d+', 'fields': []}], [])
+        from station_rules import StationRules
+        from kit import TempStore
+        rules = StationRules(TempStore(self).store)
+        data = rules.bundled()
+        data['series'] = [dict(data['series'][0], match='(a|a)+$')]
+        with self.assertRaises(ValueError):
+            rules.save(json.dumps(data).encode('utf-8'), 'тест')
 
 
 class UnitTest(unittest.TestCase):

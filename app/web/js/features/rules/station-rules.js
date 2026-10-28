@@ -1,3 +1,4 @@
+import { SpecValues } from '../../core/spec-values.js';
 // Инженерные правила станций — из файла правил (stations.json или своя версия администратора); сервер отдаёт их
 // скриптом /api/rules/stations.js: StationRules.use({...}).
 
@@ -106,7 +107,7 @@ export class StationRules {
 
   static _matches(pattern, text) {
     try {
-      return new RegExp(pattern, 'i').test(text);
+      return new RegExp(pattern, 'i').test(String(text).slice(0, SpecValues.PATTERN_TEXT));
     } catch {
       return false;
     }

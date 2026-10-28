@@ -69,11 +69,19 @@ class TypePatterns:
     # повтор группы «(…)+», «(…)*», «(…){n,}» — основа «катастрофического» перебора ((a|a)+, (\d+\.?)+): не принимается;
     # «(…)?» и повторы отдельных знаков (\S*, \s+) — можно
     NESTED = re.compile(r'\)[+*]|\)\{\d*,')
-    UNBOUNDED = re.compile(r'(?<!\\)[+*]|\{\d*,\}')
-    UNBOUNDED_MAX = 12
-    # повторы подряд в одной ветке («\d*\d*\d*…») — перебор растёт как длина строки в степени их числа: не больше 3
-    BRANCH_MAX = 3
+    # повтор без верхней границы — «+», «*», «{n,}», а также «{m,n}» с n больше 20 (для перебора — то же)
+    UNBOUNDED = re.compile(r'(?<!\\)[+*]|\{\d*,\}|\{\d*,?(?:[2-9]\d|1\d\d+|[1-9]\d{2,})\}')
+    UNBOUNDED_MAX = 4
+    # повторы подряд в одной ветке («\d*\d*\d*…») — перебор растёт как длина строки в степени их числа: не больше 2
+    BRANCH_MAX = 2
     BACKREF = re.compile(r'\\[1-9]|\\k<')
+
+    @classmethod
+    def check_patterns(cls, patterns: list[tuple[str, str]], allowed: set) -> None:
+        """[(где, шаблон)] — новые (не из allowed) проверяются так же, как у категорий (нормы станций, серии)."""
+        for where, pattern in patterns:
+            if pattern not in allowed:
+                cls._one(pattern, where)
 
     @classmethod
     def check(cls, types: list, saved: list) -> None:

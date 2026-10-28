@@ -115,11 +115,23 @@ class StationRules:
         self.validate(data)
         RuleShape.check(data, self.bundled())
         old = self.own()
+        self._series_patterns(data, old)
         if old:
             self.store.kv_set(self.KV_PREV, old)
         data['_saved'] = {'at': datetime.now().isoformat(timespec='seconds'), 'by': str(author or '')[:120]}
         self.store.kv_set(self.KV_KEY, data)
         return self.info()
+
+    def _series_patterns(self, data: dict, old: dict | None) -> None:
+        """Шаблоны серий (match) выполняются в браузере у всех: новые — с теми же ограничениями, что у категорий."""
+        from equipment_types import TypePatterns
+
+        def matches(rules: dict | None) -> list[str]:
+            return [str(row.get('match')) for row in (rules or {}).get('series') or [] if isinstance(row, dict)]
+
+        allowed = set(matches(self.bundled())) | set(matches(old))
+        found = [(f'Серия {i + 1}', pattern) for i, pattern in enumerate(matches(data))]
+        TypePatterns.check_patterns(found, allowed)
 
     def reset(self) -> dict:
         """вернуть файл поставки"""
