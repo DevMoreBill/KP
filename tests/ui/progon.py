@@ -1517,16 +1517,10 @@ class Scenario(UiRun):
 
     def _new_deal_dialog(self, snap=True):
         pg = self.pg
-        if pg.locator('#cabWin [data-cnew]').is_visible():
-            pg.click('#cabWin [data-cnew]')
-            if snap:
-                self.snap('f_cab_new', '#cabWin', wait=200)
-            pg.click('#cabWin .cab-newm [data-cq="deal"]')
-        else:
-            pg.click('#cabWin [data-cfab]')
-            if snap:
-                self.snap('f_cab_fab', '#cabWin', wait=200)
-            pg.click('#cabWin .cab-fabm [data-cq="deal"]')
+        pg.click('#cabWin [data-cnew]')
+        if snap:
+            self.snap('f_cab_new', '#cabWin', wait=200)
+        pg.click('#cabWin .cab-newm [data-cq="deal"]')
         pg.wait_for_selector('dialog.dk-new-dlg[open]', timeout=10000)
 
     def _cab_new(self):

@@ -49,8 +49,13 @@
   // видимая часть: прокрутка и overflow предков обрезают элемент (под нижним краем прокрутки он не «наложен» на кнопку снаружи)
   const clip=e=>{ const r=e.getBoundingClientRect(); let L=r.left,T=r.top,Rt=r.right,B=r.bottom; for(let a=e.parentElement;a&&a!==document.documentElement;a=a.parentElement){ const cs=getComputedStyle(a); if(cs.overflowX==='visible'&&cs.overflowY==='visible') continue; const q=a.getBoundingClientRect(); L=Math.max(L,q.left); T=Math.max(T,q.top); Rt=Math.min(Rt,q.right); B=Math.min(B,q.bottom); } return {left:L,top:T,right:Rt,bottom:B}; };
   const rs=ints.map(clip);
+  // закреплённая панель (sticky): содержимое проходит под ней при прокрутке — наложение, только если его нельзя прокрутить выше
+  const bar=e=>{ for(let a=e,k=0;a&&k<4;a=a.parentElement,k++) if(getComputedStyle(a).position==='sticky') return a; return null; };
+  const scroller=e=>{ for(let a=e.parentElement;a;a=a.parentElement){ const cs=getComputedStyle(a); if(/auto|scroll/.test(cs.overflowY)&&a.scrollHeight>a.clientHeight) return a; } return document.scrollingElement; };
+  const under=(e,h,stick)=>{ const s=scroller(e); return s.contains(stick)&&s.scrollHeight-s.clientHeight-s.scrollTop>=h; };
+  const passes=(a,b,h)=>{ const ba=bar(a), bb=bar(b); if(!ba===!bb) return false; return ba?under(b,h,ba):under(a,h,bb); };
   for(let i=0;i<ints.length;i++) for(let j=i+1;j<ints.length;j++){ const a=ints[i],b=ints[j]; if(a.contains(b)||b.contains(a)) continue; const p=rs[i],q=rs[j];
-    const w=Math.min(p.right,q.right)-Math.max(p.left,q.left), h=Math.min(p.bottom,q.bottom)-Math.max(p.top,q.top); if(w>3&&h>3){
+    const w=Math.min(p.right,q.right)-Math.max(p.left,q.left), h=Math.min(p.bottom,q.bottom)-Math.max(p.top,q.top); if(w>3&&h>3&&!passes(a,b,h)){
       const cx=Math.max(p.left,q.left)+w/2, cy=Math.max(p.top,q.top)+h/2; if(cy<0||cy>innerHeight) { overlap.push(`${path(a)} «${txt(a)}» ⟂ ${path(b)} «${txt(b)}» ${Math.round(w)}×${Math.round(h)} (вне экрана)`); continue; }
       const top=document.elementFromPoint(cx,cy); overlap.push(`${path(a)} «${txt(a)}» ⟂ ${path(b)} «${txt(b)}» ${Math.round(w)}×${Math.round(h)} сверху: ${top?name(top):'-'}`); } }
   // 6. картинки: обрезка (object-fit: cover / растянуто) и не загрузилось

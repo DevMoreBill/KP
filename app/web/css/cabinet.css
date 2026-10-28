@@ -36,7 +36,6 @@ dialog.cabwin[open]{display:flex}
 .cab-ck{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;white-space:nowrap}
 .cab-tot{margin-left:auto;font-size:13.5px;white-space:nowrap}
 .cab-more{margin:14px 0 0}
-.cab-fab{display:none}
 @media (max-width:1180px){.cab-h{grid-template-columns:minmax(0,1fr) auto}.cab-tabs{grid-column:1/-1;grid-row:2}}
 
 /* совет и подсказка «Как пользоваться» */
@@ -310,16 +309,13 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,calc(100vw - 32px))}
   .cab-t h3{font-size:17px}
   .cab-t .md-date{font-size:12px}
   .cab-tools{padding-bottom:4px;gap:4px}
-  .cab-q{display:none}
+  .cab-q>.btn{min-width:44px;padding:0 12px;font-size:22px}
+  .cab-newm .btn{min-height:48px}
+  .cab-ql{display:none}
   .cab-who{max-width:130px;font-size:16px}
   .cab-tabs{padding:0;margin:0 -8px 0 -14px}
   .cab-tab{padding:10px 12px;font-size:14px}
-  .cab-b{padding:10px 12px calc(84px + env(safe-area-inset-bottom))}
-  .cab-fab{display:block;position:absolute;right:max(16px,env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));z-index:20}
-  .cab-fabb{width:58px;height:58px;border-radius:50%;border:0;background:var(--navy);color:var(--on-navy,#fff);font-size:30px;line-height:1;box-shadow:0 8px 22px rgba(8,25,60,.35);cursor:pointer}
-  .cab-fabm{position:absolute;right:0;bottom:68px;display:grid;gap:8px;min-width:170px}
-  .cab-fabm[hidden]{display:none}
-  .cab-fabm .btn{justify-content:flex-start;min-height:48px;box-shadow:0 6px 16px rgba(8,25,60,.2)}
+  .cab-b{padding:10px 12px calc(16px + env(safe-area-inset-bottom))}
   .cab-kpi{gap:6px;margin-bottom:10px}
   .cab-k{padding:7px 10px}
   .cab-k>b{font-size:19px}

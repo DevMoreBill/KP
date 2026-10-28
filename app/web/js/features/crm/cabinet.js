@@ -125,7 +125,7 @@ export class Cabinet {
     const old = dialog.querySelector('.cab-b');
     const scroll = old && this._shownTab === this.tab ? old.scrollTop : 0;
     const view = this._view();
-    dialog.innerHTML = `${this._head()}<div class="cab-b cab-${this.tab}">${view.html()}</div>${this._fab()}`;
+    dialog.innerHTML = `${this._head()}<div class="cab-b cab-${this.tab}">${view.html()}</div>`;
     const body = dialog.querySelector('.cab-b');
     body.scrollTop = scroll;
     this._shownTab = this.tab;
@@ -197,7 +197,7 @@ export class Cabinet {
     const date = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
     return `<header class="cab-h"><div class="cab-t"><h3>${this._title()}</h3><span class="muted md-date">${esc(date)}</span></div>
       <nav class="cab-tabs" role="tablist" aria-label="Разделы кабинета">${this._tabs()}</nav>
-      <div class="cab-tools">${this._who()}<span class="cab-q"><button class="btn primary" type="button" data-cnew aria-expanded="false" aria-haspopup="menu">＋ Новое ▾</button><span class="cab-newm" role="menu" hidden>${this._newItems()}</span></span>
+      <div class="cab-tools">${this._who()}<span class="cab-q"><button class="btn primary" type="button" data-cnew aria-expanded="false" aria-haspopup="menu" aria-label="Создать: дело, сделку или КП">＋<span class="cab-ql"> Новое ▾</span></button><span class="cab-newm" role="menu" hidden>${this._newItems()}</span></span>
       <button class="icon cab-help" type="button" data-cguide aria-label="Как пользоваться кабинетом" title="Как пользоваться кабинетом">?</button><button class="icon" type="button" data-x aria-label="Закрыть кабинет" title="Закрыть (Esc)">✕</button></div></header>`;
   }
 
@@ -251,12 +251,7 @@ export class Cabinet {
     return `<select id="cabWho" class="cab-who" aria-label="Чей кабинет" title="Чей кабинет показать"><option value="">Мой кабинет</option><option value="all"${CrmData.all() ? ' selected' : ''}>Весь отдел</option>${others}</select>`;
   }
 
-  static _fab() {
-    return `<div class="cab-fab"><div class="cab-fabm" hidden>${this._newItems()}</div>
-      <button class="cab-fabb" type="button" data-cfab aria-label="Создать: дело, сделку или КП" aria-expanded="false">＋</button></div>`;
-  }
-
-  // одно «Новое» на ПК и телефоне: заявка из письма — первой, ею заводится большинство сделок
+  // одно «Новое» в шапке (на телефоне — «＋»): заявка из письма — первой, ею заводится большинство сделок
   static _newItems() {
     return this.NEW.filter(([kind]) => kind !== 'mail' || FEAT.on('intake'))
       .map(
@@ -274,17 +269,10 @@ export class Cabinet {
 
   static _hideMenus() {
     this.dlg()
-      .querySelectorAll('.cab-newm, .cab-fabm')
+      .querySelectorAll('.cab-newm')
       .forEach(menu => {
         menu.hidden = true;
       });
-  }
-
-  static _toggleFab() {
-    const menu = this.dlg().querySelector('.cab-fabm');
-    const button = this.dlg().querySelector('[data-cfab]');
-    menu.hidden = !menu.hidden;
-    button.setAttribute('aria-expanded', !menu.hidden);
   }
 
   static _quick(kind) {
@@ -346,7 +334,6 @@ export class Cabinet {
         },
       ],
       ['[data-cnew]', () => this._toggleNew()],
-      ['[data-cfab]', () => this._toggleFab()],
       ['[data-cguide]', () => CabGuide.open()],
       ['[data-ctip]', () => CabGuide.hideTip()],
       ['[data-kpi]', el => CabToday.kpi(el.dataset.kpi)],
@@ -362,7 +349,7 @@ export class Cabinet {
   }
 
   static _click(event) {
-    if (!event.target.closest('.cab-q, .cab-fab')) this._hideMenus();
+    if (!event.target.closest('.cab-q')) this._hideMenus();
     if (CabDeals.click(event) || CabToday.click(event) || CabPrefs.click(event)) return;
     for (const [selector, run] of this._clicks()) {
       const el = event.target.closest(selector);
