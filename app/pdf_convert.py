@@ -236,7 +236,12 @@ class DocxCheck:
     PART = 2 * 1024 * 1024  # служебные части (типы, связи) больше — не документ Word, а «бомба» или подмена
     BAD_REL = re.compile(r'/(attachedTemplate|oleObject|frame|subDocument|package|control|image|audio|video)$')
     # поле Word, которое при открытии само загружает файл по адресу (в сети — ещё и отдаёт хеш пароля Windows)
-    BAD_FIELD = re.compile(r'\b(INCLUDEPICTURE|INCLUDETEXT|LINK|DDEAUTO|DDE)\b', re.IGNORECASE)
+    # коды полей склеены подряд (поле может быть разбито на части) — без границы слова в начале: «xINCLUDEPICTURE» тоже
+    BAD_FIELD = re.compile(r'INCLUDEPICTURE|INCLUDETEXT|DDEAUTO|(?<!HYPER)LINK\s|(?<![A-Z])DDE\s', re.IGNORECASE)
+    REL = re.compile(r'<(?:\w+:)?Relationship\b[^>]*>')
+    REL_TYPE = re.compile(r'\bType\s*=\s*["\']([^"\']*)["\']')
+    INSTR_TEXT = re.compile(r'<(?:\w+:)?instrText\b[^>]*>([^<]*)<')
+    INSTR_ATTR = re.compile(r'\b(?:\w+:)?instr\s*=\s*(?:"([^"]*)"|\'([^\']*)\')')
 
     @classmethod
     def check(cls, data: bytes) -> None:
@@ -263,21 +268,23 @@ class DocxCheck:
             raise ValueError('документ с макросами не преобразуется')
         for name in names:
             if name.endswith('.rels'):
-                for match in re.finditer(r'<Relationship\b[^>]*>', z.read(name).decode('utf-8', 'replace')):
-                    type_match = re.search(r'\bType="([^"]*)"', match.group(0))
+                for match in cls.REL.finditer(z.read(name).decode('utf-8', 'replace')):
+                    type_match = cls.REL_TYPE.search(match.group(0))
                     if 'External' in match.group(0) and type_match and cls.BAD_REL.search(type_match.group(1)):
                         raise ValueError('документ ссылается на внешний шаблон или объект — не преобразуется')
-        parts = [name for name in names if re.match(r'word/(document|header\d*|footer\d*)\.xml$', name)]
+        parts = [name for name in names if name.startswith('word/') and name.endswith('.xml')]  # и сноски, примечания
         for name in parts:
+            if z.getinfo(name).file_size > cls.MAX:
+                raise ValueError('это не документ Word (.docx)')
             if cls.BAD_FIELD.search(cls._fields(z.read(name).decode('utf-8', 'replace'))):
                 raise ValueError('в документе поле, загружающее внешний файл, — не преобразуется')
 
     @staticmethod
     def _fields(xml: str) -> str:
         """Тексты кодов полей Word (instrText и fldSimple) — только они загружают файлы, обычный текст — нет."""
-        parts = re.findall(r'<w:instrText[^>]*>([^<]*)</w:instrText>', xml)
-        parts += re.findall(r'<w:fldSimple\b[^>]*\bw:instr="([^"]*)"', xml)
-        return ''.join(parts)
+        parts = DocxCheck.INSTR_TEXT.findall(xml)
+        parts += [double or single for double, single in DocxCheck.INSTR_ATTR.findall(xml)]
+        return ''.join(parts) + ' '
 
 
 def convert_bytes(data: bytes, cloud_key: str | None = None) -> bytes:
