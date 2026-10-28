@@ -300,6 +300,15 @@ class IdentTest(unittest.TestCase):
         self.assertEqual(st.table_counts()['we"ird'], 1)
 
 
+class DocxNameTest(unittest.TestCase):
+    def test_all_numbers_taken(self):
+        """BE-021: занято «… (2)» … «(99)» — файл не перезаписывает чужой, а получает номер своего КП."""
+        from web_api import KpController
+        free = KpController.free_name('4567892 КП.docx', 'Иванов', 'k77', lambda rel: '(k77)' not in rel)
+        self.assertEqual(free, 'Иванов/4567892 КП (k77).docx')
+        self.assertEqual(KpController.free_name('a.docx', '', 'k1', lambda rel: rel == 'a.docx'), 'a (2).docx')
+
+
 class TrackRaceTest(unittest.TestCase):
     def test_status_and_mail_both_kept(self):
         """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""

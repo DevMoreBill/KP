@@ -12,7 +12,7 @@ import threading
 import time
 import urllib.parse
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -917,6 +917,19 @@ class KpController(Controller):
         v = store().kp_version_state(safe_id(kid), num)
         return self.send_json(admin.kp_out(self.handler, 'state', v)) if v else self.not_found()
 
+    NAME_TRIES = 100
+
+    @classmethod
+    def free_name(cls, name: str, sub: str, kid: str, taken: Callable) -> str:
+        """Путь файла КП, не занятый другим КП: «4567892 КП», «(2)», «(3)»… — и, если и они заняты, с номером этого КП."""
+        stem, ext = os.path.splitext(name)
+        names = [name] + [f'{stem} ({k}){ext}' for k in range(2, cls.NAME_TRIES)] + [f'{stem} ({kid}){ext}']
+        for one in names:
+            rel = (sub + '/' + one) if sub else one
+            if not taken(rel):
+                return rel
+        return rel
+
     @route(r'/api/kp/([^/]+)/docx', 'PUT')
     def docx_put(self, kid: str) -> Any:
         kid, query = safe_id(kid), self.query
@@ -933,14 +946,7 @@ class KpController(Controller):
         except ValueError as exc:
             return self.text(400, f'Файл КП должен быть документом Word (.docx): {exc}')
         sub = safe_dir(query.get('dir'))  # папка менеджера (фамилия)
-        rel = (sub + '/' + name) if sub else name
-        # имя занято файлом другого КП (два КП по одной закупке: «4567892 КП») — «4567892 КП (2)», «(3)»…
-        stem, ext = os.path.splitext(name)
-        for k in range(2, 100):
-            if not store().kp_docx_owner(rel, kid):
-                break
-            name = f'{stem} ({k}){ext}'
-            rel = (sub + '/' + name) if sub else name
+        rel = self.free_name(name, sub, kid, lambda path: store().kp_docx_owner(path, kid))
         path = docs_path(rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         write_bytes(path, self.body())
