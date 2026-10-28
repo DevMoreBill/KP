@@ -81,6 +81,11 @@ check('типовые станции', ()=>{
   assert.strictEqual(StationLibrary.html('none'), '');
 });
 
+check('окно «Каталог обновлён» — без пути к папкам сервера (аудит FE-010)', ()=>{
+  const html=MigrationNotice._html([{id:'x', backup:'C:\\KP\\data\\backup\\kp-20261028-before-migration.zip'}]);
+  assert.ok(!html.includes('C:\\KP') && html.includes('kp-20261028-before-migration.zip'), html);
+});
+
 (async ()=>{
   for (const task of tasks) await task();
   console.log(`каталог 3.199.0: ${n} из ${tasks.length}`);
