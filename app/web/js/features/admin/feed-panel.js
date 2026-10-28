@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { FeedDiscounts } from './feed-disc.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { FeedPurgeUi, FeedRulesUi } from './feed-rules.js';
@@ -104,7 +105,7 @@ export class FeedPanel {
     const files = FeedFmt.isFiles(feed);
     const src = files
       ? esc(FeedFmt.filesShort(feed))
-      : `<a href="${esc(feed.url)}" target="_blank" rel="noopener">${esc(feed.url)}</a>`;
+      : `<a href="${SafeLink.href(feed.url)}" target="_blank" rel="noopener">${esc(feed.url)}</a>`;
     const preview = FeedState.prev && FeedState.prev.id === feed.id ? FeedPreview.html(FeedState.prev, feed) : '';
     return `<div class="st-card fd-panel" id="fdPanel">
       <div class="fd-ph"><b>${esc(feed.name)}</b><span class="muted">${src}</span></div>

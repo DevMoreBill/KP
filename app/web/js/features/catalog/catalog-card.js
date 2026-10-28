@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { CardRules } from './card-rules.js';
 import { FEAT } from '../../core/features.js';
 import { CatalogAnalogs } from './catalog-analogs.js';
@@ -24,7 +25,7 @@ export class CatalogCard {
    * @returns {boolean}
    */
   static webUrl(url) {
-    return /^https?:\/\//i.test(String(url || ''));
+    return SafeLink.web(url);
   }
 
   /**

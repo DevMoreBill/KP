@@ -1,3 +1,4 @@
+import { SafeLink } from '../../core/safe-link.js';
 import { MyPrefs } from '../kp/my-prefs.js';
 import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
@@ -290,7 +291,7 @@ export class CabDeals {
     const client = deal.client && deal.client !== deal.title ? esc(deal.client) : '';
     const count = (deal.kps || []).length;
     const link = deal.bxUrl
-      ? `<a class="dc-bx" href="${esc(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24" aria-label="Открыть в Битрикс24">Б24</a>`
+      ? `<a class="dc-bx" href="${SafeLink.href(deal.bxUrl)}" target="_blank" rel="noopener" title="Открыть в Битрикс24" aria-label="Открыть в Битрикс24">Б24</a>`
       : '';
     const kps = this._kps(count);
     const picked = DealBulk.picked.has(deal.id) ? ' picked' : '';

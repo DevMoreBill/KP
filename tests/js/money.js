@@ -50,4 +50,12 @@ check('esc — экранирование для HTML (аудит FE-005: и о�
   assert.strictEqual(esc(null), '');
 });
 
+check('SafeLink — внешние адреса в ссылках только http(s) (аудит FE-006)', ()=>{
+  const { SafeLink }=require(path.join(ROOT, 'app', 'web', 'js', 'core', 'safe-link.js'));
+  assert.strictEqual(SafeLink.href('https://bitrix24.example.ru/x?a=1&b=2'), 'https://bitrix24.example.ru/x?a=1&amp;b=2');
+  for (const bad of ['javascript:alert(1)', ' JavaScript:alert(1)', 'file:///c:/x', 'data:text/html,x', '', null]) assert.strictEqual(SafeLink.href(bad), '#', String(bad));
+  const files=['features/crm/deal-feed.js', 'features/crm/deal-parts.js', 'features/crm/cab-deals.js', 'features/kp/party-check.js', 'features/admin/feed-panel.js', 'features/admin/china-freight.js', 'features/admin/admin-system.js'];
+  for (const f of files) assert.ok(!/href="\$\{esc\((row\.record|link\.url|deal\.bxUrl|check\.\w*[uU]rl|feed\.url|rate\.src|offer\.srcUrl|last\.url)/.test(JS(f)), f+': внешний адрес в href мимо SafeLink');
+});
+
 if (!process.exitCode) console.log('Money: проверок пройдено — '+n);
