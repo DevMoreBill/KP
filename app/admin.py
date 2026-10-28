@@ -930,9 +930,12 @@ class RightsCheck:
         if sess is None:
             return False
         body = self._moved(path, _body_obj(self.handler)) if AdminRights.needs_body(method, path) else None
-        query = {
-            key: vals[0] for key, vals in urllib.parse.parse_qs(urllib.parse.urlsplit(self.handler.path).query).items()
-        }
+        # разбор — как у маршрутов (web_api.dispatch, AdminApi): повторённый параметр — последнее значение и тут
+        query = dict(
+            urllib.parse.parse_qsl(
+                urllib.parse.urlsplit(self.handler.path).query, keep_blank_values=True, encoding='utf-8'
+            )
+        )
         why = AdminRights(accounts(self.store)).refuse(sess.get('login', ''), method, path, body, query)
         if not why:
             return False

@@ -251,6 +251,14 @@ class AdminRightsStandTest(unittest.TestCase):
                                           'function kpSkeleton(KP){return {}}', cookie=tpl[0], headers=tpl[1])
         self.assertEqual(st, 403, body)
         self.assertIn('skeleton.js', body)
+        st, body, _ = self.stand.http.req('PUT', '/api/templates/pnevmotekh/file?name=template.json&name=skeleton.js',
+                                          'function kpSkeleton(KP){return {}}', cookie=tpl[0], headers=tpl[1])
+        self.assertEqual(st, 403, 'повтор параметра: проверка прав и маршрут берут одно и то же значение')
+        boss = self.login(*Stand.ADMIN)
+        self.call(boss, 'POST', '/api/admin/users', {'action': 'add', 'login': 'chg', 'name': 'Файл', 'password': 'pass1234',
+                                                     'rights': {'sections': {'changes': 'edit'}, 'actions': []}})
+        chg = self.login('chg', 'pass1234')
+        self.assertEqual(self.call(chg, 'GET', '/api/admin/settings-file?keys=0&keys=1')[0], 403, 'BE-002: повтор keys')
 
 
 if __name__ == '__main__':
