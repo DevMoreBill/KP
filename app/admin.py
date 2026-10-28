@@ -140,7 +140,8 @@ class AdminSessions:
 
     KV_KEY = 'adminSessions'
     SAVE_EVERY = 60
-    FIELDS = ('csrf', 'last', 'ip', 'login', 'name')
+    FIELDS = ('csrf', 'last', 'ip', 'login', 'name', 'start')
+    HOUR = 3600
     items = None  # {хеш токена: {csrf, last, ip, login, name, saved}}
 
     @staticmethod
@@ -161,7 +162,7 @@ class AdminSessions:
             logins = {u['login'].lower() for u in accounts(store)}
             raw = store.kv_get(cls.KV_KEY) or {}
             cls.items = {
-                k: dict(v, saved=v.get('last', 0))
+                k: dict(v, saved=v.get('last', 0), start=v.get('start') or v.get('last', 0))
                 for k, v in (raw.items() if isinstance(raw, dict) else [])
                 if isinstance(v, dict)
                 and now - float(v.get('last') or 0) <= idle
@@ -198,11 +199,20 @@ class AdminSessions:
             sess = cls._all().get(k)
             if not sess:
                 return None
-            if time.time() - sess['last'] > SrvVal.get(cls._store(), 'srv.adminIdleMin') * 60:
+            if cls._expired(sess):
                 cls._all().pop(k, None)
                 cls._save()
                 return None
             return sess
+
+    @classmethod
+    def _expired(cls, sess: dict) -> bool:
+        """Бездействие дольше srv.adminIdleMin или вход старше srv.adminMaxHours (даже при работе)."""
+        store, now = cls._store(), time.time()
+        idle = now - sess['last'] > SrvVal.get(store, 'srv.adminIdleMin') * 60
+        return (
+            idle or now - float(sess.get('start') or sess['last']) > SrvVal.get(store, 'srv.adminMaxHours') * cls.HOUR
+        )
 
     @classmethod
     def of(cls, handler) -> dict | None:
@@ -221,6 +231,7 @@ class AdminSessions:
             cls._all()[cls.key(tok)] = {
                 'csrf': csrf,
                 'last': time.time(),
+                'start': time.time(),
                 'ip': _client_ip(handler),
                 'login': (user or {}).get('login', ''),
                 'name': (user or {}).get('name') or (user or {}).get('login') or 'Администратор',
