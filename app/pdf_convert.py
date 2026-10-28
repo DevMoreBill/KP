@@ -234,7 +234,9 @@ class DocxCheck:
 
     MAX = 60 * 1024 * 1024
     PART = 2 * 1024 * 1024  # служебные части (типы, связи) больше — не документ Word, а «бомба» или подмена
-    BAD_REL = re.compile(r'/(attachedTemplate|oleObject|frame|subDocument|package|control)$')
+    BAD_REL = re.compile(r'/(attachedTemplate|oleObject|frame|subDocument|package|control|image|audio|video)$')
+    # поле Word, которое при открытии само загружает файл по адресу (в сети — ещё и отдаёт хеш пароля Windows)
+    BAD_FIELD = re.compile(r'\b(INCLUDEPICTURE|INCLUDETEXT|LINK|DDEAUTO|DDE)\b', re.IGNORECASE)
 
     @classmethod
     def check(cls, data: bytes) -> None:
@@ -265,6 +267,17 @@ class DocxCheck:
                     type_match = re.search(r'\bType="([^"]*)"', match.group(0))
                     if 'External' in match.group(0) and type_match and cls.BAD_REL.search(type_match.group(1)):
                         raise ValueError('документ ссылается на внешний шаблон или объект — не преобразуется')
+        parts = [name for name in names if re.match(r'word/(document|header\d*|footer\d*)\.xml$', name)]
+        for name in parts:
+            if cls.BAD_FIELD.search(cls._fields(z.read(name).decode('utf-8', 'replace'))):
+                raise ValueError('в документе поле, загружающее внешний файл, — не преобразуется')
+
+    @staticmethod
+    def _fields(xml: str) -> str:
+        """Тексты кодов полей Word (instrText и fldSimple) — только они загружают файлы, обычный текст — нет."""
+        parts = re.findall(r'<w:instrText[^>]*>([^<]*)</w:instrText>', xml)
+        parts += re.findall(r'<w:fldSimple\b[^>]*\bw:instr="([^"]*)"', xml)
+        return ''.join(parts)
 
 
 def convert_bytes(data: bytes, cloud_key: str | None = None) -> bytes:

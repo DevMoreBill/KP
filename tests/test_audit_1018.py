@@ -200,12 +200,18 @@ class FilesTest(unittest.TestCase):
                 for n, t in (extra or {}).items():
                     z.writestr(n, t)
             return b.getvalue()
+        DocxCheck.check(docx({'word/header1.xml': '<w:hdr><w:r><w:instrText> PAGE </w:instrText></w:r><w:t>LINK</w:t></w:hdr>'}))
         DocxCheck.check(docx({'word/_rels/document.xml.rels': '<Relationships><Relationship Id="r1" Type="http://x/hyperlink" '
                                                                  'Target="https://pnevmoteh.ru" TargetMode="External"/></Relationships>'}))
         for bad in (b'{\\rtf1}', docx({'word/vbaProject.bin': 'x'}),
                     docx(ct='application/vnd.ms-word.document.macroEnabled.main+xml'),
                     docx({'word/_rels/settings.xml.rels': '<Relationships><Relationship Id="r1" Type="http://x/attachedTemplate" '
-                                                          'Target="\\\\host\\share\\t.dotm" TargetMode="External"/></Relationships>'})):
+                                                          'Target="\\\\host\\share\\t.dotm" TargetMode="External"/></Relationships>'}),
+                    # BE-006: внешняя картинка и поле, загружающее файл (код поля разбит на части)
+                    docx({'word/_rels/document.xml.rels': '<Relationships><Relationship Id="r2" Type="http://x/image" '
+                                                          'Target="\\\\10.0.0.5\\s\\a.png" TargetMode="External"/></Relationships>'}),
+                    docx({'word/header1.xml': '<w:hdr><w:r><w:instrText> INCLUDE</w:instrText></w:r>'
+                                              '<w:r><w:instrText>PICTURE "http://evil/x.png"</w:instrText></w:r></w:hdr>'})):
             with self.assertRaises(ValueError):
                 DocxCheck.check(bad)
 
