@@ -236,6 +236,30 @@ class EmailRegexTest(unittest.TestCase):
                              ['ivan.petrov+kp@mail.ru', 'sales@pnevmo-tex.ru'])
 
 
+class UnpackLimitTest(unittest.TestCase):
+    def test_no_room(self):
+        """DB-009: архив базы, который не помещается на диск с запасом, не распаковывается до конца."""
+        import os
+        import shutil
+        import tempfile
+        from storage import DbZip
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        box = io.BytesIO()
+        with zipfile.ZipFile(box, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('kp.sqlite3', b'\0' * (3 << 20))
+        dst = os.path.join(folder, 'x.sqlite3')
+        DbZip.unpack(io.BytesIO(box.getvalue()), dst)
+        self.assertEqual(os.path.getsize(dst), 3 << 20)
+        saved = DbZip.RESERVE
+        DbZip.RESERVE = shutil.disk_usage(folder).free - (1 << 20)
+        try:
+            with self.assertRaises(ValueError):
+                DbZip.unpack(io.BytesIO(box.getvalue()), dst)
+        finally:
+            DbZip.RESERVE = saved
+
+
 class TrackRaceTest(unittest.TestCase):
     def test_status_and_mail_both_kept(self):
         """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""
