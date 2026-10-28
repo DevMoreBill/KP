@@ -81,6 +81,8 @@ FEATURES = {
     'optCost': (True, 'Закупка опций и услуг'),
     'feedPhotoFrom': (True, 'Фото похожей модели у позиций фида без фото'),
     'optSaleCur': (True, 'Валюта цены продажи опций и услуг'),
+    'aiOptions': (True, 'Опции и комплектация из ИИ'),
+    'aiFileImages': (True, 'Фото из файла при заполнении с ИИ'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -119,6 +121,8 @@ NEEDS.update(
         'reminders': 'track',
         'autosave': 'drafts',
         'contactDelete': 'clientCard',
+        'aiOptions': 'ai',
+        'aiFileImages': 'ai',
     }
 )
 
@@ -130,6 +134,7 @@ ROUTES = [
     ('GET', re.compile(r'^/api/report$'), 'report'),
     (None, re.compile(r'^/api/check(/.*)?$'), 'check'),
     (None, re.compile(r'^/api/ai/(fill|profile)$'), 'ai'),
+    ('POST', re.compile(r'^/api/fileimages$'), 'aiFileImages'),
     ('POST', re.compile(r'^/api/logistics/quote$'), 'carriers'),
     ('GET', re.compile(r'^/api/kp/[A-Za-z0-9_-]+/versions(/\d+)?$'), 'versions'),
     (None, re.compile(r'^/api/drafts(/.*)?$'), 'drafts'),

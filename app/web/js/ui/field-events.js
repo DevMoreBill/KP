@@ -80,6 +80,7 @@ export class FieldEvents {
     const price = Price.parse(target.value);
     opt._priceText = target.value;
     OptionSale.set(opt, Number.isNaN(price) ? 0 : price);
+    if (price > 0) delete opt.askPrice; // цену продажи поставили — опция идёт в КП
     target.classList.toggle('bad', Number.isNaN(price));
     document.querySelectorAll(`[data-osum="${i}.${j}"]`).forEach(cell => (cell.textContent = OptionSale.sum(opt)));
     SidePanel.updateLive();

@@ -92,9 +92,14 @@ export class EquipStep {
       .filter(opt => opt.name)
       .map(opt => {
         const j = (item.options || []).indexOf(opt);
-        return `<span class="oitem">${esc(opt.short || opt.name)}${+opt.qty > 1 ? ` × ${esc(opt.qty)}` : ''}${opt.price ? ` · ${KPGen.money(opt.price * (+opt.qty || 1))}` : ' · включено'}<button type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Убрать опцию">✕</button></span>`;
+        return `<span class="oitem">${esc(opt.short || opt.name)}${+opt.qty > 1 ? ` × ${esc(opt.qty)}` : ''}${this._optionPrice(opt)}<button type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Убрать опцию">✕</button></span>`;
       })
       .join('');
+  }
+
+  static _optionPrice(opt) {
+    if (opt.price) return ` · ${KPGen.money(opt.price * (+opt.qty || 1))}`;
+    return opt.askPrice ? ' · нет цены — не в КП' : ' · включено';
   }
 
   static _kit(item, i) {

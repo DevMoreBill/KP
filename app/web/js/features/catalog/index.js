@@ -43,6 +43,7 @@ import { TypeForm } from './type-form.js';
 import { TypesEditor } from './types-editor.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { AiOptions } from './ai-options.js';
 
 export const CATALOG = {
   AiChat,
@@ -128,5 +129,6 @@ ImageSlots.listen();
 ItemEditor.listen();
 AiSource.listen();
 AiFill.listen();
+AiOptions.listen();
 // нейросети для автозаполнения — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
 LISTS.ready(AiChat.LISTS);

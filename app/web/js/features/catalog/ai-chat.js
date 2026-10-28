@@ -5,6 +5,8 @@ import { DefRegistry } from '../../core/defaults.js';
 import { CopyText } from '../../core/files.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
+import { FEAT } from '../../core/features.js';
+import { PageImages } from './page-images.js';
 /** Нейросеть прямо в программе (включает администратор: «Настройки → Нейросеть»): запрос через сервер. */
 export class AiDirect {
   static state = { enabled: false, provider: '', model: '', busy: {} };
@@ -247,14 +249,16 @@ export class AiSource {
     field.value = '';
     item._aiMsg = `Читаю «${file.name}»…`;
     FormView.render();
+    const imgs = await AiFileImages.read(file);
     try {
       const text = await AiFileText.read(file);
       item._src = `Файл: ${file.name}\n\n${text.slice(0, Math.round(DefRegistry.num('ai.fileChars', 60000)))}`;
       item._aiStep = 2;
-      item._aiMsg = `Файл «${file.name}» загружен (${text.length.toLocaleString('ru-RU')} знаков). Дальше — шаг 2.`;
+      item._aiMsg = `Файл «${file.name}» загружен (${text.length.toLocaleString('ru-RU')} знаков)${AiFileImages.note(imgs)}. Дальше — шаг 2.`;
     } catch (error) {
-      item._aiMsg = String(error.message || error);
+      item._aiMsg = String(error.message || error) + (imgs.length ? AiFileImages.note(imgs) : '');
     }
+    AiFileImages.offer(item, imgs);
     FormView.render();
     KpState.persist();
   }
@@ -330,6 +334,7 @@ export class AiFileText {
   static async read(file) {
     const name = String(file.name || '').toLowerCase();
     if (/\.docx$/.test(name)) return await this._docx(file);
+    if (/\.xlsx$/.test(name) && AiFileImages.enabled()) return await AiFileImages.text(file);
     if (/\.(txt|csv|md|tsv)$/.test(name) || /^text\//.test(file.type || '')) return await file.text();
     if (/\.pdf$/.test(name) || file.type === 'application/pdf') {
       // текст PDF читает сервер (pdf_text.py); скан без текста — понятная ошибка
@@ -340,6 +345,67 @@ export class AiFileText {
       });
       return answer.text || '';
     }
-    throw new Error('Подходят файлы PDF, Word (.docx) и текстовые (.txt)');
+    throw new Error('Подходят файлы PDF, Word (.docx), Excel (.xlsx) и текстовые (.txt)');
+  }
+}
+
+/** Картинки файла шага 1 (PDF, Word, Excel) — под шагом 1, как фото со страницы товара: ★ главное, галочки. */
+export class AiFileImages {
+  static KINDS = /\.(pdf|docx|xlsx|pptx|odt)$/i;
+
+  /** @returns {boolean} функция «Фото из файла при заполнении с ИИ» включена */
+  static enabled() {
+    return FEAT.on('aiFileImages');
+  }
+
+  static _ask(file, extra = '') {
+    return Api.request(`/api/fileimages?name=${encodeURIComponent(file.name)}${extra}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+  }
+
+  /**
+   * Картинки файла (data:-адреса); нет функции, не тот файл или ошибка — пусто.
+   * @param {File} file
+   * @returns {Promise<string[]>}
+   */
+  static async read(file) {
+    if (!this.enabled() || !this.KINDS.test(String(file.name || ''))) return [];
+    try {
+      return ((await this._ask(file)).imgs || []).map(pic => pic.src);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Текст Excel (читает сервер).
+   * @param {File} file
+   * @returns {Promise<string>}
+   */
+  static async text(file) {
+    const answer = await this._ask(file, '&text=1');
+    if (answer.error) throw new Error(`Файл не прочитан: ${answer.error}`);
+    return answer.text || '';
+  }
+
+  /**
+   * Подпись для сообщения шага 1.
+   * @param {string[]} imgs
+   * @returns {string}
+   */
+  static note(imgs) {
+    return imgs.length ? `, картинок: ${imgs.length} — выберите главное фото ниже` : '';
+  }
+
+  /**
+   * Показать картинки файла под шагом 1 (вместо фото страницы).
+   * @param {object} item
+   * @param {string[]} imgs
+   */
+  static offer(item, imgs) {
+    if (imgs.length) PageImages.keep(item, imgs);
   }
 }

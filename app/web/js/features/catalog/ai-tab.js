@@ -1,6 +1,7 @@
-import { AiChat, AiDirect } from './ai-chat.js';
+import { AiChat, AiDirect, AiFileImages } from './ai-chat.js';
 import { AiFill } from './ai-fill.js';
 import { PageImages } from './page-images.js';
+import { AiOptions } from './ai-options.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -49,14 +50,17 @@ export class AiTab {
       </div>
       ${this._text(item, i, has)}
       ${props ? `<div class="ai-props"><span>Со страницы взято характеристик: <b>${props}</b>.</span><button class="btn ghost" type="button" data-a="aiProps" data-i="${i}">Перенести в «Характеристики» без ИИ</button></div>` : ''}
-      ${(item._srcImgs || []).length ? PageImages.html(i, item._srcImgs, 'ai') : ''}</li>`;
+      ${PageImages.offered(item).length ? PageImages.html(i, PageImages.offered(item), 'ai') : ''}</li>`;
   }
 
   static _file(i, station) {
+    const images = AiFileImages.enabled();
     const hint = station
       ? 'ТЗ заказчика — ИИ разложит требования к контейнеру и добавит недостающие элементы.'
-      : 'Паспорт, каталог, ТЗ — текст из файла уйдёт в запрос.';
-    return `<label class="ai-srcc ai-srcf"><span class="ai-srct">📄 Файл</span><span class="ai-fileb">Выбрать PDF, Word или .txt</span><small class="muted">${hint}</small><input type="file" accept=".pdf,.docx,.txt,.csv,.md" hidden data-aifile="${i}"></label>`;
+      : `Паспорт, каталог, КП поставщика, ТЗ — текст из файла уйдёт в запрос${images ? ', картинки — в выбор фото' : ''}.`;
+    const kinds = images ? 'PDF, Word, Excel или .txt' : 'PDF, Word или .txt';
+    const accept = `.pdf,.docx,${images ? '.xlsx,' : ''}.txt,.csv,.md`;
+    return `<label class="ai-srcc ai-srcf"><span class="ai-srct">📄 Файл</span><span class="ai-fileb">Выбрать ${kinds}</span><small class="muted">${hint}</small><input type="file" accept="${accept}" hidden data-aifile="${i}"></label>`;
   }
 
   static _text(item, i, has) {
@@ -102,7 +106,8 @@ export class AiTab {
       <textarea data-p="${path}._ans" data-aians="${i}" rows="5" placeholder="${direct ? 'Здесь появится ответ нейросети (или вставьте ответ чата)' : 'Ctrl+V — ответ ИИ целиком (кнопка «Копировать» под ответом в чате)'}">${esc(item._ans || '')}</textarea>
       <div class="ai-prev" data-aiprev="${i}">${AiFill.summary(item, answer)}</div>
       <div class="row ai-apply"><button class="btn primary" type="button" data-a="aiApply" data-i="${i}" data-aiok="${i}" ${ok ? '' : 'disabled'}>Заполнить карточку</button>
-        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${(item._aiKeep ?? DefRegistry.value('ai.keep')) ? 'checked' : ''} style="width:auto">не менять уже заполненное</label></div></li>`;
+        <label class="row muted" style="gap:6px"><input type="checkbox" data-aikeep="${i}" ${(item._aiKeep ?? DefRegistry.value('ai.keep')) ? 'checked' : ''} style="width:auto">не менять уже заполненное</label>
+        ${EquipTypes.byId(Attrs.of(item).cat).station ? '' : AiOptions.field(item, i, answer)}</div></li>`;
   }
 
   /**

@@ -11,7 +11,8 @@ export class OptsBlock {
     ${OptionCost.enabled() ? OptionCost.field(i, j, option) : ''}
     ${OptionSale.field(i, j, option)}
     <span class="s" data-osum="${i}.${j}">${OptionSale.sum(option)}</span>
-    <button class="icon" type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Удалить опцию">✕</button></div>`;
+    <button class="icon" type="button" data-a="delOpt" data-i="${i}" data-j="${j}" aria-label="Удалить опцию">✕</button>
+    ${option.askPrice ? '<small class="opt-ask" title="Поставьте цену продажи — до этого опция в документ заказчика не попадает">нет цены продажи — не в КП</small>' : ''}</div>`;
   }
 
   // ширина столбцов: закупка с валютой и цена продажи с валютой

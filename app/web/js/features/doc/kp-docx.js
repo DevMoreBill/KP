@@ -47,7 +47,7 @@ export class KpDocx {
       info: { maker: attrs.maker || '', model: attrs.model || '', type: attrs.type || '' },
     });
     const options = (item.options || [])
-      .filter(option => option.name.trim() && +option.qty > 0)
+      .filter(option => option.name.trim() && +option.qty > 0 && !option.askPrice) // без цены продажи — не заказчику
       .map(option => ({
         name: option.name.trim(),
         short: option.short,

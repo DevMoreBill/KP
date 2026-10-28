@@ -124,12 +124,15 @@ export class KitDoc {
     ];
   }
 
-  // опции и услуги с ценой продажи или закупкой — свои строки закупки (поставщик по умолчанию — как у позиции)
+  // опции и услуги с ценой продажи или закупкой — свои строки закупки (поставщик по умолчанию — как у позиции);
+  // опция без цены продажи (askPrice) не продаётся — и не закупается
   static _options(item, i) {
     if (!FEAT.on('optCost')) return [];
     return (item.options || [])
       .map((option, j) => ({ option, j }))
-      .filter(({ option }) => String(option.name || '').trim() && (option.cost > 0 || option.price > 0))
+      .filter(
+        ({ option }) => String(option.name || '').trim() && !option.askPrice && (option.cost > 0 || option.price > 0),
+      )
       .map(({ option, j }) => this._optLine(item, option, i, j));
   }
 

@@ -1,3 +1,4 @@
+import { PageImages } from '../catalog/page-images.js';
 import { NewStation } from './new-station.js';
 import { TzImport } from '../tz/tz-import.js';
 import { Toast } from '../../core/toast.js';
@@ -218,6 +219,7 @@ export class EquipWizard {
     const doc = CatalogEditor.toDoc(item, { id: Uid.next() + Uid.next(), prices: [] });
     CatalogEditor.openNew(doc, saved => CatalogWindow.win.afterSave(saved));
     Object.assign(S.items[0], { _src, _srcProps, _srcUrl, _srcImgs, _aiStep: item._aiStep, _aiMsg: item._aiMsg });
+    PageImages.move(item, S.items[0]);
     ItemEditor.current.tab = tab;
     ItemEditor.render();
     if (after) after(0);

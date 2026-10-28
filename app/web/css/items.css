@@ -85,6 +85,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .opts{margin-top:14px;padding:14px;border-radius:12px;background:var(--soft)}
 .opt{display:grid;grid-template-columns:minmax(0,1fr) 72px 130px 120px 32px;gap:8px;align-items:center;margin-bottom:8px}
 .opt .s{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
+.opt .opt-ask{grid-column:1/-1;margin-top:-4px;color:var(--warn-ink);font-size:12px}
 .opt input{padding:8px 10px;font-size:14px;background:var(--field)}
 .opt.wcost{grid-template-columns:minmax(0,1fr) 64px 180px 130px 110px 32px}
 .opt.wsale{grid-template-columns:minmax(0,1fr) 72px 180px 130px 32px}

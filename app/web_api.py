@@ -1217,6 +1217,25 @@ class ToolsController(Controller):
         except Exception as exc:
             return self.text(422, f'PDF не прочитан: {str(exc)[:200]}')
 
+    @route(
+        r'/api/fileimages', 'POST'
+    )  # картинки из файла (PDF, Word, Excel) — для фото карточки, как со страницы товара
+    def fileimages(self) -> None:
+        from doc_images import DocImages
+
+        if self._too_big('Файл'):
+            return None
+        name, body = str(self.query.get('name') or '')[:200], self.body()
+        out = DocImages.extract(name, body, defaults.img_opts(store()))
+        if self.query.get('text') == '1':  # Excel: текст читает сервер (в браузере — только Word и PDF)
+            from doc_text import DocText
+
+            try:
+                out['text'] = DocText.extract(name, body)['text']
+            except Exception as exc:
+                out['error'] = str(exc)[:200]
+        return self.send_json(out)
+
     @route(r'/api/tz/parse', 'POST')  # ТЗ заказчика (PDF, DOCX, XLSX, ODT, RTF, TXT): текст и требования к станции
     def tz_parse(self) -> None:
         from doc_text import DocText

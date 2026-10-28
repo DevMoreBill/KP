@@ -1,3 +1,4 @@
+import { AiOptions } from './ai-options.js';
 import { Kit } from '../kit/kit.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -99,7 +100,7 @@ export class AiPrompt {
 "features":[{"label":"Узел или особенность","text":"2–4 предложения по существу"}],
 "groups":[{"name":"Основные","rows":[{"k":"Параметр, ед.","v":"значение","hl":true}]}],
 "cover":{"title":"${type.coverTitle || type.name}","model":"марка и модель","desc":"1–2 предложения для титульного листа","kpis":[{"num":"число","unit":"ед.","cap":"что это"}]},
-"attrs":{"cat":"${type.id}","maker":"производитель","series":"серия","model":"модель",${type.fields.map(field => this._field(field)).join(',')}}${station}}`;
+"attrs":{"cat":"${type.id}","maker":"производитель","series":"серия","model":"модель",${type.fields.map(field => this._field(field)).join(',')}}${station}${AiOptions.json(type)}}`;
   }
 
   static _rules(type) {
@@ -111,7 +112,7 @@ export class AiPrompt {
       ? ' features — о контейнере, основном оборудовании и системах станции; если исходные данные — техническое задание заказчика: в container — все требования к контейнеру (корпус, обшивка, утепление, окраска, вентиляция, освещение, ОПС, пожаротушение, шум, климат), в parts — все требуемые элементы и опции станции, кроме контейнера и основного оборудования (АВР, подогреватели, глушитель, топливная система, мониторинг и т. п.);'
       : '';
     const other = type.station ? '' : ` Если оборудование другого типа, укажи attrs.cat из списка: ${types}.`;
-    return `Правила:${station} groups — характеристики, сгруппированные по смыслу; hl=true — только у 2–4 главных параметров; kpis — ровно 4 главных числовых параметра; в attrs числовые поля — только число без единиц.${other}`;
+    return `Правила:${station} groups — характеристики, сгруппированные по смыслу; hl=true — только у 2–4 главных параметров; kpis — ровно 4 главных числовых параметра; в attrs числовые поля — только число без единиц.${other}${AiOptions.rule(type)}`;
   }
 
   /**

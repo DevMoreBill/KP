@@ -21,7 +21,7 @@ export class PriceGuard {
    * @returns {string[]}
    */
   static problems() {
-    return [...this._belowCost(), ...this._margin(), ...this._rate()];
+    return [...this._belowCost(), ...this._noSale(), ...this._margin(), ...this._rate()];
   }
 
   /**
@@ -81,6 +81,14 @@ export class PriceGuard {
         return cost != null && option.price < cost;
       })
       .map(option => `опция «${option.name}» — цена ниже закупки`);
+  }
+
+  // опция из КП поставщика или без цены (заполнение с ИИ): цены продажи нет — в документ заказчика не попадёт
+  static _noSale() {
+    return S.items
+      .flatMap(item => item.options || [])
+      .filter(option => option.name && option.askPrice && !(option.price > 0))
+      .map(option => `опция «${option.name}» — нет цены продажи, в КП не попадёт`);
   }
 
   // экономику не открывали — маржа по закупке позиций, как в «Цене КП»

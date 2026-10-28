@@ -1,6 +1,7 @@
 import { AiChat, AiDirect, AiSource } from './ai-chat.js';
 import { AiParse } from './ai-parse.js';
 import { AiPrompt } from './ai-prompt.js';
+import { AiOptions } from './ai-options.js';
 import { StationAuto } from '../kit/station-auto.js';
 import { Kit } from '../kit/kit.js';
 import { ContainerPart } from '../kit/container-part.js';
@@ -420,11 +421,12 @@ class AiApply {
     const feats = this._feats(item, data, keep);
     const groups = this._groups(item, data, keep);
     this._rest(item, data, keep);
-    if (feats || groups) item.page = true;
+    const extra = EquipTypes.byId(Attrs.of(item).cat).station ? null : AiOptions.apply(item, data);
+    if (feats || groups || (extra && extra.complect)) item.page = true;
     item._ans = '';
     item._ansBase = '';
     item._aiStep = 0;
-    item._aiMsg = this._note(data.added);
+    item._aiMsg = this._note(data.added) + (extra ? AiOptions.note(extra) : '');
     FormView.render();
     KpState.persist();
     Toast.show('Карточка заполнена из ответа ИИ');

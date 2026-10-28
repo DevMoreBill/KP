@@ -119,7 +119,7 @@ export class KpEconomics {
     if (!FEAT.on('optCost')) return [];
     return items
       .flatMap(item => item.options || [])
-      .filter(option => option.name && option.cost > 0)
+      .filter(option => option.name && option.cost > 0 && !option.askPrice)
       .map(option => ({
         cost: (this._unitCost(option, ctx) || 0) * (+option.qty || 0),
         sale: (option.price || 0) * (+option.qty || 0),

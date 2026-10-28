@@ -5,6 +5,7 @@ import { $, Uid, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
+import { ImageFiles } from './images.js';
 /**
  * Фото со страницы товара (автозаполнение и «Фото с сайта поставщика»): ★ — главное, галочки — какие добавить в изображения.
  * Сервер скачивает их в изображения позиции; уже добавленные (тот же адрес у поставщика) пропускаются.
@@ -13,6 +14,9 @@ export class PageImages {
   static dlg = null; // {url, imgs} — окно «Фото со страницы товара»
   static URL_RE = /^https?:\/\/./;
   static JSON_HEAD = { 'Content-Type': 'application/json' };
+  static DATA_RE = /^data:image\//;
+  static files = new Map(); // картинки файла шага 1 по позиции — в памяти страницы (data:-адреса в черновик не пишутся)
+  static SOURCE_TAIL = 32;
 
   static _url(item) {
     return (item.feed && item.feed.url) || item.pageUrl || '';
@@ -120,10 +124,10 @@ export class PageImages {
     }
     item.gallery = item.gallery.filter(one => one.src !== pic.src);
     item.photo = { src: pic.src, w: pic.w, h: pic.h };
-    item.photoSource = pic.source;
+    item.photoSource = this.source(pic.source);
     delete item.photoFrom;
     have.add(pic.src);
-    have.add(pic.source);
+    have.add(item.photoSource);
   }
 
   static _addRest(item, { keys, main, bySrc, imgs, have }) {
@@ -131,7 +135,7 @@ export class PageImages {
     for (const k of keys) {
       if (k === main) continue;
       const pic = bySrc.get(imgs[k]);
-      if (!pic || have.has(pic.source) || have.has(pic.src)) continue;
+      if (!pic || have.has(this.source(pic.source)) || have.has(pic.src)) continue;
       have.add(pic.src);
       item.gallery.push({
         id: Uid.next(),
@@ -143,7 +147,7 @@ export class PageImages {
         wide: '',
         at: '',
         on: true,
-        source: pic.source,
+        source: this.source(pic.source),
       });
       added++;
     }
@@ -185,6 +189,63 @@ export class PageImages {
   }
 
   /**
+   * Картинки для выбора под шагом 1: со страницы товара или из файла.
+   * @param {object} item
+   * @returns {string[]}
+   */
+  static offered(item) {
+    return (item._srcImgs || []).length ? item._srcImgs : this.files.get(item.id) || [];
+  }
+
+  /**
+   * Картинки файла шага 1 — в выбор (фото прежней страницы убираются).
+   * @param {object} item
+   * @param {string[]} imgs
+   */
+  static keep(item, imgs) {
+    item._srcImgs = [];
+    item._srcUrl = '';
+    this.files.set(item.id, imgs);
+  }
+
+  /**
+   * Позиция переехала (мастер → карточка каталога) — картинки файла вместе с ней.
+   * @param {object} from
+   * @param {object} into
+   */
+  static move(from, into) {
+    if (this.files.has(from.id) && from.id !== into.id) this.files.set(into.id, this.files.get(from.id));
+  }
+
+  /**
+   * Картинки из файла (data:-адреса): подготовить в браузере, как фото, вставленное вручную (сервер их не скачивает).
+   * Источник — короткий отпечаток, чтобы та же картинка не добавилась дважды.
+   * @param {string[]} picked
+   * @returns {Promise<{imgs: object[], errors: string[]}>}
+   */
+  static async _fromFile(picked) {
+    const out = { imgs: [], errors: [] };
+    for (const src of picked) {
+      try {
+        const pic = await ImageFiles.prep(src, 'photo');
+        out.imgs.push({ ...pic, source: src });
+      } catch {
+        out.errors.push('картинка не открылась');
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Подпись источника картинки из файла — короткая (data:-адрес целиком в позицию не пишется).
+   * @param {string} src
+   * @returns {string}
+   */
+  static source(src) {
+    return this.DATA_RE.test(src) ? `файл:${src.length}:${src.slice(-this.SOURCE_TAIL)}` : src;
+  }
+
+  /**
    * Скачать отмеченные фото в изображения позиции.
    * @param {number} i
    * @param {{url: string, imgs: string[]}} page
@@ -200,11 +261,10 @@ export class PageImages {
       return false;
     }
     Toast.show(`Загружаю фото: ${keys.length}…`);
-    const answer = await this._fetch(
-      item,
-      url,
-      keys.map(k => imgs[k]),
-    );
+    const picked = keys.map(k => imgs[k]);
+    const answer = this.DATA_RE.test(picked[0] || '')
+      ? await this._fromFile(picked)
+      : await this._fetch(item, url, picked);
     if (!answer) return false;
     const { added, first } = this._place(item, { answer, main, keys, imgs });
     if (url && !item.pageUrl && !(item.feed && item.feed.url)) item.pageUrl = url;
@@ -221,7 +281,7 @@ export class PageImages {
     const item = S.items[i];
     if (!item) return;
     const page =
-      box.dataset.src === 'dlg' ? this.dlg : { url: String(item._srcUrl || '').trim(), imgs: item._srcImgs || [] };
+      box.dataset.src === 'dlg' ? this.dlg : { url: String(item._srcUrl || '').trim(), imgs: this.offered(item) };
     if (!page || !page.imgs.length) return;
     button.disabled = true;
     const ok = await this.add(i, page, box);
