@@ -11,8 +11,9 @@ on:
         type: boolean
         default: false
 
+# по умолчанию — только чтение; запись (релиз) — у задания build
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
@@ -110,6 +111,9 @@ jobs:
       ((needs.static.result == 'success' && needs.tests.result == 'success') ||
        (needs.gate.outputs.tested == 'true' && needs.static.result == 'skipped' && needs.tests.result == 'skipped'))
     runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
     strategy:
       fail-fast: false
       matrix:
