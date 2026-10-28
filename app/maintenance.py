@@ -31,9 +31,10 @@ def state(store) -> dict:
 
 
 def _save(store, **parts) -> dict:
-    state_data = state(store)
-    state_data.update(parts)
-    store.kv_set('maint', state_data)
+    with store.lock:  # копия, проверка и сжатие пишут сюда из разных потоков
+        state_data = state(store)
+        state_data.update(parts)
+        store.kv_set('maint', state_data)
     return state_data
 
 

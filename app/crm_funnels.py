@@ -136,6 +136,10 @@ class Funnels:
 
     def save_mirror(self, funnels: list[dict]) -> None:
         """Воронки Битрикса (из структуры портала): настройки прежних (скрыта, ход КП) сохраняются."""
+        with self.store.lock:  # обмен с Битриксом и «Настройки» не затирают друг друга
+            self._save_mirror(funnels)
+
+    def _save_mirror(self, funnels: list[dict]) -> None:
         old = {row['id']: row for row in self.mirror()}
         conf = self.conf()
         conf['list'] = [
@@ -153,6 +157,10 @@ class Funnels:
         """Настройки воронок из «Настроек»: скрытые, ход КП → стадии, воронка новых сделок. ValueError — с понятным текстом."""
         if not isinstance(data, dict):
             raise ValueError('Нет настроек воронок')
+        with self.store.lock:
+            return self._options(data)
+
+    def _options(self, data: dict) -> dict:
         conf = self.conf()
         known = {row['id']: row for row in self.all()}
         for fid, opts in (data.get('funnels') or {}).items() if isinstance(data.get('funnels'), dict) else []:

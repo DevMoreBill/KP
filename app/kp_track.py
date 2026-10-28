@@ -64,15 +64,16 @@ class DealTrack:
 
     def update(self, kid: str, data, author: str) -> tuple:
         """Изменить ход сделки: status, reason, note, followUp ({date, note} | {done: true} | None)."""
-        track = self.store.kp_track_get(kid)
-        changed = {}
-        if 'status' in data:
-            changed.update(self._status(track, data, author))
-        if 'followUp' in data:
-            changed.update(self._follow(track, data.get('followUp'), author))
-        if changed:
-            self._log(track, dict(changed, at=Val.now(), by=author))
-            self.store.kp_track_set(kid, track)
+        with self.store.lock:  # чтение и запись одним шагом: одновременная правка (письмо, другой менеджер) не теряется
+            track = self.store.kp_track_get(kid)
+            changed = {}
+            if 'status' in data:
+                changed.update(self._status(track, data, author))
+            if 'followUp' in data:
+                changed.update(self._follow(track, data.get('followUp'), author))
+            if changed:
+                self._log(track, dict(changed, at=Val.now(), by=author))
+                self.store.kp_track_set(kid, track)
         return track, changed
 
     def _status(self, track, data, author: str) -> dict:
@@ -115,6 +116,10 @@ class DealTrack:
 
     def mark_sent(self, kid: str, recipients, files, author: str) -> dict:
         """Письмо клиенту ушло: запись в «sent»; неотправленное КП становится «Отправлено»."""
+        with self.store.lock:
+            return self._mark_sent(kid, recipients, files, author)
+
+    def _mark_sent(self, kid: str, recipients, files, author: str) -> dict:
         track = self.store.kp_track_get(kid)
         text = picked if isinstance(picked := track.get('sent'), list) else []
         text.append({'at': Val.now(), 'by': author, 'to': recipients, 'files': files})

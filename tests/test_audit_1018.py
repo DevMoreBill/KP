@@ -222,5 +222,29 @@ class FilesTest(unittest.TestCase):
         self.assertFalse(P._unsafe('update/app/x.py'))
 
 
+class TrackRaceTest(unittest.TestCase):
+    def test_status_and_mail_both_kept(self):
+        """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""
+        from kp_track import DealTrack
+        st = TempStore(self).store
+        st.kp_set('k1', 'state', json.dumps({'number': 'k1'}), 'тест')
+        read, threads = st.kp_track_get, []
+
+        def slow_get(kid):
+            value = read(kid)
+            if not threads:
+                threads.append(threading.Thread(target=DealTrack(st).mark_sent, args=('k1', ['a@b.ru'], [], 'почта')))
+                threads[0].start()
+                threads[0].join(0.3)
+            return value
+
+        st.kp_track_get = slow_get
+        DealTrack(st).update('k1', {'followUp': {'date': '2026-11-01', 'note': 'перезвонить'}}, 'менеджер')
+        threads[0].join(5)
+        track = read('k1')
+        self.assertTrue(track.get('sent'), 'письмо отмечено')
+        self.assertEqual((track.get('followUp') or {}).get('date'), '2026-11-01', 'напоминание осталось')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
