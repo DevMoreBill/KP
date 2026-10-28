@@ -770,10 +770,11 @@ class Counterparties:
                 self.store.kv_set(
                     'checkQueue', [y for y in (self.store.kv_get('checkQueue') or []) if y.get('inn') != x['inn']]
                 )
-            client = self.store.client_get('inn' + x['inn'])
-            if client is not None:
-                client['check'] = res
-                self.store.client_put('inn' + x['inn'], client, 'Программа (очередь проверок)')
+            with self.store.lock:  # карточку менеджер может править в это же время
+                client = self.store.client_get('inn' + x['inn'])
+                if client is not None:
+                    client['check'] = res
+                    self.store.client_put('inn' + x['inn'], client, 'Программа (очередь проверок)')
             done += 1
         return done
 

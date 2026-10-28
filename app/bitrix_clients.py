@@ -245,9 +245,15 @@ class BitrixClients:
 
     def _merge(self, client: dict, people: list) -> dict:
         """Контакты Битрикса — в карточку клиента: новые добавляются, у известных дописываются пустые поля."""
+        with self.store.lock:  # карточка — свежая, прочитанная тут же: правка менеджера в это время не теряется
+            current = self.store.client_get(client['id'])
+            return self._merge_into(current or client, people, current)
+
+    def _merge_into(self, client: dict, people: list, saved: dict | None) -> dict:
+        """saved — карточка в базе (None — клиент новый, записать в любом случае)."""
         doc = {key: value for key, value in client.items() if key != '_rev'}
         rows = [dict(row) for row in (doc.get('contacts') or []) if isinstance(row, dict)]
-        changed = not self.store.client_get(doc['id'])
+        changed = saved is None
         rules = self.rules.contacts()
         if self.rules.allow(rules['dir'], 'in'):
             for person in people:
