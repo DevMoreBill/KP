@@ -66,7 +66,11 @@ class TypePatterns:
 
     MAX = 300
     # повтор группы, внутри которой тоже повтор, — «катастрофический» перебор на длинной строке (браузер зависает)
-    NESTED = re.compile(r'\((?:[^()\\]|\\.)*?(?<!\\)[+*](?:[^()\\]|\\.)*\)[+*{]')
+    # повтор группы «(…)+», «(…)*», «(…){n,}» — основа «катастрофического» перебора ((a|a)+, (\d+\.?)+): не принимается;
+    # «(…)?» и повторы отдельных знаков (\S*, \s+) — можно
+    NESTED = re.compile(r'\)[+*]|\)\{\d*,')
+    UNBOUNDED = re.compile(r'(?<!\\)[+*]|\{\d*,\}')
+    UNBOUNDED_MAX = 12
     BACKREF = re.compile(r'\\[1-9]|\\k<')
 
     @classmethod
@@ -98,8 +102,11 @@ class TypePatterns:
             raise ValueError(f'«{where}»: шаблон длиннее {cls.MAX} знаков')
         if cls.NESTED.search(pattern) or cls.BACKREF.search(pattern):
             raise ValueError(
-                f'«{where}»: шаблон с повтором внутри повтора или обратной ссылкой может «повесить» браузер — упростите его'
+                f'«{where}»: повтор группы «(…)+» / «(…)*» или обратная ссылка могут «повесить» браузер — '
+                'повторяйте отдельные знаки (\\S*, \\s+), а не группы'
             )
+        if len(cls.UNBOUNDED.findall(pattern)) > cls.UNBOUNDED_MAX:
+            raise ValueError(f'«{where}»: больше {cls.UNBOUNDED_MAX} повторов «+» и «*» — упростите шаблон')
         try:
             re.compile(pattern)
         except re.error as exc:
