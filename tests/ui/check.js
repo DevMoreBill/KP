@@ -46,7 +46,9 @@
   // 5. наложение интерактивных элементов
   const pop=e=>{ for(let a=e.parentElement,k=0;a&&k<5;a=a.parentElement,k++){ const cs=getComputedStyle(a); if((cs.position==='absolute'||cs.position==='fixed')&&a.getBoundingClientRect().height>60&&a.tagName!=='DIALOG') return true; } return false; };
   const ints=[...rootEl.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,summary')].filter(e=>vis(e)&&!e.closest('.cw-split')&&!pop(e));
-  const rs=ints.map(e=>e.getBoundingClientRect());
+  // видимая часть: прокрутка и overflow предков обрезают элемент (под нижним краем прокрутки он не «наложен» на кнопку снаружи)
+  const clip=e=>{ const r=e.getBoundingClientRect(); let L=r.left,T=r.top,Rt=r.right,B=r.bottom; for(let a=e.parentElement;a&&a!==document.documentElement;a=a.parentElement){ const cs=getComputedStyle(a); if(cs.overflowX==='visible'&&cs.overflowY==='visible') continue; const q=a.getBoundingClientRect(); L=Math.max(L,q.left); T=Math.max(T,q.top); Rt=Math.min(Rt,q.right); B=Math.min(B,q.bottom); } return {left:L,top:T,right:Rt,bottom:B}; };
+  const rs=ints.map(clip);
   for(let i=0;i<ints.length;i++) for(let j=i+1;j<ints.length;j++){ const a=ints[i],b=ints[j]; if(a.contains(b)||b.contains(a)) continue; const p=rs[i],q=rs[j];
     const w=Math.min(p.right,q.right)-Math.max(p.left,q.left), h=Math.min(p.bottom,q.bottom)-Math.max(p.top,q.top); if(w>3&&h>3){
       const cx=Math.max(p.left,q.left)+w/2, cy=Math.max(p.top,q.top)+h/2; if(cy<0||cy>innerHeight) { overlap.push(`${path(a)} «${txt(a)}» ⟂ ${path(b)} «${txt(b)}» ${Math.round(w)}×${Math.round(h)} (вне экрана)`); continue; }
@@ -54,7 +56,10 @@
   // 6. картинки: обрезка (object-fit: cover / растянуто) и не загрузилось
   for(const e of rootEl.querySelectorAll('img')){ if(!vis(e)) continue; const r=e.getBoundingClientRect(); if(r.width<8) continue; const cs=getComputedStyle(e);
     if(e.complete&&e.naturalWidth===0&&e.getAttribute('src')){ img.push(`${path(e)} не загрузилась: ${(e.getAttribute('src')||'').slice(0,80)}`); continue; }
-    if(!e.naturalWidth) continue; const ar=e.naturalWidth/e.naturalHeight, br=r.width/r.height;
+    if(!e.naturalWidth||(e.naturalWidth<=2&&e.naturalHeight<=2)) continue; // заглушка 1×1 до загрузки — не картинка
+    // повёрнутый на 90° лист (transform у картинки или предка): рамка на экране — с переставленными сторонами
+    let turned=false; for(let a=e,k=0;a&&k<4;a=a.parentElement,k++){ const t=getComputedStyle(a).transform; const m=t&&t!=='none'?t.match(/matrix\(([^,]+),/):null; if(m&&Math.abs(+m[1])<0.01){ turned=!turned; } }
+    const ar=e.naturalWidth/e.naturalHeight, br=turned?r.height/r.width:r.width/r.height;
     if(Math.abs(ar/br-1)>0.04 && (cs.objectFit==='cover'||cs.objectFit==='fill')) img.push(`${path(e)} object-fit:${cs.objectFit} ${e.naturalWidth}×${e.naturalHeight} → ${Math.round(r.width)}×${Math.round(r.height)}`);
     let a=e.parentElement; for(let k=0;k<4&&a;k++,a=a.parentElement){ const ps=getComputedStyle(a); if(/(auto|scroll)/.test(ps.overflow)) break; if(/(hidden|clip)/.test(ps.overflow)){ const q=a.getBoundingClientRect(); if(r.right>q.right+2||r.bottom>q.bottom+2||r.left<q.left-2||r.top<q.top-2){ img.push(`${path(e)} обрезана рамкой ${name(a)} (${Math.round(r.width)}×${Math.round(r.height)} в ${Math.round(q.width)}×${Math.round(q.height)})`);} break; } } }
   const dlgs=[...document.querySelectorAll('dialog[open]')].map(d=>({id:d.id||d.className, len:(d.innerText||'').trim().length, h:Math.round(d.getBoundingClientRect().height), w:Math.round(d.getBoundingClientRect().width), top:Math.round(d.getBoundingClientRect().top), bottom:Math.round(d.getBoundingClientRect().bottom)}));

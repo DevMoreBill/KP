@@ -285,10 +285,20 @@ class UiRun:
         pg = self.pg = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
         pg.on('pageerror', lambda e: self.errs.append((self.cur, 'pageerror', str(e)[:400])))
         pg.on('console', self._console)
-        pg.on('response', lambda r: self.errs.append((self.cur, 'http %d' % r.status, r.request.method + ' ' + r.url.replace(self.base, '')[:200]))
-              if r.status >= 400 else None)
+        pg.on('response', self._response)
         pg.on('dialog', self._dialog)
         return pg
+
+    # ответ 4xx, который программа ждёт: клиента КП нет в справочнике — ClientStore.byId → null (не ошибка)
+    EXPECTED_HTTP = re.compile(r'^GET /api/clients/[^/?]+$')
+
+    def _response(self, resp):
+        if resp.status < 400:
+            return
+        what = resp.request.method + ' ' + resp.url.replace(self.base, '')[:200]
+        if resp.status == 404 and self.EXPECTED_HTTP.match(what):
+            return
+        self.errs.append((self.cur, 'http %d' % resp.status, what))
 
     def profile(self):
         return os.path.join(self.out, 'profile', self.mode)
@@ -1231,7 +1241,8 @@ class Scenario(UiRun):
         """Кабинет менеджера: все разделы (весь отдел), доска и список, карточка сделки панелью (дело, «‹ ›»), новая сделка с первым делом."""
         pg = self.pg
         self.closeall()
-        self.ev("Cabinet.open()")
+        # раздел кабинета помнится, пока страница открыта (20.10): прежние этапы могли оставить «Сделки» — открыть «Сегодня»
+        self.ev("Cabinet.open('today')")
         pg.wait_for_selector('#cabWin .cab-tabs', timeout=30000)
         self.wait(1200)
         if self.ev("Cabinet.tab") != 'today':
