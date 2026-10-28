@@ -70,6 +70,7 @@ class TypePatterns:
     # отдельных знаков («+», «*», «?», «{m,n}») — не больше 2 в варианте (между «|») и 8 во всём шаблоне
     UNBOUNDED_MAX = 8
     BRANCH_MAX = 2
+    JS_ONLY = re.compile(r'(?<!\\)\[\^?\]')
     QUANT = re.compile(r'[*+?]|\{\d*(,\d*)?\}')
     BACKREF = re.compile(r'\\[1-9]|\\k<')
 
@@ -134,10 +135,8 @@ class TypePatterns:
 
     @staticmethod
     def _class_end(pattern: str, start: int) -> int:
-        """Позиция после «]», закрывающей набор «[…]» с позиции start (первая «]» сразу после «[» или «[^» — знак)."""
+        """Позиция после «]», закрывающей набор «[…]» с позиции start — по правилам браузера (JS): первая «]» закрывает."""
         pos = start + 1
-        pos += pattern[pos : pos + 1] == '^'
-        pos += pattern[pos : pos + 1] == ']'
         while pos < len(pattern) and pattern[pos] != ']':
             pos += 2 if pattern[pos] == '\\' else 1
         return min(pos + 1, len(pattern))
@@ -146,6 +145,8 @@ class TypePatterns:
     def _one(cls, pattern: str, where: str) -> None:
         if len(pattern) > cls.MAX:
             raise ValueError(f'«{where}»: шаблон длиннее {cls.MAX} знаков')
+        if cls.JS_ONLY.search(pattern):  # «[]», «[^]» в браузере и на сервере значат разное — проверка была бы неверной
+            raise ValueError(f'«{where}»: пустой набор «[]» или «[^]» — запишите набор знаков явно')
         counts, nested = cls._scan(pattern)
         if nested or cls.BACKREF.search(pattern):
             raise ValueError(
