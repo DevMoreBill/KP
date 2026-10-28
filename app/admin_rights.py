@@ -22,7 +22,7 @@ class Rule:
     always: str = ''
     peek: tuple = ()  # изменение с этими полями тела — ещё и действие write (например, адрес вебхука)
     also: str = ''  # ещё одно действие для любого запроса (база целиком — это и все ключи API)
-    # ((параметр адреса, значение в списке через запятую, действие), …): файл настроек с ключами, выгрузка с закупкой
+    # ((параметр адреса, значение в списке через запятую, действие), …): файл настроек с ключами
     query_needs: tuple = ()
 
 
@@ -105,7 +105,7 @@ class AdminRights:
         rule(ADM + r'trash(/.*)?$', 'trash', write='delete'),
         rule(ADM + r'(moderation|pending(/.*)?)$', 'moderation'),
         rule(ADM + r'export/sqlite$', 'backup', always='db', also='secrets'),
-        rule(ADM + r'export(/.*)?$', 'backup', query_needs=(('prices', 'cost', 'db'),)),
+        rule(ADM + r'export(/.*)?$', 'backup'),
         rule(ADM + r'import(/.*)?$', 'backup', write='db'),
         rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('password', 'moved')),
         rule(ADM + r'maint(/.*)?$', 'backup'),

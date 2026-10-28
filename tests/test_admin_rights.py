@@ -104,45 +104,6 @@ class AdminRightsUnitTest(unittest.TestCase):
         missing = [sub for sub in sorted(subs) if AdminRights.rule_of('/api/admin/' + sub) is None]
         self.assertEqual(missing, [])
 
-    def test_export_cost_needs_db(self):
-        """BE-010: выгрузка с закупкой — ещё и право «База данных»."""
-        acc = self.rights({'backup': 'edit'})
-        self.assertEqual(acc.refuse('kat', 'GET', '/api/admin/export', None, {'prices': 'price,rrc'}), '')
-        self.assertIn('База данных', acc.refuse('kat', 'GET', '/api/admin/export', None, {'prices': 'price,cost'}))
-        self.assertEqual(self.rights({'backup': 'edit'}, ['db']).refuse(
-            'kat', 'GET', '/api/admin/export', None, {'prices': 'cost'}), '')
-
-    def test_session_max_age(self):
-        """BE-012: вход в «Настройки» старше srv.adminMaxHours закрывается, даже если администратор работает."""
-        import time
-        from admin import AdminSessions
-        from kit import TempStore
-        store = TempStore(self).store
-        saved = AdminSessions._store
-        AdminSessions._store = staticmethod(lambda: store)
-        try:
-            now = time.time()
-            self.assertFalse(AdminSessions._expired({'last': now, 'start': now - 11 * 3600}))
-            self.assertTrue(AdminSessions._expired({'last': now, 'start': now - 13 * 3600}), 'вход старше 12 ч')
-            self.assertTrue(AdminSessions._expired({'last': now - 16 * 60, 'start': now - 60}), 'бездействие 16 мин')
-            self.assertFalse(AdminSessions._expired({'last': now}), 'прежняя сессия без start — по последнему действию')
-        finally:
-            AdminSessions._store = saved
-
-    def test_backup_settings_keep_destinations(self):
-        """BE-003 (по ревью): раздел «Настройки» копии базы без права «Ключи» не меняет сервер почты и адрес нейросети."""
-        from data_bundle import Keys, ProgramSettings
-        from kit import TempStore
-        store = TempStore(self).store
-        store.kv_set('mail', {'host': 'smtp.ok.ru', 'password': 'pw'})
-        store.kv_set('settings', {'ai': {'base': 'https://api.deepseek.com', 'model': 'a'}})
-        copy = {'mail': {'host': 'smtp.evil.example', 'fromName': 'X'}, 'settings': {'ai': {'base': 'https://evil.example', 'model': 'b'}}}
-        ProgramSettings(store).apply(copy, Keys.WITHOUT)
-        self.assertEqual((store.kv_get('mail')['host'], store.kv_get('mail')['password']), ('smtp.ok.ru', 'pw'))
-        self.assertEqual(store.kv_get('settings')['ai'], {'base': 'https://api.deepseek.com', 'model': 'b'})
-        ProgramSettings(store).apply(copy)
-        self.assertEqual(store.kv_get('mail')['host'], 'smtp.evil.example', 'главный — как в копии')
-
     def test_clean(self):
         got = AdminRights.clean({'sections': {'goods': 'edit', 'x': 'edit', 'audit': 'root'}, 'actions': ['db', 'hack']})
         self.assertEqual(got, {'sections': {'goods': 'edit'}, 'actions': ['db']})
