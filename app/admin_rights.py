@@ -121,6 +121,9 @@ class AdminRights:
         rule(r'^/api/templates/(folder|[A-Za-z0-9_-]+/(file|restore|copy|reset|delete|open))$', 'templates'),
     )
     ADMIN_PATH = '/api/admin/'
+    # код шаблона выполняется в окне каждого, кто строит КП (и главного администратора) — меняет только главный
+    CODE_FILE = re.compile(r'^skeleton(-[\d-]+)?\.js$')
+    CODE_PATH = re.compile(r'^/api/templates/[A-Za-z0-9_-]+/(file|restore)$')
 
     def __init__(self, accounts: list) -> None:
         self.accounts = accounts
@@ -183,8 +186,8 @@ class AdminRights:
         found = cls.rule_of(path)
         return method not in cls.READ and found is not None and (bool(found.peek) or path == '/api/admin/delete')
 
-    def refuse(self, login: str, method: str, path: str, body: dict | None = None) -> str:
-        """Почему администратору нельзя этот запрос ('' — можно)."""
+    def refuse(self, login: str, method: str, path: str, body: dict | None = None, query: dict | None = None) -> str:
+        """Почему администратору нельзя этот запрос ('' — можно); query — параметры адреса (имя файла шаблона)."""
         found = self.rule_of(path)
         if found is None or found.section in (FREE, HOME):
             return ''
@@ -197,6 +200,8 @@ class AdminRights:
             return ''
         if found.section == MAIN:
             return 'Администраторами и их правами управляет главный администратор'
+        if self._template_code(method, path, query or {}):
+            return 'Код шаблона (skeleton.js) меняет только главный администратор: он выполняется у всех, кто строит КП'
         rights = self.clean(acc.get('rights'))
         return self._why(rights, found, method, path, body or {})
 
@@ -213,6 +218,11 @@ class AdminRights:
         if need and need not in rights['actions']:
             return f'Нет права «{self.ACTIONS[need]}» — его выдаёт главный администратор'
         return ''
+
+    @classmethod
+    def _template_code(cls, method: str, path: str, query: dict) -> bool:
+        name = str(query.get('name') or '')
+        return method not in cls.READ and bool(cls.CODE_PATH.match(path)) and bool(cls.CODE_FILE.match(name))
 
     def _section(self, found: Rule, path: str, body: dict) -> str:
         if path == '/api/admin/delete':

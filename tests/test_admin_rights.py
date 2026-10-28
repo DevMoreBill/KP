@@ -48,6 +48,17 @@ class AdminRightsUnitTest(unittest.TestCase):
         self.assertIn('обновлений', acc.refuse('kat', 'POST', '/api/admin/update/rollback'))
         self.assertEqual(acc.refuse('kat', 'GET', '/api/admin/update'), '')
 
+    def test_template_code_main_only(self):
+        """FE-001: skeleton.js выполняется у всех, кто строит КП, — пишет и восстанавливает только главный."""
+        acc = self.rights({'templates': 'edit'})
+        put = '/api/templates/pnevmotekh/file'
+        self.assertIn('главный администратор', acc.refuse('kat', 'PUT', put, None, {'name': 'skeleton.js'}))
+        self.assertIn('главный', acc.refuse('kat', 'POST', '/api/templates/pnevmotekh/restore', None,
+                                            {'name': 'skeleton-20261027-101010.js'}))
+        self.assertEqual(acc.refuse('kat', 'PUT', put, None, {'name': 'template.json'}), '', 'прочие файлы — по вкладке')
+        self.assertEqual(acc.refuse('kat', 'GET', '/api/templates/pnevmotekh/history', None, {}), '')
+        self.assertEqual(acc.refuse('boss', 'PUT', put, None, {'name': 'skeleton.js'}), '')
+
     def test_clean(self):
         got = AdminRights.clean({'sections': {'goods': 'edit', 'x': 'edit', 'audit': 'root'}, 'actions': ['db', 'hack']})
         self.assertEqual(got, {'sections': {'goods': 'edit'}, 'actions': ['db']})
@@ -96,6 +107,17 @@ class AdminRightsStandTest(unittest.TestCase):
         self.assertIn('единственный главный', b)
         self.assertEqual(self.call(boss, 'POST', '/api/admin/users', {'action': 'rights', 'login': 'kat', 'main': True})[0], 200)
         self.assertEqual(self.call(kat, 'GET', '/api/admin/system')[0], 200)
+
+    def test_skeleton_refused_on_server(self):
+        boss = self.login(*Stand.ADMIN)
+        rights = {'sections': {'templates': 'edit'}, 'actions': []}
+        self.call(boss, 'POST', '/api/admin/users',
+                  {'action': 'add', 'login': 'tpl', 'name': 'Шаблоны', 'password': 'pass1234', 'rights': rights})
+        tpl = self.login('tpl', 'pass1234')
+        st, body, _ = self.stand.http.req('PUT', '/api/templates/pnevmotekh/file?name=skeleton.js',
+                                          'function kpSkeleton(KP){return {}}', cookie=tpl[0], headers=tpl[1])
+        self.assertEqual(st, 403, body)
+        self.assertIn('skeleton.js', body)
 
 
 if __name__ == '__main__':

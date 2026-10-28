@@ -895,7 +895,10 @@ class RightsCheck:
         if sess is None:
             return False
         body = _body_obj(self.handler) if AdminRights.needs_body(method, path) else None
-        why = AdminRights(accounts(self.store)).refuse(sess.get('login', ''), method, path, body)
+        query = {
+            key: vals[0] for key, vals in urllib.parse.parse_qs(urllib.parse.urlsplit(self.handler.path).query).items()
+        }
+        why = AdminRights(accounts(self.store)).refuse(sess.get('login', ''), method, path, body, query)
         if not why:
             return False
         if method not in AdminRights.READ:
