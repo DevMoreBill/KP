@@ -116,6 +116,10 @@ class TypePatterns:
             if char == '\\':
                 cur, pos = cur + pattern[pos : pos + 2], pos + 2
                 continue
+            if char == '[':  # набор знаков «[…]» — целиком: «|» и скобки в нём не делят шаблон
+                end = TypePatterns._class_end(pattern, pos)
+                cur, pos = cur + pattern[pos:end], end
+                continue
             depth += {'(': 1, ')': -1}.get(char, 0)
             if char == '|' and depth == 0:
                 out, cur = [*out, cur], ''
@@ -123,6 +127,16 @@ class TypePatterns:
                 cur += char
             pos += 1
         return [*out, cur]
+
+    @staticmethod
+    def _class_end(pattern: str, start: int) -> int:
+        """Позиция после «]», закрывающей набор «[…]» с позиции start (первая «]» сразу после «[» или «[^» — знак)."""
+        pos = start + 1
+        pos += pattern[pos : pos + 1] == '^'
+        pos += pattern[pos : pos + 1] == ']'
+        while pos < len(pattern) and pattern[pos] != ']':
+            pos += 2 if pattern[pos] == '\\' else 1
+        return min(pos + 1, len(pattern))
 
     @classmethod
     def _one(cls, pattern: str, where: str) -> None:
