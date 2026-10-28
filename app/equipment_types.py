@@ -71,6 +71,8 @@ class TypePatterns:
     NESTED = re.compile(r'\)[+*]|\)\{\d*,')
     UNBOUNDED = re.compile(r'(?<!\\)[+*]|\{\d*,\}')
     UNBOUNDED_MAX = 12
+    # повторы подряд в одной ветке («\d*\d*\d*…») — перебор растёт как длина строки в степени их числа: не больше 3
+    BRANCH_MAX = 3
     BACKREF = re.compile(r'\\[1-9]|\\k<')
 
     @classmethod
@@ -96,6 +98,24 @@ class TypePatterns:
     def _patterns(cls, types: list) -> list[str]:
         return [pattern for item in types if isinstance(item, dict) for _where, pattern in cls._own(item)]
 
+    @staticmethod
+    def _branches(pattern: str) -> list[str]:
+        """Варианты шаблона верхнего уровня (по «|» вне скобок)."""
+        out: list[str] = []
+        depth, cur, pos = 0, '', 0
+        while pos < len(pattern):
+            char = pattern[pos]
+            if char == '\\':
+                cur, pos = cur + pattern[pos : pos + 2], pos + 2
+                continue
+            depth += {'(': 1, ')': -1}.get(char, 0)
+            if char == '|' and depth == 0:
+                out, cur = [*out, cur], ''
+            else:
+                cur += char
+            pos += 1
+        return [*out, cur]
+
     @classmethod
     def _one(cls, pattern: str, where: str) -> None:
         if len(pattern) > cls.MAX:
@@ -107,6 +127,10 @@ class TypePatterns:
             )
         if len(cls.UNBOUNDED.findall(pattern)) > cls.UNBOUNDED_MAX:
             raise ValueError(f'«{where}»: больше {cls.UNBOUNDED_MAX} повторов «+» и «*» — упростите шаблон')
+        if any(len(cls.UNBOUNDED.findall(branch)) > cls.BRANCH_MAX for branch in cls._branches(pattern)):
+            raise ValueError(
+                f'«{where}»: больше {cls.BRANCH_MAX} повторов «+» и «*» в одном варианте (между «|») — разбейте его на варианты'
+            )
         try:
             re.compile(pattern)
         except re.error as exc:

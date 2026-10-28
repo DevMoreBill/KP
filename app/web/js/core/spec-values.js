@@ -5,6 +5,7 @@ import { Str } from './str.js';
  * единицах поля с пересчётом из соседних единиц, текст — к варианту из списка категории.
  */
 export class SpecValues {
+  static PATTERN_TEXT = 200; // шаблоны администратора — по началу текста: длинный текст не «вешает» перебор
   static UNIT_RX = {
     'м³/мин': 'м[³3]\\s*/\\s*мин',
     'л/мин': 'л\\s*/\\s*мин',
@@ -183,7 +184,9 @@ export class SpecValues {
     const inUnit = field.num && this.UNIT_RX[field.unit] ? new RegExp(`\\d\\s*${this.UNIT_RX[field.unit]}`) : null;
     const own = row => (inUnit && inUnit.test(String(row.v).toLowerCase()) ? 1 : 0);
     const found = rows.filter(
-      row => pattern.test(String(row.k).trim()) && !(field.num && /снижени|уменьшени/i.test(row.v)),
+      row =>
+        pattern.test(String(row.k).trim().slice(0, this.PATTERN_TEXT)) &&
+        !(field.num && /снижени|уменьшени/i.test(row.v)),
     );
     found.sort((left, right) => own(right) - own(left));
     for (const row of found) {

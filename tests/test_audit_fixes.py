@@ -106,7 +106,7 @@ class ServerTest(unittest.TestCase):
         self.assertIn(status, (400, 403))
         if status == 400:
             self.assertIn('повтор', body)
-        for bad in ('(\\w+\\s?)+$', '(a|a)+$', '(?:(?:\\d+)\\.?)+x', '(x){2,}y', '\\d*' * 13):  # по ревью — и без вложенного повтора
+        for bad in ('(\\w+\\s?)+$', '(a|a)+$', '(?:(?:\\d+)\\.?)+x', '(x){2,}y', '\\d*' * 13, '\\d*' * 6 + 'x'):  # по ревью — и без вложенного повтора
             with self.subTest(bad), self.assertRaises(ValueError):
                 TypePatterns.check([{'id': 'x', 'fields': [{'key': 'p', 'find': bad}]}], [])
         TypePatterns.check([{'id': 'x', 'match': 'винтов\\S*\\s+компрессор', 'fields': []}], [])
