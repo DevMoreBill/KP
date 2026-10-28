@@ -58,4 +58,8 @@ check('SafeLink — внешние адреса в ссылках только h
   for (const f of files) assert.ok(!/href="\$\{esc\((row\.record|link\.url|deal\.bxUrl|check\.\w*[uU]rl|feed\.url|rate\.src|offer\.srcUrl|last\.url)/.test(JS(f)), f+': внешний адрес в href мимо SafeLink');
 });
 
+check('предпросмотр Word — без вложенного HTML (аудит FE-011)', ()=>{
+  assert.ok(/renderAltChunks:\s*false/.test(JS('features/doc/preview-docx.js')));
+});
+
 if (!process.exitCode) console.log('Money: проверок пройдено — '+n);
