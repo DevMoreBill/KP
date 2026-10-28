@@ -22,7 +22,8 @@ class Rule:
     always: str = ''
     peek: tuple = ()  # изменение с этими полями тела — ещё и действие write (например, адрес вебхука)
     also: str = ''  # ещё одно действие для любого запроса (база целиком — это и все ключи API)
-    secret_query: str = ''  # параметр адреса «=1» — ещё и право «Ключи и пароли» (файл настроек с ключами)
+    # ((параметр адреса, значение в списке через запятую, действие), …): файл настроек с ключами, выгрузка с закупкой
+    query_needs: tuple = ()
 
 
 def rule(pattern: str, section: str, **kw: Any) -> Rule:
@@ -84,7 +85,7 @@ class AdminRights:
         rule(ADM + r'update(/.*)?$', 'updates', write='updates'),
         rule(ADM + r'history(/.*)?$', 'changes'),
         rule(ADM + r'settings-file/preview$', 'changes'),
-        rule(ADM + r'settings-file$', 'changes', write='db', secret_query='keys'),
+        rule(ADM + r'settings-file$', 'changes', write='db', query_needs=(('keys', '1', 'secrets'),)),
         rule(ADM + r'connections$', 'services'),
         rule(ADM + r'ai(/test)?$', 'services', write='secrets', peek=('key', 'apiKey', 'base')),
         rule(ADM + r'access(/.*)?$', 'managers'),
@@ -104,7 +105,7 @@ class AdminRights:
         rule(ADM + r'trash(/.*)?$', 'trash', write='delete'),
         rule(ADM + r'(moderation|pending(/.*)?)$', 'moderation'),
         rule(ADM + r'export/sqlite$', 'backup', always='db', also='secrets'),
-        rule(ADM + r'export(/.*)?$', 'backup'),
+        rule(ADM + r'export(/.*)?$', 'backup', query_needs=(('prices', 'cost', 'db'),)),
         rule(ADM + r'import(/.*)?$', 'backup', write='db'),
         rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('dav', 'password')),
         rule(ADM + r'maint(/.*)?$', 'backup'),
@@ -216,8 +217,11 @@ class AdminRights:
             return 'Код шаблона (skeleton.js) меняет только главный администратор: он выполняется у всех, кто строит КП'
         rights = self.clean(acc.get('rights'))
         why = self._why(rights, found, method, path, body or {})
-        if not why and found.secret_query and (query or {}).get(found.secret_query) == '1':
-            return self._lacks(rights, 'secrets')
+        if why:
+            return why
+        for param, token, action in found.query_needs:
+            if token in str((query or {}).get(param) or '').split(','):
+                why = why or self._lacks(rights, action)
         return why or (self._lacks(rights, found.also) if found.also else '')
 
     def _why(self, rights: dict, found: Rule, method: str, path: str, body: dict) -> str:

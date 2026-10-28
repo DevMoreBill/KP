@@ -102,6 +102,14 @@ class AdminRightsUnitTest(unittest.TestCase):
         missing = [sub for sub in sorted(subs) if AdminRights.rule_of('/api/admin/' + sub) is None]
         self.assertEqual(missing, [])
 
+    def test_export_cost_needs_db(self):
+        """BE-010: выгрузка с закупкой — ещё и право «База данных»."""
+        acc = self.rights({'backup': 'edit'})
+        self.assertEqual(acc.refuse('kat', 'GET', '/api/admin/export', None, {'prices': 'price,rrc'}), '')
+        self.assertIn('База данных', acc.refuse('kat', 'GET', '/api/admin/export', None, {'prices': 'price,cost'}))
+        self.assertEqual(self.rights({'backup': 'edit'}, ['db']).refuse(
+            'kat', 'GET', '/api/admin/export', None, {'prices': 'cost'}), '')
+
     def test_clean(self):
         got = AdminRights.clean({'sections': {'goods': 'edit', 'x': 'edit', 'audit': 'root'}, 'actions': ['db', 'hack']})
         self.assertEqual(got, {'sections': {'goods': 'edit'}, 'actions': ['db']})
