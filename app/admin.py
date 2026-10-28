@@ -2017,7 +2017,7 @@ class AdminApi:
             if sub == 'settings-file' and method == 'POST':
                 picked = [x for x in (query.get('sections') or '').split(',') if x] if 'sections' in query else None
                 body = self.handler.body()
-                res = settings_file.apply(self.settings_doc(data_file, body), picked)
+                res = settings_file.apply(self.settings_doc(data_file, body), picked, self._keys_right())
                 res['images'] = self.settings_images(data_file, body)
                 self.log('import_settings', 'settings', 'file', None, res)
                 return self.ok(res)
@@ -2825,6 +2825,13 @@ class AdminApi:
             data,
             self.handler.attachment('kp_{}.zip'.format(datetime.now().strftime('%Y-%m-%d_%H%M'))),
         )
+
+    def _keys_right(self) -> Any:
+        """Файл настроек загружает администратор с правом «Ключи и пароли» — ключи и адреса из файла, иначе — текущие."""
+        from data_bundle import Keys
+
+        login = (AdminSessions.of(self.handler) or {}).get('login', '')
+        return Keys.WITH if AdminRights(accounts(self.store)).has_action(login, 'secrets') else Keys.WITHOUT
 
     ADMIN_KEYS = ('admins', 'admin', AdminSessions.KV_KEY)
 

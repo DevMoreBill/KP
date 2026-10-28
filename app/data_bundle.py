@@ -7,6 +7,7 @@ import re
 import zipfile
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from images import EXTS, ImageStore
 
@@ -132,6 +133,39 @@ class DataBundle:
             os.replace(tmp, path)
             count += 1
         return count
+
+
+class SecretFields:
+    """Ключи, пароли и адреса, куда они уходят (вебхук, SMTP, API нейросети, Яндекс Диск), — в файле настроек."""
+
+    WHOLE = ('integrations', 'carrierApi')
+    FIELDS = {
+        'bitrix': ('url',),
+        'mail': ('host', 'port', 'security', 'login', 'password'),
+    }
+    NESTED = {'settings': (('ai', ('key', 'base')), ('backup2', ('dav',)))}
+
+    @classmethod
+    def keep(cls, key: str, value: Any, cur: Any) -> Any:
+        """Значение раздела из файла, где эти поля — как в текущей базе."""
+        if not isinstance(value, dict):
+            return value
+        cur = cur if isinstance(cur, dict) else {}
+        out = cls._same(value, cur, cls.FIELDS.get(key, ()))
+        for part, fields in cls.NESTED.get(key, ()):
+            if isinstance(out.get(part), dict):
+                out[part] = cls._same(out[part], cur.get(part) if isinstance(cur.get(part), dict) else {}, fields)
+        return out
+
+    @staticmethod
+    def _same(value: dict, cur: dict, fields: tuple) -> dict:
+        out = dict(value)
+        for field in fields:
+            if field in cur:
+                out[field] = cur[field]
+            else:
+                out.pop(field, None)
+        return out
 
 
 class SettingsSecrets:
@@ -357,14 +391,21 @@ class SettingsFile:
             'sections': out,
         }
 
-    def apply(self, data: bytes, picked=None) -> dict:
-        """Записать выбранные разделы (picked — список ключей; None — все). → {applied: [...], errors: [...]}"""
+    def apply(self, data: bytes, picked=None, keys: Keys = Keys.WITH) -> dict:
+        """Записать выбранные разделы (picked — список ключей; None — все). → {applied: [...], errors: [...]}
+
+        keys=WITHOUT (у администратора нет права «Ключи и пароли») — ключи, пароли и адреса, куда они уходят, остаются текущими."""
         parsed = self.read(data)
         store, applied, errors = self.store, [], []
         for k, label in self.PARTS:
             v = parsed['sections'].get(k)
             if v is None or (picked is not None and k not in picked):
                 continue
+            if keys is not Keys.WITH:
+                if k in SecretFields.WHOLE:
+                    errors.append(f'{label}: не загружено — нужно право «Ключи и пароли»')
+                    continue
+                v = SecretFields.keep(k, v, store.kv_get(k))
             try:
                 self._put(k, v)
                 applied.append(label)

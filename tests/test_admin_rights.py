@@ -59,6 +59,28 @@ class AdminRightsUnitTest(unittest.TestCase):
         self.assertEqual(acc.refuse('kat', 'GET', '/api/templates/pnevmotekh/history', None, {}), '')
         self.assertEqual(acc.refuse('boss', 'PUT', put, None, {'name': 'skeleton.js'}), '')
 
+    def test_settings_file_keys(self):
+        """BE-002: файл настроек с ключами — ещё и право «Ключи и пароли»."""
+        acc = self.rights({'changes': 'edit'})
+        self.assertEqual(acc.refuse('kat', 'GET', '/api/admin/settings-file', None, {}), '')
+        self.assertIn('Ключи и пароли', acc.refuse('kat', 'GET', '/api/admin/settings-file', None, {'keys': '1'}))
+        self.assertEqual(self.rights({'changes': 'edit'}, ['secrets']).refuse(
+            'kat', 'GET', '/api/admin/settings-file', None, {'keys': '1'}), '')
+
+    def test_settings_import_keeps_secrets(self):
+        """BE-002: загрузка файла настроек без права «Ключи» — ключи, пароли и адреса для них остаются текущими."""
+        from data_bundle import Keys, SecretFields
+        cur = {'ai': {'key': 'OLD', 'base': 'https://api.deepseek.com', 'model': 'm1'}, 'backup2': {'dav': {'url': 'a'}}}
+        new = {'ai': {'key': 'EVIL', 'base': 'https://evil.example', 'model': 'm2'}, 'backup2': {'dav': {'url': 'b'}}}
+        got = SecretFields.keep('settings', new, cur)
+        self.assertEqual(got['ai'], {'key': 'OLD', 'base': 'https://api.deepseek.com', 'model': 'm2'})
+        self.assertEqual(got['backup2']['dav'], {'url': 'a'})
+        self.assertEqual(SecretFields.keep('mail', {'host': 'evil', 'fromName': 'X'}, {'host': 'smtp.ok'}),
+                         {'host': 'smtp.ok', 'fromName': 'X'})
+        self.assertNotIn('url', SecretFields.keep('bitrix', {'url': 'https://evil/rest/1/x/'}, {}))
+        self.assertIn('integrations', SecretFields.WHOLE)
+        self.assertIsNot(Keys.WITH, Keys.WITHOUT)
+
     def test_clean(self):
         got = AdminRights.clean({'sections': {'goods': 'edit', 'x': 'edit', 'audit': 'root'}, 'actions': ['db', 'hack']})
         self.assertEqual(got, {'sections': {'goods': 'edit'}, 'actions': ['db']})

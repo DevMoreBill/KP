@@ -21,6 +21,7 @@ class Rule:
     write: str = ''
     always: str = ''
     peek: tuple = ()  # изменение с этими полями тела — ещё и действие write (например, адрес вебхука)
+    secret_query: str = ''  # параметр адреса «=1» — ещё и право «Ключи и пароли» (файл настроек с ключами)
 
 
 def rule(pattern: str, section: str, **kw: Any) -> Rule:
@@ -82,7 +83,7 @@ class AdminRights:
         rule(ADM + r'update(/.*)?$', 'updates', write='updates'),
         rule(ADM + r'history(/.*)?$', 'changes'),
         rule(ADM + r'settings-file/preview$', 'changes'),
-        rule(ADM + r'settings-file$', 'changes', write='db'),
+        rule(ADM + r'settings-file$', 'changes', write='db', secret_query='keys'),
         rule(ADM + r'connections$', 'services'),
         rule(ADM + r'ai(/test)?$', 'services', write='secrets', peek=('key', 'apiKey')),
         rule(ADM + r'access(/.*)?$', 'managers'),
@@ -203,7 +204,10 @@ class AdminRights:
         if self._template_code(method, path, query or {}):
             return 'Код шаблона (skeleton.js) меняет только главный администратор: он выполняется у всех, кто строит КП'
         rights = self.clean(acc.get('rights'))
-        return self._why(rights, found, method, path, body or {})
+        why = self._why(rights, found, method, path, body or {})
+        if not why and found.secret_query and (query or {}).get(found.secret_query) == '1':
+            return self._lacks(rights, 'secrets')
+        return why
 
     def _why(self, rights: dict, found: Rule, method: str, path: str, body: dict) -> str:
         section = self._section(found, path, body)
@@ -215,9 +219,19 @@ class AdminRights:
         if write and level != self.EDIT:
             return f'Раздел «{label}» открыт только для просмотра — изменения не сохраняются'
         need = found.always or (found.write if write and self._needs_write_action(found, path, body) else '')
-        if need and need not in rights['actions']:
-            return f'Нет права «{self.ACTIONS[need]}» — его выдаёт главный администратор'
-        return ''
+        return self._lacks(rights, need) if need else ''
+
+    def _lacks(self, rights: dict, action: str) -> str:
+        if action in rights['actions']:
+            return ''
+        return f'Нет права «{self.ACTIONS[action]}» — его выдаёт главный администратор'
+
+    def has_action(self, login: str, action: str) -> bool:
+        """Главный или отмечено действие."""
+        acc = self.account(login)
+        if acc is None:
+            return False
+        return self.is_main(acc) or action in self.clean(acc.get('rights'))['actions']
 
     @classmethod
     def _template_code(cls, method: str, path: str, query: dict) -> bool:
