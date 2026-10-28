@@ -21,6 +21,7 @@ class Rule:
     write: str = ''
     always: str = ''
     peek: tuple = ()  # изменение с этими полями тела — ещё и действие write (например, адрес вебхука)
+    also: str = ''  # ещё одно действие для любого запроса (база целиком — это и все ключи API)
     secret_query: str = ''  # параметр адреса «=1» — ещё и право «Ключи и пароли» (файл настроек с ключами)
 
 
@@ -102,7 +103,7 @@ class AdminRights:
         rule(ADM + r'list/supplier$', 'db-supplier'),
         rule(ADM + r'trash(/.*)?$', 'trash', write='delete'),
         rule(ADM + r'(moderation|pending(/.*)?)$', 'moderation'),
-        rule(ADM + r'export/sqlite$', 'backup', always='db'),
+        rule(ADM + r'export/sqlite$', 'backup', always='db', also='secrets'),
         rule(ADM + r'export(/.*)?$', 'backup'),
         rule(ADM + r'import(/.*)?$', 'backup', write='db'),
         rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('dav', 'password')),
@@ -212,7 +213,7 @@ class AdminRights:
         why = self._why(rights, found, method, path, body or {})
         if not why and found.secret_query and (query or {}).get(found.secret_query) == '1':
             return self._lacks(rights, 'secrets')
-        return why
+        return why or (self._lacks(rights, found.also) if found.also else '')
 
     def _why(self, rights: dict, found: Rule, method: str, path: str, body: dict) -> str:
         section = self._section(found, path, body)

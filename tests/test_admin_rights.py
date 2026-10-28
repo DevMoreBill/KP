@@ -43,6 +43,9 @@ class AdminRightsUnitTest(unittest.TestCase):
     def test_db_and_updates(self):
         acc = self.rights({'backup': 'edit', 'updates': 'edit'})
         self.assertIn('База данных', acc.refuse('kat', 'GET', '/api/admin/export/sqlite'))
+        with_db = self.rights({'backup': 'edit'}, ['db'])
+        self.assertIn('Ключи и пароли', with_db.refuse('kat', 'GET', '/api/admin/export/sqlite'), 'DB-002: в базе все ключи')
+        self.assertEqual(self.rights({'backup': 'edit'}, ['db', 'secrets']).refuse('kat', 'GET', '/api/admin/export/sqlite'), '')
         self.assertEqual(acc.refuse('kat', 'GET', '/api/admin/export'), '')
         self.assertIn('База данных', acc.refuse('kat', 'POST', '/api/admin/import'))
         self.assertIn('обновлений', acc.refuse('kat', 'POST', '/api/admin/update/rollback'))
@@ -137,7 +140,7 @@ class AdminRightsStandTest(unittest.TestCase):
         import sqlite3
         import tempfile
         boss = self.login(*Stand.ADMIN)
-        rights = {'sections': {'backup': 'edit'}, 'actions': ['db']}
+        rights = {'sections': {'backup': 'edit'}, 'actions': ['db', 'secrets']}
         self.call(boss, 'POST', '/api/admin/users',
                   {'action': 'add', 'login': 'dba', 'name': 'База', 'password': 'pass1234', 'rights': rights})
         dba = self.login('dba', 'pass1234')
