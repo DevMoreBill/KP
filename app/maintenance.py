@@ -306,11 +306,12 @@ def _referenced(store) -> set:
     for (table,) in store.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         cols = [
             column[1]
-            for column in store.all(f'PRAGMA table_info("{table}")')
+            for column in store.all(f'PRAGMA table_info({store.ident(table)})')
             if (column[2] or '').upper() in ('TEXT', '')
         ]
         for col in cols:
-            for (v,) in store.all(f'SELECT "{col}" FROM "{table}" WHERE "{col}" LIKE ?', ('%/img/%',)):
+            name, field = store.ident(table), store.ident(col)
+            for (v,) in store.all(f'SELECT {field} FROM {name} WHERE {field} LIKE ?', ('%/img/%',)):
                 for match in IMG_RX.finditer(str(v)):
                     refs.add(match.group(1).replace('\\/', '/'))
     return refs

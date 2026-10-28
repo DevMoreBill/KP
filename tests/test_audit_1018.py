@@ -287,6 +287,19 @@ class DealNumberTest(unittest.TestCase):
         self.assertEqual(book.get(first['id'])['title'], 'Первая')
 
 
+class IdentTest(unittest.TestCase):
+    def test_odd_table_names(self):
+        """BE-020: таблица с кавычкой в имени (из загруженной базы) не ломает обслуживание и счёт записей."""
+        import maintenance
+        st = TempStore(self).store
+        conn = st.conn()
+        conn.execute('CREATE TABLE "we""ird" ("co""l" TEXT)')
+        conn.execute('INSERT INTO "we""ird" VALUES (?)', ('/img/a/b.png',))
+        conn.commit()
+        self.assertIn('a/b.png', maintenance._referenced(st))
+        self.assertEqual(st.table_counts()['we"ird'], 1)
+
+
 class TrackRaceTest(unittest.TestCase):
     def test_status_and_mail_both_kept(self):
         """DB-005: смена хода сделки и отметка письма одновременно — обе записи остаются."""

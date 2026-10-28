@@ -940,6 +940,11 @@ class Store:
     def one(self, sql, args=()) -> tuple | None:
         return self.conn().execute(sql, args).fetchone()
 
+    @staticmethod
+    def ident(name: str) -> str:
+        """Имя таблицы или столбца из sqlite_master в SQL — в кавычках, кавычка внутри удвоена (имена из загруженной базы)."""
+        return '"' + str(name).replace('"', '""') + '"'
+
     def scalar(self, sql, args=()) -> Any:
         """Первое значение первой строки (COUNT, MAX…); строки нет — None."""
         row = self.one(sql, args)
@@ -1446,7 +1451,7 @@ class Store:
         for (table,) in self.all(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         ):
-            out[table] = self.scalar(f'SELECT COUNT(*) FROM "{table}"')
+            out[table] = self.scalar(f'SELECT COUNT(*) FROM {self.ident(table)}')
         return out
 
     def kp_all_meta(self) -> list:
