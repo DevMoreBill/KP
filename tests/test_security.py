@@ -101,8 +101,8 @@ class SecurityTest(unittest.TestCase):
         self.assertEqual(st, 200)
         self.assertNotIn('deal', json.loads(b), 'без права «экономика сделки» расчёт не отдаётся')
         audit = json.loads(self.admin_req('GET', '/api/admin/audit?limit=500')[1])['items']
-        self.assertTrue(any(row.get('action') == 'access_denied' and row.get('entityId') == k2 for row in audit),
-                        'BE-011: попытка открыть чужое КП — в журнале действий')
+        denied = [row for row in audit if row.get('action') == 'access_denied' and row.get('entityId') == k2]
+        self.assertEqual(len(denied), 1, 'BE-011: попытка открыть чужое КП — в журнале, повторы за 10 минут — одной записью')
 
     def test_03_manager_is_not_admin(self):
         for method, p, body in [('GET', '/api/integrations/export', None), ('PUT', '/api/integrations', {'dadataKey': 'x'}), ('PUT', '/api/uitexts', {'a': 'b'}),

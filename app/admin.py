@@ -895,6 +895,27 @@ def _refuse(handler, store=None, action=None, etype=None, eid=None, text=DENIED)
     return True
 
 
+class DeniedLog:
+    """Отказ в доступе к чужому КП или сделке — в журнал действий, одна запись на человека и запись за 10 минут
+    (перебор адресов не раздувает журнал)."""
+
+    PAUSE = 600
+    LIMIT = 5000
+    seen: dict = {}
+
+    @classmethod
+    def note(cls, handler, store, etype: str, eid: str) -> None:
+        who = actor(handler, False)[0] or _client_ip(handler)
+        key, now = (who, etype, eid), time.time()
+        with LOCK:
+            if now - cls.seen.get(key, 0) < cls.PAUSE:
+                return
+            if len(cls.seen) > cls.LIMIT:
+                cls.seen.clear()
+            cls.seen[key] = now
+        log(handler, store, 'access_denied', etype, eid, result='failed')
+
+
 class RightsCheck:
     """Права вошедшего в «Настройки» администратора (admin_rights): отказ — 403 с причиной, попытка изменения — в журнал."""
 
@@ -1008,14 +1029,8 @@ def guard(handler, store, method, path) -> Any:
         return _refuse(handler, text=f'Функция «{off}» выключена администратором')
     match = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/', path)
     if match and not kp_access(handler, store, match.group(1)):
-        return _refuse(
-            handler,
-            store,
-            'access_denied',
-            'kp',
-            match.group(1),
-            'Это КП другого менеджера — нет доступа. Права выдаёт администратор',
-        )
+        DeniedLog.note(handler, store, 'kp', match.group(1))
+        return _refuse(handler, text='Это КП другого менеджера — нет доступа. Права выдаёт администратор')
     if path == '/api/types' and method == 'PUT' and not perm(handler, 'catEdit'):
         return _refuse(handler, text='Нет права менять категории оборудования — обратитесь к администратору')
     from catalog_admin import CatalogDesk
