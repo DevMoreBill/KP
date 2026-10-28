@@ -2028,6 +2028,7 @@ class CrmController(Controller):
             self.not_found('Сделка не найдена')
             return None
         if not everyone and deal.get('managerId') != uid:
+            admin.log(self.handler, store(), 'access_denied', 'deal', did, result='failed')
             self.text(403, 'Это сделка другого менеджера — нет доступа')
             return None
         return deal

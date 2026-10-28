@@ -167,6 +167,7 @@ export class AuditLabels {
     delete_admin: 'Удаление администратора',
     edit_admin_rights: 'Права администратора',
     admin_denied: 'Отказ: нет прав администратора',
+    access_denied: 'Отказ: чужое КП или сделка',
     logout: 'Выход из «Настроек»',
     set_password: 'Смена пароля',
     reset_password: 'Сброс пароля (временный)',

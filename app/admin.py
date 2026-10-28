@@ -979,7 +979,14 @@ def guard(handler, store, method, path) -> Any:
         return _refuse(handler, text=f'Функция «{off}» выключена администратором')
     match = re.match(r'^/api/kp/([A-Za-z0-9_-]+)/', path)
     if match and not kp_access(handler, store, match.group(1)):
-        return _refuse(handler, text='Это КП другого менеджера — нет доступа. Права выдаёт администратор')
+        return _refuse(
+            handler,
+            store,
+            'access_denied',
+            'kp',
+            match.group(1),
+            'Это КП другого менеджера — нет доступа. Права выдаёт администратор',
+        )
     if path == '/api/types' and method == 'PUT' and not perm(handler, 'catEdit'):
         return _refuse(handler, text='Нет права менять категории оборудования — обратитесь к администратору')
     from catalog_admin import CatalogDesk
