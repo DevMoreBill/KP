@@ -127,6 +127,20 @@ class AdminRightsUnitTest(unittest.TestCase):
         finally:
             AdminSessions._store = saved
 
+    def test_backup_settings_keep_destinations(self):
+        """BE-003 (по ревью): раздел «Настройки» копии базы без права «Ключи» не меняет сервер почты и адрес нейросети."""
+        from data_bundle import Keys, ProgramSettings
+        from kit import TempStore
+        store = TempStore(self).store
+        store.kv_set('mail', {'host': 'smtp.ok.ru', 'password': 'pw'})
+        store.kv_set('settings', {'ai': {'base': 'https://api.deepseek.com', 'model': 'a'}})
+        copy = {'mail': {'host': 'smtp.evil.example', 'fromName': 'X'}, 'settings': {'ai': {'base': 'https://evil.example', 'model': 'b'}}}
+        ProgramSettings(store).apply(copy, Keys.WITHOUT)
+        self.assertEqual((store.kv_get('mail')['host'], store.kv_get('mail')['password']), ('smtp.ok.ru', 'pw'))
+        self.assertEqual(store.kv_get('settings')['ai'], {'base': 'https://api.deepseek.com', 'model': 'b'})
+        ProgramSettings(store).apply(copy)
+        self.assertEqual(store.kv_get('mail')['host'], 'smtp.evil.example', 'главный — как в копии')
+
     def test_clean(self):
         got = AdminRights.clean({'sections': {'goods': 'edit', 'x': 'edit', 'audit': 'root'}, 'actions': ['db', 'hack']})
         self.assertEqual(got, {'sections': {'goods': 'edit'}, 'actions': ['db']})

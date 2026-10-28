@@ -226,13 +226,17 @@ class ProgramSettings:
     def count(self, data: dict) -> int:
         return sum(1 for k in self.KEYS if isinstance(data, dict) and data.get(k) is not None)
 
-    def apply(self, data):
-        """Записать настройки из копии; секреты текущей базы сохраняются. → сколько разделов настроек записано."""
+    def apply(self, data, keys: 'Keys | None' = None) -> int:
+        """Записать настройки из копии; секреты текущей базы сохраняются. → сколько разделов настроек записано.
+
+        keys=WITHOUT (нет права «Ключи и пароли») — и адреса, куда уходят пароль и ключ (сервер почты, API нейросети), текущие."""
         count = 0
         for k in self.KEYS:
             v = data.get(k) if isinstance(data, dict) else None
             if v is None:
                 continue
+            if keys is Keys.WITHOUT:
+                v = SecretFields.keep(k, v, self.store.kv_get(k))
             if isinstance(v, dict) and k in self.SECRET:
                 cur = self.store.kv_get(k) or {}
                 v = dict(

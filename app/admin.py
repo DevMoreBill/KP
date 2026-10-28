@@ -3190,7 +3190,7 @@ class AdminApi:
                     for x in ok:
                         put(lambda x: store.client_put(x['id'], x), x)
         if apply and 'settings' in want and isinstance(sec['settings'], dict):
-            ProgramSettings(store).apply(sec['settings'])
+            ProgramSettings(store).apply(sec['settings'], self._keys_right())
         if apply:
             self.log(
                 'import_db',
