@@ -143,7 +143,7 @@ class SecretFields:
         'bitrix': ('url',),
         'mail': ('host', 'port', 'security', 'login', 'password'),
     }
-    NESTED = {'settings': (('ai', ('key', 'base')), ('backup2', ('dav',)))}
+    NESTED = {'settings': (('ai', ('key', 'base')), ('backup2', ('dav', 'kind', 'path')))}
 
     @classmethod
     def keep(cls, key: str, value: Any, cur: Any) -> Any:

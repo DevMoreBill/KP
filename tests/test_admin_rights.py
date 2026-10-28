@@ -75,7 +75,9 @@ class AdminRightsUnitTest(unittest.TestCase):
         from data_bundle import Keys, SecretFields
         cur = {'ai': {'key': 'OLD', 'base': 'https://api.deepseek.com', 'model': 'm1'}, 'backup2': {'dav': {'url': 'a'}}}
         new = {'ai': {'key': 'EVIL', 'base': 'https://evil.example', 'model': 'm2'}, 'backup2': {'dav': {'url': 'b'}}}
+        new['backup2']['path'] = '\\\\evil\\share'
         got = SecretFields.keep('settings', new, cur)
+        self.assertNotIn('path', got['backup2'], 'путь второй папки — текущий (у текущей его нет)')
         self.assertEqual(got['ai'], {'key': 'OLD', 'base': 'https://api.deepseek.com', 'model': 'm2'})
         self.assertEqual(got['backup2']['dav'], {'url': 'a'})
         self.assertEqual(SecretFields.keep('mail', {'host': 'evil', 'fromName': 'X'}, {'host': 'smtp.ok'}),
@@ -254,6 +256,14 @@ class AdminRightsStandTest(unittest.TestCase):
         self.assertEqual(st, 403, body)
         self.assertEqual(self.call(svc, 'PUT', '/api/logistics/carriers',
                                    {'cdek': {'on': False, 'urls': {'base': ''}}})[0], 200, 'включение — можно')
+        # DB-002 (по ревью): вторая папка копий в другое место — копия базы со всеми ключами туда
+        self.call(boss, 'POST', '/api/admin/users', {'action': 'add', 'login': 'bk', 'name': 'Копии', 'password': 'pass1234',
+                                                     'rights': {'sections': {'backup': 'edit'}, 'actions': ['db']}})
+        bk = self.login('bk', 'pass1234')
+        st, body, _ = self.call(bk, 'POST', '/api/admin/maint/mirror', {'on': True, 'kind': 'folder', 'path': '\\\\evil\\share'})
+        self.assertEqual(st, 403, body)
+        self.assertEqual(self.call(bk, 'POST', '/api/admin/maint/mirror', {'on': False, 'kind': 'folder', 'path': '', 'keep': 5})[0],
+                         200, 'то же место — можно')
 
     def test_skeleton_refused_on_server(self):
         boss = self.login(*Stand.ADMIN)

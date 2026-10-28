@@ -917,6 +917,8 @@ class RightsCheck:
                 if not AdminRights.same_value(new, cur)
                 else {key: val for key, val in body.items() if key != 'base'}
             )
+        if path in ('/api/admin/maint/mirror', '/api/admin/maint/mirror/check'):
+            return dict(body, moved='1' if self._mirror_moved(body) else '')
         if path == '/api/admin/mail':
             cur = self.store.kv_get('mail') or {}
             moved = [
@@ -924,6 +926,19 @@ class RightsCheck:
             ]
             return dict(body, moved='1' if moved and cur.get('password') else '')
         return body
+
+    def _mirror_moved(self, body: dict) -> bool:
+        """Вторая папка копий — в другое место: копия базы со всеми ключами уходит туда (как выгрузка базы целиком)."""
+        cur = (self.store.kv_get('settings') or {}).get('backup2') or {}
+        kind = 'dav' if body.get('kind') == 'dav' else 'folder'
+        if kind != ('dav' if cur.get('kind') == 'dav' else 'folder'):
+            return True
+        if kind == 'folder':
+            return not AdminRights.same_value(body.get('path'), cur.get('path'))
+        new, old = body.get('dav') or {}, cur.get('dav') or {}
+        if AdminRights.given(new.get('password')):
+            return True  # новый пароль Яндекс Диска — тоже «Ключи и пароли»
+        return any(not AdminRights.same_value(new.get(key), old.get(key)) for key in ('url', 'login', 'folder'))
 
     def refused(self, method: str, path: str) -> bool:
         sess = AdminSessions.of(self.handler)

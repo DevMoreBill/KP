@@ -107,7 +107,7 @@ class AdminRights:
         rule(ADM + r'export/sqlite$', 'backup', always='db', also='secrets'),
         rule(ADM + r'export(/.*)?$', 'backup', query_needs=(('prices', 'cost', 'db'),)),
         rule(ADM + r'import(/.*)?$', 'backup', write='db'),
-        rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('dav', 'password')),
+        rule(ADM + r'maint/mirror(/check)?$', 'backup', write='secrets', peek=('password', 'moved')),
         rule(ADM + r'maint(/.*)?$', 'backup'),
         rule(ADM + r'migrations(/.*)?$', 'danger', write='db'),
         rule(r'^/api/catalog/trash(/.*)?$', 'goods', write='delete'),
@@ -262,12 +262,12 @@ class AdminRights:
     def _needs_write_action(found: Rule, path: str, body: dict) -> bool:
         if path == '/api/admin/delete':
             return True
-        return not found.peek or any(AdminRights._given(body.get(key)) for key in found.peek)
+        return not found.peek or any(AdminRights.given(body.get(key)) for key in found.peek)
 
     @staticmethod
-    def _given(value: Any) -> bool:
+    def given(value: Any) -> bool:
         """Значение задано заново: не пусто и не «звёздочки», которыми экран показывает сохранённый пароль."""
         if isinstance(value, dict):
-            return any(AdminRights._given(item) for item in value.values())
+            return any(AdminRights.given(item) for item in value.values())
         text = str(value or '').strip()
         return bool(text) and not set(text) <= {'•', '*'}
