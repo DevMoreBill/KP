@@ -269,4 +269,14 @@ check('титул: сборное изделие — своим название
   assert.deepStrictEqual([CoverHint.of(station).title, CoverHint.of(station).model], ['Модульная насосная станция в блок-контейнере', 'Grundfos CR 32-4']);
 });
 
+check('способы создания станции — две карточки; «Сборное изделие» выключено — их нет', ()=>{
+  const html=StationWays.html('st_pump', 'layout');
+  assert.match(html, /nw-way on" aria-current="true"[^>]*><i[^>]*>⚙/);
+  assert.match(html, /data-asmnew="st_pump"/);
+  assert.ok(!/data-asmway/.test(html), 'открытый способ не нажимается');
+  assert.match(StationWays.html('st_comp', 'asm'), /data-asmway="st_comp"/);
+  FEAT.vals={ asmItem:false };
+  assert.strictEqual(StationWays.html('st_pump', 'layout'), '');
+});
+
 if (!process.exitCode) console.log('Сборное изделие: проверок '+n+' — все прошли');

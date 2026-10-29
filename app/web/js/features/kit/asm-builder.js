@@ -1,4 +1,6 @@
 import { AsmAi } from './asm-ai.js';
+import { EquipWizard } from '../wizard/equip-wizard.js';
+import { StationWays } from '../wizard/station-ways.js';
 import { AsmItem } from './asm-item.js';
 import { Kit } from './kit.js';
 import { PickFilter, PickFind } from './kit-pick.js';
@@ -44,7 +46,7 @@ export class AsmBuilder {
    */
   static open(cat, index = null) {
     if (index == null && this.held) {
-      this._resume();
+      this._resume(cat);
       return;
     }
     const kind = EquipTypes.byId(cat).station ? cat : 'st_pump';
@@ -56,10 +58,11 @@ export class AsmBuilder {
     if (!dialog.open) dialog.showModal();
   }
 
-  static _resume() {
+  static _resume(cat) {
     const state = this.held;
     this.held = null;
     this.reopen(state);
+    if (EquipTypes.byId(cat).station && cat !== state.cat) this._kind(cat);
     Toast.show('Продолжаем сборку изделия');
   }
 
@@ -129,7 +132,8 @@ export class AsmBuilder {
     const { cat, index } = this.state;
     const title = `Сборное изделие <small class="muted">· без компоновки</small>`;
     return `${this._head(title, false)}<div class="dlg-b asm-b">
-      <p class="muted asm-lead">Контейнер и оборудование — готовые позиции каталога (могут быть от разных поставщиков). Описание, характеристики, фото и цена изделия соберутся из их карточек.</p>
+      ${index == null ? StationWays.html(cat, 'asm') : ''}
+      <p class="muted asm-lead">Части могут быть от разных поставщиков: описание, характеристики, фото и цена изделия соберутся из их карточек.</p>
       <div class="asm-kind" role="radiogroup" aria-label="Вид изделия">${this._kinds(cat)}</div>
       ${this._filesBox()}
       ${this.state.busy ? `<p class="asm-busy" role="status">${esc(this.state.busy)}</p>` : ''}
@@ -420,6 +424,7 @@ export class AsmBuilder {
     const routes = [
       ['[data-asm]', button => this[this.BUTTONS[button.dataset.asm]]()],
       ['[data-asmkind]', button => this._kind(button.dataset.asmkind)],
+      ['[data-asmway]', button => this._layout(button.dataset.asmway)],
       ['[data-asmpick]', button => this._startPick(button.dataset.asmpick)],
       ['[data-asmcid]', button => this._take(button.dataset.asmcid)],
       ['[data-asmdel]', button => this._remove(+button.dataset.asmdel)],
@@ -432,6 +437,13 @@ export class AsmBuilder {
         return;
       }
     }
+  }
+
+  /** «Подобрать и скомпоновать»: окно подбора станции того же вида; начатая сборка ждёт и вернётся по «Собрать из готовых» */
+  static _layout(cat) {
+    this.held = this.state.parts.length ? this.state : null;
+    this.state = null;
+    EquipWizard.open('kp', cat);
   }
 
   /** другой вид изделия — основное оборудование заново по основным категориям этого вида */

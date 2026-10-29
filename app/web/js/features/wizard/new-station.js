@@ -21,7 +21,7 @@ import { StationGeo } from '../layout/station-geo.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { StationLibrary } from './station-library.js';
-import { FEAT } from '../../core/features.js';
+import { StationWays } from './station-ways.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе
@@ -89,20 +89,14 @@ export class NewStation {
     const need = (StationQuick.NEED[kind] || [])[0];
     const fields = (StationQuick.KEYS[kind] || []).map(row => this._field(row, need)).join('');
     const pickLabel = this.ready() ? 'Взять в КП' : 'Подобрать станцию';
-    return `<p class="muted nw-lead">Что нужно заказчику (* — обязательно) — программа подберёт оборудование из каталога, контейнер, компоновку и изображения для КП. Всё можно поправить в карточке станции.</p>
+    return `${where === 'kp' ? StationWays.html(type.id, 'layout') : ''}<p class="muted nw-lead">Что нужно заказчику (* — обязательно) — программа подберёт оборудование из каталога, контейнер, компоновку и изображения для КП. Всё можно поправить в карточке станции.</p>
       ${StationLibrary.html(kind)}<div class="ns-g">${fields}</div>
       <div class="ns-c"><span class="muted">Контейнер:</span> <span>${esc(this.cont())}</span> <button class="link" type="button" data-nw="nsCont">${this.state.cont ? 'скрыть' : 'другой'}</button></div>
       ${this.state.cont ? this._contFields() : ''}
       <div class="ns-pv" id="nsPv">${this.pvHtml(type)}</div>
       <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${busy ? ' disabled' : ''}>${busy ? 'Подбираю…' : pickLabel}</button>
         ${where === 'kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
-      <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((type.station.mainLabel || 'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>${this._asm(type, where)}`;
-  }
-
-  /** вход в «Сборное изделие»: контейнер и оборудование из каталога, без компоновки (только в КП) */
-  static _asm(type, where) {
-    if (where !== 'kp' || !FEAT.on('asmItem')) return '';
-    return `<p class="muted ns-alt"><button class="link" type="button" data-asmnew="${esc(type.id)}">Сборное изделие из позиций каталога</button> — контейнер и оборудование от разных поставщиков, без компоновки</p>`;
+      <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((type.station.mainLabel || 'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>`;
   }
 
   /**

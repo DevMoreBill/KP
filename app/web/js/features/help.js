@@ -1,7 +1,7 @@
 // Руководство пользователя — данные окна «Руководство» (kp/help-window.js): разделы — HELP_SECTIONS (html); история
 // версий — help-versions.js (загружается, только когда её открыли). Версию читают и правят /vypusk и проверки.
 
-export const APP_VERSION = '3.226.1';
+export const APP_VERSION = '3.226.2';
 
 /** Версия, которая сейчас работает: после установки пакета обновления сервер сообщает более новую (HelpWindow.loadVersion). */
 export class AppVersion {
