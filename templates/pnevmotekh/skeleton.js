@@ -1020,11 +1020,14 @@ function kpSkeleton(KP) {
     const opts = BLK.equipOptions ? (it.options || []).filter(o => o.name && +o.qty > 0) : [];
     const rest = [];
     out.push(heroXml(it, m, feats, opts, BLK.equipFeatures ? rest : null));
-    if (kitOf(it).length) out.push(kitXml(it, m));
+    // сборное изделие (it.asm): сначала изделие целиком — описание и сводные характеристики, затем состав и карточки частей
+    const kitAt = it.asm ? 'end' : 'start';
+    if (kitOf(it).length && kitAt === 'start') out.push(kitXml(it, m));
     if (illustrated.length) out.push(componentsXml(illustrated, fimg));
     if ((rest.length || longF.length) && BLK.equipFeatures) out.push(featuresXml(rest.concat(longF)));
     const groups = BLK.equipSpecs ? (it.groups || []).map(g => ({ name: g.name, rows: (g.rows || []).filter(x => x.k || x.v) })).filter(g => g.rows.length) : [];
     if (groups.length) out.push(specsXml(groups));
+    if (kitOf(it).length && kitAt === 'end') out.push(kitXml(it, m));
     if (BLK.equipGallery) out.push(galleryXml(m.gallery));
     return out.join('');
   }

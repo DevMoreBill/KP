@@ -1,3 +1,4 @@
+import { AsmAi } from './asm-ai.js';
 import { AsmItem } from './asm-item.js';
 import { Kit } from './kit.js';
 import { PickFilter, PickFind } from './kit-pick.js';
@@ -20,6 +21,8 @@ import { $, esc } from '../../core/util.js';
  */
 export class AsmBuilder {
   static state = null;
+  // окно ждёт, пока открыта карточка каталога новой части; карточку закрыли без сохранения — сборка продолжается тут
+  static held = null;
   static ROWS = 40;
   static PARAMS = 3;
   static FOCUS_DELAY = 40;
@@ -40,6 +43,10 @@ export class AsmBuilder {
    * @param {number|null} [index] позиция КП
    */
   static open(cat, index = null) {
+    if (index == null && this.held) {
+      this._resume();
+      return;
+    }
     const kind = EquipTypes.byId(cat).station ? cat : 'st_pump';
     this.state = index == null ? this._fresh(kind) : this._fromItem(kind, index);
     if (this.state.priceAuto) this.state.price = AsmItem.sums(this.state.parts).sale;
@@ -47,6 +54,13 @@ export class AsmBuilder {
     dialog.className = 'wide asm';
     this.draw();
     if (!dialog.open) dialog.showModal();
+  }
+
+  static _resume() {
+    const state = this.held;
+    this.held = null;
+    this.reopen(state);
+    Toast.show('Продолжаем сборку изделия');
   }
 
   static _fresh(cat) {
@@ -62,6 +76,8 @@ export class AsmBuilder {
       photo: '',
       work,
       pick: null,
+      ai: null,
+      busy: '',
     };
   }
 
@@ -79,6 +95,8 @@ export class AsmBuilder {
       photo: this._photoPart(item, parts),
       work: this._work(item),
       pick: null,
+      ai: (item.kit && item.kit.ai) || null,
+      busy: '',
     };
   }
 
@@ -113,6 +131,8 @@ export class AsmBuilder {
     return `${this._head(title, false)}<div class="dlg-b asm-b">
       <p class="muted asm-lead">Контейнер и оборудование — готовые позиции каталога (могут быть от разных поставщиков). Описание, характеристики, фото и цена изделия соберутся из их карточек.</p>
       <div class="asm-kind" role="radiogroup" aria-label="Вид изделия">${this._kinds(cat)}</div>
+      ${this._filesBox()}
+      ${this.state.busy ? `<p class="asm-busy" role="status">${esc(this.state.busy)}</p>` : ''}
       ${this._containerSec()}
       ${this._equipSec()}
       ${this._itemSec()}
@@ -144,7 +164,32 @@ export class AsmBuilder {
       part.role === 'container'
         ? ''
         : `<label class="asm-q"><span class="muted">шт.</span><input type="text" inputmode="numeric" data-asmqty="${j}" value="${esc(part.qty)}" aria-label="Количество"></label>`;
-    return `<div class="asm-row">${photo}<span class="asm-nm"><b>${esc(part.name)}</b><small class="muted">${esc(sub)}</small></span>${qty}<button class="icon" type="button" data-asmdel="${j}" aria-label="Убрать">✕</button></div>`;
+    return `<div class="asm-row${part.need ? ' need' : ''}">${photo}<span class="asm-nm"><b>${esc(part.name)}</b><small class="muted">${esc(sub)}</small>${this._need(part, j)}</span>${qty}<button class="icon" type="button" data-asmdel="${j}" aria-label="Убрать">✕</button></div>`;
+  }
+
+  /** часть из файла, не принятая каталогом: чего не хватает и «Заполнить карточку» */
+  static _need(part, j) {
+    if (!part.need || !part.need.length) return '';
+    return `<small class="asm-need">Не в каталоге: ${esc(part.need.join('; '))}</small><button class="chip sm" type="button" data-asmfix="${j}">Заполнить карточку</button>`;
+  }
+
+  /** «Из техничек — ИИ»: ТЗ, КП поставщика, паспорта — части изделия сами */
+  static _filesBox() {
+    if (!AsmAi.filesEnabled() || this.state.index != null) return '';
+    return `<div class="asm-files"><label class="btn"><input type="file" data-asmfiles multiple accept=".pdf,.docx,.xlsx,.txt" hidden>📄 Из техничек — ИИ</label><span class="muted">ТЗ, КП поставщика, паспорта контейнера и оборудования (PDF, Word, Excel) — части с характеристиками, описанием и фото станут карточками каталога и соберутся в изделие</span></div>`;
+  }
+
+  /** «Описание и сводные — ИИ»: состояние ответа для текущего состава */
+  static _aiBox() {
+    if (!AsmAi.enabled()) return '';
+    const { ai, parts } = this.state;
+    const fresh = AsmItem.fresh(ai, parts);
+    const stale = ai && !fresh ? 'состав изменился — обновите' : '';
+    const done = fresh
+      ? `готово: блоков описания ${fresh.blocks.length}, строк характеристик ${fresh.rows.length}`
+      : '';
+    const note = stale || done || 'единое описание и сводные характеристики из данных частей';
+    return `<div class="asm-ai"><button class="btn" type="button" data-asmai${parts.length ? '' : ' disabled'}>✨ Описание и сводные — ИИ</button><span class="muted${stale ? ' asm-stale' : ''}">${esc(note)}</span></div>`;
   }
 
   static _containerSec() {
@@ -152,8 +197,8 @@ export class AsmBuilder {
     const j = parts.findIndex(part => part.role === 'container');
     const body =
       j >= 0
-        ? `${this._row(parts[j], j)}<button class="chip sm ghost" type="button" data-asmpick="container">Заменить контейнер</button>`
-        : '<button class="btn" type="button" data-asmpick="container">Выбрать контейнер в каталоге</button>';
+        ? `${this._row(parts[j], j)}<div class="asm-add"><button class="chip sm ghost" type="button" data-asmpick="container">Заменить из каталога</button><button class="chip sm ghost" type="button" data-asmcard="container">Новый контейнер…</button></div>`
+        : '<div class="asm-add"><button class="btn" type="button" data-asmpick="container">Выбрать в каталоге</button><button class="btn ghost" type="button" data-asmcard="container" title="Нет в каталоге: по ссылке, с ИИ из файла, таблицей или вручную — карточка сохранится в каталог">Новый — нет в каталоге…</button></div>';
     return `<section class="asm-sec"><h4>1. Контейнер</h4>${body}</section>`;
   }
 
@@ -170,7 +215,7 @@ export class AsmBuilder {
         ? ''
         : '<button class="chip sm ghost" type="button" data-asmpick="power">+ ДГУ для автономности</button>';
     const empty = rows ? '' : `<p class="muted asm-empty">Добавьте ${esc(label)} и прочее оборудование.</p>`;
-    return `<section class="asm-sec"><h4>2. Оборудование</h4>${rows}${empty}<div class="asm-add"><button class="chip sm" type="button" data-asmpick="equip">+ Из каталога</button>${power}</div></section>`;
+    return `<section class="asm-sec"><h4>2. Оборудование</h4>${rows}${empty}<div class="asm-add"><button class="chip sm" type="button" data-asmpick="equip">+ Из каталога</button><button class="chip sm" type="button" data-asmcard="equip" title="Нет в каталоге: по ссылке, с ИИ из файла, таблицей или вручную — карточка сохранится в каталог">+ Новое — нет в каталоге…</button>${power}</div></section>`;
   }
 
   static _itemSec() {
@@ -178,6 +223,7 @@ export class AsmBuilder {
     const auto = AsmItem.name(cat, parts);
     return `<section class="asm-sec"><h4>3. Изделие</h4>
       <label class="f"><span>Название</span><input type="text" id="asmName" value="${esc(this.state.nameAuto ? auto : name)}" placeholder="${esc(auto)}" autocomplete="off"></label>
+      ${this._aiBox()}
       ${this._photos()}
       <div id="asmSum">${this._sum()}</div>
       <label class="asm-wk"><input type="checkbox" id="asmWork"${work.on ? ' checked' : ''}> Работы по сборке и монтажу — отдельной строкой</label>
@@ -243,30 +289,59 @@ export class AsmBuilder {
   }
 
   static async _take(cardId) {
-    const { pick, parts } = this.state;
+    const { pick } = this.state;
     const lite = Catalog.cache.find(card => card.id === cardId);
     if (!lite) return;
     const doc = await Catalog.fullDoc(lite);
-    const role = this._role(pick.kind, doc);
-    const part = AsmItem.part(doc, role);
-    if (role === 'container') {
+    this.state.pick = null;
+    this.add(AsmItem.part(doc, this.roleOf(pick.kind, doc)));
+    Toast.show(`Добавлено: ${doc.name}`);
+  }
+
+  /**
+   * Часть — в состав: контейнер заменяет прежний, оборудование добавляется; окно перерисовывается.
+   * @param {object} part
+   */
+  static add(part) {
+    const parts = this.state.parts;
+    if (part.role === 'container') {
       const was = parts.findIndex(line => line.role === 'container');
       if (was >= 0) parts.splice(was, 1, part);
       else parts.unshift(part);
     } else parts.push(part);
-    this.state.pick = null;
     this._changed();
-    Toast.show(`Добавлено: ${doc.name}`);
   }
 
-  static _role(kind, doc) {
+  /**
+   * Роль части по способу добавления: контейнер; первое оборудование основных категорий вида — основное.
+   * @param {string} kind container | equip | power
+   * @param {object} doc карточка
+   * @returns {string}
+   */
+  static roleOf(kind, doc) {
     if (kind === 'container') return 'container';
     if (kind !== 'equip' || this.state.parts.some(part => part.role === 'main')) return '';
     const cats = (EquipTypes.byId(this.state.cat).station || {}).main || [];
     return cats.includes((doc.attrs || {}).cat) ? 'main' : '';
   }
 
-  /** состав изменился: название и цена «по умолчанию» — заново */
+  /**
+   * Вернуть окно с прежним состоянием (после карточки каталога или окна «Добавить оборудование»).
+   * @param {object} state
+   */
+  static reopen(state) {
+    this.state = state;
+    const dialog = $('#dlg');
+    dialog.className = 'wide asm';
+    this.draw();
+    if (!dialog.open) dialog.showModal();
+  }
+
+  /** Состав изменился: цена «по умолчанию» — заново, окно перерисовать. */
+  static changed() {
+    this._changed();
+  }
+
   static _changed() {
     if (this.state.priceAuto) this.state.price = AsmItem.sums(this.state.parts).sale;
     this.draw();
@@ -276,6 +351,7 @@ export class AsmBuilder {
     const dialog = $('#dlg');
     if (dialog.open) dialog.close();
     this.state = null;
+    this.held = null;
   }
 
   static _back() {
@@ -306,6 +382,7 @@ export class AsmBuilder {
       price: this.state.priceAuto ? AsmItem.sums(parts).sale : this.state.price,
       photo: this.state.photo,
       work,
+      ai: this.state.ai,
     };
     const item = index == null ? KpState.newItem() : S.items[index];
     AsmItem.fill(item, input);

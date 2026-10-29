@@ -26,7 +26,7 @@ import { CatPicker } from './cat-picker.js';
  * требования станции → карточка открывается сразу на нужной вкладке (в каталоге — карточка каталога).
  */
 export class EquipWizard {
-  static state = { where: 'kp', cat: '', q: '', url: '', name: '', busy: false };
+  static state = { where: 'kp', cat: '', q: '', url: '', name: '', busy: false, onSaved: null };
   static ICONS = { st_pump: '💧', st_comp: '💨', st_dgu: '⚡' };
   static FOCUS_DELAY = 40;
   static CAT_FOCUS_DELAY = 30;
@@ -46,13 +46,15 @@ export class EquipWizard {
    * Открыть окно.
    * @param {string} where kp | catalog
    * @param {string} [pre] station или id категории — сразу на её шаге
+   * @param {function(object): *} [onSaved] новая карточка каталога сохранена (сборное изделие берёт её частью)
    */
-  static open(where, pre) {
+  static open(where, pre, onSaved) {
     if (where === 'catalog' && !Auth.can('catAdd')) {
       Auth.cannot('catAdd');
       return;
     }
     Object.assign(this.state, { where: where || 'kp', cat: '', q: '', url: '', name: '', busy: false });
+    this.state.onSaved = onSaved || null;
     NewStation.reset();
     CatPicker.reset();
     if (pre === 'station') this.state.cat = 'station';
@@ -196,7 +198,8 @@ export class EquipWizard {
   static _toCatalog(item, tab, after) {
     const { _src, _srcProps, _srcUrl, _srcImgs } = item;
     const doc = CatalogEditor.toDoc(item, { id: Uid.next() + Uid.next(), prices: [] });
-    CatalogEditor.openNew(doc, saved => CatalogWindow.win.afterSave(saved));
+    const onSaved = this.state.onSaved;
+    CatalogEditor.openNew(doc, saved => (onSaved ? onSaved(saved) : CatalogWindow.win.afterSave(saved)));
     Object.assign(S.items[0], { _src, _srcProps, _srcUrl, _srcImgs, _aiStep: item._aiStep, _aiMsg: item._aiMsg });
     PageImages.move(item, S.items[0]);
     ItemEditor.current.tab = tab;

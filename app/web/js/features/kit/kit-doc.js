@@ -78,6 +78,8 @@ export class KitDoc {
     return {
       parts,
       base: {
+        // сборное изделие: в документе сначала изделие целиком (описание, сводные характеристики), затем состав
+        ...(Kit.simple(item) ? { asm: true } : {}),
         page: true,
         spec: item.spec || '',
         features: [...this._lead(item, station, purpose, design), ...(docs ? [docs] : [])],

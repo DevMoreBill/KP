@@ -19,5 +19,22 @@ class AsmItemJs(unittest.TestCase):
         self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
 
 
+class FactorySkeleton(unittest.TestCase):
+    """Скелет шаблона «ПНЕВМОТЕХ» изменён (сборное изделие — сначала изделие целиком): заводская копия прежней версии у
+    пользователя обновляется сама, своя правка — нет; нынешний заводской скелет — не в списке прежних."""
+
+    def test_old_factory(self):
+        import sys
+
+        sys.path.insert(0, os.path.join(REPO, 'app'))
+        import kp_templates
+
+        old = kp_templates.OLD_FACTORY['skeleton.js']
+        self.assertIn('92c67f11a0a934e6be34451769dad715', old, 'скелет 3.198–3.225 обновляется')
+        for tid in ('pnevmotekh', 'tender'):
+            now = kp_templates._norm_md5(os.path.join(REPO, 'templates', tid, 'skeleton.js'))
+            self.assertNotIn(now, old, tid)
+
+
 if __name__ == '__main__':
     unittest.main()

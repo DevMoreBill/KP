@@ -14,7 +14,9 @@ import { Currency } from '../kp/currency.js';
  */
 export class AsmItem {
   static KINDS = { st_pump: 'pump', st_comp: 'comp', st_dgu: 'dgu' };
+  static AUTO_ID = 'asm_';
   static PURPOSE_ID = 'asm_purpose';
+  static AI_ID = 'asm_ai_';
   static WORK_ID = 'asm_work';
   static PIC_ID = 'asmg_';
   static SUMMARY = 'Основные характеристики изделия';
@@ -130,14 +132,16 @@ export class AsmItem {
    */
   static fill(item, input) {
     const { cat, parts } = input;
-    item.kit = { simple: true, parts };
+    const answer = this.fresh(input.ai, parts);
+    item.kit = { simple: true, parts, ...(answer ? { ai: answer } : {}) };
     item.name = input.name || this.name(cat, parts);
     item.price = input.price;
     item.page = true;
     item._asmSum = this.sums(parts).sale;
     item.attrs = this._attrs(item, cat, parts);
-    item.features = [this._purpose(cat, parts), ...(item.features || []).filter(feat => feat.id !== this.PURPOSE_ID)];
-    item.groups = [this._summary(cat, parts), ...(item.groups || []).filter(group => !group.asm)];
+    const own = (item.features || []).filter(feat => !String(feat.id || '').startsWith(this.AUTO_ID));
+    item.features = [...this._lead(cat, parts, answer), ...own];
+    item.groups = [this._summary(cat, parts, answer), ...(item.groups || []).filter(group => !group.asm)];
     item.photo = this._photo(parts, input.photo) || item.photo || null;
     item.gallery = [
       ...(item.gallery || []).filter(pic => !String(pic.id || '').startsWith(this.PIC_ID)),
@@ -146,6 +150,51 @@ export class AsmItem {
     this._spec(item);
     this._work(item, input.work);
     Kit.sync(item);
+  }
+
+  /**
+   * Отпечаток состава (названия и количество): ответ ИИ действует, пока состав тот же; карточка части, дозаполненная в
+   * каталоге, отпечаток не меняет.
+   * @param {object[]} parts
+   * @returns {string}
+   */
+  static sig(parts) {
+    return parts.map(part => `${String(part.name || '').trim()}*${+part.qty || 1}`).join('|');
+  }
+
+  /**
+   * Ответ ИИ для этого состава или null (состав изменился — ответ не действует).
+   * @param {object|null} answer
+   * @param {object[]} parts
+   * @returns {object|null}
+   */
+  static fresh(answer, parts) {
+    return answer && answer.sig === this.sig(parts) && ((answer.blocks || []).length || (answer.rows || []).length)
+      ? answer
+      : null;
+  }
+
+  /**
+   * Что посчитала программа (без ИИ): установленная мощность, габариты контейнера, масса изделия.
+   * @param {string} cat
+   * @param {object[]} parts
+   * @returns {object[]}
+   */
+  static calc(cat, parts) {
+    const cont = (Kit.container({ kit: { parts } }) || {}).attrs || {};
+    const installed = this._installed(cat, parts);
+    const mass = this._mass(parts);
+    return [
+      installed ? { k: 'Установленная мощность оборудования', v: `${Str.comma(installed)} кВт` } : null,
+      cont.size ? { k: 'Габариты контейнера (Д × Ш × В)', v: `${cont.size} мм` } : null,
+      mass ? { k: 'Масса изделия (сумма составных частей)', v: `${Str.comma(mass)} кг` } : null,
+    ].filter(Boolean);
+  }
+
+  /** описание: блоки ИИ (если есть для этого состава), иначе назначение по правилам */
+  static _lead(cat, parts, answer) {
+    if (!answer || !(answer.blocks || []).length) return [this._purpose(cat, parts)];
+    return answer.blocks.map((block, k) => ({ id: `${this.AI_ID}${k}`, label: block.label, text: block.text }));
   }
 
   /**
@@ -264,23 +313,23 @@ export class AsmItem {
     return Math.round(parts.reduce((total, part, k) => total + masses[k] * this._qty(part), 0));
   }
 
-  static _summary(cat, parts) {
+  static _summary(cat, parts, answer) {
+    if (answer && (answer.rows || []).length)
+      return { name: this.SUMMARY, asm: true, rows: answer.rows.map(row => ({ k: row.k, v: row.v, hl: false })) };
     const main = this.main(cat, parts);
     const container = Kit.container({ kit: { parts } });
     const cont = (container && container.attrs) || {};
-    const installed = this._installed(cat, parts);
-    const mass = this._mass(parts);
+    const label = (EquipTypes.byId(cat).station || {}).mainLabel || 'Основное оборудование';
+    const calc = this.calc(cat, parts);
     const rows = [
-      main
-        ? { k: (EquipTypes.byId(cat).station || {}).mainLabel || 'Основное оборудование', v: this._nameQty(main) }
-        : null,
+      main ? { k: label, v: this._nameQty(main) } : null,
       ...this._mainRows(main),
-      installed ? { k: 'Установленная мощность оборудования', v: `${Str.comma(installed)} кВт` } : null,
+      ...calc.filter(row => /^Установленная/.test(row.k)),
       ...this.power(cat, parts).map(part => ({ k: 'Автономное электроснабжение', v: this._nameQty(part) })),
       container ? { k: 'Контейнер', v: this._nameQty(container) } : null,
-      cont.size ? { k: 'Габариты контейнера (Д × Ш × В)', v: `${cont.size} мм` } : null,
+      ...calc.filter(row => /^Габариты/.test(row.k)),
       Str.num(cont.mass) > 0 ? { k: 'Масса контейнера', v: `${Str.comma(Str.num(cont.mass))} кг` } : null,
-      mass ? { k: 'Масса изделия (сумма составных частей)', v: `${Str.comma(mass)} кг` } : null,
+      ...calc.filter(row => /^Масса/.test(row.k)),
     ];
     return { name: this.SUMMARY, asm: true, rows: rows.filter(Boolean).map(row => ({ hl: false, ...row })) };
   }

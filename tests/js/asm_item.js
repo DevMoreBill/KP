@@ -165,4 +165,92 @@ check('без курса валюты — часть без цены в сумм
   assert.strictEqual(sums.sale, 150000000+50000000*2);
 });
 
+
+check('проверка ИИ по данным: чужие числа, производитель и модель не проходят', ()=>{
+  const known=AsmFacts.known(['Подача 32 м³/ч, напор 64 м; масса 2 600 кг; габариты 6000 × 2500 × 2700']);
+  assert.ok(AsmFacts.ok('2600 кг', known), 'тысячи с пробелом — то же число');
+  assert.ok(AsmFacts.ok('32 м³/ч, 2 агрегата', known), 'небольшие целые — количество');
+  assert.ok(!AsmFacts.ok('40 м³/ч', known));
+  assert.strictEqual(AsmFacts.keep('Подача 32 м³/ч. Запас 15 %. Напор 64 м.', known), 'Подача 32 м³/ч. Напор 64 м.');
+  assert.strictEqual(AsmFacts.word('Grundfos', 'насос grundfos cr'), 'Grundfos');
+  assert.strictEqual(AsmFacts.word('Wilo', 'насос grundfos cr'), '');
+});
+
+check('описание и сводные ИИ: только известные блоки и строки с числами из данных', ()=>{
+  const known=AsmFacts.known([AsmAi.source(pumpInput().parts)]);
+  const out=AsmAi.clean({ blocks:[{ label:'Назначение', text:'Станция подаёт 32 м³/ч. Работает 50 лет.' }, { label:'Реклама', text:'Лучшая!' }],
+    rows:[{ k:'Подача', v:'32 м³/ч' }, { k:'КПД', v:'78 %' }, { k:'', v:'1' }] }, known);
+  assert.deepStrictEqual(out.blocks, [{ label:'Назначение', text:'Станция подаёт 32 м³/ч.' }]);
+  assert.deepStrictEqual(out.rows, [{ k:'Подача', v:'32 м³/ч' }]);
+  assert.throws(()=>AsmAi.json('не json'), /не данными/);
+  assert.deepStrictEqual(AsmAi.json('```json\n{"a":1}\n```'), { a:1 });
+});
+
+check('ответ ИИ — в изделие, пока состав тот же', ()=>{
+  const input=pumpInput();
+  input.ai={ blocks:[{ label:'Назначение', text:'Изделие для водоснабжения.' }, { label:'Устройство', text:'Насосы в контейнере.' }],
+    rows:[{ k:'Подача одного насоса', v:'32 м³/ч' }], sig:AsmItem.sig(input.parts) };
+  const item=KpState.newItem();
+  item.features=[{ id:'own', label:'Гарантия', text:'24 месяца' }];
+  AsmItem.fill(item, input);
+  assert.deepStrictEqual(item.features.map(feat=>feat.label), ['Назначение', 'Устройство', 'Гарантия']);
+  assert.deepStrictEqual(item.groups[0].rows.map(row=>row.k), ['Подача одного насоса']);
+  assert.ok(item.kit.ai, 'ответ хранится в изделии — для правки');
+  const again=pumpInput(); again.parts[1].qty=3; again.ai=input.ai;
+  AsmItem.fill(item, again);
+  assert.strictEqual(item.features[0].id, AsmItem.PURPOSE_ID, 'состав изменился — назначение по правилам');
+  assert.ok(!item.kit.ai);
+  assert.deepStrictEqual(item.features.map(feat=>feat.label), ['Назначение', 'Гарантия'], 'блоки прежнего ответа убраны');
+  assert.strictEqual(item.groups[0].rows[0].k, 'Насосный агрегат');
+});
+
+check('документ: у сборного изделия — признак «сначала изделие целиком»', ()=>{
+  const item=KpState.newItem();
+  AsmItem.fill(item, pumpInput());
+  assert.strictEqual(KitDoc.data(item).base.asm, true);
+  assert.ok(!('asm' in KitDoc.data({ kit:{ parts:[{ id:'x', name:'x' }] }, attrs:{} }).base), 'у прежних сборок — без изменений');
+});
+
+check('части из техничек: категория, параметры, производитель и фото — только из файла', ()=>{
+  const read=[
+    { name:'bk.pdf', text:'Блок-контейнер БК-6000 «КонтСтрой». Габариты 6000 × 2500 × 2700 мм. Масса 2600 кг.', imgs:['data:image/png;base64,AAA'] },
+    { name:'pump.docx', text:'Насос Grundfos CR 32-4: подача 32 м³/ч, напор 64 м, мощность 7,5 кВт. Цена 620 000 руб.', imgs:[] },
+  ];
+  const answer={ parts:[
+    { role:'container', file:1, name:'Блок-контейнер БК-6000', maker:'КонтСтрой', model:'БК-6000', cat:'other', qty:1, cost:999, costCur:'XXX', attrs:{ kw:'15' }, rows:[{ k:'Масса', v:'2600 кг' }, { k:'Утепление', v:'150 мм' }], desc:'Утеплённый контейнер. Срок службы 25 лет.' },
+    { role:'main', file:2, name:'Насос Grundfos CR 32-4', maker:'Grundfos', model:'CR 32-5', cat:'pump', qty:2, attrs:{ flow:'32', head:'64', kw:'7,5', medium:'вода' }, rows:[{ k:'Подача', v:'32 м³/ч' }], desc:'', cost:'620 000', costCur:'RUB' },
+    { role:'power', file:2, name:'', cat:'dgu' },
+    { role:'хлам', file:9, name:'Шкаф', cat:'нет такой', qty:99 },
+  ] };
+  const parts=AsmAi.parts(answer, read, 'st_pump');
+  assert.strictEqual(parts.length, 3, 'без названия — не часть');
+  const [cont, pump, other]=parts;
+  assert.strictEqual(cont.role, 'container');
+  assert.deepStrictEqual(cont.doc.attrs, { cat:'other', maker:'КонтСтрой', model:'БК-6000' }, 'чужое число параметра не ставится');
+  assert.deepStrictEqual(cont.doc.groups[0].rows, [{ k:'Масса', v:'2600 кг' }]);
+  assert.deepStrictEqual(cont.doc.features, [{ label:'Описание', text:'Утеплённый контейнер.' }]);
+  assert.strictEqual(cont.doc.photo.src, 'data:image/png;base64,AAA', 'фото из своего файла');
+  assert.strictEqual(pump.role, 'main');
+  assert.strictEqual(pump.qty, 2);
+  assert.strictEqual(pump.doc.attrs.model, undefined, 'модели CR 32-5 в файле нет');
+  assert.strictEqual(pump.doc.attrs.flow, 32);
+  assert.strictEqual(pump.doc.attrs.kw, 7.5);
+  assert.strictEqual(pump.doc.photo, null);
+  assert.deepStrictEqual([pump.doc.cost, pump.doc.costCur], [62000000, 'RUB'], 'закупка из КП поставщика');
+  assert.strictEqual(cont.doc.cost, 0, 'цены нет в файле — закупки нет');
+  assert.deepStrictEqual([other.role, other.doc.attrs.cat, other.qty, other.file], ['', 'other', AsmAi.QTY_MAX, 1]);
+  assert.match(AsmAi.filesPrompt('st_pump', read), /ФАЙЛ 2: pump\.docx/);
+  assert.match(AsmAi.describePrompt('st_pump', pumpInput().parts), /Установленная мощность оборудования — 15 кВт/);
+});
+
+check('выключатели: без нейросети кнопок ИИ нет', ()=>{
+  AiDirect.state.enabled=false;
+  assert.ok(!AsmAi.enabled() && !AsmAi.filesEnabled());
+  AiDirect.state.enabled=true;
+  assert.ok(AsmAi.enabled() && AsmAi.filesEnabled());
+  FEAT.vals={ asmAi:false, asmFiles:false };
+  assert.ok(!AsmAi.enabled() && !AsmAi.filesEnabled());
+  AiDirect.state.enabled=false;
+});
+
 if (!process.exitCode) console.log('Сборное изделие: проверок '+n+' — все прошли');

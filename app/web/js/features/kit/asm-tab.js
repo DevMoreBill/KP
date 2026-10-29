@@ -33,7 +33,7 @@ export class AsmTab {
       ? `<button class="btn primary" type="button" data-asmedit="${index}">Изменить состав, цену и работы…</button>`
       : '';
     return `<div class="ed-sec asm-tab">
-      <p class="muted">Сборное изделие без компоновки: контейнер и оборудование — позиции каталога. Назначение, сводная таблица «${esc(AsmItem.SUMMARY)}», фото и галерея обновляются из карточек частей при изменении состава; свои блоки описания и таблицы остаются.</p>
+      <p class="muted">Сборное изделие без компоновки: контейнер и оборудование — позиции каталога. Назначение (или описание ИИ), сводная таблица «${esc(AsmItem.SUMMARY)}», фото и галерея обновляются из карточек частей при изменении состава; свои блоки описания и таблицы остаются.</p>
       <div class="asm-list">${rows}</div>
       <p class="asm-tot">Сумма частей: <b>${KPGen.money(sums.sale)} ${esc(cur)}</b> · закупка ${KPGen.money(sums.cost)} руб.</p>
       <div class="row">${edit}</div></div>`;

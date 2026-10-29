@@ -648,4 +648,10 @@ html:not(.mob) #dlg.asm[open]{margin-top:min(8vh,80px);margin-bottom:auto;max-he
 .asm-go{justify-content:flex-end;margin-top:4px}
 .asm-tot{margin:8px 0}
 .asm-list{border:1px solid var(--line);border-radius:10px;padding:2px 12px;background:var(--card)}
-@media (max-width:600px){.asm-wf{grid-template-columns:1fr}.asm-row{flex-wrap:wrap}.asm-nm{flex-basis:calc(100% - 70px)}}
+.asm-files,.asm-ai{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 10px}
+.asm-files .btn{cursor:pointer}
+.asm-busy{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:var(--warn-bg);color:var(--warn-ink);font-weight:600}
+.asm-stale{color:var(--warn-ink)}
+.asm-row.need .asm-nm b{color:var(--warn-ink)}
+.asm-need{display:block;margin:2px 0 4px;color:var(--warn-ink)}
+@media (max-width:600px){.asm-wf{grid-template-columns:1fr}.asm-row{flex-wrap:wrap}.asm-nm{flex-basis:calc(100% - 130px)}}
