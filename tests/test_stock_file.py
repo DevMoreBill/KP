@@ -75,6 +75,22 @@ class StockFileTest(unittest.TestCase):
         priced = parse([['Артикул', 'Наименование', 'Цена, руб', ''], ['H-1', 'Ресивер РВ-270', 45000, 3]])
         self.assertEqual(priced['Ресивер РВ-270']['qty'], 3, 'столбец цены — не количество')
 
+    def test_formula_cell_with_cached_text(self):
+        """Название — формула со ссылкой на другую книгу: значение в <v xml:space="preserve"> (остатки Абсолют Индастриал)."""
+        import io
+        import zipfile
+        src = Book.xlsx([('Остатки', [['Бренд', 'Модель', 'Статус', 'Склад'], ['Lupamat', 'X', 'на складе', 'РЕНУС (Москва)']])])
+        out = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(src)) as old, zipfile.ZipFile(out, 'w') as new:
+            for item in old.infolist():
+                data = old.read(item.filename)
+                if item.filename.endswith('sheet1.xml'):
+                    cell = '<c r="B2" t="str"><f>\'[1]Склад\'!E202</f><v xml:space="preserve">LKV 37/10 DHK PLUS </v></c>'
+                    data = data.decode().replace('<c r="B2" t="inlineStr"><is><t>X</t></is></c>', cell).encode()
+                new.writestr(item, data)
+        rows = feed_files.parse_stock(out.getvalue())
+        self.assertEqual([(row['name'], row['qty']) for row in rows], [('LKV 37/10 DHK PLUS', 1)])
+
     def test_old_kinds(self):
         got = parse([['Артикул', 'Номенклатура', 'Количество', 'Склад'],
                      ['D-1', 'Фильтр GON 100', 4, 'НЭК (Москва)'],

@@ -844,7 +844,7 @@ def read_xlsx(data) -> list:
                 if cell_type == 'inlineStr':
                     v: Any = html_mod.unescape(''.join(re.findall(r'<t[^>]*>(.*?)</t>', inner, re.S)))
                 else:
-                    val_match = re.search(r'<v>(.*?)</v>', inner, re.S)
+                    val_match = re.search(r'<v(?:\s[^>]*)?>(.*?)</v>', inner, re.S)
                     v = html_mod.unescape(val_match.group(1)) if val_match else ''
                     if cell_type == 's' and v:
                         try:
