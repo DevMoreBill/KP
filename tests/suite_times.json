@@ -46,6 +46,7 @@
 "test_fuzz": 37,
 "test_improve_1018": 3,
 "test_kp_files": 4,
+"test_kp_followup": 3,
 "test_kp_manager_lock": 3,
 "test_kp_transfer": 1,
 "test_kp_view_lock": 2,

@@ -291,9 +291,12 @@ export class DealCard {
   }
 
   static _closers(deal, stages) {
-    const won = deal.stage === 'won';
-    const lost = deal.stage === 'lost';
-    return `<span class="dk-sp"></span><button type="button" class="dk-s dk-won${won ? ' on' : ''}" data-dks="won" aria-pressed="${won}">✓ ${esc(this._stageLabel(stages, 'won', 'Выиграно'))}</button><button type="button" class="dk-s dk-lost${lost ? ' on' : ''}" data-dks="lost" aria-pressed="${lost}">✕ ${esc(this._stageLabel(stages, 'lost', 'Проиграно'))}</button>`;
+    const closer = (key, mark, fallback) => {
+      const active = deal.stage === key;
+      const label = esc(`${mark} ${this._stageLabel(stages, key, fallback)}`);
+      return `<button type="button" class="dk-s dk-${key}${active ? ' on' : ''}" data-dks="${key}" aria-pressed="${active}" title="${label}"><span class="dk-sl">${label}</span></button>`;
+    };
+    return `<span class="dk-sp"></span>${closer('won', '✓', 'Выиграно')}${closer('lost', '✕', 'Проиграно')}`;
   }
 
   static _why(deal) {
@@ -314,7 +317,7 @@ export class DealCard {
         const now = stage.key === deal.stage;
         const past = pos < index && !closed;
         const tone = now || past ? ` t-${CrmFunnel.tone(deal.funnel, stage.key)}` : '';
-        return `<button type="button" role="radio" aria-checked="${now}" class="dk-s${now ? ' on' : ''}${past ? ' past' : ''}${tone}" data-dks="${esc(stage.key)}" title="${esc(stage.label)}">${esc(stage.label)}</button>`;
+        return `<button type="button" role="radio" aria-checked="${now}" class="dk-s${now ? ' on' : ''}${past ? ' past' : ''}${tone}" data-dks="${esc(stage.key)}" title="${esc(stage.label)}"><span class="dk-sl">${esc(stage.label)}</span></button>`;
       })
       .join('');
     return `<div class="dk-st"><div class="dk-chev" role="radiogroup" aria-label="Стадия сделки — нажмите, чтобы перевести">${chevrons}</div>${this._closers(deal, stages)}</div>${this._why(deal)}`;

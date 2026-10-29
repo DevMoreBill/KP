@@ -1,9 +1,8 @@
 import { Drafts } from './drafts.js';
 import { Managers } from './managers.js';
 import { Presets } from './presets.js';
-import { CatalogWindow } from '../catalog/catalog-window.js';
-import { Catalog } from '../catalog/catalog-store.js';
-import { FormView } from '../../ui/form-view.js';
+import { Steps } from '../../ui/steps.js';
+import { AppTabs } from '../../core/app-tabs.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpState, S } from '../../core/state.js';
 import { Modal } from '../../core/modal.js';
@@ -132,13 +131,12 @@ export class NewKp {
     this.myContacts();
   }
 
-  /** Пустое КП и сразу каталог. */
+  /** Пустое КП — на вкладке КП, раздел «Клиент» (с него начинается КП; каталог — со следующего шага). */
   static blank() {
     this.fresh();
-    FormView.render();
     KpState.persist();
-    window.scrollTo({ top: 0 });
-    if (Catalog.cache.length) CatalogWindow.open({});
+    AppTabs.open(AppTabs.HOME);
+    Steps.open('client');
   }
 
   /** Контакты менеджера в новом КП: запомненные этим браузером, иначе — из карточки «кто я» (новый компьютер). */

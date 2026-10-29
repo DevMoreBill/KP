@@ -44,10 +44,13 @@ check('скрыть и показать — в личных настройках
   assert.deepStrictEqual(saved.cabLayout, {});
 });
 
-check('карточка сделки: сводка и вкладки слева, «Что сделать» и лента справа; своё — поверх', ()=>{
+check('карточка сделки: сводка во всю ширину над колонками, вкладки слева, «Что сделать» и лента справа; своё — поверх', ()=>{
   const parts={sum:'<section>s</section>', now:'<section>n</section>', main:'<div>m</div>', feed:'<section>f</section>'};
-  assert.deepStrictEqual(CabLayout.of('deal', Object.keys(parts)).cols, {l:['sum', 'main'], r:['now', 'feed']});
-  assert.ok(DealLayout.html(parts, {feedTab:false}).includes('data-clpage="deal"'));
+  assert.deepStrictEqual(CabLayout.of('deal', ['now', 'main', 'feed']).cols, {l:['main'], r:['now', 'feed']});
+  const own=DealLayout.html(parts, {feedTab:false});
+  assert.ok(own.includes('data-clpage="deal"'));
+  assert.ok(own.startsWith('<section>s</section>') && !own.includes('data-cl="sum"'), 'сводка — не раздел колонки, а над ними');
+  assert.ok(DealLayout.html(parts, {feedTab:true}).startsWith('<section>s</section>'));
   assert.ok(DealLayout.html(parts, {feedTab:true}).includes('dk-cols'), 'лента вкладкой (телефон) — как в программе');
   FEAT.vals={dealLayout:false};
   assert.ok(!DealLayout.html(parts, {feedTab:false}).includes('lay-g'), 'выключено — как в программе');

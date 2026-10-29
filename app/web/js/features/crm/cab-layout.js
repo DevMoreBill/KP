@@ -26,7 +26,6 @@ export class CabLayout {
     managers: 'Менеджеры',
     regs: 'Регламент',
     time: 'Где тратится время',
-    sum: 'Сводка сделки',
     now: 'Что сделать сейчас',
     main: 'Сделка, поля, документы',
     feed: 'Дела и лента',
@@ -34,7 +33,7 @@ export class CabLayout {
   static DEFAULTS = {
     today: { cols: { l: ['todo', 'reminders'], r: ['week', 'month', 'funnel', 'drafts'] }, ratio: 0.62 },
     team: { cols: { l: ['attention', 'managers', 'time'], r: ['team', 'regs'] }, ratio: 0.6 },
-    deal: { cols: { l: ['sum', 'main'], r: ['now', 'feed'] }, ratio: 0.6 },
+    deal: { cols: { l: ['main'], r: ['now', 'feed'] }, ratio: 0.6 },
   };
   static _redraws = new Map();
   static _full = '';

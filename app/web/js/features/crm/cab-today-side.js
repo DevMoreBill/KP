@@ -50,7 +50,7 @@ export class CabTodaySide {
       const busy = count ? ` busy${count > this.FULL ? ' full' : ''}` : '';
       const rest = kind.off ? ` off ${kind.cls}` : '';
       const hint = `${CrmFmt.day(day)}${kind.t ? ` — ${kind.t}` : ''}: дел ${count}${expect ? `, ожидается договоров ${expect}` : ''}`;
-      return `<div class="tw-d${shift === 0 ? ' now' : ''}${busy}${rest}" title="${esc(hint)}"><span>${name}</span><b>${count || '·'}</b><small>${CrmFmt.day(day).slice(0, 5)}</small>${expect ? `<i class="tw-e" aria-label="ожидается договоров: ${expect}">${expect}</i>` : ''}</div>`;
+      return `<div class="tw-d${shift === 0 ? ' now' : ''}${busy}${rest}" title="${esc(hint)}"><span>${name}${shift === 0 ? '' : ` ${CrmFmt.day(day).slice(0, 5)}`}</span><b>${count || '·'}</b>${expect ? `<i class="tw-e" aria-label="ожидается договоров: ${expect}">${expect}</i>` : ''}</div>`;
     }).join('');
     const late = over ? `<span class="bad-t">просрочено ${over}</span>` : '<span class="muted">без просрочек</span>';
     return `<section class="md-s ts"><div class="md-h"><p class="sub">Неделя${UiKit.tip('<p>Сколько дел на каждый день недели: чем больше дел, тем темнее день. Выходные и праздники — красным. Синяя метка в углу — в этот день ожидается договор по сделке.</p>')}</p>${late}</div><div class="tw">${cells}</div></section>`;

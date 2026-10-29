@@ -1,8 +1,9 @@
 import { CabLayout } from './cab-layout.js';
 
 /**
- * Разделы карточки сделки: своё расположение менеджера (CabLayout, страница «deal») или как в программе — сводка и
- * «Что сделать сейчас» сверху, вкладки слева, лента справа (на телефоне лента — вкладкой).
+ * Разделы карточки сделки: сводка (полоса стадий, сумма, дата) — всегда во всю ширину под шапкой; ниже — своё
+ * расположение менеджера (CabLayout, страница «deal») или как в программе — «Что сделать сейчас», вкладки слева, лента
+ * справа (на телефоне лента — вкладкой).
  */
 export class DealLayout {
   /**
@@ -12,9 +13,10 @@ export class DealLayout {
    * @returns {string}
    */
   static html(parts, view) {
-    if (CabLayout.enabled('dealLayout') && !view.feedTab) return CabLayout.html('deal', parts);
-    const side = view.feedTab ? '' : `<div class="dk-side">${parts.feed}</div>`;
-    return `${parts.sum}${parts.now}<div class="dk-cols">${parts.main}${side}</div>`;
+    const { sum, ...rest } = parts;
+    if (CabLayout.enabled('dealLayout') && !view.feedTab) return `${sum}${CabLayout.html('deal', rest)}`;
+    const side = view.feedTab ? '' : `<div class="dk-side">${rest.feed}</div>`;
+    return `${sum}${rest.now}<div class="dk-cols">${rest.main}${side}</div>`;
   }
 
   /**

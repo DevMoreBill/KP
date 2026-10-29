@@ -188,8 +188,9 @@ class OfferTerm:
 class ReminderList:
     """Напоминания менеджера на дату today."""
 
-    def __init__(self, today=None, store=None) -> None:
+    def __init__(self, today=None, store=None, handled: frozenset[str] | set[str] = frozenset()) -> None:
         self.today = today or date.today()
+        self.handled = handled  # КП, по сделке которых дело запланировано или сделано после отправки (crm.KpFollowUp)
         self.stale, self.ahead, self.expired = (
             SrvVal.get(store, k) for k in ('kp.staleDays', 'kp.expireAhead', 'kp.expiredShow')
         )
@@ -228,7 +229,7 @@ class ReminderList:
                 text='Срок действия КП истёк' if valid_until < today else 'Срок действия КП истекает',
                 overdue=valid_until < today,
             )
-        if status == 'sent' and not follow:
+        if status == 'sent' and not follow and kid not in self.handled:
             stamp = Val.day(track.get('at'))
             if stamp and (today - stamp).days >= self.stale:
                 yield dict(

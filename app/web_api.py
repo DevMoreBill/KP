@@ -49,7 +49,7 @@ from config import (
     store,
     write_bytes,
 )
-from crm import CrmBoard, DealBook, DealLinks, Stages, TaskBook
+from crm import CrmBoard, DealBook, DealLinks, KpFollowUp, Stages, TaskBook
 from crm_auto import AutoTasks
 from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
@@ -1530,7 +1530,8 @@ class TrackController(Controller):
             rows.append((kid, meta_dict, self._obj(track)))
         # срок действия, не записанный в описании, — из условий КП (состояние бывает в мегабайтах — читаются два поля)
         terms = store().kp_terms([kid for kid, meta_dict, _ in rows if not meta_dict.get('validUntil')])
-        items = ReminderList(store=store()).collect(
+        handled = KpFollowUp(store()).handled({kid: track for kid, _, track in rows})
+        items = ReminderList(store=store(), handled=handled).collect(
             [(kid, meta_dict, track, terms.get(kid, {})) for kid, meta_dict, track in rows], mine
         )
         return self.send_json({'items': items, 'count': len(items)})

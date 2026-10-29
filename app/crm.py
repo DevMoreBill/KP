@@ -853,6 +853,7 @@ class TaskBook:
     AUTO_STEP = 'auto:'  # дела, которые кабинет ставит сам (crm_auto.AutoTasks)
     TIME = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
     COLS = 'id, deal_id, manager_id, kind, due, time, title, note, state, done_at, created, created_by, step'
+    CHUNK = 500  # сделок в одном запросе (предел параметров SQLite)
 
     def __init__(self, store) -> None:
         self.store = store
@@ -923,6 +924,21 @@ class TaskBook:
             if task.get('state') == 'open' and same and task.get('due') == due:
                 return task
         return None
+
+    def next_open(self, deal_ids: list[str]) -> dict[str, dict]:
+        """Ближайшее открытое дело каждой сделки — чьё бы оно ни было: дело коллеги по сделке — тоже следующий шаг."""
+        ids = [did for did in deal_ids if did]
+        found: dict[str, dict] = {}
+        for start in range(0, len(ids), self.CHUNK):
+            part = ids[start : start + self.CHUNK]
+            marks = ','.join('?' * len(part))
+            rows = self.store.all(
+                f"SELECT {self.COLS} FROM crm_tasks WHERE state = 'open' AND deal_id IN ({marks}) ORDER BY due, time, id",
+                tuple(part),
+            )
+            for task in (self._out(row) for row in rows):
+                found.setdefault(task['deal'], task)
+        return found
 
     def list(self, managers=None, deal=None, days=14) -> list:
         """Незакрытые дела и закрытые за последние days дней: менеджеров (None — всех) или одной сделки (все её дела)."""
@@ -1053,10 +1069,7 @@ class CrmBoard:
         deals = book.deals(managers)
         kps = book.kps([deal['id'] for deal in deals])
         task_list = tasks.list(managers)
-        nxt = {}
-        for task in task_list:
-            if task['state'] == 'open' and task['deal'] and task['deal'] not in nxt:
-                nxt[task['deal']] = task
+        nxt = tasks.next_open([deal['id'] for deal in deals])
         from crm_exec import ExecPlan
         from deal_files import DealClosing, DealFiles
 
@@ -1151,6 +1164,39 @@ class CrmBoard:
             }
             for deal in rows
         ]
+
+
+class KpFollowUp:
+    """КП, по которым с клиентом уже работают: у сделки КП есть открытое дело (например, «Обратная связь по КП № …») или
+    дело сделано после отправки КП. Напоминание «отправлено — ответа нет?» по таким КП не нужно."""
+
+    CHUNK = TaskBook.CHUNK
+    DAY = 10  # ГГГГ-ММ-ДД в начале отметки времени
+
+    def __init__(self, store) -> None:
+        self.store = store
+
+    def handled(self, tracks: dict[str, dict]) -> set[str]:
+        """tracks — {КП: ход сделки по КП} → отправленные КП, у сделки которых дело запланировано или сделано после отправки."""
+        sent = {
+            kid: day.isoformat()
+            for kid, track in tracks.items()
+            if kid and track.get('status') == 'sent' and (day := Val.day(track.get('at')))
+        }
+        kids = list(sent)
+        out: set[str] = set()
+        for start in range(0, len(kids), self.CHUNK):
+            part = kids[start : start + self.CHUNK]
+            marks = ','.join('?' * len(part))
+            rows = self.store.all(
+                'SELECT l.kp_id, t.state, t.done_at FROM deal_kp l JOIN deals d ON d.id = l.deal_id '
+                f"JOIN crm_tasks t ON t.deal_id = l.deal_id WHERE l.kp_id IN ({marks}) AND t.state IN ('open', 'done')",
+                tuple(part),
+            )
+            for kid, state, done_at in rows:
+                if state == 'open' or str(done_at or '')[: self.DAY] >= sent[kid]:
+                    out.add(kid)
+        return out
 
 
 class DealLinks:

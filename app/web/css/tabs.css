@@ -17,6 +17,9 @@ html dialog.tabwin.tab-off{display:none!important}
 html dialog.tabwin .dlg-h [data-close],html dialog.tabwin .dlg-h [data-dlx=close]{order:99}
 body.tab-other{overflow:hidden}
 body.tab-other main.wrap{visibility:hidden}
+/* запуск: форма КП не видна, пока не выбран первый экран (кабинет или КП), — конструктор не мелькает перед кабинетом */
+html.app-boot main.wrap{visibility:hidden}
+html.app-boot .mbar,html.mob.app-boot .top{display:none}
 
 /* телефон: нижняя панель над вырезом, панель шагов КП — над ней и только на вкладке КП */
 .mob{--tbh:58px}

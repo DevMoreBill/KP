@@ -25,14 +25,25 @@ import { MyPrefs } from './features/kp/my-prefs.js';
 import { Theme } from './core/theme.js';
 import { AppSections } from './ui/app-sections.js';
 import { KpTabs } from './features/kp/kp-tabs.js';
+import { Steps } from './ui/steps.js';
 // Запуск программы: проверка сервера, вход, загрузка справочников и каталога — последним модулем страницы.
 
 /** Порядок запуска: сервер, вход, умолчания, справочники, первая отрисовка, первый экран. */
 export class App {
   static OFFLINE = `<div style="max-width:620px;margin:80px auto;font:16px/1.5 system-ui;padding:24px;border:1px solid #cfe0f2;border-radius:14px"><h2 style="margin-top:0;color:#0B45A0">Программа не запущена</h2><p>Откройте «Конструктор КП.exe» — он запустит программу и откроет её в браузере. Если вы работаете с сервером отдела, проверьте, что компьютер-сервер включён, и откройте ярлык «Конструктор КП (сервер …)».</p></div>`;
 
-  /** Запустить программу. */
+  static BOOT = 'app-boot';
+
+  /** Запустить программу; форма КП показывается, только когда выбран первый экран (кабинет или КП). */
   static async start() {
+    try {
+      await this._run();
+    } finally {
+      document.documentElement.classList.remove(this.BOOT);
+    }
+  }
+
+  static async _run() {
     if (!(await this._ping())) {
       document.body.innerHTML = this.OFFLINE;
       return;
@@ -121,7 +132,8 @@ export class App {
     const back = SectionMemory.restore();
     SectionMemory.listen();
     if (MigrationNotice.show(Srv.info.migrations) || cabinet || back) return;
-    if (!S.items.length && Catalog.cache.length) CatalogWindow.open({});
+    // пустое КП начинается с клиента, оборудование — следующим шагом
+    if (!S.items.length) Steps.open('client');
   }
 }
 
