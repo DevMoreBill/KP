@@ -41,6 +41,7 @@ export class FeedBadge {
         `в производстве: ${num(stock.prod)} шт.${stock.eta && !stock.transit ? ` — ожидается ${stock.eta}` : ''}`,
       );
     }
+    if (stock.reserve) out.push(`бронь у поставщика: ${num(stock.reserve)} шт. (из наличия уже вычтена)`);
     if (stock.promo) out.push(`акция: ${stock.promo}`);
     return out.join('; ');
   }

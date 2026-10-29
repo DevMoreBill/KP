@@ -284,9 +284,10 @@ class GensetBook:
         models: list = []
         sheets = []
         for sheet, rows in book:
-            got = Units.parse(sheet, rows) or Models.parse(sheet, rows)
+            machines = Units.parse(sheet, rows)
+            got = machines or Models.parse(sheet, rows)
             if got:
-                (units if Units.head(rows) is not None else models).extend(got)
+                (units if machines else models).extend(got)
                 sheets.append(
                     {
                         'name': sheet,
@@ -396,7 +397,7 @@ class GensetMatch:
         places: dict = {}
         for state in states:
             out['qty'] += state['qty']
-            for key in ('transit', 'prod'):
+            for key in ('transit', 'prod', 'reserve'):
                 if state.get(key):
                     out[key] = out.get(key, 0) + state[key]
             for key in ('eta', 'promo', 'order'):

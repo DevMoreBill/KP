@@ -17,6 +17,7 @@ from typing import Any
 import images
 from defaults import SrvVal
 from genset_sheets import GensetBook, GensetMatch
+from genset_tide import TideBook
 
 SPEC_PIPES = 2
 ROWS_MIN = 2
@@ -985,6 +986,10 @@ def _opt_name(text) -> str:
 def parse_price(data) -> tuple:
     """XLSX прайса → (строки с ценами, опциями и характеристиками, валюта, столбцы)."""
     book = read_xlsx(data)
+    if TideBook.applies(book):  # прайс-склад Tide Power: исполнения блоками, «НОВЫЕ ЦЕНЫ», брони
+        rows, found = TideBook.price_rows(book)
+        if rows:
+            return rows, found
     if GensetBook.applies(book):  # прайс-склад ДГУ (HERTZ): листы машин и моделей — по шапкам
         rows, found = GensetBook.price_rows(book)
         if rows:
