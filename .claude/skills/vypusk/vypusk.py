@@ -3,7 +3,7 @@
 
 python .claude/skills/vypusk/vypusk.py 3.104.1   — проставить версию (app/version.py, APP_VERSION в help.js) и проверить
 python .claude/skills/vypusk/vypusk.py --check   — только проверить текущую версию
-Проверяется: первая запись APP_VERSIONS в help.js, раздел «**X — …**» в README.md, строка «- **X**» в docs/context/app-map.md.
+Проверяется: первая запись APP_VERSIONS в help-versions.js, раздел «**X — …**» в README.md, строка «- **X**» в docs/context/app-map.md.
 Тексты записей пишет Claude по сути изменений — скрипт их не сочиняет. Код выхода 1 — чего-то не хватает.
 """
 import os
@@ -16,6 +16,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 class Release:
     VERSION_PY = ('app', 'version.py')
     HELP_JS = ('app', 'web', 'js', 'features', 'help.js')
+    VERSIONS_JS = ('app', 'web', 'js', 'features', 'help-versions.js')
 
     def _path(self, parts):
         return os.path.join(REPO, *parts)
@@ -45,9 +46,9 @@ class Release:
 
     def missing(self, v):
         out = []
-        first = re.search(r"const APP_VERSIONS = \[\s*\['([\d.]+)'", self._read(self.HELP_JS))
+        first = re.search(r"const APP_VERSIONS = \[\s*\['([\d.]+)'", self._read(self.VERSIONS_JS))
         if not first or first.group(1) != v:
-            out.append("help.js: первая запись APP_VERSIONS — ['%s', 'ДД.ММ.ГГГГ', [ …пункты для менеджера… ]]" % v)
+            out.append("help-versions.js: первая запись APP_VERSIONS — ['%s', 'ДД.ММ.ГГГГ', [ …пункты для менеджера… ]]" % v)
         if "const APP_VERSION = '%s'" % v not in self._read(self.HELP_JS):
             out.append("help.js: export const APP_VERSION = '%s'" % v)
         if '**%s ' % v not in self._read(('README.md',)):

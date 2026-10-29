@@ -1094,6 +1094,8 @@ class Scenario(UiRun):
                 self.snap(nm, r)
                 if r and self.ev("document.querySelector('%s').innerText.trim().length" % r) < 30:
                     self.errs.append((nm, 'EMPTY', 'окно почти пустое'))
+                if nm == 'b3_versions' and not self.ev("/Версия \\d+\\.\\d+/.test(document.querySelector('#helpdlg').innerText)"):
+                    self.errs.append((nm, 'EMPTY', 'история версий не загрузилась (help-versions.js)'))
             except Exception as e:
                 self.errs.append((nm, 'SCRIPT', str(e)[:200]))
         self.closeall()

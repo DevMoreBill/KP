@@ -153,8 +153,9 @@ export class AdminSystem {
     if (!state.available)
       return `<p class="ok-t" style="margin:0">Установлена последняя версия (${esc(last.version)}).</p>`;
     const again = state.failed && last.version === state.failed.version;
+    const file = state.download || last.asset;
     const asset = last.asset
-      ? `<button class="btn${again ? '' : ' primary'}" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(last.asset.name)}${last.asset.size ? ` · ${Fmt.size(last.asset.size)}` : ''} · перед установкой — копия базы, после — перезапуск</span>`
+      ? `<button class="btn${again ? '' : ' primary'}" type="button" data-up="download">Скачать и установить ${esc(last.version)}</button> <span class="muted">${esc(file.name)}${file.size ? ` · ${Fmt.size(file.size)}` : ''}${file.base ? ' · только изменения' : ''} · перед установкой — копия базы, после — перезапуск</span>`
       : '<p class="muted">В выпуске нет архива обновления — скачайте полный комплект с GitHub.</p>';
     return `<div class="up-new"><p>Доступна версия ${this._ver(last.version)}${last.published ? ` от ${esc(KPGen.ruDate(last.published.slice(0, this.DATE)))}` : ''}.${last.url ? ` <a href="${SafeLink.href(last.url)}" target="_blank" rel="noopener noreferrer">Выпуск на GitHub ↗</a>` : ''}</p>
           ${last.notes ? `<details class="up-notes" open><summary>Что нового</summary><pre>${esc(last.notes)}</pre></details>` : ''}
@@ -164,7 +165,7 @@ export class AdminSystem {
 
   static _fromFile() {
     return `<div class="st-card"><p class="sub">Установить из файла</p>
-      <p class="muted" style="margin:0 0 8px">Архив обновления «KP-Obnovlenie-….zip» из выпуска — без интернета на компьютере-сервере. Перед установкой — копия базы, после — перезапуск.</p>
+      <p class="muted" style="margin:0 0 8px">Архив обновления из выпуска: «KP-Obnovlenie-X-ot-Y.zip» — только изменения к работающей версии Y (маленький), «KP-Obnovlenie-X.zip» — полный, к любой версии. Без интернета на компьютере-сервере. Перед установкой — копия базы, после — перезапуск.</p>
       <div class="row"><label class="btn" for="upF">Выбрать архив обновления…</label><input type="file" id="upF" accept=".zip,application/zip" class="sr-file">
         <label class="row muted" style="gap:6px"><input type="checkbox" id="upForce" style="width:auto"> переустановить или поставить более старую версию</label></div>
       <p class="muted" id="upSt"></p></div>`;

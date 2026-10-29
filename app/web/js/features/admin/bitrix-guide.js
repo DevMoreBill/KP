@@ -5,7 +5,6 @@ import { esc } from '../../core/util.js';
 /** «Справка → Руководство»: как программа работает с Битрикс24 — главы с поиском и переходом к настройке. */
 export class BitrixGuide {
   static query = '';
-  static PDF = 'Руководство по Битрикс24.pdf';
 
   static _block(part) {
     if (Array.isArray(part)) return `<ul>${part.map(item => `<li>${item}</li>`).join('')}</ul>`;
@@ -20,26 +19,16 @@ export class BitrixGuide {
   }
 
   /**
-   * Глава целиком (для окна и для файла PDF).
+   * Глава целиком.
    * @param {{id: string, title: string, tab?: string, body: Array}} chapter
-   * @param {{links: boolean}} [opts] links — кнопка «Открыть настройку»
    * @returns {string}
    */
-  static chapter(chapter, { links = true } = {}) {
+  static chapter(chapter) {
     const label = chapter.tab ? (BitrixPanel.TABS.find(([key]) => key === chapter.tab) || [])[1] : '';
-    const open =
-      links && label
-        ? `<button class="btn ghost sm" type="button" data-bxtab="${chapter.tab}" title="${esc(label)}">Открыть настройку →</button>`
-        : '';
+    const open = label
+      ? `<button class="btn ghost sm" type="button" data-bxtab="${chapter.tab}" title="${esc(label)}">Открыть настройку →</button>`
+      : '';
     return `<section class="bx-gch" id="bxg-${chapter.id}"><h4>${esc(chapter.title)}</h4>${chapter.body.map(part => this._block(part)).join('')}${open}</section>`;
-  }
-
-  /**
-   * Всё руководство без кнопок — для печати в PDF.
-   * @returns {string}
-   */
-  static printable() {
-    return BITRIX_GUIDE.map(chapter => this.chapter(chapter, { links: false })).join('');
   }
 
   /**
@@ -57,7 +46,6 @@ export class BitrixGuide {
       : '<p class="empty">Ничего не найдено — попробуйте другое слово.</p>';
     return `<div class="st-card bx-guide"><div class="row"><input type="search" id="bxgFind" data-nodirty placeholder="Найти в руководстве: дубль, контакт, удалили…" value="${esc(this.query)}" aria-label="Поиск по руководству"></div>
       <nav class="bx-gtoc" aria-label="Содержание">${toc}</nav>
-      <p class="muted">Это же руководство — в файле «${esc(this.PDF)}» в папке программы (со снимками экранов).</p>
       ${body}</div>`;
   }
 

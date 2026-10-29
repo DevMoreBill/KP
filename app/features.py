@@ -83,6 +83,7 @@ FEATURES = {
     'optSaleCur': (True, 'Валюта цены продажи опций и услуг'),
     'aiOptions': (True, 'Опции и комплектация из ИИ'),
     'aiFileImages': (True, 'Фото из файла при заполнении с ИИ'),
+    'updDelta': (True, 'Обновление «только изменения»'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)

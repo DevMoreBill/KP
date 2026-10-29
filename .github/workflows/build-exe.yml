@@ -508,6 +508,101 @@ jobs:
           Remove-Item -Recurse -Force -LiteralPath (Join-Path $dir 'update'), (Join-Path $dir 'update.prev'), (Join-Path $dir 'update.failed') -ErrorAction SilentlyContinue
           Write-Host 'Обновление из «Настроек», перезапуск и возврат после неудачного обновления: в порядке'
 
+      - name: Пакет «только изменения» поверх EXE и поверх обновления
+        shell: pwsh
+        run: |
+          # как у пользователя: работает EXE без папки update → пакет изменений → перезапуск → следующий пакет поверх обновления
+          $dir = Join-Path $env:RUNNER_TEMP 'kp-delta'
+          Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'kp-smoke\kp.exe') -Destination $dir
+          $tk = Join-Path $env:RUNNER_TEMP 'kp-testkey-delta'
+          python .github/scripts/sign_update.py gen $tk
+          if ($LASTEXITCODE -ne 0) { throw 'Временный ключ подписи не создан' }
+          Copy-Item -LiteralPath (Join-Path $tk 'public.txt') -Destination (Join-Path $dir 'update-keys.txt')
+          $ver = [regex]::Match((Get-Content -Raw 'app\version.py'), "VERSION = '([^']+)'").Groups[1].Value
+          $phase = 'сборка пакетов'
+          trap { Write-Host ("::error::Пакет изменений, этап «$phase»: " + $_.Exception.Message + ' ' + $_.ErrorDetails.Message); break }
+          # полный пакет версии $v (как «KP-Obnovlenie-….zip»); $mark — метка в index.html и main.js
+          function Full($v, $mark) {
+            $base = Join-Path $env:RUNNER_TEMP "kp-dfull-$v"
+            Remove-Item -Recurse -Force -LiteralPath $base -ErrorAction SilentlyContinue
+            $u = Join-Path $base "Обновление КП $v\update"
+            New-Item -ItemType Directory -Force -Path $u | Out-Null
+            Copy-Item -Recurse -LiteralPath 'app', 'templates' -Destination $u
+            Get-ChildItem -Recurse -Directory -Path $u -Filter '__pycache__' | Remove-Item -Recurse -Force
+            $f = Join-Path $u 'app\version.py'
+            [IO.File]::WriteAllText($f, ([IO.File]::ReadAllText($f) -replace "VERSION = '[^']+'", "VERSION = '$v'"))
+            [IO.File]::WriteAllText((Join-Path $u 'version.json'), ('{"version": "' + $v + '"}'))
+            if ($mark) {
+              [IO.File]::AppendAllText((Join-Path $u 'app\web\index.html'), "<!-- $mark -->")
+              [IO.File]::AppendAllText((Join-Path $u 'app\web\js\main.js'), "`n// $mark`n")
+            }
+            $z = Join-Path $base "KP-Obnovlenie-$v.zip"
+            Compress-Archive -Path (Join-Path $base "Обновление КП $v") -DestinationPath $z -Force
+            return $z
+          }
+          function Delta($new, $old) {
+            $out = Join-Path $env:RUNNER_TEMP ('kp-delta-out-' + [guid]::NewGuid().ToString('N'))
+            python .github/scripts/update_delta.py $new $old $out | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'Пакет изменений не собран' }
+            $z = (Get-ChildItem -LiteralPath $out -Filter '*.zip')[0].FullName
+            python .github/scripts/sign_update.py sign $z (Join-Path $tk 'key.txt') | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'Пакет изменений не подписан' }
+            Write-Host ("Пакет изменений: " + (Split-Path -Leaf $z) + ', ' + [math]::Round((Get-Item $z).Length / 1KB) + ' КБ')
+            return $z
+          }
+          $f0 = Full $ver ''
+          $f1 = Full '99.1.0' 'ci-delta-1'
+          $f2 = Full '99.1.1' 'ci-delta-2'
+          $d1 = Delta $f1 $f0
+          $d2 = Delta $f2 $f1
+          function Up { try { (Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/ping' -TimeoutSec 2).ok } catch { $false } }
+          function Version { try { (Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/version' -TimeoutSec 3).version } catch { '' } }
+          function Login {
+            $r = Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/login' -ContentType 'application/json' -Body '{"login":"admin","password":"Ci-Passw0rd1"}' -SessionVariable ss -UseBasicParsing
+            $script:s = $ss
+            $script:H = @{ 'X-CSRF-Token' = ($r.Content | ConvertFrom-Json).csrf }
+          }
+          function Restart($want) {
+            Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/restart' -Headers $H -WebSession $s | Out-Null
+            $v = ''
+            for ($i = 0; $i -lt 120 -and $v -ne $want; $i++) { Start-Sleep -Seconds 1; $v = Version }
+            if ($v -ne $want) { throw "После перезапуска работает $v, а не $want" }
+          }
+          $phase = 'запуск'
+          $p = Start-Process -FilePath (Join-Path $dir 'kp.exe') -WorkingDirectory $dir -PassThru
+          for ($i = 0; $i -lt 60 -and -not (Up); $i++) { Start-Sleep -Seconds 1 }
+          if (-not (Up)) { throw 'Программа не запустилась' }
+          Invoke-WebRequest -Method Post -Uri 'http://127.0.0.1:17845/api/admin/setup' -ContentType 'application/json' -Body '{"login":"admin","password":"Ci-Passw0rd1"}' -UseBasicParsing | Out-Null
+          Login
+          $phase = 'пакет поверх EXE'
+          $res = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/update/upload?name=ci.zip' -InFile $d1 -ContentType 'application/zip' -Headers $H -WebSession $s
+          Write-Host "Установлено: $($res.version), файлов из пакета: $($res.files)"
+          if ($res.version -ne '99.1.0') { throw 'Пакет изменений не установился' }
+          $upd = Join-Path $dir 'update'
+          foreach ($rel in 'app\kp_server.py', 'app\web\index.html', 'app\equipment_types.json', 'templates\pnevmotekh\template.json') {
+            if (-not (Test-Path -LiteralPath (Join-Path $upd $rel))) { throw "В собранной папке update нет $rel" } }
+          if (Test-Path -LiteralPath (Join-Path $upd 'app\storage.py')) { throw 'Неизменённый модуль попал в папку update — пакет не «только изменения»' }
+          Restart '99.1.0'
+          $page = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/' -UseBasicParsing).Content
+          if (-not $page.Contains('ci-delta-1')) { throw 'Интерфейс не из собранной папки update' }
+          $phase = 'пакет поверх обновления'
+          Login
+          $res = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/update/upload?name=ci.zip' -InFile $d2 -ContentType 'application/zip' -Headers $H -WebSession $s
+          if ($res.version -ne '99.1.1') { throw 'Второй пакет изменений не установился' }
+          Restart '99.1.1'
+          $page = (Invoke-WebRequest -Uri 'http://127.0.0.1:17845/' -UseBasicParsing).Content
+          if (-not $page.Contains('ci-delta-2')) { throw 'После второго пакета интерфейс прежний' }
+          $phase = 'пакет к другой версии'
+          Login
+          $bad = $null
+          try { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/admin/update/upload?name=ci.zip&force=1' -InFile $d1 -ContentType 'application/zip' -Headers $H -WebSession $s | Out-Null } catch { $bad = $_ }
+          if (-not $bad -or -not ([string]$bad.ErrorDetails.Message).Contains('полный пакет')) { throw "Пакет к другой версии не отклонён понятно: $($bad.ErrorDetails.Message)" }
+          Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:17845/api/shutdown' | Out-Null
+          for ($i = 0; $i -lt 30 -and (Up); $i++) { Start-Sleep -Milliseconds 500 }
+          Write-Host 'Пакет «только изменения»: поверх EXE, поверх обновления и отказ к другой версии — в порядке'
+
       - name: Комплект для установки (EXE + сервер отдела)
         shell: pwsh
         run: |
@@ -517,9 +612,6 @@ jobs:
           Copy-Item -Recurse -LiteralPath 'server-setup' -Destination $pkg
           Copy-Item -LiteralPath 'install\kp-common.ps1' -Destination "$pkg\server-setup"
           Copy-Item -LiteralPath 'Инструкция.txt' -Destination $pkg
-          Copy-Item -LiteralPath 'docs\Руководство менеджера.pdf' -Destination $pkg
-          Copy-Item -LiteralPath 'docs\Памятка КП за 5 минут.pdf' -Destination $pkg
-          Copy-Item -LiteralPath 'docs\Руководство по Битрикс24.pdf' -Destination $pkg
           New-Item -ItemType Directory -Force -Path "$pkg\install" | Out-Null
           Copy-Item -LiteralPath 'install\Установить в C KP.cmd', 'install\install-full.ps1', 'install\kp-common.ps1' -Destination "$pkg\install"
           Compress-Archive -Path "$pkg\*" -DestinationPath "dist\$env:KP_EXE_NAME.zip" -Force
@@ -628,6 +720,7 @@ jobs:
         shell: pwsh
         env:
           KP_UPDATE_KEY: ${{ secrets.KP_UPDATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ver = [regex]::Match((Get-Content -Raw 'app\version.py'), "VERSION = '([^']+)'").Groups[1].Value
           $pt = Join-Path $PWD "patch\Обновление КП $ver"
@@ -642,11 +735,28 @@ jobs:
           Get-ChildItem -LiteralPath 'server-setup' | Where-Object { -not $_.PSIsContainer -and $_.Name -notlike '1.*' } | Copy-Item -Destination "$pt\server-setup"
           Copy-Item -LiteralPath 'install\kp-common.ps1' -Destination "$pt\server-setup"
           Compress-Archive -Path "$pt\*" -DestinationPath 'dist\Обновление КП.zip' -Force
+          # пакет «только изменения» к последнему выпуску (KP-Obnovlenie-<версия>-ot-<прошлая>.zip): программа той версии
+          # скачивает его вместо полного; пропущена версия — полный (.github/scripts/update_delta.py, app_update.UpdateDelta)
+          New-Item -ItemType Directory -Force -Path 'dist\delta', 'dist\prev' | Out-Null
+          $prev = gh release view --json tagName --jq .tagName 2>$null
+          if ($LASTEXITCODE -eq 0 -and $prev) {
+            $pv = $prev.TrimStart('v')
+            gh release download $prev -p "KP-Obnovlenie-$pv.zip" -D 'dist\prev' --clobber
+            if ($LASTEXITCODE -eq 0) {
+              python .github/scripts/update_delta.py 'dist\Обновление КП.zip' "dist\prev\KP-Obnovlenie-$pv.zip" 'dist\delta'
+              if ($LASTEXITCODE -ne 0) { throw 'Пакет изменений не собран' }
+            } else { Write-Host "::warning::Полный пакет выпуска $prev не скачан — пакета изменений не будет" }
+          } else { Write-Host '::warning::Прошлого выпуска нет — пакета изменений не будет' }
+          $global:LASTEXITCODE = 0
           # подпись выпуска (app/update_sign.py): программа устанавливает только подписанный архив. Без секрета (сборка
           # проверки) архив не подписан — выпуск в релиз тогда не делается (шаг «Файлы релиза»)
           if ($env:KP_UPDATE_KEY) {
             python .github/scripts/sign_update.py sign 'dist\Обновление КП.zip'
             if ($LASTEXITCODE -ne 0) { throw 'Архив обновления не подписан' }
+            foreach ($d in Get-ChildItem -LiteralPath 'dist\delta' -Filter '*.zip') {
+              python .github/scripts/sign_update.py sign $d.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Пакет изменений $($d.Name) не подписан" }
+            }
           } else { Write-Host '::warning::Нет секрета KP_UPDATE_KEY — архив обновления без подписи (выпуск не получится)' }
           Write-Host ("Патч $ver" + ': ' + [math]::Round((Get-Item 'dist\Обновление КП.zip').Length / 1KB) + ' КБ')
 
@@ -698,6 +808,11 @@ jobs:
           Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.exe" -Destination "rel\KP-Konstruktor-$ver-win64.exe"
           Copy-Item -LiteralPath "dist\$env:KP_EXE_NAME.zip" -Destination "rel\KP-Konstruktor-$ver-win64.zip"
           Copy-Item -LiteralPath 'dist\Обновление КП.zip' -Destination "rel\KP-Obnovlenie-$ver.zip"
+          foreach ($d in Get-ChildItem -LiteralPath 'dist\delta' -Filter "KP-Obnovlenie-$ver-ot-*.zip") {
+            python .github/scripts/sign_update.py check $d.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Пакет изменений $($d.Name) не подписан" }
+            Copy-Item -LiteralPath $d.FullName -Destination rel
+          }
           "tag=$tag" >> $env:GITHUB_OUTPUT
           # файлы прежних выпусков с кириллицей в имени (стали default.*) — убрать
           $names = gh release view $tag --json assets --jq '.assets[].name' 2>$null
@@ -715,6 +830,7 @@ jobs:
             Конструктор КП ${{ steps.ver.outputs.v }} — Windows 8.1 / 10 / 11, 64-бит (сервер отдела; сотрудники работают в браузере).
             • KP-Konstruktor-${{ steps.ver.outputs.v }}-win64.exe — программа («Конструктор КП.exe»).
             • KP-Konstruktor-${{ steps.ver.outputs.v }}-win64.zip — комплект: EXE, установка в C:\KP, сервер отдела, инструкция.
-            • KP-Obnovlenie-${{ steps.ver.outputs.v }}.zip — патч «Обновление КП» для уже установленной программы (запустить «Установить обновление.cmd»).
+            • KP-Obnovlenie-${{ steps.ver.outputs.v }}.zip — полный пакет обновления для уже установленной программы любой версии («Настройки → Обновления» или «Установить обновление.cmd»).
+            • KP-Obnovlenie-${{ steps.ver.outputs.v }}-ot-….zip — только изменения к прошлому выпуску (маленький): программа прошлой версии скачивает его сама; ставится только из «Настроек → Обновления».
             Что нового — «?» → «История версий» в программе.
           files: rel/*

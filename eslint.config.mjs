@@ -83,7 +83,7 @@ export default [{
   rules: STRICT,
 }] : []), {
   // данные: журнал версий и руководство, описания «Значений программы» — длинные, но без логики
-  files: ['app/web/js/features/help.js', 'app/web/js/core/defaults-srv.js', 'app/web/js/core/defaults-kp.js'],
+  files: ['app/web/js/features/help.js', 'app/web/js/features/help-versions.js', 'app/web/js/core/defaults-srv.js', 'app/web/js/core/defaults-kp.js'],
   rules: { 'max-lines': 'off' },
 }, {
   files: CLEAN,

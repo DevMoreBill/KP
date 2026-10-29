@@ -1,11 +1,12 @@
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { $, esc } from '../../core/util.js';
-import { APP_VERSIONS, AppVersion, HELP_SECTIONS } from '../help.js';
+import { AppVersion, HELP_SECTIONS } from '../help.js';
+import { LazyJs } from '../../core/lazy-js.js';
 import { Api } from '../../core/net.js';
 /**
- * Окно «Руководство» (кнопка «?» в шапке, меню «⋯» и меню телефона): разделы — HELP_SECTIONS, история версий —
- * APP_VERSIONS (help.js). Поиск по тексту, печать раздела или всего руководства.
+ * Окно «Руководство» (кнопка «?» в шапке, меню «⋯» и меню телефона): разделы — HELP_SECTIONS (help.js), история
+ * версий — APP_VERSIONS (help-versions.js, загружается при открытии окна). Поиск по тексту, печать руководства.
  */
 export class HelpWindow {
   static KEY = 'kp.helpSec';
@@ -42,17 +43,19 @@ export class HelpWindow {
     }
   }
 
-  static _all() {
-    const versions = APP_VERSIONS.map(
-      ([version, date, items]) =>
-        `<h4>Версия ${version} <span class="muted">· ${date}</span></h4><ul>${items.map(text => `<li>${esc(text)}</li>`).join('')}</ul>`,
-    ).join('');
+  static _all(list, failed = '') {
+    const versions = (list || [])
+      .map(
+        ([version, date, items]) =>
+          `<h4>Версия ${version} <span class="muted">· ${date}</span></h4><ul>${items.map(text => `<li>${esc(text)}</li>`).join('')}</ul>`,
+      )
+      .join('');
     return [
       ...HELP_SECTIONS,
       [
         'versions',
         'История версий',
-        `<p class="muted">Текущая версия — <b>${AppVersion.current}</b>${AppVersion.patched ? ' (установлено обновление)' : ''}.</p>${versions}`,
+        `<p class="muted">Текущая версия — <b>${AppVersion.current}</b>${AppVersion.patched ? ' (установлено обновление)' : ''}.</p>${list ? versions : `<p class="muted">${esc(failed || 'Загружается…')}</p>`}`,
       ],
     ];
   }
@@ -76,6 +79,22 @@ export class HelpWindow {
     };
     this._draw(ctx);
     if (!dialog.open) dialog.showModal();
+    this._versions(ctx);
+  }
+
+  // история версий — отдельным файлом: почти полмегабайта, нужна редко
+  static _versions(ctx) {
+    LazyJs.load('help-versions.js')
+      .then(mod => this._refresh(ctx, this._all(mod.APP_VERSIONS)))
+      .catch(err => this._refresh(ctx, this._all(null, err.message)));
+  }
+
+  static _refresh(ctx, all) {
+    ctx.all = all;
+    if (!ctx.dialog.open || (ctx.sec !== 'versions' && !ctx.q.trim())) return;
+    const typing = document.activeElement && document.activeElement.id === 'hlQ';
+    this._draw(ctx);
+    if (typing) $('#hlQ').focus();
   }
 
   static _mark(body, query) {

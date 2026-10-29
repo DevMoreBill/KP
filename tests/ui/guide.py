@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Снимки экрана для «Руководства менеджера» (окно «?» и «Руководство менеджера.pdf»): стенд с вымышленными данными,
+"""Снимки экрана для «Руководства менеджера» (окно «?»): стенд с вымышленными данными,
 путь менеджера по шагам, на снимке — красные рамки с номерами, как в тексте руководства (app/web/js/features/help.js).
 
-Запуск (из корня репозитория): python tests/ui/guide.py [--out папка] [--pdf]
+Запуск (из корня репозитория): python tests/ui/guide.py [--out папка]
 - снимки — app/web/img/guide/*.webp (ширина до 1200 px), сначала проверить их глазами;
-- --pdf — после снимков собрать docs/Руководство менеджера.pdf из разделов руководства (печать страницы программы).
 Нужен Playwright для Python и Chromium (как у tests/ui/progon.py), Pillow — для рамок и сжатия.
 """
 import argparse
-import base64
 import io
-import re
 import os
 import sys
 import tempfile
@@ -23,8 +20,6 @@ sys.path.insert(0, os.path.dirname(HERE))
 from progon import Modes, Scenario, UiStand  # noqa: E402
 
 IMG = os.path.join(ROOT, 'app', 'web', 'img', 'guide')
-PDF = os.path.join(ROOT, 'docs', 'Руководство менеджера.pdf')
-MEMO = os.path.join(ROOT, 'docs', 'Памятка КП за 5 минут.pdf')
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 RED = (220, 38, 38)
 WIDTH = 1200
@@ -55,7 +50,7 @@ class Marks:
         if im.width > width:
             im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
         out = io.BytesIO()
-        im.save(out, 'WEBP', quality=80, method=6)
+        im.save(out, 'WEBP', quality=72, method=6)
         return out.getvalue()
 
 
@@ -269,8 +264,6 @@ def main():
     from playwright.sync_api import sync_playwright
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', default='')
-    ap.add_argument('--pdf', action='store_true')
-    ap.add_argument('--pdf-only', action='store_true', help='только PDF из готовых снимков')
     args = ap.parse_args()
     out = args.out or tempfile.mkdtemp(prefix='kp-guide-')
     os.makedirs(IMG, exist_ok=True)
@@ -279,102 +272,19 @@ def main():
     try:
         with sync_playwright() as p:
             missing = []
-            for cls, mode in () if args.pdf_only else ((Guide, 'pc'), (PhoneGuide, 'ph')):
+            for cls, mode in ((Guide, 'pc'), (PhoneGuide, 'ph')):
                 run = cls(mode, cfg, out)
                 run.cfg_scale = Modes.ALL[mode].get('device_scale_factor', 1)
                 run.open(p)
                 run.run_guide()
                 missing += run.missing
                 run.br.close()
-            if args.pdf or args.pdf_only:
-                Pdf.build(p, cfg)
-                Pdf.memo(p, cfg)
     finally:
         stand.close()
         stand.st.stop()
     print('не найдено рамок:', len(missing))
     for row in missing:
         print('  ', row)
-
-
-class Pdf:
-    """«Руководство менеджера.pdf» — разделы окна «?» одной страницей для печати (картинки — те же снимки)."""
-
-    JPEG_QUALITY = 82
-
-    @staticmethod
-    def _jpeg(found):
-        """Снимок — JPEG в самом документе: Chromium кладёт JPEG в PDF как есть, WebP — несжатым (PDF в разы больше)."""
-        from PIL import Image
-        buf = io.BytesIO()
-        Image.open(os.path.join(IMG, found.group(1))).convert('RGB').save(buf, 'JPEG', quality=Pdf.JPEG_QUALITY, optimize=True)
-        return 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
-
-    MEMO_CSS = '''
-      @page { size: A4; margin: 12mm 14mm; }
-      body { font: 12.5pt/1.45 'Segoe UI', Arial, sans-serif; color: #1b2433; margin: 0; }
-      .top { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #0b3a8a;
-             padding-bottom: 3mm; margin-bottom: 4mm; }
-      h1 { font-size: 24pt; color: #0b3a8a; margin: 0; }
-      .top small { color: #556; font-size: 10pt; text-align: right; }
-      .g5-lead { margin: 0 0 3mm; color: #334; }
-      ol.g5 { counter-reset: g5; list-style: none; padding: 0; margin: 0; }
-      ol.g5 > li { counter-increment: g5; position: relative; padding: 2.4mm 22mm 2.4mm 13mm; margin: 0 0 2mm;
-                   border: 1px solid #cfd6e3; border-radius: 3mm; background: #f6f8fc; break-inside: avoid; }
-      ol.g5 > li::before { content: counter(g5); position: absolute; left: 3mm; top: 2.2mm; width: 7mm; height: 7mm;
-                   border-radius: 50%; background: #0b3a8a; color: #fff; font-weight: 700; text-align: center; line-height: 7mm; }
-      .g5-t { position: absolute; right: 3mm; top: 2.6mm; font-weight: 700; color: #0b3a8a; font-size: 10pt; }
-      h4 { font-size: 13pt; color: #0b3a8a; margin: 5mm 0 2mm; }
-      ul.g5-tips { padding-left: 5mm; margin: 0; }
-      ul.g5-tips li { margin: 1.4mm 0; }
-      .foot { margin-top: 5mm; padding-top: 2mm; border-top: 1px solid #cfd6e3; font-size: 9pt; color: #667; }
-    '''
-
-    @staticmethod
-    def memo(p, cfg):
-        """«Памятка КП за 5 минут.pdf» — раздел «kp5» на одном листе A4 для печати новым менеджерам."""
-        br = p.chromium.launch(executable_path=Modes.chromium()) if Modes.chromium() else p.chromium.launch()
-        pg = br.new_page()
-        pg.goto('http://127.0.0.1:%d/' % cfg['port'])
-        pg.wait_for_timeout(3000)
-        version, body = pg.evaluate("""async () => {
-          const m = await import('/web/js/features/help.js');
-          return [m.APP_VERSION, m.HELP_SECTIONS.find(([id]) => id === 'kp5')[2]];
-        }""")
-        pg.set_content('<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>%s</style></head><body>'
-                       '<div class="top"><h1>КП за 5 минут</h1><small>Конструктор КП ПНЕВМОТЕХ<br>памятка менеджера · версия %s</small></div>'
-                       '%s<p class="foot">Подробно, со снимками экрана — кнопка «?» вверху программы или файл «Руководство менеджера.pdf».</p>'
-                       '</body></html>' % (Pdf.MEMO_CSS, version, body))
-        pg.wait_for_timeout(500)
-        pg.pdf(path=MEMO, format='A4', print_background=True, prefer_css_page_size=True)
-        br.close()
-        print('Памятка:', MEMO, os.path.getsize(MEMO) // 1024, 'КБ')
-
-    @staticmethod
-    def build(p, cfg):
-        br = p.chromium.launch(executable_path=Modes.chromium()) if Modes.chromium() else p.chromium.launch()
-        pg = br.new_page()
-        pg.goto('http://127.0.0.1:%d/' % cfg['port'])
-        pg.wait_for_timeout(3000)
-        html = pg.evaluate("""async () => {
-          const m = await import('/web/js/features/help.js');
-          const toc = m.HELP_SECTIONS.map(([id, title], i) => `<li><a href="#${id}">${i + 1}. ${title}</a></li>`).join('');
-          const body = m.HELP_SECTIONS.map(([id, title, html], i) => `<section id="${id}"><h2>${i + 1}. ${title}</h2>${html}</section>`).join('');
-          return [m.APP_VERSION, `<ol class="toc">${toc}</ol>${body}`.replaceAll(' loading="lazy"', '')];
-        }""")
-        html = [html[0], re.sub(r'/web/img/guide/([\w.]+\.webp)', Pdf._jpeg, html[1])]
-        css = open(os.path.join(HERE, 'guide_print.css'), encoding='utf-8').read()
-        pg.set_content('<!doctype html><html lang="ru"><head><meta charset="utf-8"><base href="http://127.0.0.1:%d/web/">'
-                       '<style>%s</style></head><body><h1>Конструктор КП ПНЕВМОТЕХ<br><small>Руководство менеджера · версия %s</small></h1>%s</body></html>'
-                       % (cfg['port'], css, html[0], html[1]))
-        pg.wait_for_timeout(2500)
-        os.makedirs(os.path.dirname(PDF), exist_ok=True)
-        pg.pdf(path=PDF, format='A4', print_background=True, margin={'top': '14mm', 'bottom': '14mm', 'left': '12mm', 'right': '12mm'},
-               display_header_footer=True, header_template='<span></span>',
-               footer_template='<div style="font-size:8px;width:100%;text-align:center;color:#888">'
-                               'Руководство менеджера · стр. <span class="pageNumber"></span> из <span class="totalPages"></span></div>')
-        br.close()
-        print('PDF:', PDF, os.path.getsize(PDF) // 1024, 'КБ')
 
 
 if __name__ == '__main__':

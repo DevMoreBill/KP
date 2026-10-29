@@ -23,12 +23,17 @@ class UpdateSign:
             name = name[2:]
         return name
 
+    FOLDERS = ('update', 'delta')  # полный пакет — папка update, только изменения — delta
+
     @classmethod
-    def prefix(cls, names: list[str]) -> str:
+    def root(cls, names) -> tuple[str, str]:
+        """(приставка пути в архиве, папка пакета: update или delta); не нашлось — ('', 'update')."""
         for name in names:
-            if name.endswith('update/version.json'):
-                return name[: -len('update/version.json')]
-        return ''
+            for folder in cls.FOLDERS:
+                tail = folder + '/version.json'
+                if name == tail or name.endswith('/' + tail):
+                    return name[: -len(tail)], folder
+        return '', cls.FOLDERS[0]
 
     @staticmethod
     def _message(version: str, files: dict) -> bytes:
@@ -64,8 +69,8 @@ class UpdateSign:
             if not i.is_dir() and not cls.norm(i.filename).endswith('/' + cls.NAME) and cls.norm(i.filename) != cls.NAME
         ]
         names = [cls.norm(i.filename) for i in infos]
-        pre = cls.prefix(names)
-        version = json.loads(src.read(infos[names.index(pre + 'update/version.json')]).decode('utf-8-sig'))['version']
+        pre, folder = cls.root(names)
+        version = json.loads(src.read(infos[names.index(f'{pre}{folder}/version.json')]).decode('utf-8-sig'))['version']
         files = {cls.norm(i.filename): cls._sha(src, i) for i in infos}
         msg = cls._message(version, files)
         doc = {

@@ -1,6 +1,7 @@
 """Обновление программы: пакет (UpdatePackage), выпуски GitHub, установка, перезапуск, ночное обновление."""
 
 import errno
+import hashlib
 import io
 import json
 import os
@@ -29,12 +30,17 @@ class UpdateError(Exception):
 
 
 class UpdatePackage:
-    """Архив обновления: проверка и распаковка."""
+    """Архив обновления: проверка и распаковка. Полный — папка update; «только изменения» — папка delta: изменённые файлы,
+    delta.json (версия, от какой версии, SHA-256 всех файлов новой версии) — см. UpdateDelta."""
 
     MAX_BYTES = 150 * 1024 * 1024
     MAX_FILES = 5000
     MAX_UNPACKED = 600 * 1024 * 1024  # распакованное целиком (защита от «zip-бомбы»)
-    REQUIRED = ('update/version.json', 'update/app/kp_server.py', 'update/app/web/index.html')
+    REQUIRED = {
+        'update': ('version.json', 'app/kp_server.py', 'app/web/index.html'),
+        'delta': ('version.json', 'delta.json'),
+    }
+    VERSION = re.compile(r'^\d+\.\d+(\.\d+){0,2}$')
 
     def __init__(self, data, keys=None) -> None:
         """keys — доверенные ключи подписи (UpdateSign.keys); None — без проверки подписи (только разбор архива)."""
@@ -51,30 +57,22 @@ class UpdatePackage:
             raise UpdateError('В архиве есть недопустимые пути — файл повреждён или это не обновление программы')
         if sum(i.file_size for i in self.names.values()) > self.MAX_UNPACKED:
             raise UpdateError('Архив обновления распаковывается в слишком большой объём — файл повреждён')
-        self.prefix = self._prefix()
-        missing = [req for req in self.REQUIRED if self.prefix + req not in self.names]
+        self.prefix, self.folder = UpdateSign.root(self.names)
+        missing = [req for req in self.REQUIRED[self.folder] if self._path(req) not in self.names]
         if missing:
-            raise UpdateError(
-                'Это не обновление «Конструктора КП»: нет {}'.format(
-                    ', '.join(miss.split('/', 1)[1] for miss in missing)
-                )
-            )
+            raise UpdateError('Это не обновление «Конструктора КП»: нет {}'.format(', '.join(missing)))
         try:
-            self.version = str(
-                json.loads(self.zip.read(self.names[self.prefix + 'update/version.json']).decode('utf-8-sig')).get(
-                    'version'
-                )
-                or ''
-            )
+            self.version = str(json.loads(self._read('version.json')).get('version') or '')
         except (ValueError, UnicodeDecodeError):
             raise UpdateError('В архиве испорчен version.json') from None
-        if not re.match(r'^\d+\.\d+(\.\d+){0,2}$', self.version):
+        if not self.VERSION.match(self.version):
             raise UpdateError(f'В архиве неверная версия: {self.version[:40]}')
         if keys is not None:
             try:
                 UpdateSign.check(self.zip, self.names, self.prefix, self.version, keys)
             except (ValueError, zipfile.BadZipFile, OSError, NotImplementedError) as exc:
                 raise UpdateError(f'Обновление не установлено: {exc}') from exc
+        self.base, self.manifest = self._delta() if self.delta else ('', {})
 
     _norm = staticmethod(UpdateSign.norm)
 
@@ -87,15 +85,38 @@ class UpdatePackage:
             or any(part.startswith('~') or ':' in part or '\\' in part for part in parts)
         )
 
-    def _prefix(self) -> str:
-        """Архив может содержать update сразу или внутри папки «Обновление КП X/»."""
-        for name in self.names:
-            if name.endswith('update/version.json'):
-                return name[: -len('update/version.json')]
-        return ''
+    def _path(self, rel: str) -> str:
+        """Имя в архиве файла папки пакета (архив может содержать её сразу или внутри «Обновление КП X/»)."""
+        return f'{self.prefix}{self.folder}/{rel}'
+
+    def _read(self, rel: str) -> str:
+        return self.zip.read(self.names[self._path(rel)]).decode('utf-8-sig')
+
+    @property
+    def delta(self) -> bool:
+        return self.folder == 'delta'
+
+    def _delta(self) -> tuple[str, dict]:
+        """(версия, поверх которой ставится пакет; {путь: SHA-256} всех файлов новой версии)."""
+        try:
+            doc = json.loads(self._read('delta.json'))
+            base, files = str(doc.get('base') or ''), doc.get('files')
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            raise UpdateError('В архиве испорчен delta.json') from None
+        if str(doc.get('version')) != self.version or not self.VERSION.match(base) or not isinstance(files, dict):
+            raise UpdateError('В архиве испорчен delta.json')
+        if any(self._unsafe(rel) or not UpdateSign.HEX.match(str(sha)) for rel, sha in files.items()):
+            raise UpdateError('В архиве испорчен delta.json')
+        lost = [req for req in self.REQUIRED['update'] if req not in files]
+        if lost:
+            raise UpdateError('Это не обновление «Конструктора КП»: нет {}'.format(', '.join(lost)))
+        extra = [rel for rel, _ in self.files('delta') if rel != 'delta.json' and rel not in files]
+        if extra:
+            raise UpdateError('Пакет обновления повреждён: лишний файл ' + extra[0][:80])
+        return base, files
 
     def files(self, folder: str) -> list:
-        """[(путь внутри folder, ZipInfo)] — файлы папки update или server-setup."""
+        """[(путь внутри folder, ZipInfo)] — файлы папки update, delta или server-setup."""
         prefix = self.prefix + folder + '/'
         return [
             (name[len(prefix) :], i)
@@ -117,6 +138,56 @@ class UpdatePackage:
         return count
 
 
+class UpdateDelta:
+    """Пакет «только изменения»: новая папка обновления = файлы работающей версии + изменённые из пакета, сверка по
+    SHA-256 со списком пакета. Модуля программы (app/*.py) может не быть в папке — тогда работает встроенный в EXE: пакет
+    собирается так, что встроенный совпадает с нужным (в пакете — всё, что изменилось после той версии, на которую он
+    ставится)."""
+
+    def __init__(self, pkg: UpdatePackage, base_dir: str) -> None:
+        self.pkg, self.base_dir = pkg, base_dir
+
+    @staticmethod
+    def _sha(path: str) -> str:
+        digest = hashlib.sha256()
+        with open(path, 'rb') as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b''):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _module(rel: str) -> bool:
+        """Модуль сервера (app/имя.py) — есть и встроенным в EXE."""
+        return rel.startswith('app/') and rel.endswith('.py') and rel.count('/') == 1
+
+    def build(self, dst: str) -> int:
+        """Собрать папку dst. → число файлов из пакета."""
+        shutil.rmtree(dst, ignore_errors=True)
+        for rel, sha in self.pkg.manifest.items():
+            src = os.path.join(self.base_dir, *rel.split('/'))
+            if os.path.isfile(src) and self._sha(src) == sha:
+                out = os.path.join(dst, *rel.split('/'))
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                shutil.copyfile(src, out)
+        count = self.pkg.extract('delta', dst)
+        os.remove(os.path.join(dst, 'delta.json'))
+        self._check(dst)
+        return count - 1
+
+    def _check(self, dst: str) -> None:
+        for rel, sha in self.pkg.manifest.items():
+            path = os.path.join(dst, *rel.split('/'))
+            if os.path.isfile(path) and self._sha(path) == sha:
+                continue
+            if not os.path.isfile(path) and self._module(rel):
+                continue
+            shutil.rmtree(dst, ignore_errors=True)
+            raise UpdateError(
+                f'Файлы программы отличаются от версии {self.pkg.base} ({rel.split("/")[-1][:80]}) — загрузите полный '
+                f'пакет «KP-Obnovlenie-{self.pkg.version}.zip» из выпуска'
+            )
+
+
 class ReleaseSource:
     """Выпуски на GitHub: последняя версия, описание изменений, архив обновления."""
 
@@ -125,6 +196,7 @@ class ReleaseSource:
     WEB_API = 'https://api.github.com'
     API = os.environ.get('KP_UPDATE_API') or WEB_API
     ASSET = re.compile(r'^KP-Obnovlenie-[\d.]+\.zip$')
+    DELTA = re.compile(r'^KP-Obnovlenie-([\d.]+)-ot-([\d.]+)\.zip$')  # только изменения: версия, от какой версии
     TIMEOUT = 60
 
     def __init__(self, repo, token='') -> None:
@@ -204,8 +276,26 @@ class ReleaseSource:
             'notes': str(j.get('body') or '')[:20000],
             'published': j.get('published_at') or '',
             'asset': asset,
+            'deltas': self._deltas(j.get('assets') or [], tag.lstrip('vV')),
             'url': j.get('html_url') or '',
         }
+
+    def _deltas(self, assets: list, ver: str) -> list:
+        """Пакеты «только изменения» этой версии: [{id, name, size, base}]."""
+        out = []
+        for item in assets:
+            match = self.DELTA.match(str(item.get('name') or ''))
+            if match and match.group(1) == ver:
+                out.append(
+                    {'id': item.get('id'), 'name': item['name'], 'size': item.get('size'), 'base': match.group(2)}
+                )
+        return out
+
+    def delta_url(self, tag: str, ver: str, base: str) -> dict:
+        """Пакет изменений по прямой ссылке (без API GitHub список файлов выпуска не узнать — пробуем имя)."""
+        name = f'KP-Obnovlenie-{ver}-ot-{base}.zip'
+        url = f'https://github.com/{self.repo}/releases/download/{urllib.parse.quote(tag)}/{name}'
+        return {'id': 0, 'name': name, 'size': None, 'url': url, 'base': base}
 
     def _latest_web(self) -> dict:
         """Последний выпуск по перенаправлению github.com/<репозиторий>/releases/latest → …/releases/tag/vX.Y.Z."""
@@ -264,8 +354,14 @@ class Updater:
     REPO = 'DevMoreBill/KP'  # репозиторий выпусков по умолчанию
     FAILED_LOG = 'update-failed.json'  # пишет launcher.py, когда обновление не запустилось и вернулась прежняя версия
 
-    def __init__(self, store, root, data_dir: str) -> None:
+    def __init__(self, store, root, data_dir: str, bundle: str = '') -> None:
+        """bundle — файлы, встроенные в EXE (интерфейс, шаблоны): основа пакета изменений, если обновления ещё нет."""
         self.store, self.root, self.data_dir = store, root, data_dir
+        if not bundle:
+            import config
+
+            bundle = config.BUNDLE
+        self.bundle = bundle
         self.dir, self.prev, self.new, self.failed_dir = (
             os.path.join(root, x) for x in ('update', 'update.prev', 'update.new', 'update.failed')
         )
@@ -315,6 +411,7 @@ class Updater:
             'last': last,
             'available': bool(last.get('version'))
             and version.as_tuple(last['version']) > version.as_tuple(self.current()),
+            'download': self._delta_asset(last) or last.get('asset'),
             'failed': self.failed(conf),
             'history': (conf.get('history') or [])[-self.HISTORY :][::-1],
             'nightly': conf.get('nightly') or 'off',
@@ -455,11 +552,34 @@ class Updater:
         except UpdateError:
             pass
 
+    def _delta_asset(self, last: dict) -> dict | None:
+        """Пакет «только изменения» к работающей версии из последнего выпуска, если он есть и функция включена."""
+        from features import FeatureAccess
+
+        if not FeatureAccess(self.store).is_on('updDelta'):
+            return None
+        cur = self.current()
+        found = next((item for item in last.get('deltas') or [] if item.get('base') == cur), None)
+        if found or not (last.get('asset') or {}).get('url') or not last.get('version'):
+            return found
+        try:
+            return self.source().delta_url(last.get('tag') or '', last['version'], cur)
+        except UpdateError:
+            return None
+
     def download_latest(self, author: str) -> dict:
+        """Пакет изменений к работающей версии (маленький), не вышло — полный пакет выпуска."""
         last = self.settings().get('last') or {}
         if not last.get('asset'):
             raise UpdateError('В выпуске нет архива обновления — сначала «Проверить обновления»')
-        return self.install(self.source().download(last['asset']), author, source='GitHub ' + (last.get('tag') or ''))
+        source, where = self.source(), 'GitHub ' + (last.get('tag') or '')
+        delta = self._delta_asset(last)
+        if delta:
+            try:
+                return self.install(source.download(delta), author, source=where + ' (изменения)')
+            except UpdateError as exc:
+                ServerLog.note(f'Пакет изменений не подошёл ({exc}) — ставится полный пакет')
+        return self.install(source.download(last['asset']), author, source=where)
 
     def install(self, data, author: str, source='файл') -> dict:
         """Обновление новее работающей версии."""
@@ -475,6 +595,11 @@ class Updater:
         return self._install(pkg, self.current(), author, source)
 
     def _install(self, pkg, cur: str, author: str, source: str) -> dict:
+        if pkg.delta and pkg.base != cur:
+            raise UpdateError(
+                f'Это пакет изменений к версии {pkg.base}, а работает {cur} — загрузите полный пакет '
+                f'«KP-Obnovlenie-{pkg.version}.zip» из выпуска'
+            )
         if not self.writable():
             raise UpdateError(
                 f'Нет прав записи в папку программы {self.root} — запустите обновление файлом «Установить обновление.cmd» '
@@ -482,7 +607,7 @@ class Updater:
             )
         self._backup_db(pkg.version)
         shutil.rmtree(self.new, ignore_errors=True)
-        count = pkg.extract('update', self.new)
+        count = UpdateDelta(pkg, self._base_dir(cur)).build(self.new) if pkg.delta else pkg.extract('update', self.new)
         if not os.path.isfile(os.path.join(self.new, 'app', 'kp_server.py')):
             shutil.rmtree(self.new, ignore_errors=True)
             raise UpdateError('Архив распакован не полностью — повторите')
@@ -491,6 +616,10 @@ class Updater:
         shutil.rmtree(self.failed_dir, ignore_errors=True)  # прежнее неудачное обновление больше не нужно
         self._log({'version': pkg.version, 'from': cur, 'by': author, 'source': source, 'files': count}, failed=None)
         return {'version': pkg.version, 'from': cur, 'files': count, 'serverSetup': setup}
+
+    def _base_dir(self, cur: str) -> str:
+        """Файлы работающей версии: установленное обновление или встроенное в EXE."""
+        return self.dir if self._dir_version(self.dir) == cur else self.bundle
 
     def _backup_db(self, ver) -> None:
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S')

@@ -44,7 +44,7 @@ class ProjectRules(unittest.TestCase):
         v = re.search(r"VERSION = '([\d.]+)'", self.read('app', 'version.py')).group(1)
         help_js = self.read('app', 'web', 'js', 'features', 'help.js')
         self.assertIn("const APP_VERSION = '%s'" % v, help_js, 'APP_VERSION в help.js — как в app/version.py')
-        first = re.search(r"const APP_VERSIONS = \[\s*\['([\d.]+)'", help_js)
+        first = re.search(r"const APP_VERSIONS = \[\s*\['([\d.]+)'", self.read('app', 'web', 'js', 'features', 'help-versions.js'))
         self.assertEqual(first and first.group(1), v, 'первая запись журнала изменений (APP_VERSIONS) — текущая версия')
 
     def test_interface_files_linked(self):
@@ -74,8 +74,9 @@ class ProjectRules(unittest.TestCase):
         node = shutil.which('node')
         if not node:
             self.skipTest('нет Node.js')
-        f = os.path.join(APP, 'web', 'js', 'features', 'help.js')
-        r = subprocess.run([node, '-e', "const m = require(process.argv[1]); if (!m.APP_VERSIONS.length || !m.HELP_SECTIONS.length) process.exit(1)", f], capture_output=True, text=True)
+        js = os.path.join(APP, 'web', 'js', 'features')
+        r = subprocess.run([node, '-e', "if (!require(process.argv[1]).HELP_SECTIONS.length || !require(process.argv[2]).APP_VERSIONS.length) process.exit(1)",
+                            os.path.join(js, 'help.js'), os.path.join(js, 'help-versions.js')], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr[-1500:])
 
     def test_no_databases_or_keys(self):

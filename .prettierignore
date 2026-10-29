@@ -1,4 +1,5 @@
 # данные, а не код: журнал версий и руководство (их правит /vypusk), описания «Значений программы» — в своём компактном виде
 app/web/js/features/help.js
+app/web/js/features/help-versions.js
 app/web/js/core/defaults-srv.js
 app/web/js/core/defaults-kp.js
