@@ -615,3 +615,37 @@ label.f.ed-gapf input,label.f.ed-gapf select{border-color:var(--danger);box-shad
 .ed-gapnote{display:block;margin-top:3px;color:var(--danger);font-size:12.5px;font-style:normal;font-weight:600}
 .ed-gapphoto.bad{padding:6px;border:2px solid var(--danger);border-radius:12px}
 .ed-gapphoto.bad .ed-gapnote{margin:6px 2px 0}
+/* сборное изделие без компоновки (AsmBuilder, AsmTab) */
+#dlg.asm{max-width:min(860px,96vw)}
+html:not(.mob) #dlg.asm[open]{margin-top:min(8vh,80px);margin-bottom:auto;max-height:calc(100dvh - min(8vh,80px) - 24px)}
+#dlg.asm .dlg-h{gap:8px}
+#dlg.asm .dlg-h h3{flex:1}
+.asm-lead{margin:0 0 10px}
+.asm-kind{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.asm-sec{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--card)}
+.asm-sec h4{margin:0 0 8px;font-size:14px}
+.asm-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.asm-row:last-child{border-bottom:0}
+.asm-row img,.asm-row .kit-noimg{flex:none;width:56px;height:44px;object-fit:contain}
+.asm-nm{flex:1;min-width:0}
+.asm-nm b{display:block;overflow-wrap:anywhere}
+.asm-nm small{display:block}
+.asm-q{display:flex;align-items:center;gap:4px}
+.asm-q input{width:56px;text-align:center}
+.asm-add{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.asm-empty{margin:0}
+.asm-phs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0}
+.asm-ph{width:64px;height:52px;padding:2px;border:2px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
+.asm-ph.on{border-color:var(--navy)}
+.asm-ph img{width:100%;height:100%;object-fit:contain}
+.asm-sum{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px;margin:8px 0}
+.asm-price input{width:180px;max-width:100%}
+.asm-note{margin:0 0 8px;color:var(--warn-ink)}
+.asm-wk{display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer}
+.asm-wk input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--navy)}
+.mob .asm-wk{min-height:44px}
+.asm-wf{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}
+.asm-go{justify-content:flex-end;margin-top:4px}
+.asm-tot{margin:8px 0}
+.asm-list{border:1px solid var(--line);border-radius:10px;padding:2px 12px;background:var(--card)}
+@media (max-width:600px){.asm-wf{grid-template-columns:1fr}.asm-row{flex-wrap:wrap}.asm-nm{flex-basis:calc(100% - 70px)}}

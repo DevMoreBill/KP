@@ -16,6 +16,7 @@ import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { Kit } from '../kit/kit.js';
 import { StationUi } from '../station/station-ui.js';
+import { AsmTab } from '../kit/asm-tab.js';
 import { KitView } from '../kit/kit-view.js';
 
 /**
@@ -37,7 +38,7 @@ export class ItemEditor {
   static STATION_FIRST = ['kit', 'layout'];
   static BODIES = {
     main: (item, i) => ItemTabs.main(item, i),
-    kit: (item, i) => KitView.render(item, i),
+    kit: (item, i) => (Kit.simple(item) ? AsmTab.html(item, i) : KitView.render(item, i)),
     layout: (item, i) => StationUi.tab(item, i),
     desc: (item, i) => DescTab.html(item, i),
     spec: (item, i) => ItemTabs.spec(item, i),
@@ -139,7 +140,7 @@ export class ItemEditor {
     return this.tabs(item)
       .map(
         ([key, label]) =>
-          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${label}${key === 'layout' ? StationUi.badge(item) : ''}${CardGaps.tabMark(item, key)}</button>`,
+          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${key === 'kit' ? AsmTab.label(item, label) : label}${key === 'layout' ? StationUi.badge(item) : ''}${CardGaps.tabMark(item, key)}</button>`,
       )
       .join('');
   }

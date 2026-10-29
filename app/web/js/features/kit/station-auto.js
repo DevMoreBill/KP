@@ -96,7 +96,7 @@ export class StationAuto {
    */
   static of(item) {
     const type = EquipTypes.byId(Attrs.of(item).cat);
-    if (!type.station) return {};
+    if (!type.station || Kit.simple(item)) return {};
     const parts = Kit.parts(item);
     const main = Kit.main(item);
     const out = {};
@@ -112,7 +112,7 @@ export class StationAuto {
    */
   static fill(item) {
     const type = EquipTypes.byId(Attrs.of(item).cat);
-    if (!type.station) return;
+    if (!type.station || Kit.simple(item)) return;
     item.attrs = item.attrs || {};
     const old = item._sa || {};
     const now = this.of(item);

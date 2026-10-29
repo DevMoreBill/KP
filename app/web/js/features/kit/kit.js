@@ -41,7 +41,31 @@ export class Kit {
    * @returns {object|null}
    */
   static station(item) {
+    if (Kit.simple(item)) return null;
     return EquipTypes.byId(Attrs.of(item).cat).station || null;
+  }
+
+  /**
+   * Сборное изделие без компоновки (`kit.simple`): категория станции, но без подбора, компоновки и картинок станции.
+   * @param {object} item
+   * @returns {boolean}
+   */
+  static simple(item) {
+    return !!(item && item.kit && item.kit.simple);
+  }
+
+  /**
+   * Состав для карточки каталога: элементы без служебных полей, признак сборного изделия — как был.
+   * @param {object} item
+   * @returns {object}
+   */
+  static store(item) {
+    const parts = Kit.parts(item).map(part => {
+      const copy = { ...part };
+      delete copy._costText;
+      return copy;
+    });
+    return Kit.simple(item) ? { simple: true, parts } : { parts };
   }
 
   /**

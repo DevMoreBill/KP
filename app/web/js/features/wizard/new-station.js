@@ -21,6 +21,7 @@ import { StationGeo } from '../layout/station-geo.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { StationLibrary } from './station-library.js';
+import { FEAT } from '../../core/features.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе
@@ -95,7 +96,13 @@ export class NewStation {
       <div class="ns-pv" id="nsPv">${this.pvHtml(type)}</div>
       <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${busy ? ' disabled' : ''}>${busy ? 'Подбираю…' : pickLabel}</button>
         ${where === 'kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
-      <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((type.station.mainLabel || 'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>`;
+      <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((type.station.mainLabel || 'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>${this._asm(type, where)}`;
+  }
+
+  /** вход в «Сборное изделие»: контейнер и оборудование из каталога, без компоновки (только в КП) */
+  static _asm(type, where) {
+    if (where !== 'kp' || !FEAT.on('asmItem')) return '';
+    return `<p class="muted ns-alt"><button class="link" type="button" data-asmnew="${esc(type.id)}">Сборное изделие из позиций каталога</button> — контейнер и оборудование от разных поставщиков, без компоновки</p>`;
   }
 
   /**

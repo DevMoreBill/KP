@@ -105,9 +105,10 @@ export class EquipStep {
   static _kit(item, i) {
     if (!Kit.can(item)) return '';
     const parts = Kit.parts(item).length;
+    const what = Kit.simple(item) ? 'Состав изделия' : 'Состав станции';
     const text = Kit.has(item)
-      ? `Состав станции: ${parts} ${KPGen.plural(parts, 'элемент', 'элемента', 'элементов')}`
-      : '+ Состав станции';
+      ? `${what}: ${parts} ${KPGen.plural(parts, 'элемент', 'элемента', 'элементов')}`
+      : `+ ${what}`;
     return `<button type="button" class="chip sm${Kit.has(item) ? ' on' : ''}" data-a="edit" data-i="${i}" data-tab="kit" title="Контейнер, основное оборудование, обвязка и системы: у каждого элемента — своё описание, закупка и поставщик">${text}</button>`;
   }
 

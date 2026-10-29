@@ -381,7 +381,7 @@ export class CatalogSync {
   static _saveDoc(item, cur) {
     const kit = Kit.has(item)
       ? {
-          kit: { parts: Kit.parts(item).map(part => CatalogCache.omit(part, '_costText')) },
+          kit: Kit.store(item),
           cost: item.cost,
           costCur: 'RUB',
           attrs: item.attrs,

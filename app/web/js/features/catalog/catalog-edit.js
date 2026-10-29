@@ -123,8 +123,7 @@ export class CatalogEditor {
   static toDoc(item, base) {
     const doc = this._clone(base);
     Object.assign(doc, this._fields(item));
-    if (Kit.has(item))
-      doc.kit = { parts: Kit.parts(item).map(part => this._clone(CatalogCache.omit(part, '_costText'))) };
+    if (Kit.has(item)) doc.kit = this._clone(Kit.store(item));
     else delete doc.kit;
     if (item.draw && (item.draw.front || item.draw.top)) doc.draw = this._clone(item.draw);
     else delete doc.draw; // свой рисунок для габаритного чертежа

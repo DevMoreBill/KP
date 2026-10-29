@@ -1,7 +1,6 @@
 import { Kit } from './kit.js';
 import { FEAT } from '../../core/features.js';
 import { StationPurpose } from './station-spec.js';
-import { EquipTypes } from '../../core/equip-types.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { KitScope } from './kit-scope.js';
 import { Attrs } from '../../core/item-attrs.js';
@@ -264,7 +263,7 @@ export class KitDoc {
   }
 
   static _station(item) {
-    return !!EquipTypes.byId(Attrs.of(item).cat).station;
+    return !!Kit.station(item);
   }
 
   static _qty(part) {

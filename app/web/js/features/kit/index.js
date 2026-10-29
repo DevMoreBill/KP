@@ -1,3 +1,6 @@
+import { AsmBuilder } from './asm-builder.js';
+import { AsmItem } from './asm-item.js';
+import { AsmTab } from './asm-tab.js';
 import { ContainerKind } from './container-kind.js';
 import { ContainerPart, StationModsText } from './container-part.js';
 import { Kit } from './kit.js';
@@ -20,6 +23,9 @@ import { SupplyDocs } from './supply-docs.js';
 import { LISTS } from '../../core/lists.js';
 
 export const KIT = {
+  AsmBuilder,
+  AsmItem,
+  AsmTab,
   CatFeatures,
   ContainerKind,
   ContainerPart,
@@ -50,5 +56,6 @@ export const KIT = {
 };
 
 KitActions.listen();
+AsmBuilder.listen();
 // списки контейнеров и состава — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
 LISTS.ready([...ContainerKind.LISTS, ...Kit.LISTS]);

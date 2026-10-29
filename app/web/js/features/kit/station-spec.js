@@ -148,7 +148,7 @@ export class StationPurpose {
 
   static _text(item, rest) {
     const type = EquipTypes.byId(Attrs.of(item).cat);
-    if (!type.station) return '';
+    if (!type.station || Kit.simple(item)) return '';
     const main = Kit.main(item);
     const mainName = main && this._name(main);
     const kpi = ItemSpec.mainLine(item, this.KPI);
