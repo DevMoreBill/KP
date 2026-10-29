@@ -13,12 +13,12 @@ import { KpState, S } from '../../core/state.js';
 import { AiDirect, AiSource } from '../catalog/ai-chat.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { QuickFind } from '../../ui/step-equipment.js';
-import { Attrs } from '../../core/item-attrs.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { FEAT } from '../../core/features.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Auth } from '../kp/auth.js';
+import { CatPicker } from './cat-picker.js';
 
 /**
  * Окно «Добавить оборудование» — один порядок для КП и для каталога: что добавляем (найти в каталоге — только в КП,
@@ -54,6 +54,7 @@ export class EquipWizard {
     }
     Object.assign(this.state, { where: where || 'kp', cat: '', q: '', url: '', name: '', busy: false });
     NewStation.reset();
+    CatPicker.reset();
     if (pre === 'station') this.state.cat = 'station';
     else if (pre && EquipTypes.list.some(type => type.id === pre)) this.state.cat = pre;
     const dialog = $('#dlg');
@@ -122,30 +123,8 @@ export class EquipWizard {
     return `${search}
     ${stations}
     <div class="nw-sec"><p class="nw-h">Единица оборудования <span class="muted">— ${inKp ? 'нет в каталоге: заведём карточку' : 'выберите категорию'}</span></p>
-      ${this._groups()}
+      ${CatPicker.html(this._units())}
       ${more}</div>`;
-  }
-
-  static _groups() {
-    const units = this._units();
-    const counts = new Map();
-    Catalog.cache.forEach(card => {
-      const cat = Attrs.of(card).cat;
-      counts.set(cat, (counts.get(cat) || 0) + 1);
-    });
-    const groups = [...new Set(units.map(type => type.group || 'Прочее'))];
-    return groups
-      .map(group => {
-        const buttons = units
-          .filter(type => (type.group || 'Прочее') === group)
-          .map(
-            type =>
-              `<button type="button" class="btn" data-nwcat="${esc(type.id)}">${esc(type.name)}${counts.get(type.id) ? ` <small class="muted">${counts.get(type.id)}</small>` : ''}</button>`,
-          )
-          .join('');
-        return `<div class="nw-grp"><span>${esc(group)}</span><div class="tpick">${buttons}</div></div>`;
-      })
-      .join('');
   }
 
   /**
@@ -327,6 +306,8 @@ export class EquipWizard {
 
   static _pickCat(cat) {
     this.state.cat = cat;
+    const type = EquipTypes.byId(cat);
+    if (type && !type.station) CatPicker.remember(cat);
     this.draw();
     setTimeout(() => ($('#nwName') || document.querySelector('#dlg [data-nsr]'))?.focus(), this.CAT_FOCUS_DELAY);
   }
@@ -374,6 +355,7 @@ export class EquipWizard {
       this.state.q = target.value;
       $('#nwRes').innerHTML = this.found();
     }
+    if (target.id === 'nwCatQ') $('#nwGroups').innerHTML = CatPicker.filter(target.value, this._units());
     if (target.dataset.nsr) NewStation.input(target);
     if (target.id === 'nwName') this.state.name = target.value;
     if (target.id === 'nwUrl') this.state.url = target.value;
@@ -388,6 +370,11 @@ export class EquipWizard {
         event.preventDefault();
         this._addFound(card);
       }
+    }
+    if (target.id === 'nwCatQ') {
+      event.preventDefault();
+      const cat = CatPicker.first(this._units());
+      if (cat) this._pickCat(cat);
     }
     if (target.id === 'nwUrl') {
       event.preventDefault();
