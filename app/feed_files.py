@@ -2169,6 +2169,11 @@ class StockFile:
     TRANSIT = re.compile(r'в пути|транзит|ожида|поступ|приход')
     DATE = re.compile(r'дата|срок|прибыт')
     RESERVE = re.compile(r'резерв')
+    FREE = re.compile(r'[ ,(]*(без|за вычетом|минус|кроме)\s+резерв\w*\)?')  # «Остаток без резерва» — свободный
+    WITH_RESERVE = re.compile(r'[ ,(]*(с|включая)\s+уч[её]том\s+резерв\w*\)?|[ ,(]*включая\s+резерв\w*\)?')
+    WH_TAIL = re.compile(r'[ ,:]*(остат\w*|наличи\w*|кол-?во|количеств\w*|свободн\w*)( шт\.?)?$', re.I)
+    PRICE = re.compile(r'цен|руб|сумм|стоим|ррц|ндс|скидк|%|евро|долл|usd|eur')
+    AMOUNT = re.compile(r'^[<>≥≤~]?\s*(?:более|больше|свыше|от|до|менее|меньше)?\s*(\d+)\s*\+?\s*(?:шт\.?)?$', re.I)
     DATE_TEXT = re.compile(r'(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?')
     NUMERIC_SHARE = 0.6
     SERIAL_MIN, SERIAL_MAX = 30000, 80000  # число Excel — дата (1982–2119)
@@ -2215,14 +2220,25 @@ class StockFile:
             col: self._clean(v) for col, v in sub.items() if self._clean(v) and _num(v) is None and col not in key_cols
         }
         if len(texts) >= self.SUB_MIN and not any(self._clean(sub.get(col)) for col in key_cols):
-            for col, text in texts.items():
-                head[col] = f'{head.get(col, "")} {text}'.strip() if head.get(col, '').lower() != text.lower() else text
+            group = ''
+            for col in sorted(texts):
+                text = texts[col]
+                group = head.get(col) or group  # объединённая ячейка шапки — над всеми своими столбцами
+                head[col] = f'{group} {text}'.strip() if group.lower() != text.lower() else text
             return head, head_row + 2
         return head, head_row + 1
 
+    def _amount(self, v) -> float | None:
+        """Количество: число или «10+», «>5», «более 10» (столько есть точно)."""
+        num = _num(v)
+        if num is not None:
+            return num
+        found = self.AMOUNT.match(self._clean(v))
+        return float(found.group(1)) if found else None
+
     def _numeric(self, data_rows: list, col) -> bool:
         vals = [row.get(col) for row in data_rows if self._clean(row.get(col))]
-        return bool(vals) and sum(_num(v) is not None for v in vals) >= self.NUMERIC_SHARE * len(vals)
+        return bool(vals) and sum(self._amount(v) is not None for v in vals) >= self.NUMERIC_SHARE * len(vals)
 
     def _dated(self, data_rows: list, col) -> bool:
         vals = [self._clean(row.get(col)) for row in data_rows if self._clean(row.get(col))]
@@ -2257,6 +2273,10 @@ class StockFile:
         return roles
 
     def _role(self, roles: dict, col, title: str, data_rows: list, label: str) -> None:
+        if self.FREE.search(title) and self._numeric(data_rows, col):
+            roles['qty'] = col
+            return
+        title = self.WITH_RESERVE.sub('', title).strip()
         if self.RESERVE.search(title):
             return
         if (self.DATE.search(title) or self.TRANSIT.search(title)) and self._dated(data_rows, col):
@@ -2276,15 +2296,18 @@ class StockFile:
             roles['wh'][col] = self._wh_label(label)
 
     def _wh_label(self, title: str) -> str:
-        label = self.WH_WORDS.sub('', title).strip(' ,:') or title
+        label = self.WH_TAIL.sub('', self.WH_WORDS.sub('', title)).strip(' ,:') or title
         return label[:1].upper() + label[1:40]
 
-    def _fallback_qty(self, roles: dict, data_rows: list) -> Any:
-        """Количество без подписи — столбец, где больше всего чисел."""
+    def _fallback_qty(self, roles: dict, head: dict, data_rows: list) -> Any:
+        """Количество без подписи — столбец, где больше всего чисел (не цена и не резерв)."""
+        skip = {roles['sku'], roles['name']} | {
+            col for col, title in head.items() if self.PRICE.search(title.lower()) or self.RESERVE.search(title.lower())
+        }
         nums: dict = {}
         for row in data_rows:
             for col, v in row.items():
-                if col not in (roles['sku'], roles['name']) and _num(v) is not None:
+                if col not in skip and self._amount(v) is not None:
                     nums[col] = nums.get(col, 0) + 1
         return max(nums, key=lambda col: nums[col]) if nums else None
 
@@ -2307,15 +2330,14 @@ class StockFile:
         ]
         roles = self._roles(head, data_rows)
         if roles['qty'] is None and roles['status'] is None and not roles['wh'] and roles['total'] is None:
-            roles['qty'] = self._fallback_qty(roles, data_rows)
+            roles['qty'] = self._fallback_qty(roles, head, data_rows)
             if roles['qty'] is None:
                 return
         for row in data_rows:
             self._row(sname, row, roles)
 
-    @staticmethod
-    def _count(v) -> int:
-        num = _num(v)
+    def _count(self, v) -> int:
+        num = self._amount(v)
         return max(0, int(num)) if num else 0
 
     def _row(self, sname: str, row: dict, roles: dict) -> None:
