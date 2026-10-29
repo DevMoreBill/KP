@@ -2467,6 +2467,7 @@ def _merge_stock(rows) -> dict:
         if row.get('eta') and (not x.get('eta') or (row['eta'][3:], row['eta'][:2]) < (x['eta'][3:], x['eta'][:2])):
             x['eta'] = row['eta']
         x['promo'] = x.get('promo') or row.get('promo') or ''
+    x['parts'] = [part for row in rows for part in StockLeftovers.parts(row)]
     return x
 
 
@@ -2630,14 +2631,89 @@ def stock_info(row) -> dict:
     return state
 
 
+class StockLeftovers:
+    """Строки остатков без пары после артикула, подписи модели и кода — второй проход: та же модель с лишними признаками
+    исполнения («EXPM 37/10 IP 54 OMRON» ↔ «EXPM 37/10»), код модели среди слов («Automatic drain JAD20 1/2"» ↔
+    «Конденсатоотводчик JAD20»). Строка уходит одной позиции — самой подходящей; спорная остаётся без пары."""
+
+    CODE_MIN = 4
+    ALIAS = re.compile(r'модель', re.I)
+
+    def __init__(self, stock: list) -> None:
+        self.stock = stock
+        self.used: set = set()
+
+    @staticmethod
+    def parts(row: dict) -> list:
+        """Исходные строки остатков, из которых сложена строка."""
+        return row.get('parts') or [row]
+
+    @classmethod
+    def aliases(cls, offer: dict) -> list:
+        """Другие названия модели из характеристик позиции («Модель Liutech: LUY050-7» у Exelute EXP 5/7)."""
+        own = {offer.get('model'), offer['name']}
+        return [
+            str(param['v'])
+            for param in offer.get('params') or []
+            if cls.ALIAS.search(str(param.get('k'))) and re.search(r'\d', str(param.get('v'))) and param['v'] not in own
+        ]
+
+    def take(self, row: dict | None) -> None:
+        if row is not None:
+            self.used.update(id(part) for part in self.parts(row))
+
+    def assign(self, offers: list) -> dict:
+        """offers — позиции без строки остатков; → {id(позиции): строка остатков}."""
+        keys = [(offer, *_sig(offer['name']), _code(offer['name'])) for offer in offers]
+        got: dict = {}
+        for row in self.stock:
+            if id(row) in self.used:
+                continue
+            offer = self._by_options(row, keys) or self._by_code(row, keys)
+            if offer is not None:
+                got.setdefault(id(offer), []).append(row)
+        return {key: _merge_stock(rows) for key, rows in got.items()}
+
+    @staticmethod
+    def _unique(cands: list) -> Any:
+        return cands[0] if len(cands) == 1 else None
+
+    def _by_options(self, row: dict, keys: list) -> Any:
+        core, opt = _sig(row['name'])
+        if len(core) < SIG_MIN:
+            return None
+        cands = [(len(own), offer) for offer, own_core, own, _ in keys if own_core == core and own <= opt]
+        best = max((count for count, _ in cands), default=0)
+        return self._unique([offer for count, offer in cands if count == best])
+
+    def _by_code(self, row: dict, keys: list) -> Any:
+        words = {_code(word) for word in row['name'].split()} - {''}
+        return self._unique(
+            [
+                offer
+                for offer, _, _, code in keys
+                if len(code) >= self.CODE_MIN and code in words and re.search(r'[A-Z]', code) and re.search(r'\d', code)
+            ]
+        )
+
+
 def apply_stock(offers, stock) -> int:
     """Остатки → в предложения фида; → число позиций с остатками."""
     idx = stock_index(stock)
-    found = 0
+    left = StockLeftovers(stock)
+    rows: dict = {}
     for offer in offers:
         row = stock_row(stock, offer.get('sku'), offer['name'], idx)
         if row is None and offer.get('model'):
             row = stock_row(stock, '', offer['model'], idx)
+        for alias in StockLeftovers.aliases(offer) if row is None else []:
+            row = row or stock_row(stock, '', alias, idx)
+        left.take(row)
+        rows[id(offer)] = row
+    extra = left.assign([offer for offer in offers if rows[id(offer)] is None])
+    found = 0
+    for offer in offers:
+        row = rows[id(offer)] or extra.get(id(offer))
         offer['stockInfo'] = stock_info(row)
         offer['qty'] = offer['stockInfo']['qty']
         offer['available'] = offer['qty'] > 0

@@ -91,6 +91,22 @@ class StockFileTest(unittest.TestCase):
         rows = feed_files.parse_stock(out.getvalue())
         self.assertEqual([(row['name'], row['qty']) for row in rows], [('LKV 37/10 DHK PLUS', 1)])
 
+    def test_leftover_rows_find_their_offer(self):
+        """Строка остатков без пары: лишние признаки исполнения, код среди слов, другое название модели в характеристиках."""
+        stock = feed_files.parse_stock(Book.xlsx([('Остатки', [
+            ['Бренд', 'Модель', 'Статус', 'Склад'],
+            ['Exelute', 'EXPM 37/10 IP 54 OMRON', 'на складе', 'НЭК (Москва)'],
+            ['Exelute', 'EXPM 55/10 IP 54 OMRON', 'на складе', 'НЭК (Москва)'],
+            ['Exelute', 'Automatic drain JAD20 1/2"', 'на складе', 'Екатеринбург'],
+            ['Liutech', 'LUY050-7 (без шасси)', 'на складе', 'Добрый склад'],
+            ['Liutech', 'LUY050-7 (на шасси)', 'на складе', 'Добрый склад']])]))
+        offers = [{'name': 'EXPM 37/10'}, {'name': 'EXPM 55/10'}, {'name': 'EXPM 55/10 IP54'},
+                  {'name': 'Автоматический конденсатоотводчик JAD20'},
+                  {'name': 'EXP 5/7', 'params': [{'k': 'Модель Liutech', 'v': 'LUY050-7'}]}, {'name': 'EXP 10/12'}]
+        feed_files.apply_stock(offers, stock)
+        self.assertEqual([offer['qty'] for offer in offers], [1, 0, 1, 1, 2, 0],
+                         'IP 54 OMRON — к EXPM 37/10, а у 55/10 — к исполнению IP54; JAD20 по коду; LUY050-7 — обе строки')
+
     def test_old_kinds(self):
         got = parse([['Артикул', 'Номенклатура', 'Количество', 'Склад'],
                      ['D-1', 'Фильтр GON 100', 4, 'НЭК (Москва)'],
