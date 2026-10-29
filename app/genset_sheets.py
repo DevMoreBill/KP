@@ -11,8 +11,8 @@ PERCENT = 100
 SHARE_MAX = 1
 HEAD_SCAN = 15
 TEXT_MAX = 40
-# шапка листа ДГУ — с двигателем, генератором или кВА (у прайсов компрессоров «Модель / РРЦ» тоже есть)
-GENSET_WORDS = re.compile(r'ква|kva|альтернатор|генератор|двигател|мотор|prp')
+# шапка листа ДГУ — с генератором, альтернатором, кВА или PRP: «Модель / РРЦ» и «Двигатель» есть и у прайсов компрессоров
+GENSET_WORDS = re.compile(r'(?<![а-яё])ква(?![а-яё])|kva|альтернатор|генератор|электростанц|prp')
 
 
 class Exec:
@@ -279,7 +279,11 @@ class GensetBook:
 
     @staticmethod
     def applies(book: list) -> bool:
-        return any(Units.head(rows) is not None or Models.head(rows) is not None for _, rows in book)
+        """Прайс-склад ДГУ — листы ДГУ хотя бы половина листов с данными (лист дизельных компрессоров в прайсе
+        компрессоров — не повод разбирать всю книгу как ДГУ)."""
+        sheets = [rows for _, rows in book if rows]
+        gensets = sum(1 for rows in sheets if Units.head(rows) is not None or Models.head(rows) is not None)
+        return gensets > 0 and gensets * 2 >= len(sheets)
 
     @classmethod
     def price_rows(cls, book: list) -> tuple:

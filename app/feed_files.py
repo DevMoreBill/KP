@@ -2754,10 +2754,11 @@ def build_feed(feed, pages, prices, param_name, stock=None) -> dict:
     for page in pages:
         if page.get('logo'):
             logos.setdefault(page.get('brand') or maker, page['logo'])
-    if prices and prices[0].get('genset'):
+    genset = bool(prices and prices[0].get('genset'))
+    if stock:  # загруженный файл остатков — всем, кроме позиций, наличие которых дал сам прайс-склад ДГУ
+        stats['stock'] = apply_stock([offer for offer in offs if not (genset and offer.get('stockInfo'))], stock)
+    if genset:
         GensetMatch.unpriced(offs)
-    elif stock:  # у прайса-склада ДГУ наличие — в самом прайсе
-        stats['stock'] = apply_stock(offs, stock)
     return {
         'shop': feed.get('name') or '',
         'date': '',
