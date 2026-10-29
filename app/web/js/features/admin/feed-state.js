@@ -4,6 +4,7 @@ import { Currency } from '../kp/currency.js';
 /** Состояние вкладки «Фиды поставщиков» (пока открыта программа). */
 export class FeedState {
   static sel = null; // открытый фид
+  static feeds = []; // фиды вкладки (последний ответ сервера)
   static prev = null; // «Проверить фид»: что в нём есть
   static cats = {}; // категории фида → категории программы
   static types = [];

@@ -167,6 +167,7 @@ export class FeedPreview {
 
 /** Журнал загрузок и проверок фида. */
 export class FeedLog {
+  static LABELS = { cost: 'Закупка', price: 'Цена КП', rrc: 'РРЦ' };
   static PERCENT = 100;
   static TENTHS = 1000;
   static TEN = 10;
@@ -190,6 +191,7 @@ export class FeedLog {
   }
 
   static _kind(entry, costLog) {
+    if (entry.scope) return entry.scope === 'stock' ? 'Обновление остатков' : 'Обновление цен';
     if (entry.kind !== 'import') return costLog ? 'Обновление закупки по прайсу' : 'Проверка РРЦ и наличия';
     if (entry.mode === 'build') return 'Сборка каталога по парсу';
     return entry.mode === 'add' ? 'Новые позиции из парса' : 'Загрузка в каталог';
@@ -197,6 +199,8 @@ export class FeedLog {
 
   static _sum(entry) {
     const photos = entry.photos;
+    if (entry.scope)
+      return `файлы: ${(entry.files || []).join(', ')} · изменено ${(entry.scope === 'stock' ? entry.stock : entry.price).length}${entry.skipped ? `, не применено ${entry.skipped}` : ''}`;
     if (entry.kind !== 'import')
       return `проверено ${entry.checked}, обновлено ${entry.updated}${entry.new ? `, новых в фиде ${entry.new}` : ''}`;
     const photoText =
@@ -218,7 +222,7 @@ export class FeedLog {
 
   static _price(change) {
     const show = value => (change.cur ? FeedFmt.money(value, change.cur) : FeedFmt.rub(value));
-    return `<tr><td>${esc(change.name)}</td><td class="muted">${change.kind === 'cost' ? 'Закупка' : 'РРЦ'}</td><td class="num">${show(change.old)} → <b class="${change.new > change.old ? 'bad-t' : 'ok-t'}">${show(change.new)}</b></td><td class="num">${this._change(change)}</td></tr>`;
+    return `<tr><td>${esc(change.name)}</td><td class="muted">${this.LABELS[change.kind] || 'РРЦ'}</td><td class="num">${show(change.old)} → <b class="${change.new > change.old ? 'bad-t' : 'ok-t'}">${show(change.new)}</b></td><td class="num">${this._change(change)}</td></tr>`;
   }
 
   static _build(entry) {
@@ -237,7 +241,8 @@ export class FeedLog {
     const prices = entry.price || [];
     const stock = entry.stock || [];
     const gone = entry.gone || [];
-    return `${prices.length ? `<p class="sub">${costLog ? 'Закупка' : 'РРЦ'}</p>${this._table(prices, change => this._price(change))}` : ''}
+    const title = entry.scope ? 'Цены' : this.LABELS[costLog ? 'cost' : 'rrc'];
+    return `${prices.length ? `<p class="sub">${title}</p>${this._table(prices, change => this._price(change))}` : ''}
       ${stock.length ? `<p class="sub">Наличие</p>${this._table(stock, change => `<tr><td>${esc(change.name)}</td><td>${esc(change.old)} → <b>${esc(change.new)}</b></td></tr>`)}` : ''}
       ${gone.length ? `<p class="sub">Пропали из фида</p>${this._table(gone, change => `<tr><td>${esc(change.name)}</td></tr>`)}` : ''}`;
   }

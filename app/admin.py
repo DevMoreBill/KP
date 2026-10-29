@@ -1522,6 +1522,64 @@ class AdminApi:
         except ValueError as exc:
             return self.err(400, str(exc))
 
+    def feed_update(self, method, fid: str, act: str, query, actor_login) -> None:
+        """«Обновить цены» / «Обновить остатки» фида из файлов: черновик → список изменений → применение отмеченного."""
+        import feeds
+        from features import FEATURES, FeatureAccess
+        from feed_update import FeedDraft, FeedUpdate, Scope
+
+        if not FeatureAccess(self.store).is_on('feedUpdate'):
+            return self.err(403, 'Функция «{}» выключена администратором'.format(FEATURES['feedUpdate'][1]))
+        if method != 'POST':
+            return self.err(405, 'Нужен POST')
+        feed = feeds.feed_get(self.store, fid)
+        if not feed or feed.get('kind') != 'files':
+            return self.err(404, 'Фид из файлов не найден')
+        if feeds.busy(fid):
+            return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
+        data_dir = feeds.DATA_DIR  # там же, где файлы фида
+        try:
+            if act == 'start':
+                scope = Scope.of(self.data().get('scope'))
+                draft = FeedDraft.start(data_dir, feed, scope)
+                return self.ok({'token': draft.token, 'scope': scope.value})
+            if act == 'file':  # тело — сам файл: ?token=…&name=…&slot=…
+                draft = FeedDraft(data_dir, str(query.get('token') or ''))
+                return self.ok(
+                    draft.put(feed, str(query.get('name') or '')[:120], self.handler.body(), query.get('slot') or None)
+                )
+            data = self.data()
+            draft = FeedDraft(data_dir, str(data.get('token') or ''))
+            if act == 'cancel':
+                draft.drop()
+                return self.ok()
+            if act == 'cur':
+                draft.set_cur(feed, str(data.get('slot') or ''), str(data.get('cur') or ''))
+                return self.ok()
+            if act == 'move':
+                return self.ok(draft.move(feed, str(data.get('slot') or ''), str(data.get('into') or '')))
+            if not draft.info(feed)['files']:
+                return self.err(400, 'Сначала выберите новый файл')
+            if act == 'preview':
+                return self.ok(FeedUpdate(self.store, feed, draft).preview())
+            skip = [str(x)[:64] for x in data.get('skip') or [] if isinstance(x, str)]
+            res = FeedUpdate(self.store, feed, draft).apply(skip, actor_login or 'администратор')
+        except ValueError as exc:
+            return self.err(400, str(exc))
+        self.log(
+            'check_feed',
+            'catalog',
+            'feed:' + fid,
+            None,
+            {
+                'scope': res['scope'],
+                'files': [rec['name'] for rec in res['files']],
+                'applied': len(res['rows']),
+                'skipped': res['skipped'],
+            },
+        )
+        return self.ok(res)
+
     def feeds(self, method, sub, query, actor_login) -> None:
         import feeds
         from equipment_types import load_types
@@ -1549,6 +1607,9 @@ class AdminApi:
                 {'url': feed['url'] or feed.get('kind'), 'name': feed['name']},
             )
             return self.ok(feed)
+        upd = re.match(r'^feeds/([a-z0-9-]{1,40})/update/(start|file|cur|move|preview|apply|cancel)$', sub)
+        if upd:
+            return self.feed_update(method, upd.group(1), upd.group(2), query, actor_login)
         match: Any = re.match(
             r'^feeds/([a-z0-9-]{1,40})/(preview|import|check|delete|log|status|upload|file|discounts|plan|loadplan|rebuild|purge|unblock)$',
             sub,

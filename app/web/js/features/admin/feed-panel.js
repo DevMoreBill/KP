@@ -7,6 +7,7 @@ import { UiKit } from '../../ui/ui-kit.js';
 import { Spoiler } from '../station/spoiler.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { FEAT } from '../../core/features.js';
 
 /** Открытый фид: сверху — что сделать сейчас и файлы поставщика; редкое — под раскрытием (запоминается). */
 export class FeedPanel {
@@ -143,12 +144,29 @@ export class FeedActions {
     const noFile = ready ? '' : this.NO_PAGES;
     const built = feed.built;
     if (!built) return this._unbuilt(noFile);
+    if (FeedFiles.viaUpdate(feed)) return this._update(feed, noFile);
     const stock = feed.files && feed.files.stock;
     return `<div class="fd-build"><p class="ok-t">Каталог сформирован ${esc(FeedFmt.date(built.at))}${built.by ? ` · ${esc(built.by)}` : ''}: позиций ${Fmt.num(built.items || 0)}, сопоставлено с имевшимися ${Fmt.num(built.linked || 0)}, в корзину ${Fmt.num(built.trashed || 0)}.</p>
       <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые, если они появятся. Описания, фото и характеристики правятся вручную в карточке. Цены${stock ? ' и остатки' : ''}: загрузите новый прайс${stock ? ' или файл остатков' : ''} и нажмите «${FeedFmt.updLabel(feed)}».</p></div>
     <div class="row fd-acts"><button class="btn" type="button" data-fd="plan"${noFile}>Что нового в парсе</button>
       <button class="btn" type="button" data-fd="addnew"${noFile}>Добавить новые из парса</button>
       <button class="btn primary" type="button" data-fd="check"${feed.linked ? '' : ' disabled'}>${FeedFmt.updLabel(feed)}</button></div>`;
+  }
+
+  static _built(feed) {
+    const built = feed.built;
+    return `<p class="ok-t">Каталог сформирован ${esc(FeedFmt.date(built.at))}${built.by ? ` · ${esc(built.by)}` : ''}: позиций ${Fmt.num(built.items || 0)}, сопоставлено с имевшимися ${Fmt.num(built.linked || 0)}, в корзину ${Fmt.num(built.trashed || 0)}.</p>`;
+  }
+
+  // «Обновить цены…» / «Обновить остатки…»: новые файлы → список изменений → применить отмеченное (feed-update.js)
+  static _update(feed, noFile) {
+    const off = feed.linked ? '' : ' disabled title="Сначала сформируйте каталог"';
+    return `<div class="fd-build">${this._built(feed)}
+      <p class="muted">Парс больше не меняет позиции каталога — только добавляет новые. Новые цены или остатки: нажмите кнопку и выберите файлы поставщика — программа покажет каждое изменение (было → стало), в каталог попадёт только отмеченное.</p></div>
+    <div class="row fd-acts"><button class="btn primary" type="button" data-fd="uprice"${off}>Обновить цены…</button>
+      <button class="btn" type="button" data-fd="ustock"${off}>Обновить остатки…</button>
+      <button class="btn" type="button" data-fd="plan"${noFile}>Что нового в парсе</button>
+      <button class="btn" type="button" data-fd="addnew"${noFile}>Добавить новые из парса</button></div>`;
   }
 
   static _unbuilt(noFile) {
@@ -241,9 +259,12 @@ export class FeedFiles {
   static PRICE_TIP =
     '<p>Книги Excel с листами по сериям: шапка «Модель» (полное название), характеристики, «Цена»/«РРЦ» (и столбцы опций). Объединённые ячейки учитываются. Можно загрузить несколько прайсов — по одному на марку или раздел; строки всех прайсов сопоставляются с парсом вместе.</p><p>Валюта берётся из шапки («Цена, €», «РРЦ, USD»). Если в файле её нет — выберите валюту у прайса (или у отдельного листа). «Дилерская цена» и «Дилер скидка, %» идут в закупку.</p><p>Новый прайс той же марки (с тем же именем файла без даты) заменяет прежний. Чтобы обновить цены, загрузите прайсы и нажмите «Обновить цены…».</p>';
 
-  static _row({ kind, title, accept, hint, meta, info, drop }) {
-    return `<div class="fd-file"><div><b>${title}</b>${UiKit.tip(hint)}<br>${meta ? `<span class="muted">${esc(meta.name)} · ${esc(FeedFmt.date(meta.at))} · ${info}</span>` : '<span class="bad-t">файл ещё не загружен</span>'}</div>
-      <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept="${accept}" data-fdfile="${kind}" hidden>${meta ? 'Заменить файл' : 'Загрузить файл'}</label>${drop ? `<button class="btn ghost" type="button" data-fd="fdrop" data-kind="${drop}" title="Убрать файл">✕</button>` : ''}</div></div>`;
+  static _row({ kind, title, accept, hint, meta, info, drop, locked = false }) {
+    const upload = locked
+      ? ''
+      : `<label class="btn fd-up"><input type="file" accept="${accept}" data-fdfile="${kind}" hidden>${meta ? 'Заменить файл' : 'Загрузить файл'}</label>`;
+    return `<div class="fd-file"><div><b>${title}</b>${UiKit.tip(hint)}<br>${meta ? `<span class="muted">${esc(meta.name)} · ${esc(FeedFmt.date(meta.at))} · ${info}</span>` : `<span class="${locked ? 'muted' : 'bad-t'}">файл ещё не загружен</span>`}</div>
+      <div class="fd-fbtn">${upload}${drop ? `<button class="btn ghost" type="button" data-fd="fdrop" data-kind="${drop}" title="Убрать файл">✕</button>` : ''}</div></div>`;
   }
 
   /**
@@ -255,11 +276,22 @@ export class FeedFiles {
     const files = feed.files || {};
     const pages = files.pages;
     const stock = files.stock;
+    const locked = this.viaUpdate(feed);
     return `<div class="fd-files">
     ${this._row({ kind: 'pages', title: 'Парс сайта (JSON или CSV)', accept: '.json,application/json,.csv,text/csv', hint: this.PAGES_TIP, meta: pages, info: pages ? `${Fmt.num(pages.rows)} ${KPGen.plural(pages.rows, 'позиция', 'позиции', 'позиций')}, разделов: ${pages.cats}` : '' })}
-    ${this.prices(FeedFmt.prices(feed))}
-    ${this._row({ kind: 'stock', title: 'Остатки на складе (XLSX)', accept: FeedState.XLSX, hint: this.STOCK_TIP, meta: stock, info: stock ? FeedFmt.stockInfo(stock) : '', drop: stock ? 'stock' : '' })}
+    ${this.prices(FeedFmt.prices(feed), { locked })}
+    ${this._row({ kind: 'stock', title: 'Остатки на складе (XLSX)', accept: FeedState.XLSX, hint: this.STOCK_TIP, meta: stock, info: stock ? FeedFmt.stockInfo(stock) : '', drop: stock ? 'stock' : '', locked })}
+    ${locked ? '<p class="muted">Новый прайс или файл остатков — кнопками «Обновить цены…» и «Обновить остатки…» вверху.</p>' : ''}
     <p class="muted fd-note" id="fdUpSt"></p></div>`;
+  }
+
+  /**
+   * Новые прайсы и остатки — через «Обновить цены…» / «Обновить остатки…» (каталог сформирован, функция включена).
+   * @param {object} feed
+   * @returns {boolean}
+   */
+  static viaUpdate(feed) {
+    return FeedFmt.isFiles(feed) && !!feed.built && FEAT.on('feedUpdate');
   }
 
   /**
@@ -280,11 +312,15 @@ export class FeedFiles {
   /**
    * Прайсы фида.
    * @param {object[]} prices
+   * @param {{locked?: boolean}} [opts] locked — новые прайсы только через «Обновить цены…»
    * @returns {string}
    */
-  static prices(prices) {
+  static prices(prices, { locked = false } = {}) {
+    const add = locked
+      ? ''
+      : `<label class="btn fd-up"><input type="file" accept="${FeedState.XLSX}" data-fdfile="price" data-slot="new" multiple hidden>+ Добавить прайс</label>`;
     return `<div class="fd-prs"><div class="fd-file"><div><b>Прайсы поставщика (XLSX)</b>${UiKit.tip(this.PRICE_TIP)}<br>${prices.length ? `<span class="muted">${prices.length} ${KPGen.plural(prices.length, 'файл', 'файла', 'файлов')}</span>` : '<span class="bad-t">прайс ещё не загружен</span>'}</div>
-      <label class="btn fd-up"><input type="file" accept="${FeedState.XLSX}" data-fdfile="price" data-slot="new" multiple hidden>+ Добавить прайс</label></div>${prices.map(price => this._price(price)).join('')}</div>`;
+      ${add}</div>${prices.map(price => this._price(price, { locked })).join('')}</div>`;
   }
 
   static _curSelect(value, attrs, auto) {
@@ -304,7 +340,7 @@ export class FeedFiles {
     return `<details class="fd-shc"${open ? ' open' : ''}><summary>Валюта по листам${missing.length ? ` (не указана: ${missing.length})` : ''}</summary><div class="fd-shl">${rows}</div></details>`;
   }
 
-  static _price(price) {
+  static _price(price, { locked = false } = {}) {
     const missing = (price.sheetCurs || []).filter(sheet => sheet.rows && !sheet.cur);
     const found = [
       ...new Set((price.sheetCurs || []).filter(sheet => sheet.rows && sheet.cur).map(sheet => sheet.cur)),
@@ -317,6 +353,6 @@ export class FeedFiles {
         : '';
     return `<div class="fd-file fd-pr"><div><b>Прайс</b> <span class="muted">${esc(price.name)} · ${esc(FeedFmt.date(price.at))} · ${Fmt.num(price.rows)} ${KPGen.plural(price.rows, 'строка', 'строки', 'строк')} на ${price.sheets} ${KPGen.plural(price.sheets, 'листе', 'листах', 'листах')}, с ценой: ${Fmt.num(price.withPrice)}${cur ? `, ${esc(cur)}` : ''}</span>${warn}
         <label class="fd-cur"><span>Валюта, где в файле не указана:</span> ${this._curSelect(price.curSet || '', `data-fdcur="${esc(price.slot)}" aria-label="Валюта прайса"`, 'как у фида')}</label>${this._sheets(price, missing)}</div>
-      <div class="fd-fbtn"><label class="btn fd-up"><input type="file" accept="${FeedState.XLSX}" data-fdfile="price" data-slot="${esc(price.slot)}" hidden>Заменить</label><button class="btn ghost" type="button" data-fd="fdrop" data-kind="price" data-slot="${esc(price.slot)}" title="Убрать прайс">✕</button></div></div>`;
+      <div class="fd-fbtn">${locked ? '' : `<label class="btn fd-up"><input type="file" accept="${FeedState.XLSX}" data-fdfile="price" data-slot="${esc(price.slot)}" hidden>Заменить</label>`}<button class="btn ghost" type="button" data-fd="fdrop" data-kind="price" data-slot="${esc(price.slot)}" title="Убрать прайс">✕</button></div></div>`;
   }
 }

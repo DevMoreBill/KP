@@ -194,6 +194,39 @@ def price_files(feed) -> list:
     return out
 
 
+class PriceSlots:
+    """Какой прайс фида заменяет новый файл: явно выбранный, тот же по имени файла (дата не важна) или новый."""
+
+    NEW = 'new'
+
+    @classmethod
+    def pick(cls, have: list, name, slot) -> tuple[str, dict | None]:
+        """→ (слот, мета заменяемого прайса | None — новый прайс)."""
+        if slot and slot != cls.NEW:
+            old = next((meta for meta in have if meta['slot'] == slot), None)
+            if not old:
+                raise ValueError('Прайс для замены не найден — обновите страницу')
+            return slot, old
+        key = feed_files.price_slot(name)
+        old = next(
+            (meta for meta in have if meta['slot'] == key or feed_files.price_slot(meta.get('name')) == key), None
+        )
+        if old is None and slot != cls.NEW and len(have) == 1 and have[0]['slot'] == 'price':
+            old = have[0]  # прежний единственный прайс фида — заменяется
+        if old:
+            return old['slot'], old
+        return cls.free(have, name), None
+
+    @staticmethod
+    def free(have: list, name) -> str:
+        """Свободный слот для нового прайса по имени файла."""
+        key = feed_files.price_slot(name)
+        free, slot_no = key, 2
+        while any(meta['slot'] == free for meta in have):
+            free, slot_no = f'{key}-{slot_no}', slot_no + 1
+        return free
+
+
 def feed_file_put(store, fid: str, kind, data, name, slot=None) -> dict:
     """Файл фида (парс сайта / прайс / остатки): сохранить на диск, запомнить мету в настройках фида; → мета."""
     feed = feed_get(store, fid)
@@ -203,28 +236,7 @@ def feed_file_put(store, fid: str, kind, data, name, slot=None) -> dict:
         raise ValueError('Фид из файлов принимает парс, прайсы и остатки; фид YML — только файл описаний (JSON)')
     old = None
     if kind == 'price':
-        have = price_files(feed)
-        if slot and slot != 'new':
-            old = next((slot_meta for slot_meta in have if slot_meta['slot'] == slot), None)
-            if not old:
-                raise ValueError('Прайс для замены не найден — обновите страницу')
-        else:
-            key = feed_files.price_slot(name)  # тот же поставщик в имени файла (дата не важна) — замена
-            old = next(
-                (
-                    slot_meta
-                    for slot_meta in have
-                    if slot_meta['slot'] == key or feed_files.price_slot(slot_meta.get('name')) == key
-                ),
-                None,
-            )
-            if old is None and slot != 'new' and len(have) == 1 and have[0]['slot'] == 'price':
-                old = have[0]  # прежний единственный прайс фида — заменяется
-            if old is None:
-                slot, slot_no = key, 2
-                while any(slot_meta['slot'] == slot for slot_meta in have):
-                    slot, slot_no = f'{key}-{slot_no}', slot_no + 1
-        slot = old['slot'] if old else slot
+        slot, old = PriceSlots.pick(price_files(feed), name, slot)
     meta = feed_files.save_file(DATA_DIR, fid, kind, data, name, slot if kind == 'price' else None)
     items = feeds(store)
     for x in items:
@@ -288,11 +300,12 @@ def feed_file_set(store, fid: str, kind, slot, act, cur='', sheet='') -> dict | 
     return x
 
 
-def load_prices(feed) -> list:
-    """Строки всех прайсов фида с валютой (лист → прайс → файл → фид); «Распродажа» — в конце."""
+def load_prices(feed, root: str = '') -> list:
+    """Строки всех прайсов фида с валютой (лист → прайс → файл → фид); «Распродажа» — в конце.
+    root — папка данных с файлами фида (черновик обновления, feed_update.FeedDraft), иначе — папка программы."""
     out = []
     for meta in price_files(feed):
-        data = feed_files.read_file(DATA_DIR, feed['id'], 'price', meta['slot'])
+        data = feed_files.read_file(root or DATA_DIR, feed['id'], 'price', meta['slot'])
         if not data:
             continue
         rows = feed_files.parse_price(data)[0]
@@ -1126,9 +1139,12 @@ def parse(data) -> dict:
     }
 
 
-def load(store, feed_cfg, max_age=CACHE_SEC) -> dict:
-    """Разобранный фид: YML — скачать (кэш 30 минут), из файлов — прочитать сохранённые файлы (кэш до новой загрузки файла)."""
+def load(store, feed_cfg, max_age=CACHE_SEC, root: str = '') -> dict:
+    """Разобранный фид: YML — скачать (кэш 30 минут), из файлов — прочитать сохранённые файлы (кэш до новой загрузки файла).
+    root — файлы фида из другой папки данных (черновик обновления цен или остатков): без кэша."""
     files = feed_cfg.get('kind') == 'files'
+    if root:
+        return _load_files(feed_cfg, root)
     key = (
         json.dumps(
             [feed_cfg.get('files'), feed_cfg.get('maker'), feed_cfg.get('cur'), feed_cfg.get('priceOnly')],
@@ -1142,18 +1158,7 @@ def load(store, feed_cfg, max_age=CACHE_SEC) -> dict:
         if cached and cached[1] == key and (files or (datetime.now() - cached[0]).total_seconds() < max_age):
             return cached[2]
     if files:
-        pages = feed_files.read_file(DATA_DIR, feed_cfg['id'], 'pages')
-        prices = load_prices(feed_cfg)
-        if not pages and not prices:
-            raise ValueError('Сначала загрузите файл парса сайта (CSV) или прайс')
-        stock = feed_files.read_file(DATA_DIR, feed_cfg['id'], 'stock')
-        feed = feed_files.build_feed(
-            feed_cfg,
-            feed_files.parse_pages(pages) if pages else [],
-            prices,
-            _param_name,
-            feed_files.parse_stock(stock) if stock else None,
-        )
+        feed = _load_files(feed_cfg, DATA_DIR)
     else:
         feed = parse(fetch(feed_cfg['url']))
         extra = (
@@ -1166,6 +1171,21 @@ def load(store, feed_cfg, max_age=CACHE_SEC) -> dict:
     with _LOCK:
         _CACHE[feed_cfg['id']] = (datetime.now(), key, feed)
     return feed
+
+
+def _load_files(feed_cfg, root: str) -> dict:
+    pages = feed_files.read_file(root, feed_cfg['id'], 'pages')
+    prices = load_prices(feed_cfg, root)
+    if not pages and not prices:
+        raise ValueError('Сначала загрузите файл парса сайта (CSV) или прайс')
+    stock = feed_files.read_file(root, feed_cfg['id'], 'stock')
+    return feed_files.build_feed(
+        feed_cfg,
+        feed_files.parse_pages(pages) if pages else [],
+        prices,
+        _param_name,
+        feed_files.parse_stock(stock) if stock else None,
+    )
 
 
 def preview(store, feed_cfg, types) -> dict:
@@ -3027,14 +3047,33 @@ def _maker_cards(store, feed) -> list:
     return out
 
 
-def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tuple:
-    """Ручные карточки производителя ↔ строки прайса: РРЦ, цена КП и закупка по сетке скидок."""
+class CatalogPut:
+    """Запись позиции, изменённой фидом, в каталог; правку менеджера за время проверки не затираем (номер правки)."""
+
+    def __init__(self, store, author: str) -> None:
+        self.store, self.author, self.revs = store, author, store.catalog_revs()
+
+    def put(self, was: dict, doc: dict) -> bool:
+        """was — позиция до изменений; → записана ли."""
+        try:
+            self.store.catalog_put(
+                doc['id'], json.dumps(doc, ensure_ascii=False), self.author, self.revs.get(doc['id'])
+            )
+        except Conflict:
+            return False  # позицию изменили во время проверки — обновится при следующей
+        return True
+
+
+def price_cards(store, feed, prices, today, author: str = '', stock=None, sink=None) -> tuple:
+    """Ручные карточки производителя ↔ строки прайса: РРЦ, цена КП и закупка по сетке скидок.
+    sink — куда идут изменённые позиции (CatalogPut — в каталог; предпросмотр — только запоминает)."""
     changes: list = []
     sumr: dict[str, Any] = {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
     sidx = feed_files.stock_index(stock) if stock else None
-    revs = store.catalog_revs()  # правку менеджера за время проверки не затираем
+    sink = sink or CatalogPut(store, author or ('Фид «{}»'.format(feed['name'])))
     genset = any(price.get('genset') for price in prices)
     for doc in _maker_cards(store, feed):
+        was = json.loads(json.dumps(doc))
         attrs = doc.get('attrs') or {}
         sumr['cards'] += 1
         rows, why = feed_files.match_card(doc.get('name'), attrs.get('model'), attrs, prices)
@@ -3043,17 +3082,8 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tup
             sumr[key].append(
                 {'id': doc['id'], 'name': doc.get('name'), 'why': why, 'rows': [price['name'] for price in rows[:3]]}
             )
-            if genset and feed_files.GensetMatch.lost(doc, rows, feed['id'], today):
-                try:
-                    store.catalog_put(
-                        doc['id'],
-                        json.dumps(doc, ensure_ascii=False),
-                        author or ('Фид «{}»'.format(feed['name'])),
-                        revs.get(doc['id']),
-                    )
-                    sumr['updated'] += 1
-                except Conflict:
-                    pass  # позицию изменили во время проверки — обновится при следующей
+            if genset and feed_files.GensetMatch.lost(doc, rows, feed['id'], today) and sink.put(was, doc):
+                sumr['updated'] += 1
             continue
         price = rows[0]
         before = json.dumps(
@@ -3111,16 +3141,8 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None) -> tup
             != before
         ):
             doc['updatedAt'] = _now()
-            try:
-                store.catalog_put(
-                    doc['id'],
-                    json.dumps(doc, ensure_ascii=False),
-                    author or ('Фид «{}»'.format(feed['name'])),
-                    revs.get(doc['id']),
-                )
-            except Conflict:
-                continue  # позицию изменили во время проверки — обновится при следующей
-            sumr['updated'] += 1
+            if sink.put(was, doc):
+                sumr['updated'] += 1
     for k in ('noPrice', 'missing', 'unclear'):
         sumr[k] = sumr[k][:300]
     return changes, sumr

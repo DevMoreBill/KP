@@ -4,6 +4,7 @@ import { FeedForm, FeedPanel } from './feed-panel.js';
 import { FeedPurgeUi, FeedRulesUi } from './feed-rules.js';
 import { FeedState } from './feed-state.js';
 import { FeedJob, FeedLog, FeedPreview } from './feed-view.js';
+import { FeedUpdateUi } from './feed-update.js';
 import { MakerLogoPanel } from './maker-logos.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
@@ -38,6 +39,8 @@ export class FeedsTab {
     build: '_build',
     addnew: '_addNew',
     rebuild: '_rebuild',
+    uprice: '_update',
+    ustock: '_update',
   };
   static DROP = {
     price: [
@@ -69,6 +72,7 @@ export class FeedsTab {
     FeedState.types = reply.types || [];
     FeedState.sups = sups || [];
     const items = reply.items || [];
+    FeedState.feeds = items;
     if (FeedState.sel && !items.some(feed => feed.id === FeedState.sel)) FeedState.sel = null;
     if (!items.length && !FeedState.edit) FeedState.edit = { ...FeedState.REMEZA };
     const feed = items.find(entry => entry.id === FeedState.sel);
@@ -370,6 +374,13 @@ export class FeedsTab {
     });
     await this.render(main);
     FeedPreview.count(main);
+  }
+
+  // окно открывается сразу, без ожидания сервера: выбор файла браузер разрешает только в ответ на нажатие
+  static _update({ action, main }) {
+    const feed = FeedState.feeds.find(entry => entry.id === FeedState.sel);
+    if (!feed) return;
+    FeedUpdateUi.open(feed, action === 'uprice' ? 'price' : 'stock', () => this.render(main));
   }
 
   static async _check({ main }) {
