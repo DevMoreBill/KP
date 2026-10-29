@@ -162,6 +162,17 @@ class FilesFeedTest(Base):
         self.assertEqual(self.doc(self.ids['ВК-10'])['stock']['qty'], 2, 'наличие не трогается')
 
 
+    def test_compressor_price_with_rrc_is_not_genset(self):
+        """Прайс компрессоров «Модель / РРЦ» (Абсолют Индастриал) — не прайс-склад ДГУ: наличие — из файла остатков."""
+        feeds = self.feeds
+        book = Book.xlsx([('Компрессоры', [['Бренд', 'Модель', 'Наличие', 'РРЦ, €'],
+                                           ['ТестМаш', 'Винтовой компрессор ТестМаш ВК-10', 'на складе', 1000],
+                                           ['ТестМаш', 'Винтовой компрессор ТестМаш ВК-20', 'под заказ', 2000]])])
+        feeds.feed_file_put(self.st, self.fid, 'price', book, 'testmash-compressors.xlsx')
+        feed = feeds.load(self.st, feeds.feed_get(self.st, self.fid), max_age=0)
+        self.assertFalse(any(price.get('genset') for price in feed['prices']))
+        self.assertEqual(sorted(offer['qty'] for offer in feed['offers']), [0, 2], 'наличие — из файла остатков')
+
     def test_other_file_name(self):
         """Один прайс — новый файл с любым именем его заменяет; несколько — неузнанный файл можно переставить."""
         from feed_update import FeedDraft, Scope

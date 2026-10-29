@@ -11,6 +11,8 @@ PERCENT = 100
 SHARE_MAX = 1
 HEAD_SCAN = 15
 TEXT_MAX = 40
+# шапка листа ДГУ — с двигателем, генератором или кВА (у прайсов компрессоров «Модель / РРЦ» тоже есть)
+GENSET_WORDS = re.compile(r'ква|kva|альтернатор|генератор|двигател|мотор|prp')
 
 
 class Exec:
@@ -147,7 +149,7 @@ class Units:
     def head(rows: list) -> int | None:
         for i, row in enumerate(rows[:HEAD_SCAN]):
             text = ' '.join(str(v).lower() for v in row.values())
-            if 'модель' in text and 'наличи' in text and 'ррц' in text:
+            if 'модель' in text and 'наличи' in text and 'ррц' in text and GENSET_WORDS.search(text):
                 return i
         return None
 
@@ -207,8 +209,10 @@ class Models:
     def head(rows: list) -> int | None:
         for i, row in enumerate(rows[:HEAD_SCAN]):
             cells = [str(v).lower() for v in row.values()]
-            if any(re.search(r'^модель( электростанции)?$', cell.strip()) for cell in cells) and any(
-                re.search(r'альтернатор|ррц', cell) for cell in cells
+            if (
+                any(re.search(r'^модель( электростанции)?$', cell.strip()) for cell in cells)
+                and any(re.search(r'альтернатор|ррц', cell) for cell in cells)
+                and any(GENSET_WORDS.search(cell) for cell in cells)
             ):
                 return i
         return None
