@@ -84,6 +84,7 @@ OLD_FACTORY = {
         '4812bb9e9877f824385dc08f14cfb032',
         '974d5cfb3ea81e277751a04974a3d97f',
         '92c67f11a0a934e6be34451769dad715',
+        'c6340138a39635cd5fd817088996556f',
     ),
     'editor.json': (
         '05add2124882dec245a673c9949a8e12',

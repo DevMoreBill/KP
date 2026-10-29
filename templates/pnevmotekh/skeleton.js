@@ -639,8 +639,9 @@ function kpSkeleton(KP) {
       if (!BLK.coverTotal) return;
       const S = this.S, t = this.t, c = this.c, ST = this.ST;
       gap(this.tight ? 400 : 760);
+      // одна позиция — её модель; сборное изделие (asm) — своим названием
       const one = S.items.length === 1;
-      const comp = one ? `${S.items[0].qty} × ${c.model || S.items[0].name}` : this.multi ? `${ST.length} ${plural(ST.length, 'модель', 'модели', 'моделей')}, ${t.units} ед.` : `${S.items.length} ${plural(S.items.length, 'позиция', 'позиции', 'позиций')}, ${t.units} ед.`;
+      const comp = one ? `${S.items[0].qty} × ${S.items[0].asm ? S.items[0].name : c.model || S.items[0].name}` : this.multi ? `${ST.length} ${plural(ST.length, 'модель', 'модели', 'моделей')}, ${t.units} ед.` : `${S.items.length} ${plural(S.items.length, 'позиция', 'позиции', 'позиций')}, ${t.units} ед.`;
       const clean = s => String(s || '').replace(/\s+[—–-]\s+исполнение\s+\d+\s*$/i, '').trim();
       const optNames = [...new Set((BLK.coverKit ? S.items.flatMap(it => kitOf(it).map(kitName)) : []).concat(S.items.flatMap(it => (it.options || []).filter(o => o.name && +o.qty > 0).map(o => o.short || o.name))).map(clean))];
       const OM = RULES.coverOptionsMax;

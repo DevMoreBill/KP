@@ -31,6 +31,7 @@ class FactorySkeleton(unittest.TestCase):
 
         old = kp_templates.OLD_FACTORY['skeleton.js']
         self.assertIn('92c67f11a0a934e6be34451769dad715', old, 'скелет 3.198–3.225 обновляется')
+        self.assertIn('c6340138a39635cd5fd817088996556f', old, 'скелет 3.226.0 обновляется')
         for tid in ('pnevmotekh', 'tender'):
             now = kp_templates._norm_md5(os.path.join(REPO, 'templates', tid, 'skeleton.js'))
             self.assertNotIn(now, old, tid)

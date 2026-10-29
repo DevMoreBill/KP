@@ -155,12 +155,27 @@ export class CoverHint {
    */
   static of(item) {
     const type = EquipTypes.byId(Attrs.of(item).cat);
+    const simple = Kit.simple(item);
     return {
-      title: type.coverTitle || type.name,
-      model: CoverHint.model(item),
+      title: simple ? type.item || type.name : type.coverTitle || type.name,
+      model: simple ? CoverHint.asmModel(item, type) : CoverHint.model(item),
       desc: '',
       kpis: ItemSpec.kpis(item, this.KPIS),
     };
+  }
+
+  /**
+   * Сборное изделие — по своему названию: вид — строкой заголовка, крупно — остальное название («Grundfos CR 32-4 с ДГУ
+   * в контейнере»); название не начинается с вида — целиком.
+   * @param {object} item
+   * @param {object} type категория изделия
+   * @returns {string}
+   */
+  static asmModel(item, type) {
+    const name = String(item.name || '').trim();
+    const kind = String(type.item || '').trim();
+    const rest = kind && name.toLowerCase().startsWith(kind.toLowerCase()) ? name.slice(kind.length).trim() : '';
+    return rest || name;
   }
 
   /**

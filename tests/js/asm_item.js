@@ -253,4 +253,20 @@ check('выключатели: без нейросети кнопок ИИ не�
   AiDirect.state.enabled=false;
 });
 
+
+check('титул: сборное изделие — своим названием, станции и обычные позиции — как раньше', ()=>{
+  const item=KpState.newItem();
+  AsmItem.fill(item, pumpInput());
+  const hint=CoverHint.of(item);
+  assert.deepStrictEqual([hint.title, hint.model], ['Модульная насосная станция', 'Grundfos CR 32-4 с ДГУ в контейнере']);
+  item.name='Насосная станция для водоканала';
+  assert.strictEqual(CoverHint.of(item).model, 'Насосная станция для водоканала', 'название не с вида — целиком');
+  const pump={ name:'Насос', attrs:{ cat:'pump', maker:'Grundfos', model:'CR 32-4' } };
+  S.items=[item, pump];
+  assert.deepStrictEqual(KpModels.list().map(row=>row.model), ['Насосная станция для водоканала', 'Grundfos CR 32-4']);
+  assert.deepStrictEqual([CoverHint.of(pump).title, CoverHint.of(pump).model], ['Насосное оборудование', 'Grundfos CR 32-4']);
+  const station={ name:'Станция', attrs:{ cat:'st_pump' }, kit:{ parts:[{ id:'m', name:'Насос', role:'main', attrs:{ cat:'pump', maker:'Grundfos', model:'CR 32-4' } }] } };
+  assert.deepStrictEqual([CoverHint.of(station).title, CoverHint.of(station).model], ['Модульная насосная станция в блок-контейнере', 'Grundfos CR 32-4']);
+});
+
 if (!process.exitCode) console.log('Сборное изделие: проверок '+n+' — все прошли');

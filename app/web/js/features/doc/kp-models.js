@@ -26,6 +26,7 @@ export class KpModels {
   static MAIN_LINE = 2;
 
   static _model(item, attrs, station) {
+    if (Kit.simple(item)) return item.name; // сборное изделие — своим названием, а не моделью основного оборудования
     if (!station && item.hint && item.hint.model) return item.hint.model;
     if (station) return CoverHint.model(item) || item.name;
     return (attrs.model && attrs.maker ? `${attrs.maker} ${attrs.model}` : '') || item.name;
