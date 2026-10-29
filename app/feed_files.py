@@ -2158,7 +2158,7 @@ class StockFile:
     PROMO = re.compile(r'^скидки|^акци')
     WH_NAME = re.compile(r'^(склад|на каком складе)')
     QTY = re.compile(r'^(свободн\w* )?(остат\w*|кол-?во|количеств\w*|наличи\w*|свободн\w*|доступн\w*)(,? ?шт\.?)?$')
-    WH = re.compile(r'склад|остат|наличи')
+    WH_QTY = re.compile(r'склад|остат|наличи')
     WH_WORDS = re.compile(r'^(остат\w*|наличи\w*|кол-?во|количеств\w*)( (на|по) склад\w*)?[ ,:]*', re.I)
     TOTAL = re.compile(r'^(итого|всего)')
     TRANSIT = re.compile(r'в пути|транзит|ожида|поступ|приход')
@@ -2267,7 +2267,7 @@ class StockFile:
             roles['transit'].append(col)
         elif self.QTY.match(title) and (roles['qty'] is None or title.startswith('свобод')):
             roles['qty'] = col  # свободный остаток важнее общего: его можно продать
-        elif self.WH.search(title):
+        elif self.WH_QTY.search(title):
             roles['wh'][col] = self._wh_label(label)
 
     def _wh_label(self, title: str) -> str:

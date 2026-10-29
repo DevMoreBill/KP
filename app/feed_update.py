@@ -198,8 +198,10 @@ class PriceDiff:
         return doc.get(field) or None, cur
 
     @classmethod
-    def _pct(cls, old, new, same_cur: bool) -> float | None:
-        if not (old and new and same_cur):
+    def _pct(cls, was: tuple, now: tuple) -> float | None:
+        """was, now — (сумма, валюта); в разных валютах процент не считается."""
+        (old, old_cur), (new, cur) = was, now
+        if not (old and new and old_cur == cur):
             return None
         return round((new - old) / old * cls.PERCENT, 1)
 
@@ -219,12 +221,14 @@ class PriceDiff:
                     'oldCur': old_cur,
                     'new': new,
                     'cur': cur,
-                    'pct': cls._pct(old, new, old_cur == cur),
+                    'pct': cls._pct((old, old_cur), (new, cur)),
                 }
             )
-        rrc = next((ch for ch in out if ch['f'] == 'rrc'), None)
+        rrc = next((change for change in out if change['f'] == 'rrc'), None)
         return [
-            ch for ch in out if not (ch['f'] == 'price' and rrc and (ch['new'], ch['cur']) == (rrc['new'], rrc['cur']))
+            change
+            for change in out
+            if not (change['f'] == 'price' and rrc and (change['new'], change['cur']) == (rrc['new'], rrc['cur']))
         ]
 
     @staticmethod
@@ -262,6 +266,15 @@ class PriceDiff:
         row.update(cls._direction(changes, scope))
         return row
 
+    @staticmethod
+    def _way(change: dict) -> str:
+        """Цена: новая, пропала, выросла или снизилась."""
+        if not change['old']:
+            return 'new'
+        if not change['new']:
+            return 'gone'
+        return 'up' if change['new'] > change['old'] else 'down'
+
     @classmethod
     def _direction(cls, changes: list, scope: Scope) -> dict:
         if scope is Scope.STOCK:
@@ -272,12 +285,9 @@ class PriceDiff:
             elif old['available'] and not new['available']:
                 way = 'out'
             return {'dir': way, 'pct': None, 'sharp': False}
-        pcts = [ch['pct'] for ch in changes if ch['pct'] is not None]
+        pcts = [change['pct'] for change in changes if change['pct'] is not None]
         pct = max(pcts, key=abs) if pcts else None
-        ways = {
-            'new' if not ch['old'] else 'gone' if not ch['new'] else 'up' if ch['new'] > ch['old'] else 'down'
-            for ch in changes
-        }
+        ways = {cls._way(change) for change in changes}
         way = ways.pop() if len(ways) == 1 else 'mixed'
         return {'dir': way, 'pct': pct, 'sharp': pct is not None and abs(pct) > cls.SHARP_PCT}
 
@@ -412,13 +422,13 @@ class FeedUpdate:
             {
                 'id': row['id'],
                 'name': row['name'],
-                'kind': ch['f'],
-                'old': ch['old']['text'] if ch['f'] == 'stock' else ch['old'],
-                'new': ch['new']['text'] if ch['f'] == 'stock' else ch['new'],
-                'cur': '' if ch['f'] == 'stock' else ch['cur'],
+                'kind': change['f'],
+                'old': change['old']['text'] if change['f'] == 'stock' else change['old'],
+                'new': change['new']['text'] if change['f'] == 'stock' else change['new'],
+                'cur': '' if change['f'] == 'stock' else change['cur'],
             }
             for row in res['rows']
-            for ch in row['changes']
+            for change in row['changes']
         ][: self.LOG_ROWS]
         rec = {
             'at': feeds._now(),
