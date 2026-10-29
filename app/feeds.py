@@ -2114,7 +2114,9 @@ def _stock_txt(stock) -> str:
     wait = ', '.join(
         part
         for part in (
-            'в пути {}'.format(_fmt(stock['transit'])) if stock.get('transit') else '',
+            'в пути {}{}'.format(_fmt(stock['transit']), f' (до {stock["eta"]})' if stock.get('eta') else '')
+            if stock.get('transit')
+            else '',
             'в производстве {}'.format(_fmt(stock['prod'])) if stock.get('prod') else '',
         )
         if part

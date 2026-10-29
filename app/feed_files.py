@@ -11,7 +11,7 @@ import os
 import re
 import urllib.parse
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import images
@@ -2141,120 +2141,286 @@ def _by_code(name, by_code) -> dict | None:
 
 
 def parse_stock(data) -> list:
-    """XLSX остатков → [{sku, name, brand, qty, wh: {склад: шт}, transit, prod, eta, promo, sheet}]."""
-    out: dict = {}
-    for sname, rows in read_xlsx(data):
-        head_row = next(
+    """XLSX остатков → [{sku, skus, name, brand, qty, wh: {склад: шт}, transit, prod, eta, promo, sheet}] (StockFile)."""
+    return StockFile(data).rows()
+
+
+class StockFile:
+    """Файл остатков поставщика. Столбцы — по шапке (в две строки тоже: «Остатки по складам» над «Москва», «СПб») и по
+    содержимому: склады отдельными столбцами, общее количество, «итого», в пути, даты поступления, статус машины (HERTZ),
+    склад строки, скидки. Одна модель несколькими строками (партии, коды) — одна строка, количества складываются."""
+
+    HEAD = re.compile(r'^(артикул|код|номенклатура|наименование|модель)\b', re.I)
+    NAME = re.compile(r'^(номенклатура|наименование|название|модель)')
+    SKU = re.compile(r'^(артикул|код)')
+    BRAND = re.compile(r'^(бренд|марка|производитель)')
+    STATUS = re.compile(r'^статус')
+    PROMO = re.compile(r'^скидки|^акци')
+    WH_NAME = re.compile(r'^(склад|на каком складе)')
+    QTY = re.compile(r'^(свободн\w* )?(остат\w*|кол-?во|количеств\w*|наличи\w*|свободн\w*|доступн\w*)(,? ?шт\.?)?$')
+    WH = re.compile(r'склад|остат|наличи')
+    WH_WORDS = re.compile(r'^(остат\w*|наличи\w*|кол-?во|количеств\w*)( (на|по) склад\w*)?[ ,:]*', re.I)
+    TOTAL = re.compile(r'^(итого|всего)')
+    TRANSIT = re.compile(r'в пути|транзит|ожида|поступ|приход')
+    DATE = re.compile(r'дата|срок|прибыт')
+    RESERVE = re.compile(r'резерв')
+    DATE_TEXT = re.compile(r'(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?')
+    NUMERIC_SHARE = 0.6
+    SERIAL_MIN, SERIAL_MAX = 30000, 80000  # число Excel — дата (1982–2119)
+    EXCEL_DAY0 = datetime(1899, 12, 30)
+    HEAD_ROWS = 30
+    SUB_MIN = 2
+
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+        self.out: dict = {}
+
+    def rows(self) -> list:
+        for sname, rows in read_xlsx(self.data):
+            self._sheet(sname, rows)
+        if not self.out:
+            raise ValueError(
+                'В файле остатков не нашлось шапки «Артикул / Номенклатура» или «Бренд / Модель» и столбца с количеством'
+            )
+        return self._aliases(list(self.out.values()))
+
+    # ---------------------------------------------------------------- шапка и столбцы
+    @staticmethod
+    def _clean(text) -> str:
+        return re.sub(r'\s+', ' ', str(text or '')).strip()
+
+    def _head(self, rows: list) -> int | None:
+        return next(
             (
                 i
-                for i, row in enumerate(rows[:30])
-                if any(
-                    re.match(r'^(артикул|код|номенклатура|наименование|модель)\b', str(v).strip(), re.I)
-                    for v in row.values()
-                )
+                for i, row in enumerate(rows[: self.HEAD_ROWS])
+                if any(self.HEAD.match(self._clean(v)) for v in row.values())
             ),
             None,
         )
+
+    def _titles(self, rows: list, head_row: int) -> tuple[dict, int]:
+        """{столбец: подпись}; вторая строка шапки («Москва» под «Остатки по складам») — к подписи. → (подписи, первая строка данных)."""
+        head = {col: self._clean(v) for col, v in rows[head_row].items()}
+        sub = rows[head_row + 1] if head_row + 1 < len(rows) else {}
+        key_cols = [
+            col for col, title in head.items() if self.NAME.match(title.lower()) or self.SKU.match(title.lower())
+        ]
+        texts = {
+            col: self._clean(v) for col, v in sub.items() if self._clean(v) and _num(v) is None and col not in key_cols
+        }
+        if len(texts) >= self.SUB_MIN and not any(self._clean(sub.get(col)) for col in key_cols):
+            for col, text in texts.items():
+                head[col] = f'{head.get(col, "")} {text}'.strip() if head.get(col, '').lower() != text.lower() else text
+            return head, head_row + 2
+        return head, head_row + 1
+
+    def _numeric(self, data_rows: list, col) -> bool:
+        vals = [row.get(col) for row in data_rows if self._clean(row.get(col))]
+        return bool(vals) and sum(_num(v) is not None for v in vals) >= self.NUMERIC_SHARE * len(vals)
+
+    def _dated(self, data_rows: list, col) -> bool:
+        vals = [self._clean(row.get(col)) for row in data_rows if self._clean(row.get(col))]
+        return bool(vals) and sum(bool(self._eta(v)) for v in vals) >= self.NUMERIC_SHARE * len(vals)
+
+    def _roles(self, orig: dict, data_rows: list) -> dict:
+        """Роли столбцов: name, sku, brand, status, promo, whname; qty, total, transit — столбцы; wh — {столбец: склад}; eta."""
+
+        head = {col: title.lower() for col, title in orig.items()}
+
+        def pick(regex) -> Any:
+            return next((col for col, title in sorted(head.items()) if regex.match(title)), None)
+
+        roles: dict = {
+            'name': pick(self.NAME),
+            'sku': pick(self.SKU),
+            'brand': pick(self.BRAND),
+            'status': pick(self.STATUS),
+            'promo': pick(self.PROMO),
+            'whname': None,
+            'qty': None,
+            'total': None,
+            'transit': [],
+            'eta': None,
+            'wh': {},
+        }
+        taken = {roles[k] for k in ('name', 'sku', 'brand', 'status', 'promo')} - {None}
+        for col, title in sorted(head.items()):
+            if col in taken or not title:
+                continue
+            self._role(roles, col, title, data_rows, orig[col])
+        return roles
+
+    def _role(self, roles: dict, col, title: str, data_rows: list, label: str) -> None:
+        if self.RESERVE.search(title):
+            return
+        if (self.DATE.search(title) or self.TRANSIT.search(title)) and self._dated(data_rows, col):
+            roles['eta'] = roles['eta'] if roles['eta'] is not None else col
+            return
+        if not self._numeric(data_rows, col):
+            if self.WH_NAME.match(title) and roles['whname'] is None:
+                roles['whname'] = col
+            return
+        if self.TOTAL.match(title):
+            roles['total'] = col
+        elif self.TRANSIT.search(title):
+            roles['transit'].append(col)
+        elif self.QTY.match(title) and (roles['qty'] is None or title.startswith('свобод')):
+            roles['qty'] = col  # свободный остаток важнее общего: его можно продать
+        elif self.WH.search(title):
+            roles['wh'][col] = self._wh_label(label)
+
+    def _wh_label(self, title: str) -> str:
+        label = self.WH_WORDS.sub('', title).strip(' ,:') or title
+        return label[:1].upper() + label[1:40]
+
+    def _fallback_qty(self, roles: dict, data_rows: list) -> Any:
+        """Количество без подписи — столбец, где больше всего чисел."""
+        nums: dict = {}
+        for row in data_rows:
+            for col, v in row.items():
+                if col not in (roles['sku'], roles['name']) and _num(v) is not None:
+                    nums[col] = nums.get(col, 0) + 1
+        return max(nums, key=lambda col: nums[col]) if nums else None
+
+    # ---------------------------------------------------------------- строки
+    def _sheet(self, sname: str, rows: list) -> None:
+        head_row = self._head(rows)
         if head_row is None:
-            continue
-        head = {col: re.sub(r'\s+', ' ', str(v)).strip().lower() for col, v in rows[head_row].items()}
-
-        def pick(regex, head=head) -> Any:
-            return next((col_ix for col_ix, title in sorted(head.items()) if re.match(regex, title)), None)
-
-        sku, name = pick(r'^(артикул|код)'), pick(r'^(номенклатура|наименование|название|модель)')
-        brand, status = pick(r'^(бренд|марка|производитель)'), pick(r'^статус')
-        whc, promo = pick(r'^(склад|на каком складе)'), pick(r'^скидки|^акци')
-        if name is None and sku is None:
-            continue
-        titles = {re.sub(r'\s+', ' ', str(v)).strip().lower() for v in rows[head_row].values()}
+            return
+        head, first = self._titles(rows, head_row)
+        names = [col for col, title in head.items() if self.NAME.match(title.lower()) or self.SKU.match(title.lower())]
+        if not names:
+            return
+        titles = {self._clean(v).lower() for v in rows[head_row].values()}
         data_rows = [
             row
-            for row in rows[head_row + 1 :]
-            if str(row.get(name if name is not None else sku, '')).strip() not in ('', '0')
+            for row in rows[first:]
+            if any(self._clean(row.get(col)) not in ('', '0') for col in names)
             and not StockModel.is_head(row, titles)
-            and not any(
-                StockModel.HEAD_CELL.match(str(row.get(col, '')).strip()) for col in (sku, name) if col is not None
-            )
+            and not any(StockModel.HEAD_CELL.match(self._clean(row.get(col))) for col in names)
         ]
-        qty = pick(r'^(остат|кол-?во|количеств|наличи)')
-        if qty is None and status is None:
-            nums: dict = {}
-            for row in data_rows:
-                for col_key, v in row.items():
-                    if col_key not in (sku, name) and _num(v) is not None:
-                        nums[col_key] = nums.get(col_key, 0) + 1
-            qty = max(nums, key=lambda col_key: nums[col_key]) if nums else None
-            if qty is None:
-                continue
+        roles = self._roles(head, data_rows)
+        if roles['qty'] is None and roles['status'] is None and not roles['wh'] and roles['total'] is None:
+            roles['qty'] = self._fallback_qty(roles, data_rows)
+            if roles['qty'] is None:
+                return
         for row in data_rows:
-            name_match = re.sub(r'\s+', ' ', str(row.get(name, '') if name is not None else '')).strip()
-            sku_val = str(row.get(sku, '') if sku is not None else '').strip()
-            if not (name_match or sku_val) or NOTE_ROW.match(name_match or sku_val):
-                continue
-            qty_val = _num(row.get(qty)) if qty is not None else 1
-            qty_val = max(0, int(qty_val)) if qty_val else 0
-            status_val = str(row.get(status, '') if status is not None else '').strip().lower()
-            warehouse: Any = re.sub(r'\s+', ' ', str(row.get(whc, '') if whc is not None else '')).strip()
-            key = (
-                str(row.get(brand, '')).strip().lower() if brand is not None else '',
-                _sku_key(sku_val) or _sku_key(name_match),
-            )
-            x = out.setdefault(
-                key,
-                {
-                    'sku': sku_val[:60],
-                    'name': (name_match or sku_val)[:200],
-                    'brand': str(row.get(brand, '')).strip()[:40] if brand is not None else '',
-                    'qty': 0,
-                    'wh': {},
-                    'transit': 0,
-                    'prod': 0,
-                    'eta': '',
-                    'promo': '',
-                    'sheet': sname,
-                },
-            )
-            eta = re.search(r'(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?', status_val + ' ' + warehouse)
-            if status is None or re.search(r'на склад|в наличии', status_val):
-                x['qty'] += qty_val
-                if qty_val and warehouse and warehouse != '0' and not re.match(r'^\d', warehouse):
-                    x['wh'][warehouse[:40]] = x['wh'].get(warehouse[:40], 0) + qty_val
-            elif re.search(r'в пути', status_val):
-                x['transit'] += qty_val
-            elif re.search(r'производств|заказ', status_val):
-                x['prod'] += qty_val
-            if eta and not re.search(r'на склад', status_val):
-                eta_text = f'{int(eta.group(1)):02d}.{int(eta.group(2)):02d}'
-                x['eta'] = (
-                    min([x['eta'], eta_text], key=lambda title_val: (title_val[3:], title_val[:2]))
-                    if x['eta']
-                    else eta_text
-                )
-            promo_val = str(row.get(promo, '') if promo is not None else '').strip()
-            if promo_val and promo_val != '0' and not x['promo']:
-                promo_share = _num(promo_val)
-                x['promo'] = (
-                    (f'Скидка {promo_share * 100:g} %')
-                    if promo_share is not None and 0 < promo_share < 1
-                    else promo_val[:80]
-                )
-    if not out:
-        raise ValueError(
-            'В файле остатков не нашлось шапки «Артикул / Номенклатура» или «Бренд / Модель» и столбца с количеством'
+            self._row(sname, row, roles)
+
+    @staticmethod
+    def _count(v) -> int:
+        num = _num(v)
+        return max(0, int(num)) if num else 0
+
+    def _row(self, sname: str, row: dict, roles: dict) -> None:
+        name = self._clean(row.get(roles['name']) if roles['name'] is not None else '')
+        sku = self._clean(row.get(roles['sku']) if roles['sku'] is not None else '')
+        if not (name or sku) or NOTE_ROW.match(name or sku):
+            return
+        brand = self._clean(row.get(roles['brand'])) if roles['brand'] is not None else ''
+        rec = self.out.setdefault(
+            (brand.lower(), self._key(name, sku)),
+            {
+                'sku': sku[:60],
+                'skus': [],
+                'name': (name or sku)[:200],
+                'brand': brand[:40],
+                'qty': 0,
+                'wh': {},
+                'transit': 0,
+                'prod': 0,
+                'eta': '',
+                'promo': '',
+                'sheet': sname,
+            },
         )
-    # «НЭК» и «НЭК (Москва)» — один склад: короткое название — к единственному полному
-    names = {wh_val for x in out.values() for wh_val in x['wh']}
-    full = {
-        wh_val: [wh_name for wh_name in names if wh_name.lower().startswith(wh_val.lower() + ' (')] for wh_val in names
-    }
-    alias = {wh_val: wh_name[0] for wh_val, wh_name in full.items() if len(wh_name) == 1}
-    for x in out.values():
-        warehouse = {}
-        for wh_val, qty_val in x['wh'].items():
-            warehouse[alias.get(wh_val, wh_val)] = warehouse.get(alias.get(wh_val, wh_val), 0) + qty_val
-        x['wh'] = warehouse
-    return list(out.values())
+        if sku and sku[:60] not in rec['skus']:
+            rec['skus'].append(sku[:60])
+        status = self._clean(row.get(roles['status'])).lower() if roles['status'] is not None else ''
+        place = self._clean(row.get(roles['whname'])) if roles['whname'] is not None else ''
+        if roles['status'] is not None:
+            self._unit(rec, row, roles, status, place)
+        else:
+            self._amounts(rec, row, roles, place)
+        for col in roles['transit']:
+            rec['transit'] += self._count(row.get(col))
+        eta = self._eta(row.get(roles['eta'])) if roles['eta'] is not None else ''
+        if not eta and not re.search(r'на склад', status):
+            eta = self._eta(f'{status} {place}')
+        if eta:
+            rec['eta'] = min([rec['eta'], eta], key=lambda text: (text[3:], text[:2])) if rec['eta'] else eta
+        self._promo(rec, row, roles)
+
+    @staticmethod
+    def _key(name: str, sku: str) -> str:
+        """Одна модель — одна строка: по названию с кодом модели (партии, разные коды 1С); общее название без цифр
+        («Фильтр масляный») у разных артикулов — разные товары."""
+        if re.search(r'\d', name):
+            return 'n:' + _sku_key(name)
+        return 's:' + _sku_key(sku) if sku else 'n:' + _sku_key(name)
+
+    def _unit(self, rec: dict, row: dict, roles: dict, status: str, place: str) -> None:
+        """Строка на машину (HERTZ): статус — на складе, в пути, в производстве."""
+        qty = self._count(row.get(roles['qty'])) if roles['qty'] is not None else 1
+        if re.search(r'на склад|в наличии', status):
+            rec['qty'] += qty
+            self._place(rec, place, qty)
+        elif re.search(r'в пути', status):
+            rec['transit'] += qty
+        elif re.search(r'производств|заказ', status):
+            rec['prod'] += qty
+
+    def _amounts(self, rec: dict, row: dict, roles: dict, place: str) -> None:
+        """Сводка: склады столбцами (сумма — наличие), иначе общее количество (склад — из столбца «Склад»)."""
+        by_wh = {label: self._count(row.get(col)) for col, label in roles['wh'].items()}
+        if any(by_wh.values()):
+            for label, qty in by_wh.items():
+                if qty:
+                    rec['qty'] += qty
+                    rec['wh'][label] = rec['wh'].get(label, 0) + qty
+            return
+        col = roles['qty'] if roles['qty'] is not None else roles['total']
+        qty = self._count(row.get(col)) if col is not None else 0
+        rec['qty'] += qty
+        self._place(rec, place, qty)
+
+    @staticmethod
+    def _place(rec: dict, place: str, qty: int) -> None:
+        if qty and place and place != '0' and not re.match(r'^\d', place):
+            rec['wh'][place[:40]] = rec['wh'].get(place[:40], 0) + qty
+
+    def _eta(self, value) -> str:
+        """Дата поступления → «ДД.ММ»: текст «15.11.2026», «прибытие 27.10» или число-дата Excel."""
+        num = _num(value)
+        if num is not None and self.SERIAL_MIN <= num <= self.SERIAL_MAX:
+            day = self.EXCEL_DAY0 + timedelta(days=int(num))
+            return f'{day.day:02d}.{day.month:02d}'
+        found = self.DATE_TEXT.search(self._clean(value))
+        return f'{int(found.group(1)):02d}.{int(found.group(2)):02d}' if found else ''
+
+    def _promo(self, rec: dict, row: dict, roles: dict) -> None:
+        promo = self._clean(row.get(roles['promo'])) if roles['promo'] is not None else ''
+        if not promo or promo == '0' or rec['promo']:
+            return
+        share = _num(promo)
+        rec['promo'] = f'Скидка {share * 100:g} %' if share is not None and 0 < share < 1 else promo[:80]
+
+    @staticmethod
+    def _aliases(rows: list) -> list:
+        """«НЭК» и «НЭК (Москва)» — один склад: короткое название — к единственному полному."""
+        names = {wh_val for x in rows for wh_val in x['wh']}
+        full = {
+            wh_val: [wh_name for wh_name in names if wh_name.lower().startswith(wh_val.lower() + ' (')]
+            for wh_val in names
+        }
+        alias = {wh_val: wh_name[0] for wh_val, wh_name in full.items() if len(wh_name) == 1}
+        for x in rows:
+            merged: dict = {}
+            for wh_val, qty_val in x['wh'].items():
+                merged[alias.get(wh_val, wh_val)] = merged.get(alias.get(wh_val, wh_val), 0) + qty_val
+            x['wh'] = merged
+        return rows
 
 
 def _sku_key(text) -> str:
@@ -2376,8 +2542,8 @@ def stock_index(stock) -> tuple:
     by_sku: dict = {}
     by_code: dict = {}
     for row in stock:
-        if row['sku']:
-            by_sku.setdefault(_sku_key(row['sku']), []).append(row)
+        for sku in row.get('skus') or ([row['sku']] if row['sku'] else []):
+            by_sku.setdefault(_sku_key(sku), []).append(row)
         for code in {_code(row['name']), _code(row['sku'])} - {''}:
             by_code.setdefault(code, []).append(row)
     # строки с одним кодом и одинаковыми словами (исполнения «на шасси» / «без шасси») — одна строка
