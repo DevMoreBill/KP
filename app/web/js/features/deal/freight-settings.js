@@ -339,8 +339,8 @@ export class FreightSettingsView {
       ([key, , kind]) => `<td data-k="${key}">${FreightSettingsView._rateCell(cls, key, kind)}</td>`,
     ).join('');
     const src = `${cls.srcAuto ? 'ATI.SU · верх средних ставок' : esc(cls.src || '')}${cls.srcAt ? `<br>${esc(Fmt.dateTime(cls.srcAt))}` : ''}`;
-    return `<tr data-i="${i}" data-id="${esc(cls.id)}">${cells}<td><input type="checkbox" data-k="open"${cls.open ? ' checked' : ''} aria-label="Открытая площадка"></td>
-        <td><input type="checkbox" data-k="auto"${cls.auto !== false ? ' checked' : ''} aria-label="Ставка из автообновления"></td><td class="lg-srcc" title="${esc(cls.src || '')}">${src}</td><td><button class="icon" type="button" data-lgdel="cl" aria-label="Убрать">✕</button></td></tr>`;
+    return `<tr data-i="${i}" data-id="${esc(cls.id)}">${cells}<td><label class="lg-ck"><input type="checkbox" data-k="open"${cls.open ? ' checked' : ''} aria-label="Открытая площадка"></label></td>
+        <td><label class="lg-ck"><input type="checkbox" data-k="auto"${cls.auto !== false ? ' checked' : ''} aria-label="Ставка из автообновления"></label></td><td class="lg-srcc" title="${esc(cls.src || '')}">${src}</td><td><button class="icon" type="button" data-lgdel="cl" aria-label="Убрать">✕</button></td></tr>`;
   }
 
   /**

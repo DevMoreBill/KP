@@ -14,7 +14,7 @@ export class BitrixManagers {
     const byMail = ctx.portal.auto[manager.id] && !(ctx.state.users || {})[manager.id];
     return `<tr data-bxm="${esc(manager.id)}"><td>${esc(manager.name)}${byMail ? ' <em class="muted">по e-mail</em>' : ''}</td>
           <td>${panel.sel('data-k="user"', ctx.userOpts, ctx.users[manager.id] || '', 'Пользователь Битрикса')}</td>
-          <td><input type="checkbox" data-k="on"${own.on !== false ? ' checked' : ''} aria-label="Участвует в обмене"></td>
+          <td><label class="bx-ck"><input type="checkbox" data-k="on"${own.on !== false ? ' checked' : ''} aria-label="Участвует в обмене"></label></td>
           <td>${panel.sel('data-k="dir"', panel.dirOpts(['both', 'in', 'out'], 'как общее'), own.dir || '', 'Направление')}</td>
           <td>${panel.sel('data-k="cat"', ctx.cats, own.cat || '', 'Воронка новых сделок')}</td></tr>`;
   }
@@ -364,13 +364,13 @@ export class BitrixOld {
   static ACT = { new: 'новая', link: 'связать', skip: 'пропустить' };
 
   static _row(item) {
-    return `<tr><td><input type="checkbox" data-bximp="${esc(item.id)}"${item.act === 'skip' ? ' disabled' : ' checked'} aria-label="Загрузить"></td><td>${esc(item.title)} <span class="muted">№ ${esc(item.id)}</span></td><td>${esc(item.created)}</td><td>${item.sum ? esc(Money.rub(+item.sum)) : '—'}</td><td>${esc(item.stage)}</td><td>${esc(item.manager)}</td><td><b>${esc(this.ACT[item.act] || item.act)}</b> <span class="muted">${esc(item.why || '')}</span></td></tr>`;
+    return `<tr><td><label class="bx-ck"><input type="checkbox" data-bximp="${esc(item.id)}"${item.act === 'skip' ? ' disabled' : ' checked'} aria-label="Загрузить"></label></td><td>${esc(item.title)} <span class="muted">№ ${esc(item.id)}</span></td><td>${esc(item.created)}</td><td>${item.sum ? esc(Money.rub(+item.sum)) : '—'}</td><td>${esc(item.stage)}</td><td>${esc(item.manager)}</td><td><b>${esc(this.ACT[item.act] || item.act)}</b> <span class="muted">${esc(item.why || '')}</span></td></tr>`;
   }
 
   static _preview(preview, cats) {
     const panel = BitrixPanel;
     const table = preview.items.length
-      ? `<div class="tzi-tw"><table class="tzi-t bx-it"><thead><tr><th><input type="checkbox" id="bxImpAll" checked aria-label="Все"></th><th>Сделка Битрикса</th><th>Создана</th><th>Сумма</th><th>Этап</th><th>Менеджер</th><th>Что будет</th></tr></thead><tbody>
+      ? `<div class="tzi-tw"><table class="tzi-t bx-it"><thead><tr><th><label class="bx-ck"><input type="checkbox" id="bxImpAll" checked aria-label="Все"></label></th><th>Сделка Битрикса</th><th>Создана</th><th>Сумма</th><th>Этап</th><th>Менеджер</th><th>Что будет</th></tr></thead><tbody>
           ${preview.items.map(item => this._row(item)).join('')}</tbody></table></div>
           <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxImpGo">Загрузить отмеченные</button></div>`
       : '';

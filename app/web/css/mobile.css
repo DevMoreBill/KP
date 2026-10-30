@@ -412,3 +412,36 @@ html.big.mob body{zoom:1.15}
 .mob .ed-gaps{margin:8px 12px 0;padding:8px 10px;font-size:13.5px;line-height:1.35}
 .mob .ed-gapgo{margin:4px 4px 0 0;padding:3px 9px;min-height:32px}
 .mob .ed-gaphint{display:none}
+
+/* ---------- телефон: цели нажатия не меньше 44 × 44 px там, где на ПК поля и кнопки компактнее (тот же селектор + html.mob) ---------- */
+/* экономика сделки */
+html.mob .dealwin .dl-form input[type=text],html.mob .dealwin .dl-form input[type=date],html.mob .dealwin .dl-form select{min-height:44px}
+html.mob .dealwin .dl-form .dl-seg button,html.mob .dealwin .dl-where .dl-seg button{min-height:44px}
+html.mob .dealwin .dl-form .btn,html.mob .dealwin .dl-next .btn,html.mob dialog.dealwin .dlg-h .btn{min-height:44px}
+html.mob .dealwin .dl-form select.dl-dk{min-height:44px}
+html.mob dialog.dealwin .dl-price .dl-pr select,html.mob dialog.dealwin .dl-price .dl-pr input{min-height:44px}
+html.mob .dealwin .dl-form .dl-tr.pay .dl-trr .dl-ddt input[type=date]{min-height:44px}
+html.mob dialog.dealwin .dl-tr .dl-mvb,html.mob .dl-smv .dl-mvb{width:44px;height:44px}
+html.mob .dl-cbb{flex-basis:44px}
+html.mob .dl-q>summary{position:relative}
+html.mob .dl-q>summary::after{content:'';position:absolute;inset:-13px}
+html.mob .lg-t td input,html.mob .lg-st td input[type=text]{min-height:44px}
+html.mob .lg-ck,html.mob .bx-ck{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
+/* кабинет и карточка сделки */
+html.mob dialog.deal-dlg header.dk-top input.dk-title{min-height:44px}
+html.mob .dc-bx,html.mob .dk-bxc{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
+html.mob .cab-ck{min-width:44px}
+html.mob .wt-x input[type=month]{min-height:44px}
+html.mob .dd-k .chip{min-width:44px}
+/* КП, каталог, станции, «Настройки» */
+html.mob .checks li>button,html.mob .tplside button{min-height:44px}
+html.mob .chips .chip,html.mob .mtog button,html.mob .pickm>summary{min-width:44px}
+html.mob .imain .iname{min-height:44px}
+html.mob .kc-art .lnk{min-width:44px}
+html.mob .cv-opts .sw{min-height:44px}
+html.mob .tiles.sts .tile{min-height:44px}
+html.mob .ns-c .link,html.mob .ns-alt .link{min-height:44px}
+html.mob .kf-m .kf-n,html.mob .ca-h .lnk{display:inline-flex;align-items:center;min-height:44px}
+html.mob .jr-n .jr-f{min-width:44px;min-height:44px}
+html.mob .ls-it{min-height:44px}
+html.mob .toast-undo{min-height:44px}
