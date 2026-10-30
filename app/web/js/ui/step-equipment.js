@@ -131,7 +131,7 @@ export class EquipStep {
     const path = `items.${i}`;
     const type = EquipTypes.byId(Attrs.of(item).cat);
     const missing = this._missing(item, i);
-    return `<div class="item" id="item-${item.id}" data-pos="${i}">
+    return `<div class="item" id="item-${esc(item.id)}" data-pos="${i}">
    <div class="icard">
      <button type="button" class="ithumb" data-a="edit" data-i="${i}" data-tab="desc" data-thumb="${i}" title="Нажмите — фото и описание. Главное фото можно перетащить сюда или вставить (Ctrl+V), наведя курсор">${this._thumb(item)}</button>
      <div class="imain">

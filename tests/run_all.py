@@ -14,6 +14,7 @@
 по карте в Changed (сервер — где упомянут модуль; интерфейс — проверки в Node и кнопок; CSS — только статические) и
 правила проекта (test_project) — для мелких правок; полный набор делает CI при отправке (тремя частями, --shard). Имена наборов — только они (python tests/run_all.py test_api test_security). Код выхода 0 — всё прошло.
 """
+import collections
 import glob
 import importlib.util
 import json
@@ -103,6 +104,7 @@ class Changed:
 
 class Runner:
     ESLINT = 'eslint@10.1.0'
+    NOTES_SHOWN = 15  # мест сведений в журнале прогона (все — eslint с KP_ESLINT_REPORT=1)
     SLOW = ('test_fuzz', 'test_update_fallback', 'test_security')
 
     def __init__(self, argv):
@@ -135,6 +137,24 @@ class Runner:
         else:
             self.say('OK      %s (%.1f с)' % (name, time.time() - t))
 
+    def notes(self, name, cmd, env):
+        """Сведения без отказа (ESLint с --format json): сколько предупреждений по правилам и первые места — в журнале
+        прогона; шаг прогон не проваливает (правило становится ошибкой, когда все места разобраны)."""
+        t = time.time()
+        r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                           env=dict(os.environ, **env))
+        try:
+            rows = json.loads(r.stdout or '[]')
+        except ValueError:
+            self.say('СВЕДЕНИЯ %s: ответ не разобран (%.1f с)\n%s' % (name, time.time() - t, (r.stdout + r.stderr).strip()[-2000:]))
+            return
+        found = [(os.path.relpath(row['filePath'], REPO).replace(os.sep, '/'), msg) for row in rows for msg in row['messages']
+                 if msg.get('severity') == 1]
+        rules = collections.Counter(msg.get('ruleId') for _path, msg in found)
+        self.say('СВЕДЕНИЯ %s (%.1f с): %s' % (name, time.time() - t, ', '.join('%s — %d' % pair for pair in rules.most_common()) or 'замечаний нет'))
+        for path, msg in found[:self.NOTES_SHOWN]:
+            self.say('         %s:%d %s' % (path, msg.get('line', 0), msg.get('message', '')))
+
     def static(self):
         files = sorted(glob.glob(os.path.join(REPO, 'app', '*.py')) + glob.glob(os.path.join(HERE, '*.py')) +
                        glob.glob(os.path.join(HERE, 'ui', '*.py')) + glob.glob(os.path.join(REPO, '.github', 'scripts', '*.py')) +
@@ -148,6 +168,8 @@ class Runner:
         npx, node = shutil.which('npx'), shutil.which('node')
         if js and self.tool('ESLint', bool(npx), 'Node.js (npx)'):
             self.step('ESLint (%s)' % ('app/web/js' if js == ['app/web/js'] else '%d файл.' % len(js)), [npx, '--yes', self.ESLINT, '--max-warnings', '0'] + js)
+            self.notes('ESLint — разметка без esc(), сложность скриптов', [npx, '--yes', self.ESLINT, '--format', 'json'] + js,
+                       {'KP_ESLINT_REPORT': '1'})
         from code_style import CodeStyle
         style = CodeStyle(self.touched)
         for what in style.missing():

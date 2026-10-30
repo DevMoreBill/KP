@@ -49,6 +49,30 @@ class SyncBase(unittest.TestCase):
         return DealBook(self.st).on_kp(kid, m, 'Иванова Анна')
 
 
+class PullEdgeTest(SyncBase):
+    def test_truncated_funnel_not_skipped(self):
+        """Аудит 30.10: воронка упёрлась в предел опроса — следующий опрос продолжает её, а не перескакивает по времени
+        других воронок (правки за пределом раньше терялись)."""
+        from bitrix import BitrixConf, BitrixSync
+        self.addCleanup(setattr, BitrixSync, 'PULL_LIMIT', BitrixSync.PULL_LIMIT)
+        BitrixSync.PULL_LIMIT = 2
+        BitrixConf(self.st).mark(lastPull='2026-10-30T09:00:00+03:00', since='2026-10-30T00:00:00+03:00')
+
+        def deal(bx_id, cat, at):
+            return {'ID': bx_id, 'CATEGORY_ID': cat, 'DATE_MODIFY': '2026-10-30T%s:00+03:00' % at,
+                    'DATE_CREATE': '2026-01-01T00:00:00+03:00'}
+
+        rows = {3: [deal('101', '3', '10:00'), deal('102', '3', '10:05')], 5: [deal('201', '5', '11:00')]}
+        sync = self.sync()
+        sync._pull_cats = lambda: ['3', '5']
+        sync.api.list = lambda method, params, limit=0: rows.get(params['filter'].get('CATEGORY_ID'), []) if method == 'crm.deal.list' else []
+        sync.pull()
+        self.assertEqual(BitrixConf(self.st).get()['lastPull'], '2026-10-30T10:05:00+03:00')
+        rows[3] = [deal('103', '3', '10:20')]
+        sync.pull()
+        self.assertEqual(BitrixConf(self.st).get()['lastPull'], '2026-10-30T11:00:00+03:00', 'воронка дочитана — дальше как обычно')
+
+
 class SyncTest(SyncBase):
     def test_push_deal_company_rows_fields_files(self):
         from bitrix import BitrixQueue, BitrixLog

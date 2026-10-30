@@ -167,7 +167,7 @@ export class PricingBlock {
     }).join('');
     const date = pricing.rateDate ? ` на ${esc(KPGen.ruDate(pricing.rateDate).replace(/ г\.$/, ''))}` : '';
     let note = pricing.rateSrc === 'вручную' ? 'введён вручную' : '';
-    if (missing.length) note = `<span class="bad-t">Нужен курс ${missing.join(', ')}</span>`;
+    if (missing.length) note = `<span class="bad-t">Нужен курс ${esc(missing.join(', '))}</span>`;
     return `<div class="rates"><span class="muted">Курс ЦБ${date}:</span> ${shown}
        <button class="btn ghost sm" type="button" data-a="cbr" title="Обновить курсы с cbr.ru">↻ Обновить</button>
        <span class="muted" id="cbrMsg">${note}</span></div>`;

@@ -908,5 +908,6 @@ class DataFile:
                 if k not in cls.TECH and k not in skip and v is not None and v != ''
             }
         return hashlib.sha1(
-            json.dumps(rec, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+            json.dumps(rec, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8'),
+            usedforsecurity=False,
         ).hexdigest()[:12]

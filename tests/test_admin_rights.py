@@ -51,6 +51,19 @@ class AdminRightsUnitTest(unittest.TestCase):
         self.assertIn('обновлений', acc.refuse('kat', 'POST', '/api/admin/update/rollback'))
         self.assertEqual(acc.refuse('kat', 'GET', '/api/admin/update'), '')
 
+    def test_feed_delete_needs_right(self):
+        """Аудит 30.10: позиции фида в корзину (purge, сборка «с удалением отсутствующих») — право «Удаление и корзина»."""
+        acc = self.rights({'feeds': 'edit'})
+        self.assertIn('Удаление и корзина', acc.refuse('kat', 'POST', '/api/admin/feeds/f1/purge', {'block': True}))
+        self.assertIn('Удаление и корзина', acc.refuse('kat', 'POST', '/api/admin/feeds/f1/import', {'trashMissing': True}))
+        self.assertEqual(acc.refuse('kat', 'POST', '/api/admin/feeds/f1/import', {'trashMissing': False}), '')
+        self.assertEqual(acc.refuse('kat', 'POST', '/api/admin/feeds/f1/import', {}), '')
+        self.assertEqual(acc.refuse('kat', 'POST', '/api/admin/feeds/f1/check', {}), '')
+        with_delete = self.rights({'feeds': 'edit'}, ['delete'])
+        self.assertEqual(with_delete.refuse('kat', 'POST', '/api/admin/feeds/f1/purge', {'block': True}), '')
+        self.assertFalse(AdminRights.given(False))
+        self.assertTrue(AdminRights.given(True))
+
     def test_template_code_main_only(self):
         """FE-001: skeleton.js выполняется у всех, кто строит КП, — пишет и восстанавливает только главный."""
         acc = self.rights({'templates': 'edit'})
@@ -241,6 +254,11 @@ class AdminRightsStandTest(unittest.TestCase):
                          'тот же сервер — можно')
         st, body, _ = self.call(svc, 'POST', '/api/admin/mail', {'host': 'smtp.evil.example'})
         self.assertEqual(st, 403, body)
+        # аудит 30.10: без защиты соединения пароль ушёл бы открытым — это тоже «куда уходит пароль»
+        st, body, _ = self.call(svc, 'POST', '/api/admin/mail', {'host': 'smtp.ok.ru', 'security': 'none', 'port': 25})
+        self.assertEqual(st, 403, body)
+        self.assertEqual(self.call(svc, 'POST', '/api/admin/mail', {'host': 'smtp.ok.ru', 'port': 465, 'security': 'ssl'})[0],
+                         200, 'порт и защита как на экране (значения по умолчанию) — можно')
         self.assertEqual(self.call(svc, 'POST', '/api/admin/ai', {'model': 'deepseek-chat', 'base': ''})[0], 200)
         self.assertEqual(self.call(svc, 'POST', '/api/admin/ai', {'base': 'https://evil.example'})[0], 403)
         st, body, _ = self.call(svc, 'PUT', '/api/logistics/carriers',

@@ -1164,8 +1164,8 @@ class Store:
             if data[k]:
                 try:
                     data[k] = json.loads(data[k])
-                except Exception:
-                    pass
+                except (TypeError, ValueError):
+                    pass  # старая запись не в JSON — показывается как есть
         return data
 
     def audit_query(self, filt, limit: int = 50, offset: int = 0) -> dict:
@@ -1550,7 +1550,7 @@ class Store:
         if not old:
             return
         for name, part in (old.get('sup') or {}).items():
-            sid = 'sup_' + hashlib.md5(name.strip().lower().encode('utf-8')).hexdigest()[:10]
+            sid = 'sup_' + hashlib.md5(name.strip().lower().encode('utf-8'), usedforsecurity=False).hexdigest()[:10]
             if isinstance(part, dict) and not self.one('SELECT 1 FROM suppliers WHERE name=? COLLATE NOCASE', (name,)):
                 self.supplier_put(sid, dict(part, name=name))
         for cat, duty in (old.get('duty') or {}).items():
@@ -2232,8 +2232,8 @@ class Store:
                     cur = self.one('SELECT n FROM counters WHERE year=?', (int(match.group(1)),))
                     if not cur or cur[0] < v:
                         self.write('INSERT OR REPLACE INTO counters (year, n) VALUES (?,?)', (int(match.group(1)), v))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log(f'counter {file_name}: {exc}')
         clients_dir = os.path.join(data_dir, 'clients')
         if os.path.isdir(clients_dir):
             for name in os.listdir(clients_dir):
@@ -2241,22 +2241,22 @@ class Store:
                     try:
                         self.client_put(name[:-5], json.loads(read_json(os.path.join(clients_dir, name))))
                         count += 1
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log(f'client {name}: {exc}')
         checks_dir = os.path.join(data_dir, 'checks')
         if os.path.isdir(checks_dir):
             for name in os.listdir(checks_dir):
                 if name.endswith('.json'):
                     try:
                         self.check_put(name[:-5], json.loads(read_json(os.path.join(checks_dir, name))))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log(f'check {name}: {exc}')
         for key, file_name in (('integrations', 'integrations.json'), ('types', 'types.json')):
             file_path = os.path.join(data_dir, file_name)
             if os.path.isfile(file_path):
                 try:
                     self.kv_set(key, json.loads(read_json(file_path)))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log(f'{file_name}: {exc}')
         self.kv_set('migrated_json', _now())
         return count

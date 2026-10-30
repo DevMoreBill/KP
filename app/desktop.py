@@ -27,7 +27,7 @@ def _safe(func):
 @_safe
 def open_file(path: str) -> None:
     if os.name == 'nt':
-        os.startfile(path)
+        os.startfile(path)  # noqa: S606 — файл КП на своём компьютере: открыть программой Windows по умолчанию
     elif sys.platform == 'darwin':
         subprocess.Popen(['open', path])
     else:

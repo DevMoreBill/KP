@@ -15,6 +15,7 @@ from typing import Any
 from client_contacts import ClientContacts
 from defaults import SrvVal
 from net import Net
+from storage import DocLimits
 
 INN_COMPANY = 10
 INN_PERSON = 12
@@ -518,6 +519,8 @@ class Counterparties:
             raise ValueError('Некорректный идентификатор контрагента')
 
     def save_client(self, cid, body, author: str = '', base_rev=None) -> dict:
+        if len(body) > DocLimits.MAX_BYTES:  # общий справочник: карточка — не склад (как у поставщика)
+            raise ValueError('Карточка клиента слишком большая')
         client = json.loads(body.decode('utf-8'))
         self._check_id(cid)
         rev_in = client.pop('_rev', None)

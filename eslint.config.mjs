@@ -47,7 +47,57 @@ const jsdoc = {
   },
 };
 
-const KP = { rules: { jsdoc } };
+// innerHTML / outerHTML / insertAdjacentHTML с шаблоном: каждое ${…} — esc(…), число или разметка из таких же частей;
+// вызов другого метода (готовая разметка) правило не видит насквозь — такие места сводкой, решение по каждому — человеку
+const NUMERIC = new Set(['-', '*', '/', '%', '**', '<', '>', '<=', '>=', '===', '!==', '==', '!=', '&', '|', '^', '<<', '>>']);
+const NUMBER_CALLS = /^(Number|parseInt|parseFloat|Math\.\w+|KPGen\.money|\w+\.toFixed|\w+\.length)$/;
+const safeHtml = node => {
+  if (!node) return true;
+  switch (node.type) {
+    case 'Literal': return true;
+    case 'TemplateLiteral': return node.expressions.every(safeHtml);
+    case 'ConditionalExpression': return safeHtml(node.consequent) && safeHtml(node.alternate);
+    case 'LogicalExpression': return node.operator === '&&' ? safeHtml(node.right) : safeHtml(node.left) && safeHtml(node.right);
+    case 'BinaryExpression': return NUMERIC.has(node.operator) || (safeHtml(node.left) && safeHtml(node.right));
+    case 'UnaryExpression': case 'UpdateExpression': return true;
+    case 'MemberExpression': return !node.computed && node.property.name === 'length';
+    case 'CallExpression': {
+      const callee = node.callee.type === 'MemberExpression' && !node.callee.computed
+        ? `${node.callee.object.type === 'Identifier' ? node.callee.object.name : 'x'}.${node.callee.property.name}` : node.callee.name;
+      if (callee === 'esc' || NUMBER_CALLS.test(callee || '')) return true;
+      // список.map(x => `…`).join('') — по разметке внутри
+      if (node.callee.type === 'MemberExpression' && node.callee.property.name === 'join' && node.callee.object.type === 'CallExpression') {
+        const mapped = node.callee.object;
+        const body = mapped.callee.type === 'MemberExpression' && mapped.callee.property.name === 'map' && mapped.arguments[0];
+        return Boolean(body && /ArrowFunctionExpression/.test(body.type) && body.expression && safeHtml(body.body));
+      }
+      return false;
+    }
+    default: return false;
+  }
+};
+const escHtml = {
+  meta: { type: 'problem', schema: [], messages: { raw: 'В разметку без esc(): ${{{text}}}' } },
+  create(context) {
+    const src = context.sourceCode;
+    const check = tpl => {
+      if (!tpl || tpl.type !== 'TemplateLiteral') return;
+      for (const expr of tpl.expressions) {
+        if (!safeHtml(expr)) context.report({ node: expr, messageId: 'raw', data: { text: src.getText(expr).slice(0, 60) } });
+      }
+    };
+    return {
+      AssignmentExpression(node) {
+        if (node.left.type === 'MemberExpression' && ['innerHTML', 'outerHTML'].includes(node.left.property.name)) check(node.right);
+      },
+      CallExpression(node) {
+        if (node.callee.type === 'MemberExpression' && node.callee.property.name === 'insertAdjacentHTML') check(node.arguments[1]);
+      },
+    };
+  },
+};
+
+const KP = { rules: { jsdoc, 'esc-html': escHtml } };
 
 // папки, где уже наведён «чистый код» (решение владельца 20.10): говорящие имена и JSDoc у открытых методов
 const CLEAN = ['tz', 'tz-out', 'calc', 'rules', 'rules-doc', 'eskd', 'draw', 'view', 'layout', 'station', 'kit', 'req', 'wizard', 'crm', 'admin', 'doc', 'kp', 'deal', 'catalog'].map(d => `app/web/js/features/${d}/*.js`).concat('app/web/js/core/*.js', 'app/web/js/main.js', 'app/web/js/ui/*.js');
@@ -66,6 +116,17 @@ const STRICT = {
   'max-lines-per-function': ['error', { max: 50, skipBlankLines: true, skipComments: true }], 'max-lines': ['error', { max: 700, skipBlankLines: true, skipComments: true }],
 };
 
+// сведения, не отказ (tests/run_all.py и CI — отдельным шагом с KP_ESLINT_REPORT=1): разметка без esc(); сложность и длина
+// функций обычных скриптов (у ES-модулей это уже ошибки STRICT). esc-html — «error», когда все места разобраны
+const REPORT = process.env.KP_ESLINT_REPORT === '1' ? [{
+  files: ['app/web/js/**/*.js'],
+  plugins: { kp: KP },
+  rules: { 'kp/esc-html': 'warn' },
+}, {
+  files: ['app/web/js/boot.js', 'app/web/js/docx/kpgen.js'],
+  rules: { complexity: ['warn', 12], 'max-lines-per-function': ['warn', { max: 50, skipBlankLines: true, skipComments: true }] },
+}] : [];
+
 export default [{
   files: ['app/web/js/**/*.js'],
   languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: Object.fromEntries(BROWSER.map(n => [n, 'readonly'])) },
@@ -76,7 +137,16 @@ export default [{
     'no-dupe-keys': 'error',
     'no-unreachable': 'error',
     'no-redeclare': 'error',
+    // аудит 30.10: исполнение строки как кода и нестрогое сравнение — нигде (null — можно: «== null» — нет значения)
+    'no-eval': 'error',
+    'no-implied-eval': 'error',
+    'no-new-func': 'error',
+    eqeqeq: ['error', 'always', { null: 'ignore' }],
   },
+}, {
+  // скелет шаблона КП — код из папки шаблона: меняет только главный администратор (admin_rights, FE-001)
+  files: ['app/web/js/docx/kpgen.js'],
+  rules: { 'no-new-func': 'off' },
 }, ...(MODULES.length ? [{
   files: MODULES,
   languageOptions: { sourceType: 'module' },
@@ -89,4 +159,4 @@ export default [{
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },
-}];
+}, ...REPORT];

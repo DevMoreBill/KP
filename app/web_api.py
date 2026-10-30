@@ -178,8 +178,8 @@ class CbrCache:
                 res = dict(res, fetched=datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
                 try:
                     store().kv_set(key, res)
-                except Exception:
-                    pass
+                except Exception as exc:  # ответ отдаётся и без кэша
+                    ServerLog.failure(f'кэш «{key}» не сохранён', exc)
                 return res
             cls._failed[key] = time.time()
         res = res or {'error': 'ЦБ недавно не ответил — повтор позже'}
@@ -426,7 +426,9 @@ class TypesController(Controller):
                 save_user_types(self.body())
             return self.send_json(load_types())
         text = json.dumps(load_types(), ensure_ascii=False)
-        return self.send_cached('types-' + hashlib.md5(text.encode('utf-8')).hexdigest()[:16], lambda: text)
+        return self.send_cached(
+            'types-' + hashlib.md5(text.encode('utf-8'), usedforsecurity=False).hexdigest()[:16], lambda: text
+        )
 
 
 class GeoController(Controller):
@@ -452,7 +454,7 @@ class GeoController(Controller):
             if act == 'unshort':
                 return self.send_json({'url': geo.unshort(query.get('u', ''))})
         except Exception as exc:
-            return self.send_json({'error': str(exc)[:300] or exc.__class__.__name__})
+            return self.send_json({'error': self.no_paths(exc)[:300] or exc.__class__.__name__})
         return self.text(404, 'Нет такого запроса')
 
 
@@ -1166,7 +1168,7 @@ class ToolsController(Controller):
         try:
             ctype, data = imgfetch.fetch_image(self.query.get('url') or '')
         except Exception as exc:
-            return self.text(422, f'Картинка не загружена: {exc}')
+            return self.text(422, f'Картинка не загружена: {self.no_paths(exc)}')
         return self.send(200, ctype, data)
 
     @route(r'/api/ai/status', 'GET')  # нейросеть в программе: включена ли (без ключа и адреса)
@@ -1204,7 +1206,7 @@ class ToolsController(Controller):
         try:
             return self.send_json(feeds.page_text(str(data.get('url') or '').strip(), defaults.img_opts(store())))
         except Exception as exc:
-            return self.text(422, f'Страница не прочитана: {str(exc)[:200]}')
+            return self.text(422, f'Страница не прочитана: {self.no_paths(exc)[:200]}')
 
     @route(r'/api/pdftext', 'POST')  # текст из PDF (паспорт, каталог, ТЗ) — для автозаполнения карточки
     def pdftext(self) -> None:
@@ -1215,7 +1217,7 @@ class ToolsController(Controller):
             res.pop('per', None)  # текст по страницам — только для разбора ТЗ
             return self.send_json(res)
         except Exception as exc:
-            return self.text(422, f'PDF не прочитан: {str(exc)[:200]}')
+            return self.text(422, f'PDF не прочитан: {self.no_paths(exc)[:200]}')
 
     @route(
         r'/api/fileimages', 'POST'
@@ -1233,7 +1235,7 @@ class ToolsController(Controller):
             try:
                 out['text'] = DocText.extract(name, body)['text']
             except Exception as exc:
-                out['error'] = str(exc)[:200]
+                out['error'] = self.no_paths(exc)[:200]
         return self.send_json(out)
 
     @route(r'/api/tz/parse', 'POST')  # ТЗ заказчика (PDF, DOCX, XLSX, ODT, RTF, TXT): текст и требования к станции
@@ -1246,7 +1248,7 @@ class ToolsController(Controller):
         try:
             doc = DocText.extract(str(self.query.get('name') or '')[:200], self.body())
         except Exception as exc:
-            return self.text(422, f'ТЗ не прочитано: {str(exc)[:200]}')
+            return self.text(422, f'ТЗ не прочитано: {self.no_paths(exc)[:200]}')
         res = TzParse.parse(doc['text'])
         res.update(
             text=doc['text'][:20000].replace('\f', '\n'),
@@ -1303,7 +1305,7 @@ class ToolsController(Controller):
                 )
             )
         except Exception as exc:
-            return self.text(422, f'Фото со страницы не загружены: {str(exc)[:200]}')
+            return self.text(422, f'Фото со страницы не загружены: {self.no_paths(exc)[:200]}')
 
 
 class SettingsController(Controller):
@@ -1342,7 +1344,7 @@ class SettingsController(Controller):
         try:
             rec = logistics_api.AutoRates.now(store())
         except Exception as exc:
-            return self.text(502, f'ATI.SU: {exc}')
+            return self.text(502, f'ATI.SU: {self.no_paths(exc)}')
         return self.send_json(rec or {'error': 'Не задан ключ ATI.SU («Интеграции») или обновление уже идёт'})
 
     @route(r'/api/logistics/carriers', ('GET', 'PUT'))  # перевозчики: включение и адреса API (изменяет администратор)
@@ -1415,11 +1417,11 @@ class SettingsController(Controller):
         store().kv_set('uitexts', out)
         return self.send_json({'ok': True, 'count': len(out)})
 
-    @route(r'/api/version', 'GET')  # версия программы и установленное обновление
+    @route(r'/api/version', 'GET')  # версия и есть ли обновление; путь к папке — нет: адрес открыт до входа
     def version(self) -> None:
         import version
 
-        return self.send_json({'version': version.VERSION, 'patched': bool(UPDATE_DIR), 'updateDir': UPDATE_DIR})
+        return self.send_json({'version': version.VERSION, 'patched': bool(UPDATE_DIR)})
 
     @route(r'/api/calendar', 'GET')  # производственный календарь РФ (рабочие / банковские дни)
     def calendar(self) -> Any:
@@ -1600,7 +1602,7 @@ class TrackController(Controller):
                 try:
                     pdf_convert.convert_file(path, pdf, counterparties().keys().get('convertapiKey'))
                 except Exception as exc:
-                    return self.text(422, f'PDF не создан: {str(exc)[:200]}')
+                    return self.text(422, f'PDF не создан: {self.no_paths(exc)[:200]}')
             with open(pdf, 'rb') as handle:
                 files.append((os.path.basename(pdf), handle.read(), 'application/pdf'))
         if not files:

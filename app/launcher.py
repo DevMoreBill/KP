@@ -122,8 +122,8 @@ class Launcher:
         try:
             sys.stdout.flush()
             sys.stderr.flush()
-        except Exception:
-            pass
+        except (AttributeError, OSError, ValueError):
+            pass  # консоли нет (в EXE без окна потоки — None) или она закрыта
         os._exit(0)  # сразу: фоновые задачи неудачной версии не должны пережить перезапуск
 
     def _unload(self) -> None:
@@ -194,12 +194,12 @@ class Launcher:
 
             if not config.SERVER_MODE:
                 return config.MessageBox.error(text)
-        except Exception:
-            pass
+        except Exception as exc:  # окно не открылось — причина рядом с текстом в консоли
+            text += f'\n(окно не открылось: {exc})'
         try:
             print(text, file=sys.stderr, flush=True)
-        except Exception:
-            pass
+        except (OSError, ValueError):
+            pass  # консоли нет — сказать некуда
 
 
 if __name__ == '__main__':

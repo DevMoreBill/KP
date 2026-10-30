@@ -240,11 +240,16 @@ def _png_unpredict(data, cols) -> bytes:
 class Doc:
     REF_DEPTH = 20
     TREE_DEPTH = 30
+    # распаковано на весь документ (повторные ссылки на поток считаются): сжатый текст и чертежи — до 10–20 раз,
+    # «бомба» из одного потока, на который ссылаются тысячи раз, — нет; сверх бюджета потоки не читаются
+    UNPACK_MIN = 4 * MAX_STREAM
+    UNPACK_RATIO = 25
 
     def __init__(self, data) -> None:
         if not data.startswith(b'%PDF') and b'%PDF' not in data[:1024]:
             raise ValueError('это не PDF')
         self.data, self.objs = data, {}
+        self.budget = max(self.UNPACK_MIN, len(data) * self.UNPACK_RATIO)
         for match in _OBJ_RX.finditer(data):
             num = int(match.group(1))
             lexer = _Lexer(data, match.end())
@@ -283,8 +288,19 @@ class Doc:
         out += [v[1] for v in self.objs.values() if isinstance(v, tuple) and str(v[1].get('Type')) == 'XRef']
         return out
 
+    def _unpack(self, v) -> bytes:
+        """Распакованный поток (dict, сырые байты) в пределах бюджета документа."""
+        if self.budget <= 0:
+            return b''
+        try:
+            data = _decode_stream(v[1], v[2]) or b''
+        except (ValueError, zlib.error):
+            return b''
+        self.budget -= len(data)
+        return data if self.budget >= 0 else b''
+
     def _objstm(self, v) -> None:
-        data = _decode_stream(v[1], v[2])
+        data = self._unpack(v)
         if not data:
             return
         first, cnt = int(v[1].get('First') or 0), int(v[1].get('N') or 0)
@@ -310,12 +326,7 @@ class Doc:
 
     def stream(self, v) -> bytes:
         v = self.get(v)
-        if isinstance(v, tuple):
-            try:
-                return _decode_stream(v[1], v[2]) or b''
-            except (ValueError, zlib.error):
-                return b''
-        return b''
+        return self._unpack(v) if isinstance(v, tuple) else b''
 
     def pages(self) -> list:
         root = None

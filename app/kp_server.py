@@ -31,6 +31,7 @@ from config import (
     SERVER_MODE,
     BadRequest,
     MessageBox,
+    SettingsFile,
     store,
 )
 from data_setup import FreshBase, prepare_dirs, sync_counter_with_files
@@ -395,8 +396,8 @@ class Handler(BaseHTTPRequestHandler):
                     'text/plain; charset=utf-8',
                     str(exc) if isinstance(exc, BadRequest) else 'Неверный запрос: нужен JSON в кодировке UTF-8',
                 )
-            except Exception:
-                pass
+            except OSError:
+                pass  # браузер уже закрыл соединение
         except Exception as exc:
             # пользователю — без путей, подробности — в журнал сервера
             try:
@@ -456,7 +457,7 @@ def start_ipv6(port, main_server) -> None:
 
 
 def start_server() -> tuple:
-    host = '0.0.0.0' if SERVER_MODE else '127.0.0.1'
+    host = '0.0.0.0' if SERVER_MODE else '127.0.0.1'  # noqa: S104 — сервер отдела отвечает компьютерам сети
     ports = [BASE_PORT] if SERVER_MODE else range(BASE_PORT, BASE_PORT + 40)  # у сервера отдела адрес постоянный
     for port in ports:
         try:
@@ -482,6 +483,8 @@ def main() -> int:
                 'сервер отдела' if SERVER_MODE else 'программа на этом компьютере',
             )
         )
+    if SettingsFile.error:
+        ServerLog.failure(f'{SettingsFile.NAME} не читается ({SettingsFile.error}) — режим и папки по умолчанию')
     import importlib.util
 
     if importlib.util.find_spec('sqlite3') is None:  # база данных программы; без модуля программа работать не может
@@ -497,7 +500,7 @@ def main() -> int:
 
         store().kv_hook = SettingsHistory(store())  # правки настроек людьми — в историю с откатом
         ensure_templates()
-        store().migrate_json(DATA_DIR)  # переход с версии, хранившей данные в JSON-файлах
+        store().migrate_json(DATA_DIR, ServerLog.failure)  # переход с версии, хранившей данные в JSON-файлах
         admin.startup(store(), DATA_DIR)  # сброс пароля по data/admin-reset.txt, очистка корзины
         from app_update import Updater
 
@@ -631,8 +634,8 @@ def main() -> int:
         print(f'{APP_TITLE} запущен: {url}\nДанные: {DATA_DIR}\nГотовые КП: {DOCS_DIR}', flush=True)
         if SERVER_MODE:
             print(f'Режим сервера отдела. Сотрудники открывают: http://{socket.gethostname()}:{port}/', flush=True)
-    except Exception:
-        pass
+    except (OSError, ValueError):
+        pass  # консоли нет или она закрыта — запуск это не останавливает
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

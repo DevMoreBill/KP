@@ -1,15 +1,18 @@
 """Связь кабинета с Битрикс24 через входящий вебхук: API, настройки, очередь, связи, журнал, обмен, пробный прогон, старые сделки."""
 
 import base64
+import contextlib
 import hashlib
 import json
 import os
 import re
+import sqlite3
 import ssl
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, tzinfo
 from enum import Enum
 from pathlib import Path
@@ -26,6 +29,7 @@ from crm import DealBook, Stages, TaskBook
 from crm_funnels import DealFields, Funnels
 from deal_rules import DealRegs
 from kp_track import Val
+from server_log import ServerLog
 
 
 class BitrixError(RuntimeError):
@@ -345,6 +349,17 @@ class BitrixQueue:
         return getattr(cls._quiet, 'on', False)
 
     @classmethod
+    @contextlib.contextmanager
+    def quietly(cls) -> Iterator[None]:
+        """Правки, пришедшие из Битрикса, — без отправки обратно; вложенный вызов не снимает отметку внешнего."""
+        before = cls.quiet()
+        cls._quiet.on = True
+        try:
+            yield
+        finally:
+            cls._quiet.on = before
+
+    @classmethod
     def touch(cls, store, kind, local) -> None:
         """Событие программы: поставить в очередь, если связь включена (ошибка здесь не мешает работе программы)."""
         if cls.quiet() or not local:
@@ -357,8 +372,8 @@ class BitrixQueue:
                 'ON CONFLICT(kind, local_id) DO UPDATE SET added=excluded.added, tries=0, error=NULL, next_at=excluded.next_at',
                 (kind, str(local), Val.now(), Val.now()),
             )
-        except Exception:
-            pass
+        except Exception as exc:  # программа работает дальше, но несработавшая отметка видна в журнале сервера
+            ServerLog.failure(f'очередь Битрикс24: {kind} {local} не поставлено', exc)
 
     def due(self, limit: int = 200, tries=None) -> list:
         return self.store.all(
@@ -609,6 +624,7 @@ class BitrixSync:
     """Обмен с Битрикс24: очередь отправки и опрос изменений."""
 
     TEXT_MAX = 40
+    PULL_LIMIT = 2000  # сделок воронки за опрос
     PEOPLE_KEEP = 500  # отметок «контакты уже подтягивали сегодня»
     PEOPLE_BATCH = 30  # сделок за фоновый проход
 
@@ -1254,7 +1270,9 @@ class BitrixSync:
             else None
         )
         if rows is not None:
-            digest = hashlib.sha1(json.dumps(rows, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            digest = hashlib.sha1(
+                json.dumps(rows, sort_keys=True, ensure_ascii=False).encode(), usedforsecurity=False
+            ).hexdigest()
             rows_link = self.links.get('rows', did)
             if not rows_link or rows_link['sent'].get('h') != digest:
                 self.api.call('crm.deal.productrows.set', {'id': bid, 'rows': rows})
@@ -1441,7 +1459,6 @@ class BitrixSync:
     def _econ_back(self, deal, fields: dict) -> None:
         """Раздел «Экономика сделки», изменённый в Битриксе: статьи — поправкой в экономику КП (итоги уйдут обратно)."""
         from deal_econ import DealEcon
-        from server_log import ServerLog
 
         try:
             said = DealEcon(self.store).from_bitrix(deal['id'], fields, self.WHO)
@@ -1484,16 +1501,13 @@ class BitrixSync:
                 mgr = (mid, mgr_rec['name']) if mgr_rec else None
         if not body and not mgr and not fields:
             return
-        BitrixQueue._quiet.on = True
-        try:
+        with BitrixQueue.quietly():
             if body or mgr:
                 DealBook(self.store).update(deal['id'], body, self.WHO, None, mgr)
             if mgr:
                 TaskBook(self.store).move_deal(deal['id'], mgr[0])
             if fields:
                 DealBook(self.store).put_uf(deal['id'], fields, self.WHO)
-        finally:
-            BitrixQueue._quiet.on = False
         if fields:
             self._econ_back(deal, fields)
         shown = {k: back[k] for k in back if k in body or (k == 'manager' and mgr) or k.startswith('uf:')}
@@ -1512,7 +1526,7 @@ class BitrixSync:
         attach, sent_files, names, names_by = [], {}, [], {}
         for name, data, what in self._kp_payload(k):
             names_by[name] = what
-            digest = hashlib.sha1(data).hexdigest()
+            digest = hashlib.sha1(data, usedforsecurity=False).hexdigest()
             key = '{}|{}'.format(k['id'], name)
             link = self.links.get('file', key)
             sent_files[key] = digest
@@ -1521,10 +1535,14 @@ class BitrixSync:
                 attach.append((name, data, key, digest))
         note_text = KpNote.brief if self.rules.field('KP_PROFIT')['dir'] == 'off' else KpNote.full
         text = note_text(k, names)
-        core = hashlib.sha1(note_text(k, []).encode()).hexdigest()  # КП без файлов: изменилось ли само предложение
+        core = hashlib.sha1(
+            note_text(k, []).encode(), usedforsecurity=False
+        ).hexdigest()  # КП без файлов: изменилось ли само предложение
         note_key = 'note|{}'.format(k['id'])
         note = self.links.get('file', note_key)
-        digest = hashlib.sha1((text + json.dumps(sent_files, sort_keys=True)).encode()).hexdigest()
+        digest = hashlib.sha1(
+            (text + json.dumps(sent_files, sort_keys=True)).encode(), usedforsecurity=False
+        ).hexdigest()
         same_place = note is not None and note['bx'] == bid
         was = note['sent'] if note is not None else {}
         if same_place and was.get('h') == digest:
@@ -1718,14 +1736,17 @@ class BitrixSync:
         if not rules.can('deal', 'in') and not rules.can('deal', 'out'):
             self.conf.mark(lastPull=last, lastRun=Val.now())
             return res
-        deals = []
+        deals, edges = [], []
         for cat in self._pull_cats():  # воронки обмена: основная, отмеченные, менеджеров и повторённые в программе
             flt = {'CATEGORY_ID': int(cat), '>DATE_MODIFY': since_dt.isoformat(timespec='seconds')}
-            deals += self.api.list(
+            got = self.api.list(
                 'crm.deal.list',
                 {'filter': flt, 'select': self.mirror.select(), 'order': {'DATE_MODIFY': 'ASC'}},
-                limit=2000,
+                limit=self.PULL_LIMIT,
             )
+            deals += got
+            if len(got) >= self.PULL_LIMIT:  # воронка упёрлась в предел — дальше не дочитана
+                edges.append(str(got[-1].get('DATE_MODIFY') or ''))
         for bx_deal in sorted(deals, key=lambda x: str(x.get('DATE_MODIFY') or '')):
             last = max(last, str(bx_deal.get('DATE_MODIFY') or ''))
             did = self.links.local('deal', bx_deal.get('ID'))
@@ -1755,6 +1776,9 @@ class BitrixSync:
                 self._new_deal(bx_deal, mid)
                 res['created'] += 1
         res['tasks'] = self._pull_tasks(since_dt)
+        edge = min((one for one in edges if one), default='')
+        if edge > since:  # следующий опрос продолжит недочитанную воронку, а не перескочит её по времени других
+            last = min(last, edge)
         self.conf.mark(lastPull=last, lastRun=Val.now())
         return res
 
@@ -1784,11 +1808,8 @@ class BitrixSync:
             return
         if round(rub * 100) == int(deal.get('sum') or 0):
             return
-        BitrixQueue._quiet.on = True
-        try:
+        with BitrixQueue.quietly():
             DealBook(self.store).update(deal['id'], {'sum': rub}, self.WHO)
-        finally:
-            BitrixQueue._quiet.on = False
 
     def _new_deal(self, bx_deal, mid: str | None = None) -> dict:
         """Новая сделка воронки обмена; в кабинете — «Новые сделки из Битрикс24», пока ответственный не откроет."""
@@ -1826,14 +1847,11 @@ class BitrixSync:
         body.update(self.mirror.place(bx_deal))
         if bx_deal.get('OPPORTUNITY'):
             body['sum'] = bx_deal['OPPORTUNITY']
-        BitrixQueue._quiet.on = True
-        try:
+        with BitrixQueue.quietly():
             deal = DealBook(self.store).create(body, mid, mgr.get('name') or '', self.WHO)
             values = self.mirror.uf_of(bx_deal)
             if values:
                 DealBook(self.store).put_uf(deal['id'], values, self.WHO)
-        finally:
-            BitrixQueue._quiet.on = False
         self.links.put(
             'deal', deal['id'], bx_deal['ID'], dict(self._theirs(bx_deal), cat=str(bx_deal.get('CATEGORY_ID') or '0'))
         )
@@ -1951,11 +1969,8 @@ class BitrixSync:
         cid = company.get('clientId') or ''
         deal = DealBook(self.store).get(did) or {}
         if cid and not deal.get('clientId'):  # клиент сделки найден только сейчас — связать
-            BitrixQueue._quiet.on = True
-            try:
+            with BitrixQueue.quietly():
                 DealBook(self.store).update(did, {'clientId': cid}, self.WHO)
-            finally:
-                BitrixQueue._quiet.on = False
         client = self.store.client_get(cid) if cid else None
         return len((client or {}).get('contacts') or [])
 
@@ -2151,8 +2166,8 @@ class BitrixDry:
             if st2 is not None:
                 try:
                     st2.conn().close()
-                except Exception:
-                    pass
+                except sqlite3.Error:
+                    pass  # временная копия базы удаляется следом
             shutil.rmtree(tmp, ignore_errors=True)
 
 

@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 
 from counterparty import http_json
+from server_log import ServerLog
 
 QUERY_MIN = 3
 LAT_MAX = 90
@@ -130,8 +131,8 @@ def reverse(store, lat, lon) -> dict:
             sugg = (j.get('suggestions') or [None])[0]
             if sugg:
                 return dict(_dd_item(sugg), lat=lat, lon=lon, exact=True)
-        except Exception:
-            pass
+        except Exception as exc:  # ответит запасной сервис; сбой DaData (например, ключ) — в журнал сервера
+            ServerLog.note(f'DaData: адрес по координатам не получен — {exc}')
     j = _nom('/reverse', {'lat': lat, 'lon': lon, 'zoom': 18})
     if isinstance(j, dict) and j.get('address'):
         return dict(_nom_item(j), lat=lat, lon=lon, exact=True)

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 import version
 from defaults import SrvVal
+from server_log import ServerLog
 
 
 class SystemInfo:
@@ -98,8 +99,8 @@ class Attention:
         ):
             try:
                 out.extend(check())
-            except Exception:  # одна проверка не должна ломать обзор
-                pass
+            except Exception as exc:  # одна проверка не должна ломать обзор, но сбой её — в журнал сервера
+                ServerLog.failure(f'«Главная»: проверка {check.__name__}', exc)
         order = {'bad': 0, 'warn': 1, 'info': 2}
         return sorted(out, key=lambda x: order.get(x['level'], 3))
 
@@ -252,8 +253,6 @@ class Attention:
         ]
 
     def _errors(self):
-        from server_log import ServerLog
-
         log = ServerLog.of(self.cfg.DATA_DIR)
         count = log.count_since(24)
         return (

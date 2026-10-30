@@ -94,6 +94,8 @@ class AdminRights:
         rule(ADM + r'mail/test$', 'mail'),
         rule(ADM + r'bitrix(/.*)?$', 'bitrix', write='secrets', peek=('url',)),
         rule(ADM + r'audit(/.*)?$', 'audit'),
+        rule(ADM + r'feeds/[^/]+/purge$', 'feeds', write='delete'),
+        rule(ADM + r'feeds/[^/]+/import$', 'feeds', write='delete', peek=('trashMissing',)),
         rule(ADM + r'(feeds(/.*)?|logos)$', 'feeds'),
         rule(ADM + r'delete$', 'trash', write='delete'),
         rule(ADM + r'(kpfiles|dealfiles)/.*/delete$', 'db-kp', write='delete'),
@@ -266,7 +268,9 @@ class AdminRights:
 
     @staticmethod
     def given(value: Any) -> bool:
-        """Значение задано заново: не пусто и не «звёздочки», которыми экран показывает сохранённый пароль."""
+        """Значение задано заново: не пусто, не false и не «звёздочки», которыми экран показывает сохранённый пароль."""
+        if isinstance(value, bool):
+            return value
         if isinstance(value, dict):
             return any(AdminRights.given(item) for item in value.values())
         text = str(value or '').strip()

@@ -3,7 +3,7 @@ import { AdminNav } from './admin-nav.js';
 import { BackupTab } from './backup-tab.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { ListsPanel } from './lists-panel.js';
-import { RecordsTab } from './records-tab.js';
+import { RecordEdit } from './records-tab.js';
 import { SettingsWindow } from './settings-window.js';
 import { $, esc } from '../../core/util.js';
 import { Debounce } from '../../core/debounce.js';
@@ -419,7 +419,7 @@ export class SettingsSearch {
   static _record({ row, type, kind, tab, query }) {
     const label = row.title;
     if (type === 'catalog' || type === 'kp')
-      return { label, kind, tab, open: () => RecordsTab.open(type, row.id, () => {}) };
+      return { label, kind, tab, open: () => RecordEdit.open(type, row.id, () => {}) };
     return {
       label,
       kind,

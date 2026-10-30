@@ -174,7 +174,7 @@ export class AiFill {
     ]
       .filter(Boolean)
       .join('; ');
-    return `<p class="ai-add">Дополнено — проверьте по паспорту: ${what}${added.skipped ? ` · отброшено неуверенных: ${added.skipped}` : ''}.</p>`;
+    return `<p class="ai-add">Дополнено — проверьте по паспорту: ${esc(what)}${added.skipped ? ` · отброшено неуверенных: ${esc(added.skipped)}` : ''}.</p>`;
   }
 
   static _gap(item, data) {

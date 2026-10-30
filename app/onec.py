@@ -148,7 +148,8 @@ class OneCSync:
         conf = self.conf.get()
         if not conf['url']:
             raise ValueError('Не задан адрес публикации 1С')
-        seen = set(self.store.kv_get(self.SEEN) or [])
+        known = list(self.store.kv_get(self.SEEN) or [])  # учтённые поступления — по порядку, новые в конце
+        seen = set(known)
         pays = [
             pay
             for pay in self.api.payments(date.today() - timedelta(days=conf['days']))
@@ -162,7 +163,8 @@ class OneCSync:
             (matched if hit else unmatched).append(self._brief(pay, inns, hit))
             if hit:
                 seen.add(pay['Ref_Key'])
-        self.store.kv_set(self.SEEN, list(seen)[-self.SEEN_MAX :])
+                known.append(pay['Ref_Key'])
+        self.store.kv_set(self.SEEN, known[-self.SEEN_MAX :])  # уходят самые старые, а не случайные (порядок множества)
         result = {'at': date.today().isoformat(), 'checked': len(pays), 'matched': matched, 'unmatched': unmatched[:50]}
         self.conf.last({key: result[key] for key in ('at', 'checked')} | {'matched': len(matched)})
         return result

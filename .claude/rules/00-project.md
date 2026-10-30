@@ -98,5 +98,12 @@
      сервера (`kp_server`, `storage`, `web_api`) по скорости.
   Прогон — свой стенд на режим (режимы не мешают друг другу, повторять на прежней версии не нужно). Интерфейс —
   `/progon` (`tests/ui/progon.py`); схема базы — `/migraciya`; безопасность и расчёты — помощники `proverka-bezopasnosti`,
-  `proverka-raschetov` (`.claude/agents`). Хуки `.claude/hooks`: `guard.py` не даёт записать базы, выгрузки, ключи и `app/data/`,
-  `lint.py` проверяет файл сразу после правки.
+  `proverka-raschetov` (`.claude/agents`). Хуки `.claude/hooks`: `guard.py` не даёт записать базы, выгрузки, ключи и `app/data/`
+  и добавить в код голый except, eval/exec, pickle, shell=True, SQL через f-строку, var, new Function, document.write
+  (`Danger`), `lint.py` проверяет файл сразу после правки.
+- (30.10, аудит) Гейт безопасности — в имеющихся проверках (отдельного quality.yml нет): Ruff — правила S в `pyproject.toml`,
+  исключения только узкие (файл + правило) и с причиной, где доказано по коду; ESLint — `no-eval`, `no-implied-eval`,
+  `no-new-func` (кроме `docx/kpgen.js`), `eqeqeq`; `kp/esc-html` (разметка без `esc`) и сложность обычных скриптов —
+  сведениями без отказа (`KP_ESLINT_REPORT=1`: шаг в `run_all.py` и в CI), «error» — когда все места разобраны; каждый вызов
+  «Класс.метод(…)» импортированного класса интерфейса — метод есть у класса (`tests/js/static_calls.js`). Подавление
+  (`# noqa`, `eslint-disable`) — только доказанная ложная тревога, с причиной в строке.

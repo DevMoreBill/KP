@@ -92,7 +92,9 @@ export class JournalEcon {
     if (!econ) return { line: '<span class="muted">считаю…</span>', profitRub: null };
     if (!econ.withCost) return { line: '<span class="muted">закупка не указана</span>', profitRub: null };
     const part =
-      econ.withCost < econ.positions ? ` <span class="muted">(${econ.withCost} из ${econ.positions} поз.)</span>` : '';
+      econ.withCost < econ.positions
+        ? ` <span class="muted">(${esc(econ.withCost)} из ${esc(econ.positions)} поз.)</span>`
+        : '';
     return {
       line: `<span class="${econ.profit < 0 ? 'bad-t' : 'ok-t'}">прибыль ${KPGen.money(econ.profit)} ${Currency.short(cur)}</span> · маржа ${this._pct(econ.margin)}${part}${econ.discount ? ` · скидка ${KPGen.money(econ.discount)}` : ''}`,
       profitRub: this._profitRub(econ, cur),

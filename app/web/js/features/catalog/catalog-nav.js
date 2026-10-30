@@ -65,7 +65,7 @@ export class CatalogNav {
     const opts = this._sorted(counts);
     if (!opts.length && !cur) return '';
     const extra = cur && !counts.has(Str.norm(cur)) ? `<option selected>${esc(cur)}</option>` : '';
-    return `<label class="f"><span>${esc(label)}</span><select data-f="${key}" data-in="${inF ? 1 : ''}"><option value="">Все</option>${this._facetOptions(opts, cur)}${extra}</select></label>`;
+    return `<label class="f"><span>${esc(label)}</span><select data-f="${esc(key)}" data-in="${inF ? 1 : ''}"><option value="">Все</option>${this._facetOptions(opts, cur)}${extra}</select></label>`;
   }
 
   static _chipText(low, high) {
@@ -79,7 +79,7 @@ export class CatalogNav {
     const html = chips
       .map(([low, high]) => {
         const picked = String(range.min) === String(low || '') && String(range.max) === String(high ?? '');
-        return `<button class="chip${picked ? ' on' : ''}" type="button" data-rc="${esc(field.key)}" data-lo="${low || ''}" data-hi="${high ?? ''}">${this._chipText(low, high)}</button>`;
+        return `<button class="chip${picked ? ' on' : ''}" type="button" data-rc="${esc(field.key)}" data-lo="${esc(low || '')}" data-hi="${esc(high ?? '')}">${esc(this._chipText(low, high))}</button>`;
       })
       .join('');
     return `<div class="chips">${html}</div>`;

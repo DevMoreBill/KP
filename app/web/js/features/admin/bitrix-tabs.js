@@ -366,7 +366,7 @@ export class BitrixOld {
           ${preview.items.map(item => this._row(item)).join('')}</tbody></table></div>
           <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxImpGo">Загрузить отмеченные</button></div>`
       : '';
-    return `<p class="muted">Найдено ${preview.items.length}${preview.items.length >= preview.max ? ` (показаны первые ${preview.max})` : ''} · воронки: ${esc(cats.map(cat => panel.catName(cat)).join(', '))} · до ${esc(Fmt.date ? Fmt.date(preview.until) : preview.until)}</p>
+    return `<p class="muted">Найдено ${preview.items.length}${preview.items.length >= preview.max ? ` (показаны первые ${preview.max})` : ''} · воронки: ${esc(cats.map(cat => panel.catName(cat)).join(', '))} · до ${esc(preview.until)}</p>
         ${table}`;
   }
 

@@ -107,6 +107,16 @@ class OneCTest(MoneyBase):
         res, _calls = self.sync([self.pay('a3', 500000.0, 'Окончательный расчёт')])
         self.assertEqual(res['matched'][0]['step'], 'Окончательный расчёт 50 %', 'без номера — по сумме')
 
+    def test_seen_keeps_newest(self):
+        """Аудит 30.10: журнал учтённых поступлений обрезается по порядку — уходят самые старые (раньше — случайные: уже
+        учтённый платёж мог пройти второй раз и закрыть следующую оплату той же суммы)."""
+        from onec import OneCSync
+        self.addCleanup(setattr, OneCSync, 'SEEN_MAX', OneCSync.SEEN_MAX)
+        OneCSync.SEEN_MAX = 3
+        self.st.kv_set(OneCSync.SEEN, ['old1', 'old2', 'old3'])
+        self.sync([self.pay('a1', 500000.0, 'Оплата по счёту № 2026-001 от 01.10')])
+        self.assertEqual(self.st.kv_get(OneCSync.SEEN), ['old2', 'old3', 'a1'])
+
     def test_partial_and_whole(self):
         from crm_exec import ExecBook
         res, _calls = self.sync([self.pay('b1', 10000.0, 'Оплата по КП 2026-001')])

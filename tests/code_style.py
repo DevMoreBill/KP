@@ -43,6 +43,9 @@ class CodeStyle:
 
     @staticmethod
     def ruff() -> list[str] | None:
+        """Ruff от pip (закреплённая версия, как в CI) важнее первого на PATH: там может стоять другая версия с другими правилами."""
+        if importlib.util.find_spec('ruff'):
+            return [sys.executable, '-m', 'ruff']
         exe = shutil.which('ruff')
         return [exe] if exe else None
 

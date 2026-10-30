@@ -53,6 +53,44 @@ class GuardTest(unittest.TestCase):
     def test_other_tools(self):
         self.assertIsNone(self.verdict('Read', file_path='app/data/kp.sqlite3'), 'читать можно')
 
+    def test_danger(self):
+        """Опасные приёмы, которые правка добавляет: голый except, eval/exec, pickle, shell=True, SQL f-строкой, var,
+        new Function — запрет; уже имеющиеся в файле и безопасные похожие записи — можно."""
+        def edit(path, new, old='x = 1'):
+            return self.verdict('Edit', file_path=path, old_string=old, new_string=new)
+        blocked = ('try:\n    x = 1\nexcept:\n    pass', 'y = eval(text)', 'state = pickle.loads(raw)',
+                   "subprocess.run(cmd, shell=True)", "conn.execute(f'SELECT * FROM t WHERE id={cid}')")
+        for new in blocked:
+            self.assertTrue(edit('app/crm.py', new), new)
+        for new in ('var x = 1;', 'const run = new Function("return 1");'):
+            self.assertTrue(edit('app/web/js/core/util.js', new, 'const x = 1;'), new)
+        self.assertTrue(self.verdict('Write', file_path='app/zz_audit_new_module.py', content='y = eval(x)\n'), 'новый файл')
+        self.assertTrue(self.verdict('MultiEdit', file_path='app/web/js/core/util.js',
+                                     edits=[{'old_string': 'const a = 1;', 'new_string': 'const a = 1;'},
+                                            {'old_string': 'let b = 2;', 'new_string': 'var b = 2;'}]), 'MultiEdit с var')
+        allowed = (('app/crm.py', 'try:\n    x = 1\nexcept OSError:\n    pass', 'x = 1'),
+                   ('app/crm_exec.py', "self.book.put_exec(did, state, author, {'step': key})", 'x = 1'),
+                   ('app/storage.py', "conn.execute('SELECT 1 FROM t WHERE id=?', (i,))", 'x = 1'),
+                   ('app/web/js/core/util.js', 'const x = 1;', 'let x = 1;'),
+                   ('app/web/js/core/util.js', "box.style.color = 'var(--ink)';", 'const x = 1;'),
+                   ('app/web/js/core/util.js', 'box.innerHTML = `<b>${esc(name)}</b>`;', 'const x = 1;'),
+                   ('app/web/js/boot.js', 'var theme = 2;', 'var theme = 1;'),
+                   ('app/web/css/base.css', 'a { color: var(--ink); }', 'a {}'),
+                   ('.claude/hooks/guard.py', 'y = eval(x)', 'x = 1'))
+        for path, new, old in allowed:
+            self.assertIsNone(edit(path, new, old), (path, new))
+
+    def test_danger_rewrite_same(self):
+        """Перезапись любого имеющегося файла .py/.js его же текстом не запрещается (уже имеющееся — дело аудита)."""
+        paths = [os.path.join(dirpath, name) for top in ('app', 'tests', '.claude', '.github')
+                 for dirpath, _, names in os.walk(os.path.join(REPO, top)) for name in names
+                 if name.endswith(('.py', '.js', '.mjs')) and '__pycache__' not in dirpath]
+        self.assertGreater(len(paths), 500)
+        for path in paths:
+            with open(path, encoding='utf-8') as f:
+                text = f.read()
+            self.assertIsNone(self.verdict('Write', file_path=path, content=text), path)
+
 
 class LintTest(unittest.TestCase):
     def setUp(self):

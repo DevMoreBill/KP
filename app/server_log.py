@@ -102,8 +102,8 @@ class ServerLog:
         if sys.__stderr__ is not None:  # запуск из консоли — трассировка и там
             try:
                 sys.__stderr__.write(head + '\n' + trace)
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                pass  # консоль закрыта — запись в файле журнала уже есть
 
     @classmethod
     def failure(cls, where: str, exc: BaseException | None = None, trace=None) -> None:
@@ -220,8 +220,8 @@ class _LogStream(io.TextIOBase):
         if self.orig is not None:
             try:
                 self.orig.write(chunk)
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                pass  # консоль закрыта или не знает символа — в журнал строка всё равно попадёт
         text = getattr(self.buf, 'v', '') + str(chunk)
         *done, self.buf.v = text.split('\n')
         for line in done:
@@ -233,8 +233,8 @@ class _LogStream(io.TextIOBase):
         if self.orig is not None:
             try:
                 self.orig.flush()
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                pass  # консоль закрыта
 
     @property
     def encoding(self):

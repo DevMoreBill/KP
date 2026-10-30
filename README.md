@@ -526,6 +526,41 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.226.3 — что сделано:** (30.10, тотальный аудит кода — выпуск «безопасность и ошибки»; владелец спит, решения по
+умолчанию — в отчёте аудита)
+- Безопасность интерфейса: 16 мест вывода данных базы без `esc` (id позиции КП, коды валют, оценка проверки контрагента,
+  экономика в журнале, статус хода сделки, валюта закупки, история цен, ключи полей категорий, диапазоны фильтров, ответ ИИ
+  «дополнено») — `esc(...)`, для обычных данных вывод тот же.
+- Безопасность сервера: `pdf_text.Doc` — бюджет распаковки на документ (`UNPACK_MIN` 256 МБ, не меньше размера × 25; повторы
+  считаются; сверх бюджета потоки не читаются); `DocImages` — бюджет распаковки картинок PDF (`UNPACK_MAX` 400 МБ) и повтор
+  потока не распаковывается; `admin_rights`: `feeds/<id>/purge` и `feeds/<id>/import` с `trashMissing` — действие «delete»,
+  `AdminRights.given(False)` — не задано; `RightsCheck.MAIL_MOVE` — порт и защита почты тоже «куда уходит пароль» (сверка с
+  `Mailer.public()`, значения по умолчанию); `Counterparties.save_client` — не больше `DocLimits.MAX_BYTES`; `Net.request` —
+  только `SCHEMES` http(s); тексты ошибок 9 маршрутов — `Controller.no_paths`; `/api/version` — без пути к папке обновления;
+  hashlib md5/sha1 для отпечатков — `usedforsecurity=False` (19 мест).
+- Ошибки, проглоченные молча (Ruff S110/S112, 28 мест): потеря данных — в журнал сервера (`migrate_json` → `ServerLog.failure`,
+  `admin.log`, `Attention.items`, `BitrixQueue.touch`, кэш `web_api`, `images.organize_existing`, `deal_econ.discover`,
+  DaData в `geo`); законные пропуски — точным типом исключения; `config.SettingsFile` (класс вместо `resolve_dirs`) — испорченный
+  settings.json пишется в журнал при запуске; одно подавление с причиной — `feeds._safe` (фид сам пишет ошибку в три журнала).
+- Ошибки поведения: `LostPick._reason` — окно причины проигрыша своей воронки (метод `DealCard.lostReason` потерян в 3.159.0);
+  поиск «Настроек» — `RecordEdit.open` (был несуществующий `RecordsTab.open`); `OneCSync.run` — журнал учтённых поступлений по
+  порядку (был срез множества); `BitrixQueue.quietly()` — отметка «из Битрикс24» восстанавливается, а не сбрасывается (7 мест);
+  `BitrixSync.pull` — воронка, упёршаяся в `PULL_LIMIT`, дочитывается следующим опросом.
+- Гейт проверок: Ruff — правила S в `pyproject.toml` с узкими per-file-ignores и причинами (S608 — имена из кода, значения «?»;
+  S310 — только http(s); S314 — ElementTree без внешних сущностей; S603/S607 — запуск без оболочки), 3 подавления в строке;
+  ESLint — `no-eval`, `no-implied-eval`, `no-new-func` (кроме `docx/kpgen.js`), `eqeqeq` для всех файлов; `kp/esc-html` и
+  сложность обычных скриптов — сведениями (`KP_ESLINT_REPORT=1`: шаг `Runner.notes` в run_all и шаг CI без отказа; 190 мест —
+  в основном методы, возвращающие готовую разметку).
+- Инструменты: `.claude/hooks/guard.py` — `Danger` (правка не может добавить голый except, eval/exec, pickle, shell=True, SQL
+  через f-строку, var, new Function, document.write); помощники `proverka-arhitektury`, `proverka-povtorov`, `proverka-oformleniya`,
+  `proverka-vyorstki`; навык `/audit`; `CodeStyle.ruff` — Ruff от pip (закреплённая версия, как в CI), а не первый на PATH;
+  `tests/code_style.json` — `crm_month.py`, `bitrix_companies.py` во всех списках.
+- Проверки: `test_audit_3010` (бюджет PDF, карточка клиента, http(s), вложенная отметка Битрикс24), `test_silent_errors` (9),
+  `test_static_calls` + `tests/js/static_calls.js` (каждый вызов «Класс.метод(…)» — метод есть у класса; нашёл 3 ошибки выше),
+  `test_project.test_server_modules_checked`, `test_claude_hooks` (`test_danger`, `test_danger_rewrite_same`), права фида и
+  почты в `test_admin_rights`, путь в `/api/version` — `test_security`, порядок 1С — `test_crm_money`, предел опроса —
+  `test_bitrix.PullEdgeTest`. Все новые проверки падают на коде 3.226.2.
+
 **3.226.2 — что сделано:** (29.10, «а теперь сделай так, чтобы выбор этого варианта создания был очевидным наравне с созданием
 станции компоновкой»)
 - `features/wizard/station-ways.js` (`StationWays`): две карточки одного размера — «Подобрать и скомпоновать» и «Собрать из готовых

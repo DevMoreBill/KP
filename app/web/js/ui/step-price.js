@@ -54,7 +54,7 @@ export class PriceStep {
     const opts = (item.options || []).filter(opt => opt.name && opt.price);
     const optSum = opts.reduce((sum, opt) => sum + (+opt.qty || 0) * (opt.price || 0), 0);
     const kind = Discount.type(item);
-    return `<div class="prow" id="prow-${item.id}">
+    return `<div class="prow" id="prow-${esc(item.id)}">
       <span class="item-no">${i + 1}</span>
       <div class="pname"><b>${esc(item.name || 'Без названия')}</b><small>${esc(item.qty)} шт.${opts.length ? ` · опции ${KPGen.money(optSum)} ${currency}` : ''}</small></div>
       <label class="f pprice"><span class="pl">Цена за ед., ${currency}</span><input type="text" inputmode="decimal" class="num strong${Number.isNaN(Price.parse(priceText)) || !item.price ? ' bad' : ''}" data-price="${i}" value="${esc(priceText)}" placeholder="0,00" aria-label="Цена за единицу с НДС, ${currency}"></label>

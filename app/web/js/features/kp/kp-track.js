@@ -58,7 +58,7 @@ export class KpTrack {
     const remind = followUp
       ? `<span class="jfu${followUp.date <= today() ? ' due' : ''}" title="${esc(followUp.note || 'Напоминание')}">⏰ ${esc(KpDate.ddmm(followUp.date))}</span>`
       : '';
-    return `<button type="button" class="jst st-${status}" data-jst="${esc(row.id)}" title="Ход сделки: статус, напоминание">${esc(this.STATUS[status])}${lost}</button>${remind}${sent}`;
+    return `<button type="button" class="jst st-${esc(status)}" data-jst="${esc(row.id)}" title="Ход сделки: статус, напоминание">${esc(this.STATUS[status])}${lost}</button>${remind}${sent}`;
   }
 
   static _sentChip(sent) {

@@ -147,12 +147,12 @@ export class PickFilter {
     const label = esc(field.label) + (field.unit ? `, ${esc(field.unit)}` : '');
     if (field.range) {
       const range = filter.r[field.key] || [];
-      return `<label class="f pf-r"><span>${label}</span><span class="pf-rr"><input type="text" inputmode="decimal" data-pf="rmin:${field.key}" value="${esc(range[0] ?? '')}" placeholder="от"><input type="text" inputmode="decimal" data-pf="rmax:${field.key}" value="${esc(range[1] ?? '')}" placeholder="до"></span></label>`;
+      return `<label class="f pf-r"><span>${label}</span><span class="pf-rr"><input type="text" inputmode="decimal" data-pf="rmin:${esc(field.key)}" value="${esc(range[0] ?? '')}" placeholder="от"><input type="text" inputmode="decimal" data-pf="rmax:${esc(field.key)}" value="${esc(range[1] ?? '')}" placeholder="до"></span></label>`;
     }
     const values = this._values(field, pool);
     if (!values.length) return '';
     const options = values.map(value => this._opt(value, value, filter.f[field.key] === value)).join('');
-    return `<label class="f"><span>${label}</span><select data-pf="f:${field.key}">${this._opt('', 'Все', !filter.f[field.key])}${options}</select></label>`;
+    return `<label class="f"><span>${label}</span><select data-pf="f:${esc(field.key)}">${this._opt('', 'Все', !filter.f[field.key])}${options}</select></label>`;
   }
 
   static _values(field, pool) {
@@ -274,7 +274,7 @@ export class PickFilter {
         ? `<img src="${esc(card.photo.src)}" alt="" loading="lazy" decoding="async">`
         : '<span class="kit-noimg"></span>';
     const params = ItemSpec.mainLine(card, this.MAIN_PARAMS);
-    const cost = card.cost ? ` · закупка ${KPGen.money(card.cost)} ${card.costCur || 'RUB'}` : '';
+    const cost = card.cost ? ` · закупка ${KPGen.money(card.cost)} ${esc(card.costCur || 'RUB')}` : '';
     return `<button type="button" class="kit-pick${cls}" ${attr}="${esc(card.id)}">${photo}<span>${tag}<b>${esc(card.name)}</b><small class="muted">${esc(EquipTypes.byId(Attrs.of(card).cat).name)}${params ? ` · ${esc(params)}` : ''}${cost}</small></span></button>`;
   }
 }

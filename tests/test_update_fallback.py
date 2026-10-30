@@ -4,6 +4,7 @@
 EXE имитируется (как PyInstaller onefile): sys.frozen, sys._MEIPASS — папка со «встроенной» копией программы,
 sys.executable — сценарий kp.exe, который снова запускает имитацию (так программа перезапускает себя). Обновления —
 папки update с изменённой версией и намеренной ошибкой. Только не Windows: на Windows то же проверяет сборка EXE в CI."""
+import http.client
 import json
 import os
 import re
@@ -81,7 +82,7 @@ class UpdateFallbackTest(unittest.TestCase):
     def up(cls):
         try:
             return cls.http.req('GET', '/api/ping', timeout=2)[0] == 200
-        except OSError:
+        except (OSError, http.client.HTTPException):  # сервер завершился посреди ответа — уже не работает
             return False
 
     def wait_up(self, sec=120):
@@ -96,7 +97,7 @@ class UpdateFallbackTest(unittest.TestCase):
     def stop(cls):
         try:
             cls.http.req('POST', '/api/shutdown', {}, timeout=5)
-        except OSError:
+        except (OSError, http.client.HTTPException):
             pass
         t = time.time()
         while cls.up() and time.time() - t < 30:

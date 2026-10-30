@@ -188,9 +188,9 @@ export class PartyCheck {
     const links = (check.links || []).length
       ? `<p class="chk-links"><span class="muted">Проверить вручную (бесплатно):</span> ${check.links.map(link => `<a href="${SafeLink.href(link.url)}" target="_blank" rel="noopener">${esc(link.name)}</a>`).join(' · ')}</p>`
       : '';
-    return `<details class="chk ${check.score}">${this._summary(check)}
+    return `<details class="chk ${esc(check.score)}">${this._summary(check)}
       ${check.note ? `<p class="chk-note">${esc(check.note)}</p>` : ''}
-      <ul class="flags">${(check.flags || []).map(flag => `<li class="${flag.level}">${esc(flag.text)}</li>`).join('')}</ul>
+      <ul class="flags">${(check.flags || []).map(flag => `<li class="${esc(flag.level)}">${esc(flag.text)}</li>`).join('')}</ul>
       ${(check.missing || []).length ? `<p class="muted chk-miss">Не проверено: ${esc(check.missing.join(', '))}.</p>` : ''}
       ${check.finNote ? `<p class="muted chk-miss">${esc(check.finNote)}</p>` : ''}
       <dl class="facts">${this._facts(check)

@@ -187,7 +187,7 @@ export class CatalogCard {
           `<tr><td>${esc(KPGen.ruDate(price.date))}${price.number ? `<br><small>№ ${esc(price.number)}</small>` : ''}</td><td>${esc(price.client || '')}</td><td>${price.price ? `${KPGen.money(price.price)} ${Currency.short(price.cur || 'RUB')}` : ''}</td></tr>`,
       )
       .join('');
-    return `<p class="pv-cap">В коммерческих предложениях <i>${count}</i></p><table class="pv-t pv-h">${rows}</table>`;
+    return `<p class="pv-cap">В коммерческих предложениях <i>${esc(count)}</i></p><table class="pv-t pv-h">${rows}</table>`;
   }
 
   static _texts(card, loading) {

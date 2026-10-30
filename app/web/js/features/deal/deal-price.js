@@ -74,7 +74,8 @@ export class DealPrice {
     const inputs = need
       .map(code => {
         const value = (deal.rates && deal.rates[code]) || pricing.rates[code] || '';
-        return `<span class="dl-in"><i>1 ${code} =</i><input type="text" inputmode="decimal" data-kprate="${code}" value="${esc(value)}" placeholder="0,0000" aria-label="Курс ${code}"${Currency.rate(code) > 0 ? '' : ' class="bad"'}><i>₽</i></span>`;
+        const label = esc(code);
+        return `<span class="dl-in"><i>1 ${label} =</i><input type="text" inputmode="decimal" data-kprate="${label}" value="${esc(value)}" placeholder="0,0000" aria-label="Курс ${label}"${Currency.rate(code) > 0 ? '' : ' class="bad"'}><i>₽</i></span>`;
       })
       .join('');
     return `<div class="f dl-f dl-rates"><span>Курс ЦБ РФ${date}</span>

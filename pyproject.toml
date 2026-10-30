@@ -10,7 +10,7 @@ extend-exclude = ["app/web", "templates", "install", "server-setup", "asobezh", 
 quote-style = "single"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PIE", "RET", "PL", "RUF"]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "PIE", "RET", "PL", "RUF", "S"]
 ignore = [
     "E501",      # длину строки держит форматтер; длинные строки текста для пользователя не переносятся
     "PLR0911", "PLR0912", "PLR0913", "PLR0915",
@@ -20,6 +20,44 @@ ignore = [
     "RUF012",
     "SIM105",
 ]
+
+# Правила безопасности S (аудит 30.10): каждое исключение ниже проверено по коду — узко, по файлу и правилу.
+[tool.ruff.lint.per-file-ignores]
+# S608 «SQL из строк»: имена таблиц и полей — константы кода, белые списки или Store.ident; значения — только «?»;
+# списки IN — из «?» по числу значений
+"app/storage.py" = ["S608"]
+"app/crm.py" = ["S608"]
+"app/crm_month.py" = ["S608"]
+"app/kp_files.py" = ["S608"]
+"app/deal_files.py" = ["S608"]
+"app/admin_overview.py" = ["S608"]
+"app/ai_profile.py" = ["S608"]
+"app/catalog_admin.py" = ["S608"]
+"app/catalog_sync.py" = ["S608"]
+"app/maintenance.py" = ["S608"]
+"app/supplier_scope.py" = ["S608"]
+# S608 — как выше; S310 «адрес для urllib»: только http(s) — imgfetch._check_url / Net.SCHEMES, адреса API — константы
+"app/admin.py" = ["S608"]
+"app/imgfetch.py" = ["S310", "S608"]
+"app/net.py" = ["S310"]
+"app/feeds.py" = ["S310", "S314"]
+"app/connections.py" = ["S310"]
+"app/geo.py" = ["S310"]  # короткие ссылки — только адреса Google и Яндекс Карт (unshort)
+"app/bitrix.py" = ["S310"]  # вебхук — только https-адрес портала (BitrixApi.URL)
+# S314 «XML без defusedxml»: ElementTree не раскрывает внешние сущности, expat ≥ 2.4.1 ограничивает раздувание;
+# DOCTYPE и ENTITY в файлах пользователя отклоняются до разбора (data_file, feeds, doc_text); курс — с cbr.ru
+"app/data_file.py" = ["S314"]
+"app/doc_text.py" = ["S314"]
+"app/cbr.py" = ["S314"]
+# S603/S607 «запуск программ»: без оболочки, аргументы — из кода (пути программы и шаблонов); schtasks, notepad,
+# PowerShell, explorer — системные программы Windows (BE-017: подмена требует записи в папку программы)
+"app/app_update.py" = ["S310", "S603", "S607"]  # адреса GitHub — константы и ответ API выпусков (https)
+"app/desktop.py" = ["S603", "S607"]
+"app/kp_templates.py" = ["S603", "S607"]
+"app/ocr_win.py" = ["S603"]
+"app/pdf_convert.py" = ["S603"]
+"app/server_task.py" = ["S603"]
+"tests/code_style.py" = ["S603"]  # инструменты разработки: Ruff, mypy, Prettier
 
 [tool.ruff.lint.isort]
 known-local-folder = ["kit"]

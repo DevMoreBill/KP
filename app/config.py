@@ -56,12 +56,12 @@ class MessageBox:
 
                 ctypes.windll.user32.MessageBoxW(None, text, APP_TITLE, icon)
                 return
-            except Exception:
-                pass
+            except Exception as exc:  # окно не открылось — причина рядом с текстом в консоли
+                text += f'\n(окно не открылось: {exc})'
         try:
             print(text, file=sys.stderr)
-        except Exception:
-            pass
+        except (OSError, ValueError):
+            pass  # консоли нет — сказать некуда
 
 
 def read_text(path: str) -> str:
@@ -82,28 +82,42 @@ def write_bytes(path: str, data: bytes) -> None:
 SETTINGS: dict = {}
 
 
-def resolve_dirs() -> tuple[str, str]:
-    data_dir = os.path.join(ROOT, 'data')
-    docs_dir = os.path.join(ROOT, 'Коммерческие предложения')
-    settings = os.path.join(ROOT, 'settings.json')
-    if os.path.exists(settings):
+class SettingsFile:
+    """settings.json рядом с программой: режим, порт, папка данных. Испорченный файл не мешает запуску — папки по
+    умолчанию, а причину kp_server пишет в журнал сервера (error)."""
+
+    NAME = 'settings.json'
+    DOCS = 'Коммерческие предложения'
+    DEFAULT = json.dumps({'mode': 'local', 'port': BASE_PORT, 'dataDir': '', 'docsShare': ''}, indent=2) + '\n'
+    error = ''
+
+    @classmethod
+    def dirs(cls, root: str, into: dict) -> tuple[str, str]:
+        """Настройки из root → into; → (папка данных, папка готовых КП). Файла нет — создаётся по умолчанию."""
+        data_dir, docs_dir = os.path.join(root, 'data'), os.path.join(root, cls.DOCS)
+        path = os.path.join(root, cls.NAME)
+        if not os.path.exists(path):
+            cls._create(path)
+            return data_dir, docs_dir
         try:
-            saved = json.loads(read_text(settings))
-            SETTINGS.update(saved)
+            saved = json.loads(read_text(path))
+            into.update(saved)
             if saved.get('dataDir'):
                 data_dir = os.path.join(saved['dataDir'], 'data')
-                docs_dir = os.path.join(saved['dataDir'], 'Коммерческие предложения')
-        except Exception:
-            pass
-    else:
+                docs_dir = os.path.join(saved['dataDir'], cls.DOCS)
+        except Exception as exc:  # любой сбой разбора — запуск с папками по умолчанию
+            cls.error = f'{type(exc).__name__}: {exc}'
+        return data_dir, docs_dir
+
+    @classmethod
+    def _create(cls, path: str) -> None:
         try:
-            write_text(settings, '{\n  "mode": "local",\n  "port": 17845,\n  "dataDir": "",\n  "docsShare": ""\n}\n')
-        except Exception:
-            pass
-    return data_dir, docs_dir
+            write_text(path, cls.DEFAULT)
+        except OSError:
+            pass  # папка только для чтения — работа с настройками по умолчанию
 
 
-DATA_DIR, DOCS_DIR = resolve_dirs()
+DATA_DIR, DOCS_DIR = SettingsFile.dirs(ROOT, SETTINGS)
 SERVER_MODE = str(SETTINGS.get('mode', 'local')).lower() == 'server'
 if SETTINGS.get('port'):
     try:

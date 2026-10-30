@@ -1266,15 +1266,16 @@ def _img_size(data) -> tuple:
                     height, width = struct.unpack('>HH', data[i + 5 : i + 9])
                     return width, height
                 i += 2 + struct.unpack('>H', data[i + 2 : i + 4])[0]
-    except Exception:
-        pass
+    except struct.error:
+        pass  # файл обрезан — размер неизвестен
     return None, None
 
 
 def _cid(fid: str, oid) -> str:
     return (
         '{}-{}'.format(
-            images.slug(fid, 20) or 'feed', images.slug(oid, 40) or hashlib.md5(oid.encode()).hexdigest()[:10]
+            images.slug(fid, 20) or 'feed',
+            images.slug(oid, 40) or hashlib.md5(oid.encode(), usedforsecurity=False).hexdigest()[:10],
         )
     )[:64]
 
@@ -1356,7 +1357,9 @@ def _fix_drive_rows(rows, offer, feed) -> list:
 
 
 def _hash(x) -> str:
-    return hashlib.md5(json.dumps(x, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()[:12]
+    return hashlib.md5(
+        json.dumps(x, ensure_ascii=False, sort_keys=True).encode('utf-8'), usedforsecurity=False
+    ).hexdigest()[:12]
 
 
 # Парс сайта — исчерпывающий список номенклатуры: по нему один раз «формируется каталог» (позиция на каждое исполнение,
@@ -2467,7 +2470,9 @@ def build(offer, feed, types, old=None, put_image=None) -> tuple:
             feats.remove(x)
         feats[pos:pos] = [
             {
-                'id': hashlib.md5((offer['oid'] + 'd' + ('' if i == 0 else str(i))).encode()).hexdigest()[:8],
+                'id': hashlib.md5(
+                    (offer['oid'] + 'd' + ('' if i == 0 else str(i))).encode(), usedforsecurity=False
+                ).hexdigest()[:8],
                 'label': lab,
                 'text': txt,
                 'feed': True,
@@ -2484,7 +2489,7 @@ def build(offer, feed, types, old=None, put_image=None) -> tuple:
         else:
             feats.append(
                 {
-                    'id': hashlib.md5((offer['oid'] + 'o').encode()).hexdigest()[:8],
+                    'id': hashlib.md5((offer['oid'] + 'o').encode(), usedforsecurity=False).hexdigest()[:8],
                     'label': 'Опции по прайсу поставщика',
                     'text': otext,
                     'feed': True,
@@ -2589,7 +2594,15 @@ def build(offer, feed, types, old=None, put_image=None) -> tuple:
                 continue
             group = put_image(u, tdef, maker, model, offer['name'], 'gallery', f'foto-{pic_no + 1}')
             if group:
-                gal.append(dict(group, id=hashlib.md5(u.encode()).hexdigest()[:8], caption='', on=True, source=u))
+                gal.append(
+                    dict(
+                        group,
+                        id=hashlib.md5(u.encode(), usedforsecurity=False).hexdigest()[:8],
+                        caption='',
+                        on=True,
+                        source=u,
+                    )
+                )
         doc['gallery'] = gal
     doc['updatedAt'] = _now()
     return doc, changes
@@ -3372,8 +3385,8 @@ def run_bg(func, *args, **k) -> threading.Thread:
 def _safe(func, *args, **k) -> None:
     try:
         func(*args, **k)
-    except Exception:
-        pass  # загрузка и проверка фида сами пишут ошибку в задачу и журнал фида
+    except Exception:  # noqa: S110 — import_feed и check_feed уже записали ошибку в задачу, журнал фида и журнал сервера
+        pass
 
 
 def auto_check(store, log=print) -> None:

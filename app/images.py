@@ -149,7 +149,7 @@ class ImageStore:
     def put(self, data: bytes, ext: str, folder: str, title: str) -> str:
         """Сохранить изображение (папка и название — латиницей); то же изображение повторно не записывается."""
         ext = ext if ext in EXTS else '.jpg'
-        digest = hashlib.md5(data).hexdigest()
+        digest = hashlib.md5(data, usedforsecurity=False).hexdigest()
         with self.lock:
             if self.index is None:
                 self._scan()
@@ -222,12 +222,12 @@ def organize_existing(store, types: list, img_dir: str, backup_dir: str, backup=
     wanted = []
     for doc in docs:
         wanted += _wanted(doc, tmap)
-    for _kid, state in kps:
+    for kid, state in kps:
         try:
             for item in json.loads(state).get('items') or []:
                 wanted += [(want[0] + 3, *want[1:]) for want in _wanted(item, tmap)]  # КП — после каталога
-        except Exception:
-            pass
+        except Exception as exc:  # испорченное КП не останавливает раскладку, но его картинки уйдут в unused — сказать
+            log(f'КП {kid}: картинки не учтены — {exc}')
     exists = set(files)
     target = {}
     for _prio, rel, folder, title in sorted(wanted, key=lambda want: want[0]):
@@ -239,7 +239,7 @@ def organize_existing(store, types: list, img_dir: str, backup_dir: str, backup=
         digest = digest_of_name(rel)
         if not digest:
             with open(os.path.join(img_dir, *rel.split('/')), 'rb') as handle:
-                digest = hashlib.md5(handle.read()).hexdigest()
+                digest = hashlib.md5(handle.read(), usedforsecurity=False).hexdigest()
         target[rel] = f'{folder}/{title}__{digest[:10]}{os.path.splitext(rel)[1].lower()}'
     for rel in files:  # без ссылок и не по правилам — в unused
         if rel not in target and not _conforms(rel):

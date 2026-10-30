@@ -94,7 +94,7 @@ export class CatalogExportDlg {
   }
 
   static _ck(key, label, { checked, extra = '' }) {
-    return `<label class="cx-ck"><input type="checkbox" data-cx="${key}"${checked ? ' checked' : ''}${extra}> ${esc(label)}</label>`;
+    return `<label class="cx-ck"><input type="checkbox" data-cx="${esc(key)}"${checked ? ' checked' : ''}${extra}> ${esc(label)}</label>`;
   }
 
   static _seg(list, attr, cur) {

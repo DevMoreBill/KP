@@ -33,7 +33,8 @@ class CatalogPatch:
         return hashlib.sha1(
             json.dumps(v if v is not None else [], ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode(
                 'utf-8'
-            )
+            ),
+            usedforsecurity=False,
         ).hexdigest()[:16]
 
     @staticmethod

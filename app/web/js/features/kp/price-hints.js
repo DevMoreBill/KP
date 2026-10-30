@@ -153,7 +153,7 @@ export class PriceHist {
       (row.cur || 'RUB') === Currency.current()
         ? `<button class="btn sm ghost" type="button" data-phu="${k}" title="Поставить эту цену в КП">Взять</button>`
         : '';
-    return `<tr><td>${esc(row.date ? KPGen.ruDate(row.date).replace(/ г\.$/, '') : '')}</td><td>${row.number ? `№ ${esc(row.number)}` : '—'}</td><td>${esc(row.client || '')}</td><td class="num">${row.qty || ''}</td><td class="num"><b>${this._fmt(row)}</b></td>
+    return `<tr><td>${esc(row.date ? KPGen.ruDate(row.date).replace(/ г\.$/, '') : '')}</td><td>${row.number ? `№ ${esc(row.number)}` : '—'}</td><td>${esc(row.client || '')}</td><td class="num">${esc(row.qty || '')}</td><td class="num"><b>${this._fmt(row)}</b></td>
         <td>${take}</td></tr>`;
   }
 

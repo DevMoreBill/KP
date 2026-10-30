@@ -268,6 +268,7 @@ class SecurityTest(unittest.TestCase):
         conn.close()
         body = json.loads(self.req('GET', '/api/ping', cookie=self.U1)[1])
         self.assertEqual(body['migrations'][0]['backup'], 'kp-before-migration.zip')
+        self.assertNotIn('updateDir', json.loads(self.req('GET', '/api/version')[1]), 'аудит 30.10: без пути, до входа')
 
     def test_10_prefs_are_personal(self):
         st, b, _ = self.req('PUT', '/api/me/prefs', {'theme': 'dark', 'mailSign': 'подпись m1'}, cookie=self.U1, headers={'X-KP-User-Id': self.M2[0]})

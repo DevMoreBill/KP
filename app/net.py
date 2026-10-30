@@ -30,6 +30,7 @@ class Net:
     TIMEOUT = 20
     LIMIT = 8 * 1024 * 1024
     RETRY_PAUSE = 1.5
+    SCHEMES = ('http', 'https')  # file:// и прочее urllib тоже открыл бы — адреса сервисов задаёт администратор
 
     @classmethod
     def read(cls, resp, limit: int | None = None) -> bytes:
@@ -58,6 +59,8 @@ class Net:
         opener=None,
     ) -> bytes:
         """Байты ответа; HTTPError — вызывающему; обрыв — повтор (GET — 1 раз, POST — нет)."""
+        if urllib.parse.urlsplit(url).scheme not in cls.SCHEMES:
+            raise ValueError('Адрес сервиса должен начинаться с http:// или https://')
         merged = {'User-Agent': cls.USER_AGENT}
         merged.update(headers or {})
         meth = method or ('POST' if data is not None else 'GET')

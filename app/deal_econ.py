@@ -9,6 +9,7 @@ from typing import Any
 
 from crm_funnels import DealFields, UfValue
 from kp_track import Val
+from server_log import ServerLog
 
 
 def _obj(raw: Any) -> dict:
@@ -292,7 +293,8 @@ class DealEcon:
                 params['extras'] = {'dealCategoryId': int(cat)}
             try:
                 sections = api.call('crm.deal.details.configuration.get', params) or []
-            except Exception:  # нет права или старый портал — раздел выбирается вручную
+            except Exception as exc:  # нет права или старый портал — раздел выбирается вручную
+                ServerLog.note(f'Битрикс24: настройка карточки сделки «{cat or "общая"}» не получена — {exc}')
                 continue
             for section in sections if isinstance(sections, list) else []:
                 if not isinstance(section, dict) or not self.SECTION.search(str(section.get('title') or '')):

@@ -40,6 +40,17 @@ class ProjectRules(unittest.TestCase):
         missing = [x for x in mods if x not in hidden]
         self.assertEqual(missing, [], 'добавьте в hiddenimports в kp.spec: %s' % ', '.join(missing))
 
+    def test_server_modules_checked(self):
+        """Новый модуль сервера — во всех трёх списках tests/code_style.json: Ruff и формат («python»), говорящие имена
+        («names»), без логических флагов («flags»); иначе модуль выпадает из проверок оформления (аудит 30.10:
+        crm_month.py и bitrix_companies.py)."""
+        import json
+        lists = json.loads(self.read('tests', 'code_style.json'))
+        mods = sorted('app/' + f for f in os.listdir(APP) if f.endswith('.py'))
+        for key in ('python', 'names', 'flags'):
+            missing = [x for x in mods if x not in lists[key]]
+            self.assertEqual(missing, [], 'добавьте в «%s» в tests/code_style.json: %s' % (key, ', '.join(missing)))
+
     def test_version_everywhere(self):
         v = re.search(r"VERSION = '([\d.]+)'", self.read('app', 'version.py')).group(1)
         help_js = self.read('app', 'web', 'js', 'features', 'help.js')

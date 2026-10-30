@@ -537,7 +537,7 @@ def _put_asset(v) -> str:
     got = _data_uri(v)
     if not got:
         return ''
-    ref = 'kpa:' + hashlib.sha1(got[1]).hexdigest()[:20]
+    ref = 'kpa:' + hashlib.sha1(got[1], usedforsecurity=False).hexdigest()[:20]
     ASSETS[ref] = got
     return ref
 
@@ -3004,7 +3004,9 @@ def _oid(base, uniq, offers) -> str:
     """Идентификатор предложения ≤ 40 знаков (feeds._cid режет длиннее) и без повторов: длинные похожие ссылки — с хвостом-хэшем."""
     oid = images.slug(base, 40) or 'item'
     if oid in offers or len(images.slug(base, 60)) > SLUG_MAX:
-        oid = (images.slug(base, 32) + '-' + hashlib.md5(uniq.encode('utf-8')).hexdigest()[:7]).strip('-')
+        oid = (
+            images.slug(base, 32) + '-' + hashlib.md5(uniq.encode('utf-8'), usedforsecurity=False).hexdigest()[:7]
+        ).strip('-')
     return oid
 
 

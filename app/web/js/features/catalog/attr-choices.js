@@ -74,18 +74,18 @@ export class AttrsBlock {
       const opts = AttrChoices.list(field, value)
         .map(choice => `<option${String(value) === String(choice) ? ' selected' : ''}>${esc(choice)}</option>`)
         .join('');
-      return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span><select data-p="${path}.${field.key}"><option value="">${hint ? `${esc(hint)} (авто)` : '—'}</option>${opts}</select>${this._note(field)}</label>`;
+      return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span><select data-p="${path}.${esc(field.key)}"><option value="">${hint ? `${esc(hint)} (авто)` : '—'}</option>${opts}</select>${this._note(field)}</label>`;
     }
     if (DimRow.matches(field.key, field.label)) {
-      return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span>${DimInput.html(`data-p="${path}.${field.key}"`, value, { ph: hint, label: field.label })}${this._note(field)}</label>`;
+      return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span>${DimInput.html(`data-p="${path}.${esc(field.key)}"`, value, { ph: hint, label: field.label })}${this._note(field)}</label>`;
     }
     return this._text({ path, value, hint }, field);
   }
 
   // текстовое поле; list — подсказки (вписать или выбрать), need — обязательно для новой позиции каталога
   static _text({ path, value, hint }, field) {
-    const list = field.list ? ` list="${field.list}"` : '';
-    return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span><input type="text" ${field.num ? 'inputmode="decimal"' : ''} data-p="${path}.${field.key}" value="${esc(value)}" placeholder="${esc(hint || field.ph || '')}" autocomplete="off"${list}>${this._note(field)}</label>`;
+    const list = field.list ? ` list="${esc(field.list)}"` : '';
+    return `<label class="f${this._bad(field)}"><span>${this._label(field)}</span><input type="text" ${field.num ? 'inputmode="decimal"' : ''} data-p="${path}.${esc(field.key)}" value="${esc(value)}" placeholder="${esc(hint || field.ph || '')}" autocomplete="off"${list}>${this._note(field)}</label>`;
   }
 
   static _groups(type) {

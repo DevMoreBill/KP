@@ -7,6 +7,7 @@ import math
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 import urllib.parse
@@ -21,6 +22,7 @@ from catalog_quality import CardRules, DupFinder
 from config import BadRequest
 from data_file import Load
 from defaults import SrvVal
+from server_log import ServerLog
 from storage import Conflict
 
 ENTITY_SLASHES = 2
@@ -714,8 +716,8 @@ def log(handler, store, action, etype=None, eid=None, before=None, after=None, r
                 'result': result,
             }
         )
-    except Exception:
-        pass  # журнал не должен мешать работе
+    except Exception as exc:  # журнал не должен мешать работе, но потеря записи видна в журнале сервера
+        ServerLog.failure(f'журнал действий: запись «{action}» не сохранена', exc)
 
 
 ABSENT = '__absent__'
@@ -919,6 +921,9 @@ class DeniedLog:
 class RightsCheck:
     """Права вошедшего в «Настройки» администратора (admin_rights): отказ — 403 с причиной, попытка изменения — в журнал."""
 
+    # куда уходит сохранённый пароль почты: сервер, порт, защита соединения, логин (без TLS пароль ушёл бы открытым)
+    MAIL_MOVE = ('host', 'port', 'security', 'login')
+
     def __init__(self, handler, store) -> None:
         self.handler, self.store = handler, store
 
@@ -941,11 +946,13 @@ class RightsCheck:
         if path in ('/api/admin/maint/mirror', '/api/admin/maint/mirror/check'):
             return dict(body, moved='1' if self._mirror_moved(body) else '')
         if path == '/api/admin/mail':
-            cur = self.store.kv_get('mail') or {}
+            from kp_track import Mailer
+
+            cur = Mailer(self.store).public()  # как видит экран: порт и защита — со значениями по умолчанию
             moved = [
-                key for key in ('host', 'login') if key in body and not AdminRights.same_value(body[key], cur.get(key))
+                key for key in self.MAIL_MOVE if key in body and not AdminRights.same_value(body[key], cur.get(key))
             ]
-            return dict(body, moved='1' if moved and cur.get('password') else '')
+            return dict(body, moved='1' if moved and cur.get('hasPassword') else '')
         return body
 
     def _mirror_moved(self, body: dict) -> bool:
@@ -1838,7 +1845,7 @@ class AdminApi:
             rec: Any = auth_users.set_access(store, mid, payload, hash_password)
             info = {k: payload[k] for k in ('login', 'perms', 'blocked', 'clear') if k in payload}
             if payload.get('password'):
-                info['password'] = 'изменён'
+                info['password'] = 'изменён'  # noqa: S105 — пометка для журнала действий, не пароль
             self.log('edit_access', 'manager', mid, None, info)
             return self.ok(
                 {
@@ -2230,8 +2237,6 @@ class AdminApi:
         if sub == 'readiness' and method == 'GET':
             return self.ok({'items': Readiness(store, config).items()})
         if sub == 'log' and method == 'GET':  # журнал сервера: последние ошибки (data/logs/kp.log)
-            from server_log import ServerLog
-
             log = ServerLog.of(config.DATA_DIR)
             return self.ok(
                 {
@@ -2244,8 +2249,6 @@ class AdminApi:
                 }
             )
         if sub == 'log/download' and method == 'GET':
-            from server_log import ServerLog
-
             log = ServerLog.of(config.DATA_DIR)
             return self.handler.send(
                 200,
@@ -2278,8 +2281,6 @@ class AdminApi:
             return self.err(404, 'not found')
         if sub == 'restart' and method == 'POST':
             self.log('restart', 'system', config.APP_TITLE)
-            from server_log import ServerLog
-
             ServerLog.note(f'Перезапуск из «Настроек» ({actor_login or "администратор"})')
             self.ok({'ok': True, 'delay': Restarter.DELAY})
             Restarter(config.SERVER_MODE).restart(getattr(self.handler.server, 'main_server', self.handler.server))
@@ -3359,12 +3360,9 @@ class AdminApi:
             res['fmt'] = kind
             if apply and imgs:
                 res['images']['written'] = bundle.write(z, imgs)
-                try:
-                    import web_api
-
-                    web_api.IMAGES.index = None  # новые файлы — в учёт одинаковых изображений
-                except Exception:
-                    pass
+                web = sys.modules.get('web_api')  # учёт одинаковых изображений ведёт веб-часть, если она загружена
+                if web is not None:
+                    web.IMAGES.index = None  # новые файлы — в учёт
             return res
         finally:
             if z:

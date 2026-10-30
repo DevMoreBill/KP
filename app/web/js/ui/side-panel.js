@@ -154,7 +154,7 @@ export class SidePanel {
    */
   static actions(list) {
     const todo = list.length
-      ? list.map(row => `<li><button type="button" data-go="${row[1]}">${esc(row[0])}</button></li>`).join('')
+      ? list.map(row => `<li><button type="button" data-go="${esc(row[1])}">${esc(row[0])}</button></li>`).join('')
       : '<li class="ok">Проверки пройдены — можно сохранять.</li>';
     return `<div class="checks side-act">
       <button class="btn primary dl" type="button" data-a="download" ${list.length ? 'disabled' : ''}>${S.kpId ? `Сохранить изменения КП № ${esc(S.number)}` : 'Сохранить КП'}</button>
@@ -193,7 +193,7 @@ export class SidePanel {
       ? `<button class="mb-back" type="button" data-step="${prev.id}" aria-label="Назад: ${esc(prev.t)}"><span aria-hidden="true">‹</span></button>`
       : '<span class="mb-back" aria-hidden="true"></span>';
     // не заполнено — нажатие ведёт сразу к первому пустому полю, а не в начало раздела
-    const target = list.length ? `data-go="${list[0][1]}"` : 'data-a="toSave"';
+    const target = list.length ? `data-go="${esc(list[0][1])}"` : 'data-a="toSave"';
     const sum = `<button class="mb-sum" type="button" ${target}><small>${list.length ? `Итого · не заполнено: ${list.length} ›` : 'Итого · всё готово'}</small><b>${KPGen.money(totals.sum)} ${esc(currency)}</b></button>`;
     Morph.apply(bar, back + sum + this._next(steps[k + 1], list));
   }
@@ -203,7 +203,7 @@ export class SidePanel {
       return `<button class="btn primary mb-next" type="button" data-step="${next.id}"><span>Далее</span><small>${esc(next.t)}</small></button>`;
     }
     if (list.length) {
-      return `<button class="btn primary mb-next" type="button" data-go="${list[0][1]}"><span>Заполнить</span><small>осталось ${list.length}</small></button>`;
+      return `<button class="btn primary mb-next" type="button" data-go="${esc(list[0][1])}"><span>Заполнить</span><small>осталось ${list.length}</small></button>`;
     }
     return `<button class="btn primary mb-next" type="button" data-a="download"><span>Сохранить</span><small>${S.kpId ? 'изменения КП' : 'КП'}</small></button>`;
   }

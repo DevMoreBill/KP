@@ -31,13 +31,16 @@ class DocImages:
     PNG_TYPE = {1: 0, 3: 2}  # число цветов → тип PNG: серый, RGB
     TOTAL_MAX = 30 * 1024 * 1024  # все картинки ответа — не больше (data:-адреса идут в браузер)
     PIXELS_MAX = 40_000_000  # одна картинка из PDF без сжатия — не больше (защита от «бомбы»)
+    UNPACK_MAX = 400 * 1024 * 1024  # все распакованные картинки PDF одного файла — не больше (сотни мелких «бомб»)
     FORM_DEPTH = 2
 
     def __init__(self, opts: dict) -> None:
         self.opts = opts
         self.seen: set = set()
+        self.raw_seen: set = set()  # повтор того же потока не распаковывается второй раз
         self.out: list[dict] = []
         self.size = 0
+        self.unpacked = 0
         self.skipped = 0
 
     @classmethod
@@ -115,6 +118,11 @@ class DocImages:
         if min(width, height) < (self.opts.get('minPx') or 0):
             self.skipped += 1
             return
+        digest = hashlib.sha1(raw, usedforsecurity=False).hexdigest()
+        if digest in self.raw_seen or self.unpacked + width * height * colors > self.UNPACK_MAX:
+            return
+        self.raw_seen.add(digest)
+        self.unpacked += width * height * colors
         try:
             pixels = zlib.decompressobj().decompress(raw, width * height * colors + 1)
         except zlib.error:
@@ -154,7 +162,7 @@ class DocImages:
     def _add(self, data: bytes, mime: str) -> None:
         import feeds
 
-        digest = hashlib.sha1(data).hexdigest()
+        digest = hashlib.sha1(data, usedforsecurity=False).hexdigest()
         if digest in self.seen:
             return
         self.seen.add(digest)

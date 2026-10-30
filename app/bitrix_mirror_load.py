@@ -293,13 +293,10 @@ class MirrorImport:
             if contact and contact != '0' and str(row.get('COMPANY_ID') or '0') != '0':
                 people.setdefault(str(row['COMPANY_ID']), []).append(contact)
         companies = self._companies([row.get('COMPANY_ID') for row in rows], people)
-        BitrixQueue._quiet.on = True
-        try:
+        with BitrixQueue.quietly():
             for bx_deal in rows:
                 res['done'] += 1
                 res[self._one(bx_deal, companies.get(str(bx_deal.get('COMPANY_ID') or ''), {}))] += 1
-        finally:
-            BitrixQueue._quiet.on = False
 
     def _one(self, bx_deal: dict, company: dict) -> str:
         sync = self.sync
@@ -386,13 +383,10 @@ class MirrorConvert:
 
     def run(self, author: str) -> int:
         book, done = DealBook(self.store), 0
-        BitrixQueue._quiet.on = True
-        try:
+        with BitrixQueue.quietly():
             for did, fid, stage in self._todo():
                 book.update(did, {'funnel': fid, 'stage': stage}, author)
                 done += 1
-        finally:
-            BitrixQueue._quiet.on = False
         return done
 
 

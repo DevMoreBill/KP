@@ -101,7 +101,7 @@ def _norm_md5(path: str) -> str:
     import hashlib
 
     with open(path, 'rb') as handle:
-        return hashlib.md5(handle.read().replace(b'\r\n', b'\n')).hexdigest()
+        return hashlib.md5(handle.read().replace(b'\r\n', b'\n'), usedforsecurity=False).hexdigest()
 
 
 def template_dirs() -> dict[str, str]:

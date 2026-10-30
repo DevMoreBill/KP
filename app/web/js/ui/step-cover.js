@@ -39,7 +39,7 @@ export class CoverStep {
     ${cover.touched && source !== undefined ? `<p class="cv-touched muted">Заголовок изменён вручную — при смене оборудования не обновляется. <button class="lnk" type="button" data-a="coverFrom">↺ Заполнить по оборудованию</button></p>` : ''}
     <div class="row">${index >= 0 && !multi ? `<button class="btn ghost" type="button" data-a="edit" data-i="${index}" data-tab="desc">${current ? 'Заменить фото' : 'Добавить фото'}</button>` : ''}<button class="btn" type="button" data-a="kpPreview">Предпросмотр КП</button></div></div></div>
   ${multi ? '' : this._kpis(cover)}
-  <div class="cv-opts"><button class="sw" type="button" role="switch" aria-checked="${S.showClients}" data-a="clients"><i></i>Страница «Наши клиенты» в КП</button></div>
+  <div class="cv-opts"><button class="sw" type="button" role="switch" aria-checked="${esc(S.showClients)}" data-a="clients"><i></i>Страница «Наши клиенты» в КП</button></div>
   </section>`;
   }
 
