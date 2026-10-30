@@ -11,7 +11,7 @@
 .cab-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--tc,var(--cs2));flex:none}
 
 /* окно: почти весь экран (видно, что это окно), шапка в одну строку */
-dialog.cabwin{width:calc(100vw - 28px);max-width:none;height:calc(100dvh - 28px);max-height:none;margin:14px auto;padding:0;display:none;flex-direction:column;overflow:hidden;border-radius:16px}
+dialog.cabwin{padding:0;display:none;flex-direction:column;overflow:hidden} @layer win{dialog.cabwin{width:calc(100vw - 28px);max-width:none;height:calc(100dvh - 28px);max-height:none;margin:14px auto;border-radius:16px}}
 dialog.cabwin[open]{display:flex}
 .cab-wait{padding:24px}
 .cab-h{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px 16px;padding:10px 14px 0 20px;border-bottom:1px solid var(--line);flex:none}
@@ -42,7 +42,7 @@ dialog.cabwin[open]{display:flex}
 .cab-tip{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--sky,var(--line));border-left:4px solid var(--navy);border-radius:12px;padding:10px 14px;margin-bottom:12px}
 .cab-tip p{margin:0;flex:1;font-size:13.5px;line-height:1.45}
 .cab-tip>span{font-size:20px}
-dialog.st-confirm.cg-dlg{width:min(620px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.cg-dlg{width:min(620px,var(--win-w));max-width:none}}
 .cg{display:grid;gap:2px;margin:6px 0 10px}
 .cg-r{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.45}
 .cg-r:first-child{border-top:0}
@@ -82,7 +82,7 @@ dialog.st-confirm.cg-dlg{width:min(620px,var(--win-w));max-width:none}
 .tq-r .btn.primary{margin-left:auto}
 .dchips{display:inline-flex;gap:4px;flex-wrap:wrap}
 .dchips .chip{min-height:30px}
-dialog.st-confirm.tq-dlg{width:min(600px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.tq-dlg{width:min(600px,var(--win-w));max-width:none}}
 .tq-dlg .tq{margin:10px 0 0}
 .tk-g{margin:10px 0 2px;font-weight:600;font-size:12.5px;line-height:1.4;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
 .tk-g.bad-t{color:var(--danger)}
@@ -101,7 +101,7 @@ dialog.st-confirm.tq-dlg{width:min(600px,var(--win-w));max-width:none}
 .tk-i{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--soft);font-size:13px;flex:none}
 .tk-done{margin-top:8px}
 .tk-done summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
-dialog.st-confirm.tk-dlg{width:min(520px,var(--win-w))}
+@layer win{dialog.st-confirm.tk-dlg{width:min(520px,var(--win-w))}}
 .tk-ed{display:grid;gap:10px}
 .tk-dt{gap:10px}
 .tk-dt .f{flex:1}
@@ -141,7 +141,7 @@ dialog.st-confirm.tk-dlg{width:min(520px,var(--win-w))}
 .cab-flt .chip b{font-weight:700}
 .cab-stg{margin-top:-4px}
 .cab-ls{display:grid;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.cab-lh,.cab-lr,.cab-lt{display:grid;gap:12px;align-items:center;padding:9px 14px}
+.cab-lh,.cab-lr,.cab-lt{display:grid;grid-template-columns:var(--cab-cols);gap:12px;align-items:center;padding:9px 14px}
 .cab-lh{position:relative;padding-right:44px}
 .lh-s{border:0;background:none;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;text-align:left;padding:4px 0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lh-s:hover{color:var(--ink)}
@@ -165,6 +165,7 @@ dialog.st-confirm.tk-dlg{width:min(520px,var(--win-w))}
 .lr-n .muted{font-size:12.5px}
 .lr-s{display:flex;align-items:center;gap:6px}
 .lr-sum{text-align:right}
+.cab-lt .lr-sum{grid-column:var(--sum-col)}
 .lr-x .dc-n{display:block}
 .cab-ls .kb-more{margin:8px}
 
@@ -238,7 +239,7 @@ dialog.st-confirm.tk-dlg{width:min(520px,var(--win-w))}
 .cab-tt th:first-child,.cab-tt td:first-child{text-align:left}
 
 /* карточка сделки — панель справа во всю высоту */
-dialog.st-confirm.deal-dlg{width:min(1320px,90vw);max-width:none;height:100dvh;max-height:none;margin:0 0 0 auto;padding:0;border-radius:16px 0 0 16px;overflow:hidden}
+dialog.st-confirm.deal-dlg{padding:0;overflow:hidden} @layer win{dialog.st-confirm.deal-dlg{width:var(--dlg-w,min(1320px,90vw));max-width:none;height:100dvh;max-height:none;margin:0 0 0 auto;border-radius:16px 0 0 16px}}
 .dk-grip{display:none}
 .dk-pc .dk-grip{display:block;position:absolute;left:0;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:3;touch-action:none}
 .dk-pc .dk-grip::after{content:'';position:absolute;left:2px;top:50%;width:4px;height:44px;margin-top:-22px;border-radius:4px;background:var(--line);opacity:.8}
@@ -246,7 +247,7 @@ dialog.st-confirm.deal-dlg{width:min(1320px,90vw);max-width:none;height:100dvh;m
 .dk-pc .dk-top{cursor:grab}
 .dk-pc .dk-top :is(button,input,select,textarea,a,label){cursor:auto}
 .dk-pc .dk-top button,.dk-pc .dk-top a{cursor:pointer}
-dialog.st-confirm.deal-dlg.dk-float{right:auto;bottom:auto;border-radius:16px;resize:both;min-width:640px;min-height:420px;max-height:calc(100dvh - 16px);box-shadow:0 18px 60px rgba(0,0,0,.28)}
+dialog.st-confirm.deal-dlg.dk-float{box-shadow:0 18px 60px rgba(0,0,0,.28)} @layer win{dialog.st-confirm.deal-dlg.dk-float{right:auto;bottom:auto;border-radius:16px;resize:both;min-width:640px;min-height:420px;max-height:calc(100dvh - 16px);left:var(--dlg-x,0);top:var(--dlg-y,0);height:var(--dlg-h,100dvh);margin:0}}
 dialog.deal-dlg.dk-float[open]{animation:none}
 dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ease-out}
 @keyframes dk-in{from{transform:translateX(40px);opacity:.4}to{transform:none;opacity:1}}
@@ -287,23 +288,23 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 .dk-lo input{flex:none;width:17px;height:17px;margin:0;accent-color:var(--navy)}
 .dk-lc{margin-bottom:12px}
 @media (max-width:760px){.dk-lr{grid-template-columns:1fr}.dk-lo{min-height:44px}}
-dialog.st-confirm.dk-new-dlg,dialog.st-confirm.dk-lost-dlg{width:min(560px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.dk-new-dlg,dialog.st-confirm.dk-lost-dlg{width:min(560px,var(--win-w));max-width:none}}
 .dk-new{display:grid;gap:10px}
 .dk-nnote,.dk-lnote{margin:8px 0 10px}
 .dk-nr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .dk-found{color:var(--ok);font-size:12.5px;min-height:1em}
 .dk-first{border:1px solid var(--line);border-radius:10px;padding:8px 12px 12px;display:grid;gap:8px;margin:0}
 .dk-first legend{font-weight:600;font-size:13.5px;padding:0 4px}
-dialog.st-confirm.dk-link-dlg{width:min(640px,var(--win-w))}
+@layer win{dialog.st-confirm.dk-link-dlg{width:min(640px,var(--win-w))}}
 
 /* раздел «Клиент» КП: сделка */
 .dp-r{gap:8px;flex-wrap:wrap}
 .dp-r select{flex:1 1 280px;min-width:0;max-width:560px}
 
-@media (max-width:1100px){.cab-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}dialog.st-confirm.deal-dlg:not(.dk-float){width:min(760px,var(--win-w))}.dk-cols{grid-template-columns:minmax(0,1fr)}
+@media (max-width:1100px){.cab-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}@layer win{dialog.st-confirm.deal-dlg:not(.dk-float){width:var(--dlg-w,min(760px,var(--win-w)))}}.dk-cols{grid-template-columns:minmax(0,1fr)}
   }
 @media (max-width:760px){
-  dialog.cabwin{width:100vw;height:100dvh;border-radius:0;margin:0;inset:0}
+  @layer win{dialog.cabwin{width:100vw;height:100dvh;border-radius:0;margin:0;inset:0}}
   .cab-h{grid-template-columns:minmax(0,1fr) auto;padding:calc(6px + env(safe-area-inset-top)) 8px 0 14px;gap:0 8px}
   .cab-t{padding-bottom:4px}
   .cab-t h3{font-size:17px}
@@ -345,9 +346,9 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,var(--win-w))}
   .cab-ls{background:none;border:0;gap:8px;overflow:visible}
   .cab-lh{display:none}
   .lr-c,.lr-d,.lr-k{display:none}
-  .cab-lt{grid-template-columns:minmax(0,1fr) auto!important;border-radius:10px;border:1px solid var(--line)}
-  .cab-lt .lr-sum{grid-column:2!important}
-  .cab-lr{grid-template-columns:minmax(0,1fr) auto!important;gap:2px 10px;border:1px solid var(--line);border-left:4px solid var(--tc,var(--cs2));border-radius:10px;background:var(--card);padding:10px 12px}
+  .cab-lt{grid-template-columns:minmax(0,1fr) auto;border-radius:10px;border:1px solid var(--line)}
+  .cab-lt .lr-sum{grid-column:2}
+  .cab-lr{grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;border:1px solid var(--line);border-left:4px solid var(--tc,var(--cs2));border-radius:10px;background:var(--card);padding:10px 12px}
   .lr-n{grid-column:1}.lr-sum{grid-column:2;grid-row:1}
   .lr-s{grid-column:1;font-size:12.5px}.lr-e{grid-column:2;grid-row:2;font-size:12.5px;text-align:right}
   .lr-x{display:block;grid-column:1/-1}.lr-m{display:block;grid-column:1/-1;font-size:12px}
@@ -358,7 +359,7 @@ dialog.st-confirm.dk-link-dlg{width:min(640px,var(--win-w))}
   .dc-add{min-height:44px;padding:6px 12px}
   .cab-flt .chip,.dchips .chip{min-height:44px}
   .cab-sort{flex:1 1 auto}
-  .mob dialog.st-confirm.deal-dlg{inset:0;width:100%;height:100%!important;max-height:none!important;border-radius:0;padding:0}
+  .mob dialog.st-confirm.deal-dlg{padding:0} @layer win-mode{.mob dialog.st-confirm.deal-dlg{inset:0;width:100%;height:100%;max-height:none;border-radius:0}}
   .dk-in{padding:10px max(12px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
   .dk-st{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .dk-st::-webkit-scrollbar{display:none}
@@ -481,7 +482,7 @@ label.f:has(.csg){position:relative}
 .mob .tk .tk-who a{display:inline-block;padding:4px 0}
 /* регламент оформления сделки Битрикс24: строка «не хватает», отметка «*», окно «Заполните», источник заявки */
 .uf-req{color:var(--danger);font-weight:700;margin-left:2px}
-dialog.st-confirm.dn-dlg{width:min(640px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.dn-dlg{width:min(640px,var(--win-w));max-width:none}}
 .dn-sub{margin:0 0 10px;font-size:13px}
 .dn-b{max-height:min(62vh,560px);overflow:auto;overscroll-behavior:contain;margin-bottom:12px}
 .dn-b .dk-f{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 12px}
@@ -895,7 +896,7 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .pay-t:hover{text-decoration:underline}
 .pay-late .pay-r{grid-template-columns:96px 18px minmax(0,1.2fr) minmax(0,1fr) auto auto}
 @media (max-width:640px){.pay-late .pay-r{grid-template-columns:80px 14px minmax(0,1fr) auto}.pay-late [data-premind]{grid-column:1/-1;justify-self:end}}
-.cc-dlg{width:min(760px,var(--win-w))}
+@layer win{.cc-dlg{width:min(760px,var(--win-w))}}
 .cc-dlg textarea{width:100%;margin:8px 0}
 .cc-fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;margin:8px 0}
 .cc-r .msg{margin:4px 0}
@@ -908,7 +909,7 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .md-r.md-dr .muted{font-size:12px}
 html:not(.mob) .md-r.md-dr .btn{min-height:28px;padding:3px 10px;font-size:12.5px}
 /* своё расположение разделов кабинета (ПК): две колонки, ⠿ — перетащить, нижний край — высота, граница — ширина колонок */
-.lay-g{display:grid;gap:0;align-items:start;padding-top:8px}
+.lay-g{display:grid;grid-template-columns:var(--lay-cols);gap:0;align-items:start;padding-top:8px}
 .lay-col{display:grid;gap:16px;min-width:0;min-height:80px;align-content:start}
 .lay-split{align-self:stretch;cursor:col-resize;position:relative;touch-action:none}
 .lay-split::after{content:"";position:absolute;inset:0 4px;border-radius:2px;transition:background .15s}
@@ -941,7 +942,7 @@ body.lay-busy{user-select:none}
 dialog.deal-dlg .lay-s.lay-full{inset:12px}
 /* узкое окно (карточка сделки, кабинет до 900 px) — одна колонка, без границы колонок */
 .cab-b,dialog.deal-dlg .dk-in{container-type:inline-size}
-@container (max-width:900px){.lay-g{grid-template-columns:minmax(0,1fr)!important;row-gap:12px}.lay-split{display:none}}
+@container (max-width:900px){.lay-g{grid-template-columns:minmax(0,1fr);row-gap:12px}.lay-split{display:none}}
 dialog.deal-dlg .lay-g .dk-sum,dialog.deal-dlg .lay-g .dk-main{margin:0}
 /* «Сегодня»: главные действия — крупно; слева — что горит, справа — создать */
 .cta-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}

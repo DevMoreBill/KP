@@ -1,4 +1,7 @@
 /* Основа: цвета, шрифты, поля ввода, кнопки, сетки. */
+/* окно: win — размер окна раздела, win-mode — режим окна (вкладка, телефон, лист снизу, вход); режим перекрывает
+   размер без !important, размер, выбранный пользователем, — свойства --dlg-w / --dlg-h / --dlg-x / --dlg-y (WinSize) */
+@layer win, win-mode;
 /* --on-navy — текст на заливке navy, ok, danger, warn: белый в светлой теме, тёмный в тёмной (там заливки светлые) */
 :root{
   color-scheme:light; --win-w:calc(100vw - 32px);
@@ -109,7 +112,7 @@ body.uit-edit .uit-pen{pointer-events:auto}
 @media (pointer:coarse){.uit-pen::after{content:"";position:absolute;inset:-13px}}
 .uit-bar{position:sticky;bottom:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;background:#fdecd6;color:#7a4510;border-top:2px solid var(--warn);font-size:13px;font-weight:600}
 body>.uit-bar{position:fixed;left:0;right:0;bottom:0}
-dialog.uit-dlg{width:min(560px,var(--win-w));padding:18px 20px}
+dialog.uit-dlg{padding:18px 20px} @layer win{dialog.uit-dlg{width:min(560px,var(--win-w))}}
 dialog.uit-dlg form{display:grid;gap:12px}
 dialog.uit-dlg h3{margin:0}
 dialog.uit-dlg textarea{width:100%;font:inherit}
@@ -130,7 +133,7 @@ dialog.uit-dlg .uit-acts .sp{flex:1}
 .auth-card .msg.warn{margin:0}
 :is(.auth-card,.st-login form) .f input:is([type=text],[type=password]){min-height:44px;padding:10px 12px;font-size:15px;border-radius:10px}
 .pw-box{position:relative;display:block}
-.pw-box input{padding-right:46px!important}
+:is(.auth-card,.st-login form) .f .pw-box input{padding-right:46px}
 .pw-eye{position:absolute;top:0;right:0;bottom:0;width:44px;display:grid;place-items:center;border:0;background:transparent;color:var(--muted);cursor:pointer;border-radius:0 10px 10px 0;touch-action:manipulation}
 .pw-eye:hover,.pw-eye.on{color:var(--navy)}
 .pw-eye:focus-visible{outline:2px solid var(--sky);outline-offset:-4px}
@@ -163,7 +166,7 @@ dialog.uit-dlg .uit-acts .sp{flex:1}
 }
 .auth-me{display:grid;gap:2px;padding:6px 12px 2px}
 /* «⋯ → Сменить пароль» и «Задайте свой пароль» */
-dialog.st-confirm.auth-pwd{width:min(420px,var(--win-w))}
+@layer win{dialog.st-confirm.auth-pwd{width:min(420px,var(--win-w))}}
 .auth-pwf{display:grid;gap:12px}
 .auth-pwf .dlg-h{margin-bottom:0}
 .auth-pwf .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}

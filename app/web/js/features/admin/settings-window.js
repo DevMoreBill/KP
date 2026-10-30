@@ -10,6 +10,7 @@ import { FEAT } from '../../core/features.js';
 import { $, esc } from '../../core/util.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { Mobile } from '../../ui/mobile.js';
+import { WinSize } from '../../core/win-size.js';
 import { Modal } from '../../core/modal.js';
 
 /**
@@ -49,14 +50,17 @@ export class SettingsWindow {
   static _resized(dialog) {
     const rect = dialog.getBoundingClientRect();
     if (rect.width <= this.MIN_WIDTH) return;
-    dialog.style.width = `${Math.round(rect.width)}px`;
-    dialog.style.height = `${Math.round(rect.height)}px`;
+    WinSize.set(dialog, { width: `${Math.round(rect.width)}px`, height: `${Math.round(rect.height)}px` });
     this._saveSize(dialog);
   }
 
   static _saveSize(dialog) {
     try {
-      const size = { max: dialog.classList.contains('max'), w: dialog.style.width || '', h: dialog.style.height || '' };
+      const size = {
+        max: dialog.classList.contains('max'),
+        w: WinSize.get(dialog, 'width'),
+        h: WinSize.get(dialog, 'height'),
+      };
       localStorage.setItem(this.STORE, JSON.stringify(size));
     } catch {
       // хранилище браузера недоступно — размер не запоминается
@@ -67,8 +71,8 @@ export class SettingsWindow {
     try {
       const size = JSON.parse(localStorage.getItem(this.STORE) || '{}') || {};
       dialog.classList.toggle('max', !!size.max);
-      if (size.w) dialog.style.width = size.w;
-      if (size.h) dialog.style.height = size.h;
+      if (size.w) WinSize.set(dialog, { width: size.w });
+      if (size.h) WinSize.set(dialog, { height: size.h });
     } catch {
       // хранилище браузера недоступно — размер по умолчанию
     }

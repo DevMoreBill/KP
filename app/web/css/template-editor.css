@@ -1,6 +1,6 @@
 /* Выбор шаблона на шаге «Титульный лист» и редактор шаблона КП */
 
-dialog.tpled{max-width:min(1100px,var(--win-w));display:flex;flex-direction:column;max-height:92vh}
+dialog.tpled{display:flex;flex-direction:column} @layer win{dialog.tpled{max-width:min(1100px,var(--win-w));max-height:92vh}}
 dialog.tpled:not([open]){display:none}
 .tpled .dlg-h{flex-wrap:wrap}
 .tpled .te-pick{width:auto;min-width:180px;max-width:280px}

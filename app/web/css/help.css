@@ -1,5 +1,5 @@
 /* Руководство пользователя и история версий (js/features/help.js) */
-dialog.helpwin{width:min(1100px,var(--win-w));max-width:var(--win-w);height:min(88vh,900px);display:none;flex-direction:column;overflow:hidden;padding:0}
+dialog.helpwin{display:none;flex-direction:column;overflow:hidden;padding:0} @layer win{dialog.helpwin{width:min(1100px,var(--win-w));max-width:var(--win-w);height:min(88vh,900px)}}
 dialog.helpwin[open]{display:flex}
 .helpwin .dlg-h h3 small{display:block;font-size:12.5px;font-weight:500;color:var(--muted)}
 .hl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}

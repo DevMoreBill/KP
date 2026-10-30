@@ -146,6 +146,8 @@ export class DatePicker {
     if (!box || !input) return;
     if (Mobile.isPhone()) {
       box.classList.add('sheet');
+      box.style.removeProperty('left');
+      box.style.removeProperty('top');
       return;
     }
     const rect = input.getBoundingClientRect();

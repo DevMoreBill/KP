@@ -25,6 +25,7 @@ import { $, esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
 import { HelpLink } from '../../core/help-link.js';
 import { DealSeen } from './deal-seen.js';
+import { WinSize } from '../../core/win-size.js';
 
 /**
  * Окно «Экономика сделки»: шапка с датой договора и Excel, вкладки шагов по порядку заполнения (открыта одна), правая
@@ -202,8 +203,8 @@ export class DealWin {
     try {
       const size = JSON.parse(localStorage.getItem(DealWin.SIZE_STORE) || '{}') || {};
       dlg.classList.toggle('max', !!size.max);
-      if (size.w) dlg.style.width = size.w;
-      if (size.h) dlg.style.height = size.h;
+      if (size.w) WinSize.set(dlg, { width: size.w });
+      if (size.h) WinSize.set(dlg, { height: size.h });
     } catch {
       // нет сохранённого размера — по умолчанию
     }
@@ -215,7 +216,7 @@ export class DealWin {
    */
   static winSave(dlg) {
     try {
-      const size = { max: dlg.classList.contains('max'), w: dlg.style.width || '', h: dlg.style.height || '' };
+      const size = { max: dlg.classList.contains('max'), w: WinSize.get(dlg, 'width'), h: WinSize.get(dlg, 'height') };
       localStorage.setItem(DealWin.SIZE_STORE, JSON.stringify(size));
     } catch {
       // хранилище браузера недоступно — размер не запоминается

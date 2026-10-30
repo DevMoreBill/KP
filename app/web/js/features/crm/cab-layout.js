@@ -92,7 +92,7 @@ export class CabLayout {
         .map(key => this._section(key, parts[key], layout.h[key]))
         .join('')}</div>`;
     const ratio = layout.ratio;
-    const style = `grid-template-columns:minmax(0,${ratio}fr) 10px minmax(0,${(1 - ratio).toFixed(3)}fr)`;
+    const style = `--lay-cols:minmax(0,${ratio}fr) 10px minmax(0,${(1 - ratio).toFixed(3)}fr)`;
     return `<div class="lay-g" data-clpage="${page}" style="${style}">${column('l')}<div class="lay-split" role="separator" aria-orientation="vertical" aria-label="Ширина колонок — потяните" title="Потяните — колонка шире или уже"></div>${column('r')}</div>${this._hidden(page, layout)}`;
   }
 
@@ -329,7 +329,7 @@ export class CabLayout {
       moveEvent => {
         const share = (moveEvent.clientX - box.left) / box.width;
         ratio = Math.round(Math.min(this.RATIO_MAX, Math.max(this.RATIO_MIN, share)) * this.ROUND) / this.ROUND;
-        grid.style.gridTemplateColumns = `minmax(0,${ratio}fr) 10px minmax(0,${(1 - ratio).toFixed(3)}fr)`;
+        grid.style.setProperty('--lay-cols', `minmax(0,${ratio}fr) 10px minmax(0,${(1 - ratio).toFixed(3)}fr)`);
       },
       () => {
         if (!ratio) return;

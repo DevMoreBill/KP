@@ -49,7 +49,7 @@ input.flash{animation:flash 1.6s ease}
 .ph-h{display:inline-block;font-size:12.5px;color:var(--muted);margin-top:2px}
 .ph-h b{color:var(--ink)}
 .ph-h .lnk{font-size:12.5px;margin-left:4px}
-dialog.st-confirm.ph-dlg{width:min(760px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.ph-dlg{width:min(760px,var(--win-w));max-width:none}}
 .ph-l{max-height:min(60vh,520px);overflow:auto}
 .ph-t{width:100%;border-collapse:collapse;font-size:13.5px}
 .ph-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}

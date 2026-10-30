@@ -8,12 +8,13 @@
 .apt-t.on{color:var(--navy);border-bottom-color:var(--navy);background:color-mix(in srgb,var(--navy) 6%,transparent)}
 .apt-x{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:11px;color:var(--muted);margin-right:-6px}
 .apt-x:hover{background:var(--line);color:var(--ink)}
-.has-tabs #srvBtns{display:none!important}
+.has-tabs #srvBtns{display:none}
 .has-tabs .topmenu [data-a=myDay]{display:none}
 
-/* inset — с !important: окно, развёрнутое раньше «во весь экран» (класс max, запомнен), не залезает под шапку */
-html dialog.tabwin{overflow:auto;position:fixed!important;inset:var(--apptop,64px) 0 0 0!important;resize:none!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border:0;border-radius:0!important;box-shadow:none;z-index:15;transform:none;animation:none}
-html dialog.tabwin.tab-off{display:none!important}
+/* окно-вкладка — режим окна (слой win-mode): занимает место под шапкой, даже если раньше было развёрнуто «во весь экран»
+   (класс max запомнен) или растянуто за угол */
+html dialog.tabwin{overflow:auto;border:0;box-shadow:none;z-index:15;transform:none;animation:none} @layer win-mode{html dialog.tabwin[open]{position:fixed;inset:var(--apptop,64px) 0 0 0;resize:none;width:auto;height:auto;max-width:none;max-height:none;margin:0;border-radius:0}}
+:root dialog.tabwin.tab-off[open]{display:none}
 html dialog.tabwin .dlg-h [data-close],html dialog.tabwin .dlg-h [data-dlx=close]{order:99}
 body.tab-other{overflow:hidden}
 body.tab-other main.wrap{visibility:hidden}
@@ -35,7 +36,7 @@ html.app-boot .mbar,html.mob.app-boot .top{display:none}
 .mob body.has-tabs .toast{bottom:calc(var(--mbh) + var(--tbh) + 14px + env(safe-area-inset-bottom,0px))}
 body.tab-other .mbar,.mob body.tab-other .mbar{display:none}
 .mob body.has-tabs #btnMenu{display:none}
-.mob html dialog.tabwin,html.mob dialog.tabwin{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0!important;border-radius:0!important}
+@layer win-mode{html.mob dialog.tabwin[open]{inset:0 0 calc(var(--tbh) + env(safe-area-inset-bottom,0px)) 0;border-radius:0}}
 .top .apptabs{flex:0 1 auto;min-width:0}
 .top>.btn,.top>.topmenu,.top>.sp{flex-shrink:0}
 @media (max-width:1180px){.top .apptabs{flex:0 1 auto}.apt-t{padding:0 9px}}

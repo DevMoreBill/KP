@@ -15,7 +15,7 @@ span.jst{cursor:default}
 .jf[class*="st-"] span{color:inherit}     /* сумма на цветной плашке статуса — её цветом (серый на светлой плашке в тёмной теме не читался) */
 .jf.on{outline:2px solid var(--sky);outline-offset:1px}
 .jf-c{margin-left:auto;font-size:13px;color:var(--muted)}
-.kt-dlg,.ml-dlg{max-width:min(620px,var(--win-w))!important}
+@layer win{dialog.st-confirm.kt-dlg,dialog.st-confirm.ml-dlg{max-width:min(620px,var(--win-w))}}
 .kt-seg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .kt-seg button{padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-family:inherit;font-weight:600;font-size:13px;line-height:1.2;cursor:pointer}
 .kt-fu{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:10px 0 0;display:grid;gap:8px}
@@ -28,7 +28,7 @@ span.jst{cursor:default}
 .rem-btn[hidden]{display:none}
 .rem-btn.due{border-color:var(--danger);color:var(--danger)}
 .rem-btn b{font-size:12px}
-.rem-dlg{max-width:min(720px,var(--win-w))!important}
+@layer win{dialog.st-confirm.rem-dlg{max-width:min(720px,var(--win-w))}}
 .rem-l{display:grid;gap:8px;max-height:65vh;overflow:auto}
 .rem-r{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
 .rem-r.over{border-color:#f0b4b4;background:#fff7f7}
@@ -36,7 +36,7 @@ span.jst{cursor:default}
 .rem-r .muted{font-size:12.5px;overflow-wrap:anywhere}
 .rem-i{font-size:20px;text-align:center}
 .rem-r .acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
-.rp-dlg,.kd-dlg{max-width:min(1100px,var(--win-w))!important;width:min(1100px,var(--win-w))}
+@layer win{dialog.st-confirm.rp-dlg,dialog.st-confirm.kd-dlg{max-width:min(1100px,var(--win-w));width:min(1100px,var(--win-w))}}
 .rp-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px}
 .rp-bar .f{margin:0}
 .rp-bar input[type=date]{width:auto}
@@ -87,7 +87,7 @@ span.jst{cursor:default}
 /* кнопки внизу окна: второстепенные слева от главной, главная — справа */
 .dlg-acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}
 /* черновики, заготовки, «Новое КП» */
-dialog.st-confirm.drafts-dlg,dialog.st-confirm.newkp-dlg{width:min(720px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.drafts-dlg,dialog.st-confirm.newkp-dlg{width:min(720px,var(--win-w));max-width:none}}
 dialog.newkp-dlg .nk-top{justify-content:flex-start;margin-bottom:14px}
 .dr-l,.nk-l{max-height:min(52vh,460px);overflow:auto}
 .dr-l .st-row>div:first-child,.nk-l .st-row>div:first-child{display:grid;gap:2px;flex:1;min-width:0}
@@ -112,7 +112,7 @@ dialog.newkp-dlg .nk-top{justify-content:flex-start;margin-bottom:14px}
 .md-r .jst{flex:none}
 
 /* окно «КП сохранено» */
-dialog.st-confirm.ks-dlg{width:min(640px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.ks-dlg{width:min(640px,var(--win-w));max-width:none}}
 .ks-ok{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ok);color:var(--on-navy);font-size:15px;margin-right:6px;vertical-align:-3px}
 .ks-g{display:grid;gap:4px;margin-top:10px}
 .ks-g section{padding:10px 0;border-top:1px solid var(--line)}
@@ -122,7 +122,7 @@ dialog.st-confirm.ks-dlg{width:min(640px,var(--win-w));max-width:none}
 /* карточка клиента */
 .lnk.cc-l{font-weight:inherit;color:inherit;text-decoration:none;border-bottom:1px dashed var(--muted)}
 .lnk.cc-l:hover{color:var(--navy);border-bottom-color:var(--navy)}
-dialog.st-confirm.cc-dlg{width:min(1040px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.cc-dlg{width:min(1040px,var(--win-w));max-width:none}}
 .cc-dlg .dlg-h>div{flex:1;min-width:0}
 .cc-req{display:block;font-size:13px;margin-top:2px}
 .cc-addr{margin:0 0 10px;font-size:13px}
@@ -171,7 +171,7 @@ input.kf-note{font-size:13px;padding:4px 8px;min-height:30px;margin-top:2px}
 .kf-r .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .kf-add{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .kf-hint{font-size:12.5px}
-dialog.st-confirm.kf-dlg{width:min(760px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm.kf-dlg{width:min(760px,var(--win-w));max-width:none}}
 .kf-about{margin:0 0 10px;font-size:13.5px}
 .kf-dlg .kf-host{max-height:min(60dvh,560px);overflow:auto;overscroll-behavior:contain}
 .jr-f{width:fit-content;justify-self:start;align-self:flex-start;display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--navy);font-size:12px;font-weight:600;line-height:1.6;cursor:pointer;white-space:nowrap}

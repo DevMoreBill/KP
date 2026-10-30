@@ -1,3 +1,5 @@
+import { WinSize } from '../../core/win-size.js';
+
 /**
  * Размер и место окна сделки на ПК: у правого края — ширина тянется за левую кромку; потянуть за шапку — окно
  * отрывается и двигается, размер — за правый нижний угол; двойной щелчок по шапке — обратно к краю. Помнится в браузере.
@@ -48,12 +50,11 @@ export class DealWin {
    */
   static apply(dialog) {
     const place = this.place || {};
-    const style = dialog.style;
     const width = this._clampWidth(place.width);
-    if (width) style.width = `${width}px`;
+    if (width) WinSize.set(dialog, { width: `${width}px` });
     dialog.classList.toggle('dk-float', !!place.float);
     if (!place.float) {
-      for (const key of ['left', 'top', 'height', 'margin']) style.removeProperty(key);
+      WinSize.set(dialog, { left: '', top: '', height: '' });
       return;
     }
     const height = Math.min(
@@ -62,7 +63,7 @@ export class DealWin {
     );
     const left = this._clamp(place.left, this.EDGE, window.innerWidth - (width || this.MIN_WIDTH) - this.EDGE);
     const top = this._clamp(place.top, this.EDGE, window.innerHeight - height - this.EDGE);
-    Object.assign(style, { margin: '0', left: `${left}px`, top: `${top}px`, height: `${height}px` });
+    WinSize.set(dialog, { left: `${left}px`, top: `${top}px`, height: `${height}px` });
     this.place = { ...place, width: width || place.width, height, left, top };
   }
 
@@ -89,8 +90,7 @@ export class DealWin {
     this._drag(event, moveEvent => {
       const shift = startX - moveEvent.clientX;
       const width = this._clampWidth(box.width + shift);
-      dialog.style.width = `${width}px`;
-      if (floating) dialog.style.left = `${box.right - width}px`;
+      WinSize.set(dialog, floating ? { width: `${width}px`, left: `${box.right - width}px` } : { width: `${width}px` });
       this.place = { ...this.place, width, ...(floating ? { left: box.right - width } : {}) };
     });
   }
@@ -160,6 +160,7 @@ export class DealWin {
     )
       return;
     this.place = { ...this.place, width: box.width, height: box.height };
+    WinSize.set(dialog, { width: `${Math.round(box.width)}px`, height: `${Math.round(box.height)}px` });
     this._save();
   }
 

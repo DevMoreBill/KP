@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-KP/79ca987a-f62b-54bf-b9dd-1d786e8a8cda/scratchpad/scc.py", line 44, in <module>
+    graph[src] = [d for d in graph[src] if not any(layer(src) == a and layer(d) == b for a, b in drop)]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/claude-0/-home-user-KP/79ca987a-f62b-54bf-b9dd-1d786e8a8cda/scratchpad/scc.py", line 44, in <listcomp>
+    graph[src] = [d for d in graph[src] if not any(layer(src) == a and layer(d) == b for a, b in drop)]
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/claude-0/-home-user-KP/79ca987a-f62b-54bf-b9dd-1d786e8a8cda/scratchpad/scc.py", line 44, in <genexpr>
+    graph[src] = [d for d in graph[src] if not any(layer(src) == a and layer(d) == b for a, b in drop)]
+                                                                                         ^^^^
+ValueError: not enough values to unpack (expected 2, got 1)

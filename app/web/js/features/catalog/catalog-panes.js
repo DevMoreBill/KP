@@ -1,3 +1,5 @@
+import { WinSize } from '../../core/win-size.js';
+
 /**
  * Размер окна каталога и ширина панелей: фильтры | список | карточка — границы перетаскиваются мышью (или стрелками),
  * двойной щелчок — как было; всё запоминается в браузере.
@@ -35,13 +37,11 @@ export class CatalogPanes {
     const dialog = this.d;
     const size = CatalogPanes.read(CatalogPanes.SIZE_KEY);
     dialog.classList.toggle('max', !!size.max);
-    if (size.w && size.h) {
-      dialog.style.width = `${Math.min(size.w, innerWidth)}px`;
-      dialog.style.height = `${Math.min(size.h, innerHeight)}px`;
-    } else {
-      dialog.style.width = '';
-      dialog.style.height = '';
-    }
+    const fits = size.w && size.h;
+    WinSize.set(dialog, {
+      width: fits ? `${Math.min(size.w, innerWidth)}px` : '',
+      height: fits ? `${Math.min(size.h, innerHeight)}px` : '',
+    });
   }
 
   /** Запомнить размер окна. */
@@ -53,6 +53,7 @@ export class CatalogPanes {
       const size = max
         ? { ...old, max: true }
         : { max: false, w: Math.round(dialog.offsetWidth), h: Math.round(dialog.offsetHeight) };
+      if (!max) WinSize.set(dialog, { width: `${size.w}px`, height: `${size.h}px` });
       localStorage.setItem(CatalogPanes.SIZE_KEY, JSON.stringify(size));
     } catch {
       // браузер не хранит

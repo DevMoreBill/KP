@@ -61,7 +61,7 @@ class Changed:
 
     Сервер — наборы, где упомянут изменённый модуль (ядро — все); интерфейс — проверки в Node (tests/js: слепки расчётов,
     станции, сделка) только при правке JS, кнопки и поля (test_controls) — при правке JS или HTML; правка одного CSS —
-    только статические проверки и правила проекта. Долгие наборы (фаззинг, обновления, безопасность) — только при правке
+    статические проверки, проверки стилей (test_css_*) и правила проекта. Долгие наборы (фаззинг, обновления, безопасность) — только при правке
     сервера, к которому они относятся, или в полном прогоне."""
     ALWAYS = ('test_project',)       # правила проекта — всегда
     SHARED = ('kit', 'run_all', 'storage', 'kp_server', 'web_api')   # каркас проверок и ядро сервера — все наборы
@@ -94,8 +94,11 @@ class Changed:
         keys |= {whole for whole, parts in cls.PARTS.items() if keys & set(parts)}
         js = any(f.startswith(('app/web/js/', 'tests/js/')) for f in touched)
         html = js or any(f.endswith('.html') and f.startswith('app/web/') for f in touched)
+        css = any(f.startswith('app/web/css/') for f in touched)
         station = any(cls.STATION.match(f) or f.startswith('tests/js/') for f in touched)
         pick = names if keys & set(cls.SHARED) else [n for n in names if cls._wanted(n, keys, js, html)]
+        if css:
+            pick += [n for n in names if n.startswith('test_css_') and n not in pick]
         if not station and not keys & set(cls.SHARED):
             pick = [n for n in pick if not n.startswith('test_station_') or n in keys]
         return [n for n in pick if n not in cls.SLOW or n in keys or keys & set(cls.SLOW[n])]

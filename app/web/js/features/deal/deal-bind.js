@@ -27,6 +27,7 @@ import { SidePanel } from '../../ui/side-panel.js';
 import { KpState, S } from '../../core/state.js';
 import { OptionSale } from '../kp/option-sale.js';
 import { RateSource } from '../kp/rate-source.js';
+import { WinSize } from '../../core/win-size.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
@@ -92,8 +93,7 @@ export class DealBind {
     const dlg = this.dlg;
     const rect = dlg.getBoundingClientRect();
     if (!(rect.width > DealBind.MIN_W)) return;
-    dlg.style.width = `${Math.round(rect.width)}px`;
-    dlg.style.height = `${Math.round(rect.height)}px`;
+    WinSize.set(dlg, { width: `${Math.round(rect.width)}px`, height: `${Math.round(rect.height)}px` });
     DealWin.winSave(dlg);
   }
 

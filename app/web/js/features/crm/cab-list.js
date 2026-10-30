@@ -64,14 +64,14 @@ export class CabList {
    */
   static html(rows, parts) {
     const keys = this.shown();
-    const grid = `grid-template-columns:${keys.map(key => this.COLS[key].width).join(' ')}`;
+    const grid = `--cab-cols:${keys.map(key => this.COLS[key].width).join(' ')}`;
     const body = this.sorted(rows)
       .slice(0, parts.limit ?? rows.length)
       .map(deal => this._row(deal, keys, grid, parts.row))
       .join('');
     const total = rows.reduce((sum, deal) => sum + (deal.sum || 0), 0);
     const foot = rows.length
-      ? `<div class="cab-lt" style="${grid}"><span>Всего: <b>${rows.length}</b></span>${keys.includes('sum') ? `<b class="lr-sum" style="grid-column:${keys.indexOf('sum') + 1}">${CrmFmt.short(total)}</b>` : ''}</div>`
+      ? `<div class="cab-lt" style="${grid}"><span>Всего: <b>${rows.length}</b></span>${keys.includes('sum') ? `<b class="lr-sum" style="--sum-col:${keys.indexOf('sum') + 1}">${CrmFmt.short(total)}</b>` : ''}</div>`
       : '';
     return `<div class="cab-ls" role="table">${this._head(keys, grid)}${body}${parts.more}${foot}</div>`;
   }

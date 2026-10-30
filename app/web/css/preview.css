@@ -17,7 +17,7 @@
 .pdftoo input{width:16px;height:16px;margin:0;accent-color:var(--navy)}
 @media (max-width:760px){ .cvtop{grid-template-columns:1fr} .cvthumb{max-width:320px} }
 /* окно предпросмотра */
-dialog.kpprev{width:min(1200px,var(--win-w));height:94vh;max-width:var(--win-w);max-height:96vh;display:none;flex-direction:column;overflow:hidden}
+dialog.kpprev{display:none;flex-direction:column;overflow:hidden} @layer win{dialog.kpprev{width:min(1200px,var(--win-w));height:94vh;max-width:var(--win-w);max-height:96vh}}
 dialog.kpprev[open]{display:flex}
 .pv-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .pv-hd h3{margin:0;font-size:18px}

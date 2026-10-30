@@ -1,8 +1,8 @@
 /* Окно «Экономика сделки» (js/features/deal.js) и кнопки входа в него. */
-dialog.dealwin{width:calc(100vw - 40px);max-width:100vw;max-height:100vh;height:calc(100vh - 40px);min-width:min(640px,100vw);min-height:min(420px,100vh);resize:both;display:none;flex-direction:column;overflow:hidden;padding:0}
-dialog.dealwin.max{width:100vw!important;height:100vh!important;max-height:100vh;border-radius:0;resize:none;margin:0;inset:0}
+dialog.dealwin{display:none;flex-direction:column;overflow:hidden;padding:0} @layer win{dialog.dealwin{width:var(--dlg-w,calc(100vw - 40px));max-width:100vw;max-height:100vh;height:var(--dlg-h,calc(100vh - 40px));min-width:min(640px,100vw);min-height:min(420px,100vh);resize:both}}
+@layer win{dialog.dealwin.max{width:100vw;height:100vh;max-height:100vh;border-radius:0;resize:none;margin:0;inset:0}}
 .mob dialog.dealwin .dl-maxb{display:none}
-@supports (height:100dvh){ dialog.dealwin{height:calc(100dvh - 40px)} }
+@supports (height:100dvh){ @layer win{dialog.dealwin{height:var(--dlg-h,calc(100dvh - 40px))}} }
 dialog.dealwin[open]{display:flex}
 .dealwin .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
 .dl-b{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px;grid-template-rows:auto minmax(0,1fr)}
@@ -603,7 +603,7 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .dl-t th:last-child .dl-cr{right:0}
 .mob .dl-cr{display:none}
 /* окно экономики на компьютере — уже, чтобы легче читалось */
-@media (min-width:901px){ dialog.dealwin:not(.max){width:min(1440px,calc(100vw - 40px))} }
+@media (min-width:901px){ @layer win{dialog.dealwin:not(.max){width:var(--dlg-w,min(1440px,calc(100vw - 40px)))}} }
 
 /* ячейка даты: ⠿ ↑↓ и поле даты — одной строкой, поле сжимается по ширине столбца */
 .dl-cdr{display:flex;align-items:center;gap:4px;min-width:0}
@@ -940,10 +940,10 @@ body.dl-colresize,body.dl-colresize *{cursor:col-resize!important;user-select:no
 .lg-of tr{display:grid;grid-template-columns:1fr auto;grid-template-areas:"name name" "kind days" "sum sum";gap:4px 10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--card)}
 .lg-of tr.on{border-color:var(--navy);box-shadow:0 0 0 1px var(--navy) inset}
 .lg-of tr.on td,.lg-of tr.best td{background:transparent}
-.lg-of td{border:0!important;padding:0!important}
+.lg-p.lg-of td{border:0;padding:0}
 .lg-of td:nth-child(1){grid-area:name}
 .lg-of td:nth-child(2){grid-area:kind;color:var(--muted);font-size:12.5px}
 .lg-of td:nth-child(3){grid-area:days;text-align:right;color:var(--muted);font-size:12.5px}
-.lg-of td:nth-child(4){grid-area:sum;font-size:17px;font-weight:700;text-align:left!important}
+.lg-of td:nth-child(4){grid-area:sum;font-size:17px;font-weight:700;text-align:left}
 .lg-of td small{max-width:none}
 .lg-of .lg-pk{cursor:pointer}

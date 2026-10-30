@@ -1,13 +1,13 @@
 /* «Настройки» — админ-панель */
-dialog.setwin{width:min(1480px,calc(100vw - 40px));height:calc(100dvh - 40px);max-width:100vw;max-height:100dvh;min-width:min(640px,100vw);min-height:min(420px,100dvh);resize:both;display:none;flex-direction:column;overflow:hidden;overscroll-behavior:contain}
-dialog.setwin.max{width:100vw!important;height:100dvh!important;max-height:100dvh;border-radius:0;resize:none;margin:0;inset:0}
+dialog.setwin{display:none;flex-direction:column;overflow:hidden;overscroll-behavior:contain} @layer win{dialog.setwin{width:var(--dlg-w,min(1480px,calc(100vw - 40px)));height:var(--dlg-h,calc(100dvh - 40px));max-width:100vw;max-height:100dvh;min-width:min(640px,100vw);min-height:min(420px,100dvh);resize:both}}
+@layer win{dialog.setwin.max{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;resize:none;margin:0;inset:0}}
 .setwin .dlg-h .st-maxb{margin-left:auto}
 .setwin .dlg-h .btn.ghost+.st-maxb{margin-left:0}
-.mob dialog.setwin{resize:none}
+@layer win-mode{.mob dialog.setwin{resize:none}}
 .mob .setwin .st-maxb{display:none}
 dialog.setwin[open]{display:flex}
 /* окно входа администратора — компактное, по форме (размер большого окна «Настроек» не меняется) */
-html:not(.mob) dialog.setwin.login{width:min(440px,var(--win-w))!important;height:fit-content!important;max-height:calc(100dvh - 32px);min-width:0;min-height:0;resize:none}
+@layer win{html:not(.mob) dialog.setwin.login{max-height:calc(100dvh - 32px)}} @layer win-mode{html:not(.mob) dialog.setwin.login{width:min(440px,var(--win-w));height:fit-content;min-width:0;min-height:0;resize:none}}
 dialog.setwin.login .st-maxb{display:none}
 .st-login{flex:1 1 auto;min-height:0;padding:20px 24px 22px;overflow:auto;overscroll-behavior:contain}
 .st-login form{width:min(400px,100%);margin:0 auto;display:grid;gap:14px}
@@ -71,7 +71,7 @@ dialog.setwin.login .st-maxb{display:none}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .modb{color:#ffd58a;background:#3a2d10;border-color:#6b5420} }
 .ed-modnote{font-size:12.5px}
 .btn.danger-bg,.btn.danger-bg:hover{background:var(--danger);border-color:var(--danger);color:var(--on-navy)}
-dialog.st-confirm{max-width:min(460px,var(--win-w));padding:20px 22px;overscroll-behavior:contain}
+dialog.st-confirm{padding:20px 22px;overscroll-behavior:contain} @layer win{dialog.st-confirm{max-width:min(460px,var(--win-w))}}
 dialog.st-confirm h3{margin:0 0 8px;font-size:18px}
 dialog.st-confirm p{margin:0 0 16px;color:var(--muted);font-size:14px}
 dialog.st-confirm .row{justify-content:flex-end}
@@ -84,17 +84,17 @@ dialog.st-confirm .row{justify-content:flex-end}
   .st-log summary{grid-template-columns:1fr auto;}
   .st-log summary .muted{grid-column:1/-1}
 }
-dialog.st-form{width:min(520px,var(--win-w))}
+@layer win{dialog.st-form{width:min(520px,var(--win-w))}}
 dialog.st-form .f{margin-bottom:12px;display:grid;gap:4px}
 dialog.st-form .f input,dialog.st-form .f textarea{width:100%}
 dialog.st-form .row{justify-content:flex-end;gap:10px;margin-top:6px}
 .setwin .dlg-h h3 small{display:block;font-size:12.5px;font-weight:500;color:var(--muted)}
-dialog.kpver{width:min(620px,var(--win-w));max-height:84vh;overflow:auto}
+dialog.kpver{overflow:auto} @layer win{dialog.kpver{width:min(620px,var(--win-w));max-height:84vh}}
 /* небольшие окна: заголовок без своих полей — вровень с содержимым, крестик в правом верхнем углу */
 dialog.st-confirm .dlg-h{padding:0 0 10px;margin-bottom:12px}
 dialog.kpver .kpver-l{display:grid;gap:4px}
 /* категории оборудования: список слева, форма справа */
-dialog.wide.typesed,dialog.typesed{width:min(1280px,var(--win-w));max-width:var(--win-w);height:min(92vh,980px);display:none;flex-direction:column;padding:0}
+dialog.wide.typesed,dialog.typesed{display:none;flex-direction:column;padding:0} @layer win{dialog.wide.typesed,dialog.typesed{width:min(1280px,var(--win-w));max-width:var(--win-w);height:min(92vh,980px)}}
 dialog.typesed[open]{display:flex}
 .typesed .ty-sub{flex:1;font-size:13px}
 .ty-wrap{display:grid;grid-template-columns:280px minmax(0,1fr);flex:1;min-height:0}
@@ -225,7 +225,8 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
   .fd-dt thead{display:none}
   .fd-dt,.fd-dt tbody{display:block}
   .fd-dt tr{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px 10px;padding:10px 0;border-bottom:1px solid var(--line);position:relative}
-  .fd-dt td{display:block;border:0;padding:0;min-width:0!important;max-width:none!important;width:auto!important}
+  .fd-dt td{display:block;border:0;padding:0}
+  .fd-t.fd-dt td{min-width:0;max-width:none;width:auto}
   .fd-dt td:nth-child(1),.fd-dt td:nth-child(2){grid-column:1/-1}
   .fd-dt tr[data-fdr] td:nth-child(1){padding-right:44px}
   .fd-dt td[data-l]::before{content:attr(data-l);display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
@@ -266,7 +267,7 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .ac-acts .btn{padding:5px 10px;font-size:13px;min-height:30px;justify-content:center}
 .ac-acts .btn.ghost{border:1px solid var(--line)}
 /* временный пароль после «Сбросить пароль» — показывается один раз */
-dialog.st-confirm.ac-tmp-dlg{width:min(460px,var(--win-w))}
+@layer win{dialog.st-confirm.ac-tmp-dlg{width:min(460px,var(--win-w))}}
 .ac-tmp{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin:0 0 12px;padding:12px 14px;border:1px dashed var(--line);border-radius:12px;background:var(--soft)}
 .ac-tmp-l{flex-basis:100%;font-size:13px;color:var(--muted)}.ac-tmp-l b{color:var(--ink)}
 .ac-tmp code{flex:1;min-width:0;font:600 22px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;color:var(--navy);user-select:all;overflow-wrap:anywhere}
@@ -383,7 +384,7 @@ dialog.st-confirm.ac-tmp-dlg{width:min(460px,var(--win-w))}
 .up-fail code{white-space:pre-wrap;word-break:break-word}
 .up-notes pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.5;margin:6px 0 0;max-height:260px;overflow:auto;background:var(--soft);padding:10px 12px;border-radius:8px}
 /* перезапуск */
-dialog.st-confirm.rs-dlg{width:min(460px,var(--win-w))}
+@layer win{dialog.st-confirm.rs-dlg{width:min(460px,var(--win-w))}}
 .rs-bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:10px}
 .rs-bar i{display:block;height:100%;width:40%;background:var(--navy);border-radius:3px;animation:rsMove 1.2s ease-in-out infinite}
 @keyframes rsMove{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
@@ -424,21 +425,21 @@ dialog.st-confirm.rs-dlg{width:min(460px,var(--win-w))}
 .st-body label.ck{display:flex;width:auto;height:auto;flex:none;place-items:initial;align-items:center;justify-content:flex-start;gap:8px;margin:8px 0;cursor:pointer}
 .st-body label.ck input{flex:none}
 .st-body label.st-own{display:inline-flex;margin:10px 0 0}
-dialog.st-confirm:has(.sh-t){width:min(820px,var(--win-w));max-width:none}
+@layer win{dialog.st-confirm:has(.sh-t){width:min(820px,var(--win-w));max-width:none}}
 .cn-t td.cn-s{width:1%}
 .cn-t td:nth-child(2){width:30%}
 .cn-t td:last-child{width:1%;white-space:nowrap}
 .ch-t td:first-child{width:38%}
 /* телефон: строки таблиц истории, проверки подключений и изменённого — карточками */
 @media (max-width:700px){
-  .cn-t,.cn-t tbody,.cn-t tr,.cn-t td,.ch-t,.ch-t tbody,.ch-t tr,.ch-t td,.sh-t,.sh-t tbody,.sh-t tr,.sh-t td{display:block;width:auto!important;max-width:none}
+  .cn-t,.cn-t tbody,.cn-t tr,.cn-t td,.ch-t,.ch-t tbody,.ch-t tr,.ch-t td,.sh-t,.sh-t tbody,.sh-t tr,.sh-t td{display:block;width:auto;max-width:none}
   .ch-t thead,.sh-t thead{display:none}
   .cn-t tr,.ch-t tr,.sh-t tr{padding:10px 0;border-bottom:1px solid var(--line)}
   .cn-t td,.ch-t td,.sh-t td{border:0;padding:2px 0}
   .ch-t td[data-l]::before,.sh-t td[data-l]::before{content:attr(data-l) ': ';color:var(--muted)}
   .ch-t td.acts,.cn-t td:last-child{text-align:left}
 }
-.mob .cn-t,.mob .cn-t tbody,.mob .cn-t tr,.mob .cn-t td,.mob .ch-t,.mob .ch-t tbody,.mob .ch-t tr,.mob .ch-t td,.mob .sh-t,.mob .sh-t tbody,.mob .sh-t tr,.mob .sh-t td{display:block;width:auto!important;max-width:none}
+.mob .cn-t,.mob .cn-t tbody,.mob .cn-t tr,.mob .cn-t td,.mob .ch-t,.mob .ch-t tbody,.mob .ch-t tr,.mob .ch-t td,.mob .sh-t,.mob .sh-t tbody,.mob .sh-t tr,.mob .sh-t td{display:block;width:auto;max-width:none}
 .mob .ch-t thead,.mob .sh-t thead{display:none}
 .mob .ch-t td[data-l]::before,.mob .sh-t td[data-l]::before{content:attr(data-l) ': ';color:var(--muted)}
 /* «Мои настройки» менеджера */
@@ -598,8 +599,8 @@ button.st-tile:hover{border-color:var(--navy)}
 .mv-tag{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--ink);background:var(--soft)}
 .mv-tag.new{border-color:var(--ok);color:var(--ok);background:transparent;font-weight:600}
 /* модерация: окно «было → стало» */
-dialog.st-confirm.mv{width:min(1100px,var(--win-w));max-width:none;max-height:calc(100dvh - 32px);overflow:auto}
-dialog.st-confirm.mv-ql{width:min(760px,var(--win-w))}
+dialog.st-confirm.mv{overflow:auto} @layer win{dialog.st-confirm.mv{width:min(1100px,var(--win-w));max-width:none;max-height:calc(100dvh - 32px)}}
+@layer win{dialog.st-confirm.mv-ql{width:min(760px,var(--win-w))}}
 .mv-h{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .mv-h h3{margin:0;flex:1}
 .mv-who{margin:0 0 8px}
@@ -641,7 +642,7 @@ dialog.st-confirm.mv-ql{width:min(760px,var(--win-w))}
   .mv-f .row .btn{flex:1 1 auto}
 }
 /* выгрузка каталога */
-dialog.st-confirm.cx{width:min(720px,var(--win-w));max-width:none;max-height:calc(100dvh - 32px);overflow:auto}
+dialog.st-confirm.cx{overflow:auto} @layer win{dialog.st-confirm.cx{width:min(720px,var(--win-w));max-width:none;max-height:calc(100dvh - 32px)}}
 .cx-note{margin:0 0 10px;font-size:12.5px}
 .cx-g{display:grid;grid-template-columns:130px minmax(0,1fr);gap:8px 12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .cx-l{font-weight:600;font-size:13.5px}
@@ -811,7 +812,7 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 /* «Битрикс24 → Регламент сделки» */
 .bx-rt td{vertical-align:middle}.bx-rt select{min-width:150px;max-width:320px}
 .bx-rck{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}
-.fb-dlg{width:min(720px,var(--win-w))}
+@layer win{.fb-dlg{width:min(720px,var(--win-w))}}
 .fb-l{display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow:auto}
 .fb-r{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .fb-r p{margin:6px 0 0}
@@ -919,7 +920,7 @@ dialog.st-confirm.mv>*{flex-shrink:0}
   .bx-opt{grid-template-columns:minmax(0,1fr)}.bx-opt-c{justify-content:flex-start}.bx-opt-c select,.bx-opt-c input[type=number]{max-width:none}.bx-gtoc{grid-template-columns:minmax(0,1fr)}.bx-gtoc a{display:flex;align-items:center;min-height:44px}}
 /* права администраторов: режим «только просмотр», редактор прав */
 .st-ronote{margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink);font-size:13.5px}
-dialog.st-confirm.ar-dlg{width:min(760px,calc(100vw - 24px));max-width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 32px);overflow:auto}
+dialog.st-confirm.ar-dlg{overflow:auto} @layer win{dialog.st-confirm.ar-dlg{width:min(760px,calc(100vw - 24px));max-width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 32px)}}
 .ar-main,.ar-act{display:flex;gap:10px;align-items:flex-start;padding:8px 0;cursor:pointer}
 .ar-main input,.ar-act input{margin-top:3px;flex:none}
 .ar-main span,.ar-act span{display:grid;gap:2px}
@@ -932,9 +933,9 @@ dialog.st-confirm.ar-dlg{width:min(760px,calc(100vw - 24px));max-width:min(760px
 .ar-row select{min-height:32px;font-size:13.5px}
 .ar-gh{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}
 .ar-ah{margin:12px 0 2px}
-@media (max-width:760px){.ar-groups{grid-template-columns:minmax(0,1fr)}dialog.st-confirm.ar-dlg{width:auto;max-width:none}.ar-row select{min-height:44px;font-size:16px}}
+@media (max-width:760px){.ar-groups{grid-template-columns:minmax(0,1fr)}@layer win{dialog.st-confirm.ar-dlg{width:auto;max-width:none}}.ar-row select{min-height:44px;font-size:16px}}
 /* «Обновить цены / остатки» фида (feed-update.js) */
-dialog.st-confirm.fu-dlg{width:min(1100px,var(--win-w));max-width:none;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;padding:0;overflow:hidden}
+dialog.st-confirm.fu-dlg{display:flex;flex-direction:column;padding:0;overflow:hidden} @layer win{dialog.st-confirm.fu-dlg{width:min(1100px,var(--win-w));max-width:none;max-height:calc(100dvh - 32px)}}
 dialog.st-confirm.fu-dlg[open]{display:flex}
 dialog.st-confirm.fu-dlg .dlg-h{padding:14px 18px 10px;margin:0}
 .fu-dlg .dlg-h small{font-weight:400;color:var(--muted);margin-left:6px;font-size:14px}
