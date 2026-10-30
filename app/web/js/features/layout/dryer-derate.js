@@ -39,7 +39,7 @@ export class DryerDerate {
    * @returns {{amb: number, tin: number}}
    */
   static temps(req) {
-    const amb = SummerTemp.of(req.tmax) + StationRules.raw('heat.vent_dt');
+    const amb = SummerTemp.room(req.tmax);
     return { amb, tin: req.tin != null ? req.tin : amb + StationRules.raw('dryer.inlet_dt') };
   }
 

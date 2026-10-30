@@ -132,13 +132,14 @@ export class ReceiverSizing {
     }
   }
 
-  // паспортное давление выше рабочего и по нему сосуд подлежал бы учёту — условие «без учёта»
+  // паспортное давление выше рабочего и по нему сосуд подлежал бы учёту: учёт — по рабочему давлению (ФНП ОРПД, п. 223 а),
+  // условие — уставка предохранительного клапана ресивера не выше рабочего
   static _rated(note, unit, bar, volume) {
     const own = PressureVessel.ratedOnly(bar, unit.info.bar, volume);
     if (!own) return;
-    note.missing(
-      `vessel.rated.${unit.name}`,
-      `${unit.name}: без учёта в Ростехнадзоре — при уставке предохранительного клапана не выше ${CalcNote.fmt(bar, 1)} бар; по паспортному давлению ${CalcNote.fmt(own, 1)} бар p·V = ${CalcNote.fmt(PressureVessel.product(own, volume), 3)} МПа·м³ — подлежал бы учёту (какое давление брать по ФНП ОРПД — уточните)`,
+    const product = CalcNote.fmt(PressureVessel.product(own, volume), 3);
+    note.assume(
+      `${unit.name}: учёт в Ростехнадзоре — по рабочему давлению станции ${CalcNote.fmt(bar, 1)} бар (ФНП ОРПД, п. 223 а): без учёта при уставке предохранительного клапана ресивера не выше ${CalcNote.fmt(bar, 1)} бар; по паспортному давлению ${CalcNote.fmt(own, 1)} бар p·V = ${product} МПа·м³ — подлежал бы учёту.`,
     );
   }
 }

@@ -68,7 +68,7 @@ input:disabled,select:disabled,textarea:disabled{opacity:.6;cursor:not-allowed;b
 .kr-xp{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:flex-start;margin:6px 0}
 .kr-log summary{cursor:pointer;font-size:12.5px;color:var(--muted)}
 .kr-log ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;max-height:180px;overflow:auto}
-::placeholder{color:var(--muted);opacity:1}
+::placeholder{color:var(--muted);opacity:.55}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-weight:550;padding:7px 12px;font-size:13.5px;border-radius:9px}
 a.btn{color:inherit;text-decoration:none}

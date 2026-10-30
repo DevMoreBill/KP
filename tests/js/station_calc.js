@@ -153,37 +153,38 @@ Check.run('вентиляция: пример — винтовой 75 кВт, 20
   near(U, 0.4807, 0.0001, 'U'); near(V, 38.297, 0.001, 'объём, м³'); near(A, 73.603, 0.001, 'площадь ограждений, м²');
   const inp={ units:[{ key:'c1', pos:1, type:'screw', kw:75 }], qRoom:0, use:0, V, tSum:30, tWin:-25, tInMin:5, ex:{} };
   const S=VentCalc.summer(inp, W);
-  // 1. Q = N·k = 75 · 0,9 = 67,5 кВт; 2. Δt помещения = 40 − 30 = 10 °C; ρ(30) = 353 / 303 = 1,165 кг/м³
-  assert.strictEqual(S.units[0].k, 0.9); assert.strictEqual(S.Qc, 67.5); assert.strictEqual(S.dt, 10); assert.strictEqual(S.rho, 1.165);
+  // 1. Q = N·k = 75 · 1,05 = 78,75 → 78,8 кВт (k — vent.k_heat: Kaeser, КПД IE3; было 0,9); 2. Δt помещения = 40 − 30 = 10 °C;
+  //    ρ(30) = 353 / 303 = 1,165 кг/м³
+  assert.strictEqual(S.units[0].k, 1.05); assert.strictEqual(S.Qc, 78.8); assert.strictEqual(S.dt, 10); assert.strictEqual(S.rho, 1.165);
   // 3. воздух охлаждения — вентилятором компрессора, нагрев в нём Δt_к = 15 °C (heat.cool_dt; горячий — воздуховодом наружу):
-  //    L = 67,5 · 3600 / (1,005 · 1,16502 · 15) = 243 000 / 17,5627 = 13 836 → 13 840 м³/ч; 13 840 / 1,69901 = 8 146 CFM
-  assert.strictEqual(S.dtc, 15); assert.strictEqual(S.Lcool, 13840); assert.strictEqual(S.Lin, 13840); assert.strictEqual(S.cfmIn, 8146);
+  //    L = 78,75 · 3600 / (1,005 · 1,16502 · 15) = 283 500 / 17,5627 = 16 142 → 16 140 м³/ч; 16 140 / 1,69901 = 9 500 CFM
+  assert.strictEqual(S.dtc, 15); assert.strictEqual(S.Lcool, 16140); assert.strictEqual(S.Lin, 16140); assert.strictEqual(S.cfmIn, 9500);
   // 4. кратность: 3V = 114,9 → 110 м³/ч, аварийная 8V = 306,4 → 310 м³/ч — расход охлаждения больше, не увеличивается
   assert.strictEqual(S.Lmin, 110); assert.strictEqual(S.Lemerg, 310); assert.strictEqual(S.raised, false);
   // 5. при остановке — вытяжной вентилятор с термостатом: max(солнце 0, 3V = 114,9) · 1,15 = 132 → не меньше 500 м³/ч;
-  //    выброс = воздуховод 13 840 + общая вытяжка 500 = 14 340 м³/ч
-  assert.strictEqual(S.stand.L, 500); assert.strictEqual(S.Lgen, 500); assert.strictEqual(S.Lout, 14340);
-  // 6. выброс по рамке: 14 340 / (3600 · 4) = 0,996 → 1,00 м²; приток: 13 840 / (3600 · 3) · 1,1 = 1,410 → 1,41 м²
-  assert.strictEqual(S.Sout, 1); assert.strictEqual(S.Sin, 1.41);
+  //    выброс = воздуховод 16 140 + общая вытяжка 500 = 16 640 м³/ч
+  assert.strictEqual(S.stand.L, 500); assert.strictEqual(S.Lgen, 500); assert.strictEqual(S.Lout, 16640);
+  // 6. выброс по рамке: 16 640 / (3600 · 4) = 1,156 → 1,16 м²; приток: 16 140 / (3600 · 3) · 1,1 = 1,644 → 1,64 м²
+  assert.strictEqual(S.Sout, 1.16); assert.strictEqual(S.Sin, 1.64);
   // справочно: скорость в живом сечении (доля vent.free) — 4 / free
   near(S.vLiveOut, VentCalc.round1(4/S.free), 1e-9, 'живое сечение выброса');
-  // лето +35 °C с теплом помещения 6,5 кВт и воздухом на сжатие 780 м³/ч: охлаждение 14 060 м³/ч, помещение (Δt 5) — 4 040,
-  // один поток — 14 060 + 780 = 14 840 м³/ч; у входа компрессора 35 + 6,5 · 3600 / (1,005 · 1,146 · 14 840) = 36,4 °C;
-  // приток 14 840 / 10 800 · 1,1 = 1,51 м², выброс (14 060 + 500) / 14 400 = 1,01 м² (было 7,84 и 4,28)
+  // лето +35 °C с теплом помещения 6,5 кВт и воздухом на сжатие 780 м³/ч: охлаждение 78,75 · 3600 / (1,005 · 1,1461 · 15) =
+  // 16 410 м³/ч, помещение (Δt 5) — 4 060, один поток — 16 410 + 780 = 17 190 м³/ч; у входа компрессора
+  // 35 + 6,5 · 3600 / (1,005 · 1,146 · 17 190) = 36,2 °C; приток 17 190 / 10 800 · 1,1 = 1,75 м², выброс (16 410 + 500) / 14 400 = 1,17 м²
   const S35=VentCalc.summer({ ...inp, tSum:35, qRoom:6.5, qSun:0.5, use:780 }, W);
-  assert.strictEqual(S35.Lcool, 14060); assert.strictEqual(S35.Lin, 14840); assert.strictEqual(S35.tComp, 36.4); assert.strictEqual(S35.Sin, 1.51); assert.strictEqual(S35.Sout, 1.01);
-  // «Вентилятор в воздуховоде выброса»: приток 4 м/с — 14 840 / 14 400 · 1,1 = 1,13 м², выброс 6 м/с — 14 560 / 21 600 = 0,67 м²;
-  // вентилятор 14 060 м³/ч · 100 Па / (3600 · 1000 · 0,5) = 0,78 кВт
+  assert.strictEqual(S35.Lcool, 16410); assert.strictEqual(S35.Lin, 17190); assert.strictEqual(S35.tComp, 36.2); assert.strictEqual(S35.Sin, 1.75); assert.strictEqual(S35.Sout, 1.17);
+  // «Вентилятор в воздуховоде выброса»: приток 4 м/с — 17 190 / 14 400 · 1,1 = 1,31 м², выброс 6 м/с — 16 910 / 21 600 = 0,78 м²;
+  // вентилятор 16 410 м³/ч · 100 Па / (3600 · 1000 · 0,5) = 0,912 кВт
   const SB=VentCalc.summer({ ...inp, tSum:35, qRoom:6.5, qSun:0.5, use:780, boost:true }, W);
-  assert.strictEqual(SB.Sin, 1.13); assert.strictEqual(SB.Sout, 0.67); assert.strictEqual(SB.boost.P, 0.781);
+  assert.strictEqual(SB.Sin, 1.31); assert.strictEqual(SB.Sout, 0.78); assert.strictEqual(SB.boost.P, 0.912);
   // зима, Δt = 5 − (−25) = 30 °C: Q_огр = 0,481 · 73,6 · 30 = 1 062 Вт; L_зима = max(2V = 76,6) → 80 м³/ч;
-  // Q_вент = 80 · 1,005 · (353/248 = 1,4234) · 30 / 3600 = 0,954 кВт; потери 2,02 кВт; тепло компрессора 67,5 — избыток
-  const Wn=VentCalc.winter({ ...inp, env:{ U, A, qEnv:U*A*30 }, Qrun:67.5, useRun:0 }, S, W);
+  // Q_вент = 80 · 1,005 · (353/248 = 1,4234) · 30 / 3600 = 0,954 кВт; потери 2,02 кВт; тепло компрессора 78,8 — избыток
+  const Wn=VentCalc.winter({ ...inp, env:{ U, A, qEnv:U*A*30 }, Qrun:78.8, useRun:0 }, S, W);
   assert.strictEqual(Wn.dt, 30); assert.strictEqual(Wn.Qenv, 1.06); assert.strictEqual(Wn.Lw, 80); assert.strictEqual(Wn.Qvent, 0.95);
-  assert.strictEqual(Wn.Qloss, 2.02); assert.strictEqual(Wn.bal, 65.48); assert.strictEqual(Wn.heat, 0);
-  // жалюзи зимой: 80 / 13 840 = 0,58 % — меньше наименьшего открытия клапана (20 %) → 20 %
-  assert.strictEqual(Wn.ratio, 0.6); assert.strictEqual(Wn.open, 20);
-  // рекуператор: по расчёту не нужен (2,02 < 0,3 · 67,5 = 20,25 кВт, подогрев не нужен)
+  assert.strictEqual(Wn.Qloss, 2.02); assert.strictEqual(Wn.bal, 76.78); assert.strictEqual(Wn.heat, 0);
+  // жалюзи зимой: 80 / 16 140 = 0,50 % — меньше наименьшего открытия клапана (20 %) → 20 %
+  assert.strictEqual(Wn.ratio, 0.5); assert.strictEqual(Wn.open, 20);
+  // рекуператор: по расчёту не нужен (2,02 < 0,3 · 78,8 = 23,64 кВт, подогрев не нужен)
   const R0=VentCalc.recup(false, Wn, inp, W); assert.strictEqual(R0.worth, false);
   // по требованию заказчика: с промежуточным теплоносителем, η = 0,5; t_после = −25 + 0,5 · (5 − (−25)) = −10 °C;
   // влажность 50 % ≤ 60 % — обмерзания нет; −25 < −15 — байпас и предподогрев до +5 °C;
@@ -195,15 +196,15 @@ Check.run('вентиляция: пример — винтовой 75 кВт, 20
 });
 
 Check.run('вентиляция: предупреждения и режим «эксперт»', ()=>{
-  const W=[], V=38.3, inp={ units:[{ key:'c1', pos:1, type:'piston', kw:75 }], qRoom:0, use:0, V, tSum:38, ex:{ k:1.2, vOut:6 } };
+  const W=[], V=38.3, inp={ units:[{ key:'c1', pos:1, type:'piston', kw:75 }], qRoom:0, use:0, V, tSum:38, ex:{ k:1.3, vOut:6 } };
   const S=VentCalc.summer(inp, W);
-  // Δt = 40 − 38 = 2 < 5 — предупреждение, расчёт при 5; k 1,2 вне 0,70…0,95 (поршневой) — взято 0,9; 6 м/с > 5 — предупреждение
-  assert.strictEqual(S.dtRaw, 2); assert.strictEqual(S.dt, 5); assert.strictEqual(S.units[0].k, 0.9); assert.strictEqual(S.vOut, 6);
-  assert.ok(W.some(w=>/Недостаточный перепад/.test(w.text)) && W.some(w=>/k для типа «поршневой» 1,2 — вне/.test(w.text)) && W.some(w=>/больше 5 м\/с/.test(w.text)), W.map(w=>w.text).join(' | '));
+  // Δt = 40 − 38 = 2 < 5 — предупреждение, расчёт при 5; k 1,3 вне 0,70…1,20 (поршневой) — взято 1,05; 6 м/с > 5 — предупреждение
+  assert.strictEqual(S.dtRaw, 2); assert.strictEqual(S.dt, 5); assert.strictEqual(S.units[0].k, 1.05); assert.strictEqual(S.vOut, 6);
+  assert.ok(W.some(w=>/Недостаточный перепад/.test(w.text)) && W.some(w=>/k для типа «поршневой» 1,3 — вне/.test(w.text)) && W.some(w=>/больше 5 м\/с/.test(w.text)), W.map(w=>w.text).join(' | '));
   // паспорт важнее формулы: тепловыделение 60 кВт и воздух охлаждения 18 000 м³/ч
   const P=VentCalc.summer({ ...inp, units:[{ key:'c1', type:'screw', kw:75, heat:60, cool:18000 }], ex:{} }, []);
   assert.strictEqual(P.units[0].Q, 60); assert.strictEqual(P.units[0].cool, 18000); assert.strictEqual(P.units[0].src, 'паспорт');
-  // эксперт: k 0,8 для винтового (0,65…1,0) — принят; U 2,0 для неутеплённого — Q = 2 · 73,6 · 30 = 4,42 кВт
+  // эксперт: k 0,8 для винтового (0,65…1,2) — принят; U 2,0 для неутеплённого — Q = 2 · 73,6 · 30 = 4,42 кВт
   const E=VentCalc.summer({ ...inp, tSum:30, units:[{ key:'c1', type:'screw', kw:75 }], ex:{ k:0.8, U:2 } }, []);
   assert.strictEqual(E.Qc, 60);
   const Wn=VentCalc.winter({ tWin:-25, tInMin:5, V, env:{ U:0.481, A:73.6, qEnv:1062 }, Qrun:60, useRun:0, ex:{ U:2 } }, E, []);
@@ -264,8 +265,9 @@ Check.run('компрессорная: ошибки — мало произво�
   const x=station('st_comp', { flow:'12', pressure:'7.5', basis:'normal', alt:'900', rh:'80', tmax:'35', margin:'10', reserve:'1' },
     [part('Компрессор винтовой К-130', { cat:'comp_screw', maker:'Пример', flow:13, pressure:8, kw:75 }, 2), DK('DK 1450', 24), GON('GON 1550 MY', 25.8, 'Сверхтонкая (микрофильтр)')], '1.4.1');
   const R=StationCalc.run(x), txt=R.errors.map(e=>e.text).join(' | ');
-  // 12 н. м³/мин → FAD: 900 м — 90,970 кПа; 35 °C, 80 % — 0,8 · 5,613 = 4,490 кПа: 12 · 101,325/86,480 · 1,12813 = 15,861; +10 % = 17,45 > 13
-  assert.ok(/Производительность рабочих компрессоров 13 м³\/мин меньше требуемой 17,45/.test(txt), txt);
+  // 12 н. м³/мин → FAD: 900 м — 90,970 кПа; воздух помещения 35 + 5 = 40 °C (heat.vent_dt), 80 % — 0,8 · 7,367 = 5,894 кПа:
+  // 12 · 101,325/85,076 · 1,14644 = 16,385; +10 % = 18,02 > 13 (по наружному 35 °C было 17,45)
+  assert.ok(/Производительность рабочих компрессоров 13 м³\/мин меньше требуемой 18,02/.test(txt), txt);
   // давление: 7,5 + 0,1 (фильтр) + 0,2 (осушитель) + 0,1 (трубы) = 7,9 ≤ 8 — не ошибка; в нижней точке 8 − 1 = 7 < 7,9 — предупреждение
   assert.ok(!/не обеспечит/.test(txt), txt);
   assert.ok(R.warnings.some(w=>/нижней точке регулирования \(7 бар\) давление ниже требуемого 7,9/.test(w.text)), R.warnings.map(w=>w.text).join(' | '));
@@ -324,8 +326,9 @@ Check.run('лето без температуры в ТЗ — одно прав�
   const mk=extra=>station('st_comp', { flow:'10', pressure:'7', basis:'normal', alt:'0', rh:'100', margin:'0', reserve:'0', ...extra }, [comp()]);
   const fad=R=>R.sections.find(sec=>sec.id==='air').steps.find(st=>/FAD/.test(st.what)).result;
   const none=StationCalc.run(mk({})), hot=StationCalc.run(mk({ tmax:'35' })), cool=StationCalc.run(mk({ tmax:'20' }));
-  // 10 н. м³/мин, 100 %: 35 °C — 5,613 кПа пара: 10 · 101,325 / (101,325 − 5,613) · 308,15 / 273,15 = 11,94 (при 20 °C — 10,99)
-  assert.strictEqual(fad(none), fad(hot)); assert.ok(/11,94/.test(fad(none)), fad(none));
+  // 10 н. м³/мин, 100 %: воздух помещения 35 + 5 = 40 °C — 7,367 кПа пара: 10 · 101,325 / (101,325 − 7,367) · 313,15 / 273,15 =
+  // 12,36 (по наружному 35 °C было 11,94, при 20 °C — 10,99)
+  assert.strictEqual(fad(none), fad(hot)); assert.ok(/12,36/.test(fad(none)), fad(none));
   assert.notStrictEqual(fad(none), fad(cool), 'было 20 °C — потребность занижена на 8 %');
   assert.ok(none.rules.includes('heat.t_summer') && none.weak.some(w=>w.id==='heat.t_summer'), 'правило — в «требует подтверждения»');
   assert.ok(!hot.rules.includes('heat.t_summer'), 'температура в ТЗ — правило не нужно');
@@ -619,7 +622,9 @@ Check.run('аудит п. 19: ресивер — паспортное давле
   assert.strictEqual(PressureVessel.registered(11, 909), false); assert.strictEqual(PressureVessel.registered(11, 910), true);
   const x=station('st_comp', { flow:'5', pressure:'6', reserve:'0', tmax:'25' }, [part('Компрессор К', { cat:'comp_screw', flow:6, pressure:8, kw:37 }), part('Ресивер Р', { cat:'receiver', volume:900, pressure:16 })]);
   const R=StationCalc.run(x);
-  assert.ok(R.weak.some(w=>/при уставке предохранительного клапана не выше 8 бар/.test(w.title)), JSON.stringify(R.weak.map(w=>w.title)));
+  // учёт — по рабочему давлению (ФНП ОРПД, п. 223 а): условие — допущение расчёта, а не «требует подтверждения»
+  assert.ok(R.assumptions.some(a=>/по рабочему давлению станции 8 бар \(ФНП ОРПД, п\. 223 а\): без учёта при уставке предохранительного клапана ресивера не выше 8 бар/.test(a)), JSON.stringify(R.assumptions));
+  assert.ok(!R.weak.some(w=>/уставке/.test(w.title)), JSON.stringify(R.weak.map(w=>w.title)));
 });
 
 process.on('beforeExit', ()=>{ if (!process.exitCode) console.log('расчёт станции: проверок пройдено — '+Check.n); });

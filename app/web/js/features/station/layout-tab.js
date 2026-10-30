@@ -426,7 +426,7 @@ export class LayoutTab {
           `<li><span><b>${esc(rec.title)}</b> — ${esc(rec.why)}</span><button class="btn sm" type="button" data-a="stlRec" data-i="${index}" data-k="${row}">${rec.replace ? 'Заменить — подобрать в каталоге' : 'Подобрать в каталоге'}</button></li>`,
       )
       .join('');
-    return `<details class="stl-air stl-sp"${Spoiler.attr(`air:${item.id}`)}><summary class="stl-air-h"><b>Подготовка воздуха</b>${missing}${air.q ? `<span class="muted">компрессоры — ${flow(air.q)} м³/мин при ${flow(air.bar)} бар</span>` : ''}</summary>
+    return `<details class="stl-air stl-sp"${Spoiler.attr(`air:${item.id}`)}><summary class="stl-air-h"><b>Подготовка воздуха</b>${missing}${air.q ? `<span class="muted">компрессоры — ${flow(air.work > 0 ? air.work : air.q)} м³/мин${air.q - air.work > 0 && air.work > 0 ? ` + ${flow(air.q - air.work)} в резерве` : ''} при ${flow(air.bar)} бар</span>` : ''}</summary>
       <div class="stl-chain">${this._chain(air)}<span class="stl-arr">→</span><span class="stl-node">потребителю</span></div>
       ${air.chain.some(step => step.guess) ? '<p class="muted stl-hint">Пунктиром — фильтр, у которого не указана ступень очистки: место выбрано по виду осушителя. Укажите «Ступень очистки» в характеристиках фильтра (предварительная, тонкая, сверхтонкая, угольный).</p>' : ''}
       ${this._grade(StationUi.opts(item).air, index)}${recs ? `<p class="stl-rec-h">Не хватает в составе:</p><ul class="stl-recs">${recs}</ul>` : ''}</details>`;

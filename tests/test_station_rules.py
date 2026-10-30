@@ -45,8 +45,12 @@ class RulesFileTest(unittest.TestCase):
         """отчёт аудита 30.10: правила без источника — «требует подтверждения» со сверкой; нормы — с источником"""
         by_id = {r['id']: r for r in self.d['rules']}
         pipe = by_id['el.pipe_v']
-        self.assertEqual(pipe['status'], 'unconfirmed', 'скорость во всасывающем трубопроводе — выше СП 31.13330 для DN до 250')
+        # решение владельца 30.10: вода — по СП 31.13330.2021, табл. 25 (до 250 мм); воздух и топливо — без источника
+        self.assertEqual((pipe['value']['in'], pipe['value']['out']), (1, 2), 'всасывающая 1 м/с, напорная 2 м/с — табл. 25')
+        self.assertEqual(pipe['status'], 'unconfirmed', 'воздух и топливо — требует подтверждения')
         self.assertIn('СП 31.13330', pipe['source']['doc'])
+        heat = by_id['vent.k_heat']
+        self.assertEqual((heat['value']['def']['screw'], heat['status']), (1.05, 'confirmed'), 'k по Kaeser и КПД IE3')
         wall = by_id['fire.fuel_wall']
         self.assertEqual((wall['value'], wall['status']), (45, 'confirmed'))
         self.assertIn('123-ФЗ', wall['source']['doc'])

@@ -103,8 +103,16 @@ export class StationAuto {
     const out = {};
     this._container(Kit.container(item), out);
     this._mass(parts, out);
-    for (const field of type.fields) this._field(field, parts, main, out);
+    const ctx = { parts, main, out, work: this._working(item, main) };
+    for (const field of type.fields) this._field(field, ctx);
     return out;
+  }
+
+  // производительность станции — рабочими агрегатами: резервные по требованиям не считаются (хотя бы один — рабочий)
+  static _working(item, main) {
+    const total = main ? this._qty(main) : 1;
+    const reserve = Math.max(0, Math.round(Str.num((item.req || {}).reserve) || 0));
+    return Math.max(1, total - reserve);
   }
 
   /**
@@ -190,7 +198,7 @@ export class StationAuto {
     return (LgCargo.of([{ rows: part.rows || [] }]).mass || 0) * this.KG_IN_TONNE;
   }
 
-  static _field(field, parts, main, out) {
+  static _field(field, { parts, main, out, work }) {
     const key = field.key;
     if (this.OWN_KEYS.includes(key)) return;
     if (key === 'kw' && /установленн/i.test(field.label)) {
@@ -199,7 +207,7 @@ export class StationAuto {
     }
     if (main && this._filled(main, key)) {
       const value = main.attrs[key];
-      const factor = this._unit(main, field) * (key === 'flow' ? this._qty(main) : 1);
+      const factor = this._unit(main, field) * (key === 'flow' ? work : 1);
       out[key] = field.num ? StationAutoVal.of(value, factor) : value;
       return;
     }

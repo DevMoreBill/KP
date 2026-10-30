@@ -1171,7 +1171,7 @@ Check.run('сжатый воздух: байпас осушителя, диам�
   // насосная: DN по подаче рабочих насосов (без резервного)
   const pm=P('Насос CR 32', { cat:'pump', flow:32, head:50, kw:7.5, size:'600 × 400 × 1000' }, { role:'main', qty:2 });
   const kp=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[pm, P('Трубопровод', {}, { pipeMat:'inox' })], req:{ kind:'pump', res:1 } }).pipe;
-  assert.ok(kp && kp.medium==='water' && kp.lines.length===2 && kp.lines[0].dn===80 && kp.lines[1].dn===100, 'насосная: напорный DN 80, всасывающий DN 100 при 32 м³/ч: '+JSON.stringify(kp));
+  assert.ok(kp && kp.medium==='water' && kp.lines.length===2 && kp.lines[0].dn===80 && kp.lines[1].dn===125, 'насосная: напорный DN 80, всасывающий DN 125 при 32 м³/ч (всасывание не быстрее 1 м/с — СП 31.13330.2021, табл. 25; при 1,2 м/с был DN 100): '+JSON.stringify(kp));
   // подача диапазоном — трубы по наибольшей (было: «8–32» — по 8 м³/ч, «до 32» — без расчёта)
   for (const flow of ['8–32', 'до 32']){
     const pr=P('Насос CR 32', { cat:'pump', flow, head:50, kw:7.5, size:'600 × 400 × 1000' }, { role:'main', qty:2 });
@@ -1337,9 +1337,10 @@ Check.run('жалюзи: размеры по расходу воздуха, ме
   assert.deepStrictEqual(StationVent.size(0.3, { h:[300, 1000], w:[400, 1500] }), { n:1, w:700, h:450 }, 'небольшая — одна, 3 : 2: 700 × 450 = 0,315 м²');
   const p=solve(C('block'), [comp, dryer, rec, cab]), V=p.vent, v=p.heat.vent;
   assert.ok(V && V.louvers.length, 'жалюзи посчитаны и расставлены');
-  // компрессор 37 кВт (решение ПНЕВМОТЕХ): Q = N·k = 37 · 0,9 = 33,3 кВт; лето +35 °C (по умолчанию); воздух охлаждения —
-  // вентилятором компрессора, нагрев в нём 15 °C: ρ = 353 / 308 = 1,146 кг/м³; L = 33,3 · 3600 / (1,005 · 1,146 · 15) = 6 940 м³/ч
-  assert.strictEqual(v.sum.dt, 5); assert.strictEqual(v.sum.units[0].Q, 33.3); assert.strictEqual(v.cool, 6940);
+  // компрессор 37 кВт: Q = N·k = 37 · 1,05 = 38,85 кВт (k — правило vent.k_heat по Kaeser и КПД IE3; было 0,9 — решение 12.10);
+  // лето +35 °C (по умолчанию); воздух охлаждения — вентилятором компрессора, нагрев в нём 15 °C: ρ = 353 / 308 = 1,146 кг/м³;
+  // L = 38,85 · 3600 / (1,005 · 1,146 · 15) = 8 090 м³/ч
+  assert.strictEqual(v.sum.dt, 5); assert.strictEqual(v.sum.units[0].Q, 38.9); assert.strictEqual(v.cool, 8090);
   // приток — один поток (больший из охлаждения и помещения) + воздух на сжатие; выброс — воздуховод + общая вытяжка (без сжатого воздуха)
   assert.strictEqual(V.q.in, Math.max(v.sum.Lrun, v.sum.stand.L)+v.use); assert.strictEqual(V.q.out, v.sum.Lgen+v.cool, 'вытяжка — без сжатого воздуха');
   assert.ok(v.sum.tComp<=40, 'у входа компрессора не выше 40 °C: '+v.sum.tComp); assert.strictEqual(V.draft, null, 'у компрессорной — не естественная тяга, а вентилятор стоянки');
@@ -1575,8 +1576,8 @@ Check.run('вытяжные вентиляторы в стене напроти�
   const p0=solve(C('block'), [c75, dryer, rec, cab]), p1=solve(C('block', { sys:{ exfan:true } }), [c75, dryer, rec, cab]);
   Check.plan(p1, 'вытяжные вентиляторы'); const S0=p0.heat.vent.sum, S1=p1.heat.vent.sum, E=StationRules.raw('vent.exfan');
   assert.ok(!S0.exfan && S1.exfan && S1.vIn===E.vIn && S1.vOut===E.vOut, 'скорости с вентиляторами: '+JSON.stringify([S1.vIn, S1.vOut]));
-  // пример 75 кВт: приток 1,51 → 1,13 м², выброс 1,01 → 0,67 м² (как с канальным вентилятором)
-  assert.deepStrictEqual([p0.vent.need.in.gross, p0.vent.need.out.gross, p1.vent.need.in.gross, p1.vent.need.out.gross], [1.51, 1.01, 1.13, 0.67]);
+  // пример 75 кВт (k = 1,05): приток 1,74 → 1,31 м², выброс 1,17 → 0,78 м² (как с канальным вентилятором)
+  assert.deepStrictEqual([p0.vent.need.in.gross, p0.vent.need.out.gross, p1.vent.need.in.gross, p1.vent.need.out.gross], [1.74, 1.17, 1.31, 0.78]);
   assert.strictEqual(S1.exfan.L, Math.round(S1.Lout*E.reserve/10)*10, 'расход вентиляторов — весь выброс с запасом');
   assert.ok(Math.abs(S1.exfan.P-S1.exfan.L*E.dp/(3600*1000*E.eta))<0.001, 'P = L · ΔP / (3600 · 1000 · η)');
   // в нагрузке станции (было: только текстом): при работе — вытяжные; без них — вентилятор стоянки, только в установленной
@@ -1600,15 +1601,16 @@ Check.run('вытяжные вентиляторы в стене напроти�
   const pb=solve(C('block', { sys:{ exfan:true, boost:true } }), [c75, dryer, rec, cab]);
   assert.ok(!pb.heat.vent.sum.boost && pb.heat.vent.sum.exfan && pb.heat.vent.warn.some(w=>/не нужен/.test(w.text)), 'канальный — не нужен');
   // приточные жалюзи целиком не встали — приточные вентиляторы на недостающий расход (проём меньше), по датчику температуры
-  const c132=P('Винтовой компрессор 132', { cat:'comp_screw', kw:132, size:'2200 × 1300 × 1900', mass:1500 }, { role:'main' });
+  // 113 кВт · k 1,05 ≈ 132 кВт · 0,9 — то же тепло, что в сценарии до vent.k_heat 1,05 (при 132 кВт не встают и вентиляторы)
+  const c113=P('Винтовой компрессор 113', { cat:'comp_screw', kw:113, size:'2200 × 1300 × 1900', mass:1500 }, { role:'main' });
   // (стены заняты конвекторами с прежними отступами 300 / 150 / 400 мм — с уменьшенными 13.10 жалюзи притока здесь уже встают)
   const rb=JSON.parse(fs.readFileSync(path.join(ROOT, 'app', 'web', 'rules', 'stations.json'), 'utf8')), rc=JSON.parse(JSON.stringify(rb));
   Object.assign(rc.rules.find(r=>r.id==='layout.matrix').value.conv, { gap:300, edge:150, front:400 }); rc.rules.find(r=>r.id==='layout.matrix').value.exits.far=2000; StationRules.use(rc);   // вторая дверь оператора, как до 19.10, — стены заняты
-  let pi; try{ pi=solve(C('sea20', { sys:{ snow:true } }), [c132, dryer, rec, cab]); } finally { StationRules.use(rb); }
+  let pi; try{ pi=solve(C('sea20', { sys:{ snow:true } }), [c113, dryer, rec, cab]); } finally { StationRules.use(rb); }
   const F=pi.vent.louvers.filter(q=>q.kind==='in' && q.fan);
   assert.ok(pi.vent.infan && F.length===pi.vent.infan.n && pi.vent.short.in===0, 'приточные вентиляторы: '+JSON.stringify(pi.vent.infan));
   assert.ok(pi.issues.some(i=>/^Приточные вентиляторы: .*по датчику температуры/.test(i.text)), 'замечание о приточных вентиляторах');
-  assert.ok(!solve(C('sea20', { sys:{ snow:true, infan:false } }), [c132, dryer, rec, cab]).vent.infan, 'запрещены — не ставятся');
+  assert.ok(!solve(C('sea20', { sys:{ snow:true, infan:false } }), [c113, dryer, rec, cab]).vent.infan, 'запрещены — не ставятся');
   new StScene(pi, {}).build(); draw(pi, 'приточные вентиляторы');
 });
 

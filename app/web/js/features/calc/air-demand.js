@@ -107,7 +107,9 @@ export class AirDemand {
     return demand;
   }
 
-  static _toFad(note, req, alt, tAir) {
+  // компрессор берёт воздух помещения станции: наружная летом + нагрев в контейнере (heat.vent_dt)
+  static _toFad(note, req, alt, tOut) {
+    const tAir = SummerTemp.room(req.tmax);
     const basis = req.basis;
     const basisUnit = AirDemand.unit(basis);
     const std = basis === 'std';
@@ -119,6 +121,7 @@ export class AirDemand {
     note.rule(rid);
     note.rule('flow.isa');
     note.rule('flow.psat');
+    note.rule(SummerTemp.ROOM_RULE);
     const baro = AirDemand.baro(alt);
     const psat = AirDemand.psat(tAir);
     const fad = AirDemand.fad(req.flow, alt, tAir, humidity, basis);
@@ -129,10 +132,13 @@ export class AirDemand {
       data: [
         [`Q${sym}`, `${CalcNote.fmt(req.flow)} ${basisUnit}/мин`],
         ['высота', `${CalcNote.fmt(alt, 0)} м → pб = ${CalcNote.fmt(baro, 3)} кПа`],
-        ['t всасывания', `${CalcNote.fmt(tAir, 0)} °C`],
+        [
+          't всасывания',
+          `${CalcNote.fmt(tAir, 0)} °C — воздух помещения: наружная ${CalcNote.fmt(tOut, 0)} °C + нагрев в контейнере ${CalcNote.fmt(tAir - tOut, 0)} °C`,
+        ],
         ['φ', `${CalcNote.fmt(humidity, 0)} % → pн.п = ${CalcNote.fmt(psat, 3)} кПа`],
       ],
-      rules: [rid, 'flow.isa', 'flow.psat'],
+      rules: [rid, 'flow.isa', 'flow.psat', SummerTemp.ROOM_RULE],
       result: `Qfad = ${CalcNote.fmt(fad)} м³/мин`,
     });
     return fad;

@@ -37,6 +37,13 @@ export class DrawText {
     return [...new Set(this.drawing.plan.items.filter(test).map(i => i.pos))].sort((left, right) => left - right);
   }
 
+  // рабочими компрессорами; резервные — отдельно (2 × 10 м³/мин при резерве 1 — «10 м³/мин; резерв — 10 м³/мин»)
+  static _flow(air) {
+    const work = air.work > 0 ? air.work : air.q;
+    const spare = air.q - work > 0 ? `; резерв — ${AirChain.flowText(air.q - work)} м³/мин` : '';
+    return `Производительность — ${AirChain.flowText(work)} м³/мин при ${AirChain.flowText(air.bar)} бар${spare}`;
+  }
+
   /** Перечень составных частей: позиция, наименование, количество, масса. */
   rows() {
     const byPos = new Map();
@@ -56,8 +63,7 @@ export class DrawText {
     const num = Mm.text;
     const air = drawing.plan.air;
     const out = [];
-    if (air && air.q > 0)
-      out.push(`Производительность — ${AirChain.flowText(air.q)} м³/мин при ${AirChain.flowText(air.bar)} бар`);
+    if (air && air.q > 0) out.push(DrawText._flow(air));
     if (air && air.cls) out.push(`Класс воздуха по ISO 8573-1 — ${air.cls}`);
     out.push(...this.power());
     if (drawing.mass) out.push(StationMass.text(drawing.mass));

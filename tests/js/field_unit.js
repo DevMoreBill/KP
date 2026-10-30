@@ -58,6 +58,18 @@ check('автозаполнение станции: производительн
   near(StationAuto.of(screw).flow, 20, 'винтовой — как было');
 });
 
+check('производительность станции в КП — рабочими агрегатами: резервные по требованиям не считаются (было: 2 × 10 при резерве 1 — «20»)', ()=>{
+  EquipTypes.list=TYPES;
+  const mk=(qty, reserve)=>({ attrs:{ cat:'st_comp' }, req:reserve==null ? {} : { reserve }, kit:{ parts:[part('comp_screw', { flow:10, pressure:8 }, { role:'main', qty })] } });
+  near(StationAuto.of(mk(2, '1')).flow, 10, '2 × 10, резерв 1 — 10 м³/мин');
+  near(StationAuto.of(mk(3, 1)).flow, 20, '3 × 10, резерв 1 — 20 м³/мин');
+  near(StationAuto.of(mk(2, null)).flow, 20, 'резерв не задан — все агрегаты');
+  near(StationAuto.of(mk(1, '1')).flow, 10, 'один агрегат — рабочий, даже если резерв указан');
+  // чертёж (техническая характеристика): рабочие и резерв отдельно
+  assert.strictEqual(DrawText._flow({ q:20, work:10, bar:8 }), 'Производительность — 10 м³/мин при 8 бар; резерв — 10 м³/мин');
+  assert.strictEqual(DrawText._flow({ q:20, work:20, bar:8 }), 'Производительность — 20 м³/мин при 8 бар');
+});
+
 check('сборное изделие: те же переводы, что у станции (воздуходувка — м³/ч → м³/мин, мбар → бар)', ()=>{
   assert.strictEqual(FieldUnit.pair('л/мин', 'м³/мин'), 0.001);
   near(FieldUnit.pair('м³/ч', 'м³/мин'), 1/60, 'м³/ч → м³/мин');

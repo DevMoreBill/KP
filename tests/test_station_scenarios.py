@@ -127,10 +127,11 @@ class StationScenarios(unittest.TestCase):
 
     def test_02_normal_altitude(self):
         o = self.sc(2)
-        # 12 н. м³/мин: 900 м → 90,970 кПа; 35 °C · 80 % → 4,490 кПа: 12 · 101,325 / 86,480 · 308,15/273,15 = 15,861; +10 % = 17,45
+        # 12 н. м³/мин: 900 м → 90,970 кПа; воздух помещения 35 + 5 = 40 °C (решение 30.10: компрессор берёт воздух помещения)
+        # · 80 % → 0,8 · 7,367 = 5,894 кПа: 12 · 101,325 / 85,076 · 313,15/273,15 = 16,385; +10 % = 18,02 (по наружному 35 °C — 17,45)
         s = self.step(o, 'air', 'Требуемая производительность')
-        self.assertIn('17,45', s['result'])
-        self.assertIn('15,86', self.step(o, 'air', 'нормальных м³')['result'])
+        self.assertIn('18,02', s['result'])
+        self.assertIn('16,38', self.step(o, 'air', 'нормальных м³')['result'])
         self.assertEqual(self.names(o, 'compressor'), [('Компрессор винтовой Пример 21/10', 1)])
         self.assertEqual(o['errors'], [])
         self.assertTrue(any('угольный' in p['name'].lower() or 'GON 1550 MA' in p['name'] for p in o['parts']) or

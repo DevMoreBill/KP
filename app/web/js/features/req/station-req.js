@@ -395,7 +395,7 @@ export class StationReq {
     return AirDemand.fad(
       flow,
       ReqNum.loose(req.alt) || 0,
-      SummerTemp.of(tmax),
+      SummerTemp.room(tmax),
       humidity != null ? humidity : this.FULL_HUMIDITY,
       req.basis,
     );
