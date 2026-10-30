@@ -4,7 +4,7 @@ import socket
 from datetime import datetime, timedelta
 
 from defaults import SrvVal
-from server_log import ServerLog
+from server_log import ErrorText, ServerLog
 
 
 class AdminAlerts:
@@ -146,6 +146,6 @@ class AdminAlerts:
             mailer = Mailer(self.store)
             mailer.send_service(mailer.addresses(self.settings().get('to')), subject, body)
         except (RuntimeError, ValueError) as exc:
-            rec.update(ok=False, error=str(exc)[:300])
+            rec.update(ok=False, error=ErrorText.of(exc)[:300])
             ServerLog.failure(f'письмо администратору не отправлено: {exc}')
         return rec

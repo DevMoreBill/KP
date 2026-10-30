@@ -106,6 +106,6 @@ class Net:
         if isinstance(reason, ConnectionRefusedError):
             return 'сервис отказал в соединении'
         if isinstance(exc, ValueError):
-            return str(exc)[:160]
+            return ErrorText.of(exc)[:160]
         hidden = re.sub(r'\w+://\S+', 'адрес скрыт', ErrorText.of(reason))[:120]
         return f'нет связи с сервисом ({hidden})'

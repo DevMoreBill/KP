@@ -118,7 +118,6 @@ export class ClientFields {
     });
     state.contact = { name: '', post: '', phone: '', email: '' };
     state.object = { purpose: '', address: '' };
-    delete state.dealId; // другой клиент — не сделка прежнего: сделку выберет блок «Сделка» или сервер
   }
 }
 

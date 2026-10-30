@@ -98,14 +98,20 @@ export class Presets {
     modal.$('#prN').select();
   }
 
+  // и при открытии: заготовки прежних версий могли сохранить поля клиента
+  static _strip(state) {
+    const copy = { ...(state || {}) };
+    for (const key of this.DROP) delete copy[key];
+    return copy;
+  }
+
   static async _put(modal) {
     const title = modal.$('#prN').value.trim();
     if (!title) {
       modal.$('#prN').focus();
       return;
     }
-    const state = Drafts.clean();
-    for (const key of this.DROP) delete state[key];
+    const state = this._strip(Drafts.clean());
     try {
       await Api.request(`/api/presets/${Drafts.newId('p')}`, {
         method: 'PUT',
@@ -133,7 +139,7 @@ export class Presets {
     }
     const keep = { manager: { ...S.manager }, managerId: S.managerId };
     if (!(await KpTabs.prepare())) return;
-    KpState.replace(Object.assign(KpState.fresh(), answer.data.state || {}, keep));
+    KpState.replace(Object.assign(KpState.fresh(), this._strip(answer.data.state), keep));
     S.authorId = Managers.meId() || S.managerId || '';
     S.date = today();
     S.items.forEach(item => {

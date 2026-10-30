@@ -883,7 +883,7 @@ def _page_getter(store) -> tuple:
             info = page_info(page_html(url), url)
         except Exception as exc:
             with lock:
-                errors.append(f'{url[-80:]}: {str(exc)[:120]}')
+                errors.append(f'{url[-80:]}: {ErrorText.of(exc)[:120]}')
             return hit or {}
         info['at'] = today.isoformat()
         with lock:
@@ -2725,7 +2725,7 @@ def _image_putter(store, image_store) -> tuple:
                 )
         except Exception as exc:
             with lock:
-                stat['fail'].append(f'{url[-70:]}: {str(exc)[:100]}')
+                stat['fail'].append(f'{url[-70:]}: {ErrorText.of(exc)[:100]}')
             return None
         ext = {'image/png': '.png', 'image/webp': '.webp'}.get(ctype, '.jpg')
         folder, title = images.place(tdef, maker, model, name, kind, caption)
@@ -3040,7 +3040,9 @@ def import_feed(
         return res
     except Exception as exc:
         j.update(state='error', msg=ErrorText.of(exc)[:300])
-        _log_add(store, feed_cfg['id'], {'at': _now(), 'kind': 'import', 'by': author, 'error': str(exc)[:300]})
+        _log_add(
+            store, feed_cfg['id'], {'at': _now(), 'kind': 'import', 'by': author, 'error': ErrorText.of(exc)[:300]}
+        )
         log('Фид {}: {}'.format(feed_cfg['id'], exc))
         raise
 
@@ -3333,7 +3335,7 @@ def check_feed(store, feed_cfg, author: str = '', log=print, types=None) -> dict
         return res
     except Exception as exc:
         j.update(state='error', msg=ErrorText.of(exc)[:300])
-        _log_add(store, feed_cfg['id'], {'at': _now(), 'kind': 'check', 'by': author, 'error': str(exc)[:300]})
+        _log_add(store, feed_cfg['id'], {'at': _now(), 'kind': 'check', 'by': author, 'error': ErrorText.of(exc)[:300]})
         log('Фид {}: {}'.format(feed_cfg['id'], exc))
         raise
 

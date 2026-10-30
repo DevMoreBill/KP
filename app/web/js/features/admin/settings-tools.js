@@ -13,6 +13,7 @@ import { LISTS } from '../../core/lists.js';
 import { FEAT } from '../../core/features.js';
 import { DEF_BY, DEF_GROUPS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
 import { ServerDefaults } from '../../core/net.js';
+import { Toast } from '../../core/toast.js';
 
 /** Поиск по всем настройкам (вкладки, умолчания, функции, списки, ключи, категории) с переходом к найденному. */
 export class SettingsSearch {
@@ -419,7 +420,13 @@ export class SettingsSearch {
   static _record({ row, type, kind, tab, query }) {
     const label = row.title;
     if (type === 'catalog' || type === 'kp')
-      return { label, kind, tab, open: () => RecordEdit.open(type, row.id, () => {}) };
+      return {
+        label,
+        kind,
+        tab,
+        open: () =>
+          RecordEdit.open(type, row.id, () => {}).catch(error => Toast.show(`Не открылось: ${error.message || error}`)),
+      };
     return {
       label,
       kind,

@@ -220,7 +220,7 @@ class MirrorBackup:
             rec.update(ok=True, file=os.path.basename(src), bytes=self._dav_put(disk, src, conf['keep']))
             disk.prune(conf['keep'])
         except Exception as exc:
-            rec.update(ok=False, error=Net.why(exc) if not isinstance(exc, RuntimeError) else str(exc)[:300])
+            rec.update(ok=False, error=Net.why(exc) if not isinstance(exc, RuntimeError) else ErrorText.of(exc)[:300])
         maintenance._save(self.store, backup2=rec)
         return rec
 

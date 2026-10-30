@@ -1,7 +1,8 @@
-// Ошибки поведения интерфейса, найденные аудитом 30.10 (3.226.4): дата по номеру дня на «Графике», итоги и сортировка
-// списка сделок по всем строкам, отбор «Без движения», заготовка и смена клиента — без сделки прежнего клиента, поиск
-// строки журнала по номеру КП, повтор запросов без конца (календари сделки и дат, вкладки Битрикс24), опрос загрузки фида,
-// копирование по http://сервер, снятые галочки плана фида.
+// Ошибки поведения интерфейса, найденные аудитом 30.10 (3.226.4–3.226.7): дата по номеру дня на «Графике», итоги и
+// сортировка списка сделок по всем строкам, отбор «Без движения», заготовка и смена клиента — без сделки прежнего клиента,
+// поиск строки журнала по номеру КП, ошибка пары в редакторе компоновки, тарифы, которые не загрузились, «Проиграно»,
+// «Отдел» и «Настройки» при отказе сервера, повтор запросов без конца (календари сделки и дат, вкладки Битрикс24), опрос
+// загрузки фида, копирование по http://сервер, снятые галочки плана фида.
 // Запуск из корня репозитория: node tests/js/audit_ui.js — код выхода 0, если всё прошло (tests/test_audit_ui.py).
 'use strict';
 const path=require('path'), assert=require('assert');
@@ -43,28 +44,167 @@ check('список сделок: «Всего» и сумма — по всем
   CabList.sortBy=null; CabList.desc=false;
 });
 
-check('«Без движения» → «показать все»: отбор idle есть и тот же, что у «Сегодня»', ()=>{
+check('«Без движения» → «показать все»: отбор idle есть и тот же, что у «Сегодня»; чип — только выбранному, выключатель — и в отборе', ()=>{
   const old=KpDate.addDays(today(), -30), fresh=today();
   const deals=[{ id:'a', next:{ due:fresh }, updated:old }, { id:'b', next:{ due:fresh }, updated:fresh }, { id:'c', updated:old }];
   assert.deepStrictEqual(deals.filter(CabDeals.FILTERS.idle[1]).map(deal=>deal.id), ['a']);
   assert.deepStrictEqual(CabToday._idle(deals).map(deal=>deal.id), ['a']);
+  const chips=filter=>swap([
+    [CrmData, 'openDeals', ()=>deals], [CrmData, 'inFunnel', ()=>true], [CrmData, 'deals', ()=>deals], [CrmData, 'paused', ()=>false],
+  ], ()=>{ CabDeals.filter=filter; try { return CabDeals._chips(); } finally { CabDeals.filter=''; } });
+  return (async ()=>{
+    assert.ok(!(await chips('')).includes('data-cflt="idle"'), 'в строке чипов «Без движения» нет, пока не выбран (как до 3.226.4)');
+    assert.ok((await chips('idle')).includes('data-cflt="idle"'), 'выбран из «Сегодня» — чип виден, его можно снять');
+    FEAT.vals={ idleDeals:false };
+    assert.deepStrictEqual(deals.filter(CabDeals.FILTERS.idle[1]), [], 'функция выключена — отбор пуст, как и блок «Сегодня»');
+  })();
 });
 
-check('заготовка, «Копия» и «Сменить клиента» — без сделки прежнего клиента', ()=>{
+check('заготовка — без сделки (и заготовки прежних версий); «Копия» и «Сменить клиента» — сделка прежнего клиента не остаётся скрыто', async ()=>{
   assert.ok(Presets.DROP.includes('dealId'));
+  assert.ok(KpRepeat.DROP.includes('dealId'), 'как у «Повторить КП»');
+  const stripped=Presets._strip({ dealId:'deal-7', client:'ООО «А»', items:[{ id:'i1' }] });
+  assert.ok(!('dealId' in stripped) && !('client' in stripped) && stripped.items.length===1, 'старая заготовка со сделкой — без неё');
   const state={ client:'ООО «А»', clientInn:'7700000001', dealId:'deal-7' };
   ClientFields.clear(state);
-  assert.ok(!('dealId' in state) && state.client==='');
-  assert.ok(KpRepeat.DROP.includes('dealId'), 'как у «Повторить КП»');
+  assert.strictEqual(state.dealId, 'deal-7', 'очистка клиента сделку не трогает (как до 3.226.4): её проверяет блок «Сделка»');
+  const { Api }=mod('core/net.js');
+  const { DealPick }=mod('features/crm/deal-pick.js');
+  const pick=async (dealId, answer)=>{
+    S.dealId=dealId; DealPick.state={ key:'', items:[], current:'', stages:[], busy:false };
+    await swap([[Api, 'request', answer], [Steps, 'current', 'deal']], ()=>DealPick._load('7700000002|ооо «б»|')); // без перерисовки формы
+    return S.dealId;
+  };
+  const items=async ()=>({ items:[{ id:'deal-9', number:'9', stage:'new' }], current:'' });
+  const was=S.dealId;
+  try {
+    assert.strictEqual(await pick('deal-7', items), undefined, 'сделка прежнего клиента, которой нет в списке нового, — сбрасывается');
+    assert.strictEqual(await pick('deal-9', items), 'deal-9', 'сделка этого клиента — остаётся');
+    assert.strictEqual(await pick('new', items), 'new', '«Отдельная новая сделка» — остаётся');
+    assert.strictEqual(await pick('deal-3', async ()=>({ items:[], current:'deal-3' })), 'deal-3', 'текущая сделка КП — остаётся');
+    assert.strictEqual(await pick('deal-7', async ()=>{ throw new Error('нет связи'); }), 'deal-7', 'список не загрузился — не трогаем');
+  } finally { S.dealId=was; }
 });
 
-check('строка журнала по номеру — среди нескольких (номер бывает частью других)', ()=>{
-  assert.ok(Reminders.JOURNAL_ROWS>=20);
+check('строка журнала по номеру — седьмой среди похожих номеров («КП сохранено», «Ход сделки» из напоминаний; было: первые 5 и 1)', async ()=>{
+  const { Api }=mod('core/net.js');
+  const { KpSaved }=mod('features/kp/kp-saved.js');
+  const rows=Array.from({ length:7 }, (_, i)=>({ id:'k'+i, number:'2026-100'+(i ? i : ''), client:'ООО «А»', status:'sent' }));
+  // сервер отдаёт не больше limit строк, найденных по части номера
+  const answer=async url=>({ items:rows.slice(0, Number(new URL(url, 'http://kp').searchParams.get('limit'))) });
+  const was=[S.number, S.kpId];
+  try {
+    S.number='2026-100'; S.kpId='k6';
+    const found=await swap([[Api, 'request', answer]], ()=>KpSaved.row());
+    assert.strictEqual(found && found.id, 'k6');
+  } finally { [S.number, S.kpId]=was; }
+  let opened=null;
+  await swap([[Api, 'request', answer], [KpTrack, 'open', row=>{ opened=row; }]],
+    ()=>Reminders._act({ close(){} }, 'rs', { id:'k6', number:'2026-100', client:'ООО «А»' }));
+  assert.strictEqual(opened && opened.status, 'sent', '«Ход сделки» — по строке журнала, а не по заглушке без статуса');
 });
 
-check('редактор правил компоновки: подпись ключа пары и подпись поля — разные методы', ()=>{
-  assert.strictEqual(typeof LayoutEditor._keyLabel, 'function');
-  assert.strictEqual(typeof LayoutEditor._label, 'function');
+check('редактор правил компоновки: «плотно» больше «рекомендуется» у пары — понятная ошибка с названиями (было: TypeError из второго _label)', ()=>{
+  const { LayoutEditor }=mod('features/rules-doc/layout-editor.js');
+  const editor=Object.create(LayoutEditor.prototype);
+  editor.work={ a:[1000, 800], t:700, m:{ service:{ min:1, max:2 }, pair:{ rows:[{ a:'other', b:'other', base:300, k:0, min:500 }] } } };
+  assert.throws(()=>editor.build(), { message:'Пара Прочее ↔ Прочее: «плотно» больше «рекомендуется»' });
+});
+
+check('«Тарифы доставки», которые не загрузились, — сообщение вместо правки (сохранение заменило бы ставки встроенными)', async ()=>{
+  const { Api }=mod('core/net.js');
+  const { FreightSettings }=mod('features/deal/freight-settings.js');
+  const { DealLogistics }=mod('features/deal/deal-logistics.js');
+  const { LgState }=mod('features/deal/lg-state.js');
+  const box={ innerHTML:'' };
+  await swap([[Api, 'request', async ()=>{ throw new Error('сервер не отвечает'); }]], ()=>FreightSettings.open(box));
+  assert.ok(box.innerHTML.includes('Тарифы доставки не загрузились: сервер не отвечает'), box.innerHTML);
+  assert.strictEqual(LgState.failed, 'сервер не отвечает');
+  await swap([[Api, 'request', async ()=>({})]], ()=>DealLogistics.reload());
+  assert.strictEqual(LgState.failed, '', 'загрузились — правка снова доступна');
+});
+
+// окно Modal без браузера: поля — по селектору, press('data-ok') — щелчок по кнопке с этим атрибутом
+const fakeDialog=fields=>{
+  const listeners={};
+  return {
+    open:false, className:'', innerHTML:'',
+    showModal(){ this.open=true; },
+    close(){ this.open=false; for (const fn of listeners.close || []) fn(); },
+    remove(){},
+    addEventListener(type, fn){ (listeners[type] ||= []).push(fn); },
+    querySelector:selector=>fields[selector] ?? null,
+    press(attr){ for (const fn of listeners.click || []) fn({ target:{ closest:selector=>(selector===`[${attr}]` ? {} : null) } }); },
+  };
+};
+
+check('«Проиграно» в своей воронке: причина из списка, своя причина, без причины — подсказка, «Отмена» — пусто', async ()=>{
+  const { LostPick }=mod('features/crm/lost-pick.js');
+  const { Toast }=mod('core/toast.js');
+  const said=[];
+  const run=async (fields, ...buttons)=>{
+    const dialog=fakeDialog(fields);
+    const saved=[document.createElement, document.body];
+    document.createElement=()=>dialog; document.body={ appendChild(){} };
+    try {
+      return await swap([[Toast, 'show', text=>said.push(text)]], async ()=>{
+        const answer=LostPick._reason({ title:'Сделка', lostReason:'' });
+        for (const button of buttons) dialog.press(button);
+        return answer;
+      });
+    } finally { [document.createElement, document.body]=saved; }
+  };
+  assert.strictEqual(await run({ 'input[name=lpR]:checked':{ value:'Высокая цена' }, '#lpO':{ value:'' } }, 'data-ok'), 'Высокая цена');
+  assert.strictEqual(await run({ 'input[name=lpR]:checked':{ value:'Высокая цена' }, '#lpO':{ value:' Ушли к конкуренту ' } }, 'data-ok'), 'Ушли к конкуренту');
+  assert.strictEqual(await run({ '#lpO':{ value:'' } }, 'data-ok', 'data-x'), '', 'без причины окно не закрылось, «Отмена» — пусто');
+  assert.deepStrictEqual(said, ['Выберите или впишите причину']);
+  await swap([[CrmFunnel, 'failures', ()=>[]], [LostPick, '_reason', async ()=>'Высокая цена']], async ()=>{
+    assert.deepStrictEqual(await LostPick.ask({ funnel:'' }), { stage:'lost', lostReason:'Высокая цена' });
+  });
+  await swap([[CrmFunnel, 'failures', ()=>[]], [LostPick, '_reason', async ()=>'']], async ()=>{
+    assert.strictEqual(await LostPick.ask({ funnel:'' }), null, '«Отмена» — сделка не закрывается');
+  });
+});
+
+check('«Отдел»: «Регламент Битрикс24» и «Где тратится время» не загрузились — «Не загрузилось», а не «выключен» и «сделок нет»', async ()=>{
+  const { Api }=mod('core/net.js');
+  const { TeamRegs }=mod('features/crm/team-regs.js');
+  const { TeamTime }=mod('features/crm/cab-team.js');
+  const fail=async ()=>{ throw new Error('сервер не отвечает'); };
+  for (const block of [TeamRegs, TeamTime]) { block.data=null; block.loading=false; }
+  await swap([[Api, 'request', fail]], async ()=>{ await TeamRegs._load(); await TeamTime._load(); });
+  assert.ok(TeamRegs._inner().includes('Не загрузилось: сервер не отвечает') && !TeamRegs._inner().includes('выключен'));
+  assert.ok(TeamTime._body().includes('Не загрузилось: сервер не отвечает') && !TeamTime._body().includes('Сделок за полгода нет'));
+  TeamRegs.data={ on:true, gaps:0, deals:3 };
+  await swap([[Api, 'request', fail]], ()=>TeamRegs._load());
+  assert.ok(TeamRegs._inner().includes('Все 3 открытых сделок'), 'прежние данные при сбое остаются');
+  for (const block of [TeamRegs, TeamTime]) block.data=null;
+});
+
+check('«Настройки»: вкладка или панель не загрузилась — ошибка на месте «Загружаю…»; вход истёк — дальше, к окну входа', async ()=>{
+  const { AdminNav }=mod('features/admin/admin-nav.js');
+  const { AdminSession }=mod('core/net.js');
+  const body={ innerHTML:'Загружаю…' };
+  const was=AdminSession.on;
+  try {
+    AdminSession.on=true;
+    assert.strictEqual(await AdminNav._fill(body, async ()=>{}), true);
+    assert.strictEqual(await AdminNav._fill(body, async ()=>{ throw new Error('нет связи <b>'); }), false);
+    assert.strictEqual(body.innerHTML, '<p class="msg err">нет связи &lt;b&gt;</p>');
+    AdminSession.on=false;
+    await assert.rejects(AdminNav._fill(body, async ()=>{ throw new Error('вход истёк'); }), { message:'вход истёк' });
+  } finally { AdminSession.on=was; }
+});
+
+check('«Настройки» → поиск: найденный товар или КП, который не открылся, — сообщение (было: необработанный отказ)', async ()=>{
+  const { SettingsSearch }=mod('features/admin/settings-tools.js');
+  const { RecordEdit }=mod('features/admin/records-tab.js');
+  const { Toast }=mod('core/toast.js');
+  const said=[];
+  const entry=SettingsSearch._record({ row:{ id:'c1', title:'Компрессор' }, type:'catalog', kind:'Каталог', tab:'goods', query:'комп' });
+  await swap([[RecordEdit, 'open', async ()=>{ throw new Error('Позиция не найдена'); }], [Toast, 'show', text=>said.push(text)]],
+    ()=>entry.open());
+  assert.deepStrictEqual(said, ['Не открылось: Позиция не найдена']);
 });
 
 check('календарь сделки: год, который сервер не отдал, не запрашивается снова (было: запрос → отказ → перерисовка без конца)', async ()=>{

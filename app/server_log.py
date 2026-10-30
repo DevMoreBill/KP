@@ -32,11 +32,14 @@ class LogMask:
 class ErrorText:
     """Текст исключения для пользователя и состояния задач — без путей на диске сервера (C:\\…, /tmp/…)."""
 
-    PATH = re.compile(r'(?:[A-Za-z]:\\|\\\\|/(?:tmp|home|root|var|usr|Users)/)[^\s"\'«»;,)]*')
+    ROOT = r'(?:(?<!\w)[A-Za-z]:[\\/]|\\\\|(?<![\w/])/(?:tmp|home|root|var|usr|Users|opt|mnt|srv|media)/)'
+    QUOTED = re.compile(rf'([\'"«]){ROOT}[^\'"»\n]*([\'"»])')
+    # папки могут быть с пробелами («C:\KP\Коммерческие предложения\…»): до последней черты — всё, после — до пробела
+    BARE = re.compile(rf'{ROOT}(?:[^\\/\n\'"«»]*[\\/])*[^\s\'"«»;,):]*')
 
     @classmethod
     def of(cls, exc: object) -> str:
-        return cls.PATH.sub('…', str(exc))
+        return cls.BARE.sub('…', cls.QUOTED.sub(r'\1…\2', str(exc)))
 
 
 class ServerLog:

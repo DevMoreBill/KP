@@ -106,6 +106,20 @@ class NoPaths(unittest.TestCase):
         self.assertNotIn('KP', ErrorText.of(r"[WinError 5] Отказано в доступе: 'C:\\KP\\data\\backup\\x.zip'"))
         self.assertEqual(ErrorText.of(ValueError('нет цены у позиции')), 'нет цены у позиции')
 
+    def test_error_text_hides_paths_with_spaces(self):
+        cases = {
+            'Не открыт C:\\KP\\Коммерческие предложения\\Заявка.docx: нет доступа': 'Не открыт …: нет доступа',
+            'Нет папки \\\\server\\Копии КП\\2026\\x.zip — проверьте сеть': 'Нет папки … — проверьте сеть',
+            'Файл «C:\\Users\\Иван Петров\\прайс.xlsx» занят': 'Файл «…» занят',
+            'C:/KP/data/kp.sqlite3 is locked': '… is locked',
+        }
+        for text, want in cases.items():
+            self.assertEqual(ErrorText.of(text), want)
+        quoted = ErrorText.of(OSError(2, 'No such file or directory', 'C:\\KP\\Коммерческие предложения\\a b.docx'))
+        self.assertEqual(quoted, "[Errno 2] No such file or directory: '…'")
+        for kept in ('Маршрут /api/kp/1 не найден', 'нет связи: https://x.ru/tmp/a', 'ответ 500 (http://h.ru/home/b)'):
+            self.assertEqual(ErrorText.of(kept), kept)
+
     def test_intake_file_error_without_path(self):
         def broken(name, data):
             raise OSError(13, 'Permission denied', '/tmp/kp-x/z.docx')

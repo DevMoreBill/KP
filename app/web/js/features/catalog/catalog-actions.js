@@ -394,7 +394,9 @@ export class CatalogActions {
       win.redraw();
     } catch (error) {
       win.busy = '';
-      await win.reload();
+      await win
+        .reload()
+        .catch(reloadError => console.warn('Каталог не обновился после остановки загрузки', reloadError));
       win.say(`Загрузка остановлена: ${error.message || error}`);
     }
   }

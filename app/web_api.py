@@ -1636,7 +1636,7 @@ class TrackController(Controller):
                 'kp',
                 kid,
                 None,
-                {'to': recipients, 'error': str(exc)[:200]},
+                {'to': recipients, 'error': ErrorText.of(exc)[:200]},
                 result='failed',
             )
             return self.text(422, str(exc))

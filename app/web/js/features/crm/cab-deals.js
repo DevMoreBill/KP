@@ -39,8 +39,10 @@ export class CabDeals {
     month: ['Ожидаются в этом месяце', deal => String(deal.expected || '').slice(0, 7) <= today().slice(0, 7)],
     new: ['Новые из Битрикс24', deal => deal.bxNew],
     exec: ['Исполнение просрочено', deal => deal.execSum && deal.execSum.overdue],
-    idle: ['Без движения', deal => CabDeals.idle(deal)],
+    idle: ['Без движения', deal => FEAT.on('idleDeals') && CabDeals.idle(deal)],
   };
+  /** Отборы без своего чипа в строке: чип — только когда отбор выбран («и ещё N — показать все» в «Сегодня»). */
+  static ON_PICK = new Set(['idle']);
   static IDLE_DAYS = 7;
   static LIMIT = 60;
   static PERCENT = 100;
@@ -167,7 +169,7 @@ export class CabDeals {
       })
       .join('');
     const chips = Object.entries(this.FILTERS)
-      .filter(([key]) => !this.COUNTERS[key])
+      .filter(([key]) => !this.COUNTERS[key] && (!this.ON_PICK.has(key) || this.filter === key))
       .map(([key, [label, test]]) => [key, label, open.filter(test).length])
       .filter(([key, , count]) => count || this.filter === key)
       .map(([key, label, count]) =>

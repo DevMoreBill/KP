@@ -3239,7 +3239,7 @@ class AdminApi:
                     func(x)
                 except (ValueError, TypeError) as exc:
                     what = str(x.get('name') or x.get('number') or x.get('id'))[:80]
-                    errors.append(f'{sec_name} «{what}»: не записано — {str(exc)[:160]}')
+                    errors.append(f'{sec_name} «{what}»: не записано — {ErrorText.of(exc)[:160]}')
 
             if apply:
                 if section == 'catalog':
