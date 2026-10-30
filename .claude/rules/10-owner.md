@@ -223,5 +223,6 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   CALC-068 (расчёт компоновки при отрисовке — в отложенную задачу) — в плане переделки п. 29;
   3.231.0 — пп. 20–26, видимые правки интерфейса (`20-kp-ui.md`, 30.10); 3.232.0 — пп. 27–28, безопасность (`40-admin.md`, 30.10);
   3.233.0 — п. 29, шаг 1: `admin.py` разрезан на `admin_accounts`, `admin_access`, `admin_journal`, `catalog_save` (поведение
-  прежнее, определения сверены); дальше по плану — `AdminApi` по разделам, `feeds.py`, `feed_files.py`, `web_api.py`, циклы
+  прежнее, определения сверены); 3.234.0 — шаг 2: `AdminApi` по разделам (`admin_base`, `admin_feeds_api`,
+  `admin_system_api`, `admin_records_api`, `admin_data_api`); дальше по плану — `feeds.py`, `feed_files.py`, `web_api.py`, циклы
   импортов интерфейса, общие помощники сервера, Router, CSS окна]

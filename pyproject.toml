@@ -37,7 +37,7 @@ ignore = [
 "app/maintenance.py" = ["S608"]
 "app/supplier_scope.py" = ["S608"]
 # S608 — как выше; S310 «адрес для urllib»: только http(s) — imgfetch._check_url / Net.SCHEMES, адреса API — константы
-"app/admin.py" = ["S608"]
+"app/admin_data_api.py" = ["S608"]  # выгрузка и загрузка разделов базы (до 3.234.0 — в admin.py)
 "app/imgfetch.py" = ["S310", "S608"]
 "app/net.py" = ["S310"]
 "app/feeds.py" = ["S310", "S314"]

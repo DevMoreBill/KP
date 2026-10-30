@@ -51,7 +51,8 @@
 | `launcher.py` | точка входа EXE: подключение папки update, откат при сбое (`Launcher`, `_UpdateFinder`); патчем не меняется |
 | `kp_server.py` | HTTP/1.1-сервер: `Handler` (ответы, файлы, ETag/gzip, проверка Host/Origin, лимит тела, CSP, 409 по `X-KP-Rev`), `Server`, `Server6` |
 | `web_api.py` | маршруты API: `Controller` + `@route`, `Router`; контроллеры Static, Types, Geo, Parties, Templates, System, Catalog, Managers, Kp, Tools, Settings, Deal, Track, Drafts, ClientCard, Me, Service |
-| `admin.py` | «Настройки»: `AdminApi` (`/api/admin/*`), `guard` (права, модерация, журнал до маршрутизации), `RightsCheck`, `DeniedLog`, корзина, статистика, `startup` |
+| `admin.py` | «Настройки»: `AdminApi` (`/api/admin/*` — вход администратора и `route` по разделам), `guard` (права, модерация, журнал до маршрутизации), `RightsCheck`, `DeniedLog`, статистика, `startup` |
+| `admin_base.py`, `admin_feeds_api.py`, `admin_system_api.py`, `admin_records_api.py`, `admin_data_api.py` | разделы `AdminApi` (с 3.234.0): основа (`ok`, `err`, `data`, `log`), фиды, система и обслуживание, записи (администраторы, удаление, корзина, модерация, откат), выгрузка и загрузка данных |
 | `admin_accounts.py` | учётные записи администраторов: пароли (`hash_password`), `AdminSessions`, `session`, `is_admin`, `LoginGuard` (с 3.233.0) |
 | `admin_access.py` | кто действует и что можно: `actor`, `login_on`, `perm`, `own_kp`, `kp_access`, `DealViewer`, `kp_in`/`kp_out`, `KpManagerLock`, `econ_rub` (с 3.233.0) |
 | `admin_journal.py` | журнал действий `log` и журнал КП с правами `KpJournal` (с 3.233.0) |
@@ -253,6 +254,7 @@
 - **3.212.1** (25.10) — имена стилей без пересечений между разделами: список открытых КП (телефон) `kpt-*`, окно «Модули» `smd-n/smd-st`, конструктор шаблона `td-f`, карточка компании `cc-fg` (таблица состава станции `kt-*` больше не перебивается)
 - **3.212.2** (25.10) — окно «Добавить оборудование» (`#dlg.nw`, `catalog.css`) прижато к верху на ПК — не прыгает при смене шага
 - **3.213.0** (25.10) — закупка опций и услуг: `features/kp/option-cost.js` (`OptionCost` — поле закупки с валютой, ввод `data-optcost/optcur` в карточке позиции и экономике); опции — строки закупки `KitDoc.lines` (id «позиция~opt~опция», `line.opt`), поставщик по умолчанию — `DealSuppliers._ofParent`; `KpEconomics._options`, `PriceGuard._optionsBelowCost`; выключатель `optCost`
+- **3.234.0** (30.10) — п. 29, шаг 2 (без изменения поведения): `AdminApi` (≈2 000 строк) — по разделам: `AdminBase` и `AdminFeedsApi`, `AdminSystemApi`, `AdminRecordsApi`, `AdminDataApi`, `AdminApi` наследует их; `admin.py` 2 718 → 1 277 строк; 48 методов и атрибутов сверены по дереву разбора; исключение Ruff S608 — с `admin.py` на `admin_data_api.py`
 - **3.233.0** (30.10) — п. 29 отчёта аудита, шаг 1 (без изменения поведения): `admin.py` 3 559 → 2 718 строк — `admin_accounts`, `admin_access`, `admin_journal`, `catalog_save` (62 определения сверены по дереву разбора — одинаковы); `web_api`, `catalog_admin` подключают их напрямую
 - **3.232.0** (30.10) — безопасность (пп. 27–28 отчёта аудита): `catalog_quality.KpPriceProof` (цены «из КП» — по последнему КП сотрудника, иначе модерация), `imgfetch.SafeWeb.direct` (картинки без прокси, свой контекст TLS)
 - **3.231.0** (30.10) — видимые правки интерфейса (пп. 20–26 отчёта аудита): `var(--on-navy)` на заливках, `color-scheme`, `:disabled`, одно кольцо фокуса в base.css, `(pointer:coarse)` — цели 44 px, `--win-w` и dvh окон, `.app-offline`, `.uit-pen` — кнопка, `tests/ui/check.js` — область нажатия ::after
