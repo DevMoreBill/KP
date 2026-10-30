@@ -10,6 +10,7 @@ from datetime import date
 from enum import Enum
 
 import feed_files
+import feed_prices
 import feeds
 from server_log import ErrorText
 
@@ -236,7 +237,7 @@ class PriceDiff:
     def _stock(stock: dict | None) -> dict:
         stock = stock or {}
         return {
-            'text': feeds._stock_txt(stock),
+            'text': feed_prices._stock_txt(stock),
             'qty': stock.get('qty'),
             'available': bool(stock.get('available')) and not stock.get('gone'),
             'wh': stock.get('wh') or [],

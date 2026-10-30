@@ -41,6 +41,7 @@ ignore = [
 "app/imgfetch.py" = ["S310", "S608"]
 "app/net.py" = ["S310"]
 "app/feeds.py" = ["S310", "S314"]
+"app/feed_pages.py" = ["S310"]  # страницы поставщиков — только http(s) после imgfetch._check_url (до 3.235.0 — в feeds.py)
 "app/connections.py" = ["S310"]
 "app/geo.py" = ["S310"]  # короткие ссылки — только адреса Google и Яндекс Карт (unshort)
 "app/bitrix.py" = ["S310"]  # вебхук — только https-адрес портала (BitrixApi.URL)

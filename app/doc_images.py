@@ -160,21 +160,21 @@ class DocImages:
         return len(self.out) >= (self.opts.get('maxCount') or 1) or self.size >= self.TOTAL_MAX
 
     def _add(self, data: bytes, mime: str) -> None:
-        import feeds
+        import feed_pages
 
         digest = hashlib.sha1(data, usedforsecurity=False).hexdigest()
         if digest in self.seen:
             return
         self.seen.add(digest)
-        width, height = feeds._img_size(data)
+        width, height = feed_pages._img_size(data)
         min_px, min_b = self.opts.get('minPx') or 0, (self.opts.get('minKB') or 0) * 1024
         small = len(data) < min_b or (width and height and min(width, height) < min_px)
         blank = (
             self.opts.get('skipBlank')
             and width
             and height
-            and width * height >= feeds.BLANK_AREA
-            and len(data) / (width * height) < feeds.BLANK_DENSITY
+            and width * height >= feed_pages.BLANK_AREA
+            and len(data) / (width * height) < feed_pages.BLANK_DENSITY
         )
         if small or blank or self.size + len(data) > self.TOTAL_MAX:
             self.skipped += 1

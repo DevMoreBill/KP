@@ -1202,11 +1202,11 @@ class ToolsController(Controller):
 
     @route(r'/api/pagetext', 'POST')  # текст и характеристики со страницы товара — для автозаполнения карточки
     def pagetext(self) -> None:
-        import feeds
+        import feed_pages
 
         data = self.json_body()
         try:
-            return self.send_json(feeds.page_text(str(data.get('url') or '').strip(), defaults.img_opts(store())))
+            return self.send_json(feed_pages.page_text(str(data.get('url') or '').strip(), defaults.img_opts(store())))
         except Exception as exc:
             return self.text(422, f'Страница не прочитана: {self.no_paths(exc)[:200]}')
 

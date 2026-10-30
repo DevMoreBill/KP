@@ -142,8 +142,8 @@ class StockFileTest(unittest.TestCase):
         self.assertEqual(unnamed['Сепаратор S-1']['qty'], 7, 'количество без подписи — столбец с числами')
 
     def test_stock_text_with_date(self):
-        import feeds
-        self.assertEqual(feeds._stock_txt({'qty': 0, 'transit': 2, 'eta': '15.11'}), 'нет в наличии; в пути 2 (до 15.11)')
+        import feed_prices
+        self.assertEqual(feed_prices._stock_txt({'qty': 0, 'transit': 2, 'eta': '15.11'}), 'нет в наличии; в пути 2 (до 15.11)')
 
 
 if __name__ == '__main__':
