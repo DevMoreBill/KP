@@ -423,8 +423,8 @@ html.mob dialog.dealwin .dl-price .dl-pr select,html.mob dialog.dealwin .dl-pric
 html.mob .dealwin .dl-form .dl-tr.pay .dl-trr .dl-ddt input[type=date]{min-height:44px}
 html.mob dialog.dealwin .dl-tr .dl-mvb,html.mob .dl-smv .dl-mvb{width:44px;height:44px}
 html.mob .dl-cbb{flex-basis:44px}
-html.mob .dl-q>summary{position:relative}
-html.mob .dl-q>summary::after{content:'';position:absolute;inset:-13px}
+html.mob details.dl-q>summary{position:relative;width:30px;height:30px;min-height:30px}   /* «?» — кружок 30 px, область 44 px (как .tip) */
+html.mob details.dl-q>summary::after{content:'';position:absolute;inset:-7px}
 html.mob .lg-t td input,html.mob .lg-st td input[type=text]{min-height:44px}
 html.mob .lg-ck,html.mob .bx-ck{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
 /* кабинет и карточка сделки */
