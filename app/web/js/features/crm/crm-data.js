@@ -102,6 +102,16 @@ export class CrmData {
   }
 
   /**
+   * Договор по сделке ожидается не позже месяца month («ГГГГ-ММ»); без ожидаемой даты — нет (не в прогнозе месяца).
+   * @param {object} deal
+   * @param {string} month
+   * @returns {boolean}
+   */
+  static expectedBy(deal, month) {
+    return !!deal.expected && String(deal.expected).slice(0, 7) <= month;
+  }
+
+  /**
    * Сделка отложена (до даты позже сегодняшней).
    * @param {object} deal
    * @returns {boolean}

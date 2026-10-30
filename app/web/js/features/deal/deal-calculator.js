@@ -2,6 +2,7 @@ import { DealCalcBase } from './deal-calc-base.js';
 import { DealSchedule } from './deal-schedule.js';
 import { DealBxFix } from './deal-bx-fix.js';
 import { Money } from '../../core/money.js';
+import { SellerTax } from '../../core/seller-tax.js';
 
 /**
  * Расчёт сделки: график платежей, финансирование, итоги, структура затрат. Финансирование — простой процент (месяц —
@@ -107,6 +108,8 @@ export class DealCalculator extends DealSchedule {
   _vatIn(asmCost) {
     const voSup = this.sumOf(sup => sup.vo);
     const voRuSum = this.sumOf(sup => sup.voRu);
+    // продавец без вычета (УСН с НДС 5–7 %, «без НДС»): входной НДС — в себестоимости, неизвестных сумм нет
+    if (!this.deduct) return { voSup, voRuSum, unknown: [], known: 0, high: 0 };
     const unknown = this.S_.filter(sup => sup.vi == null);
     // сборка — услуга в России с НДС
     const known = this.viSum + voSup + voRuSum + this.Vo + this.inSupVat(asmCost) + this.fix.vat;
@@ -149,6 +152,17 @@ export class DealCalculator extends DealSchedule {
     if (!equipSum && !this.Lsum && !this.Tsum && !this.M && !this.E && !this.Dc) {
       warn.push({ t: 'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go: 'price' });
     }
+    this._sellerWarn();
+  }
+
+  // ставка НДС продажи не та, что у продавца («Наши реквизиты»)
+  _sellerWarn() {
+    const own = SellerTax.rate(this.sellerVat);
+    if (own == null || Math.abs(own - this.v) < DealCalculator.CHECK_EPS) return;
+    this.warn.push({
+      t: `Налогообложение продавца — «${SellerTax.label(this.sellerVat)}», а НДС продажи ${this.v} %: проверьте ставку в КП («Цена и валюта») или продавца во вкладке «Деньги и налог»`,
+      go: 'money',
+    });
   }
 
   // структура затрат — для итога и Excel
@@ -178,6 +192,8 @@ export class DealCalculator extends DealSchedule {
   static SAME = [
     'v',
     'vatFromKp',
+    'deduct',
+    'sellerVat',
     'rateSrc',
     'M',
     'E',

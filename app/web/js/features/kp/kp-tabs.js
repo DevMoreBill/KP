@@ -10,6 +10,7 @@ import { Steps } from '../../ui/steps.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { KpSave } from '../doc/kp-save.js';
+import { KpEconomics } from './price-calc.js';
 import { StationImages } from '../station/station-images.js';
 
 /**
@@ -229,10 +230,9 @@ export class KpTabs {
     return [...parts, sum ? `${sum} ${(state.pricing && state.pricing.cur) || 'RUB'}` : ''].filter(Boolean).join(' · ');
   }
 
+  // один подсчёт для открытого и отложенных КП — с опциями, как в журнале (раньше у отложенных — без платных опций)
   static _sum(state) {
-    if (state === S) return KpState.totals().sum;
-    const items = (state.items || []).map(item => ({ qty: +item.qty || 0, price: item.price || 0, disc: item.disc }));
-    return KPGen.totals(items, +state.vat || 0).sum;
+    return KpEconomics.of(state).sum;
   }
 
   // переключение не начинается, пока идёт другое или сохраняется КП в журнал

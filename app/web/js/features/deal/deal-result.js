@@ -6,6 +6,7 @@ import { DealState } from './deal-state.js';
 import { InputNum } from './input-num.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { SellerTax } from '../../core/seller-tax.js';
 
 /**
  * Правая колонка окна: подбор цены продажи под цель (маржинальность, наценка, прибыль) с ценами позиций, безубыточная
@@ -184,6 +185,7 @@ export class DealResult {
    * @returns {string}
    */
   static vat(calc, res, look = {}) {
+    if (calc.deduct === false) return DealResult._noDeduct(calc, res, look);
     const { ded, unk } = DealResult.vatRows(calc);
     const { lo: low, hi: high } = calc;
     const pay = unk ? `${Fmt.rub(high.payable)} … ${Fmt.rub(low.payable)}` : Fmt.rub(res.payable);
@@ -199,11 +201,24 @@ export class DealResult {
         ? `<tr class="ex"><td>Вычеты больше НДС с продажи — к возмещению из бюджета <small>в остаток денег не включается</small></td><td class="num">${Fmt.rub(res.excess)}</td></tr>`
         : '';
     return `<table class="dl-vat${look.wide ? ' wide' : ''}"><tbody>
-      <tr><td>НДС ${DealFmt.inp(calc.v)} % с продажи <small>${Fmt.rub(calc.S)} × ${DealFmt.inp(calc.v)} / ${DealFmt.inp(DealResult.PCT + calc.v)}</small></td><td class="num">${Fmt.rub(calc.VATs)}</td></tr>
+      ${DealResult._saleRow(calc)}
       ${rows}
       <tr class="sum"><td>Итого НДС к вычету</td><td class="num">${total}</td></tr>
       <tr class="tot"><td><b>НДС к уплате в бюджет</b></td><td class="num"><b>${pay}</b></td></tr>
       ${excess}
+    </tbody></table>`;
+  }
+
+  static _saleRow(calc) {
+    return `<tr><td>НДС ${DealFmt.inp(calc.v)} % с продажи <small>${Fmt.rub(calc.S)} × ${DealFmt.inp(calc.v)} / ${DealFmt.inp(DealResult.PCT + calc.v)}</small></td><td class="num">${Fmt.rub(calc.VATs)}</td></tr>`;
+  }
+
+  // продавец без вычета (УСН с НДС 5–7 %, «без НДС»): весь НДС с продажи — к уплате, входной — в себестоимости
+  static _noDeduct(calc, res, look) {
+    return `<table class="dl-vat${look.wide ? ' wide' : ''}"><tbody>
+      ${DealResult._saleRow(calc)}
+      <tr class="ded"><td>Вычета нет — продавец: ${esc(SellerTax.label(calc.sellerVat))} <small>НК РФ, ст. 170, п. 2: НДС поставщиков, ввоза и услуг — в себестоимости</small></td><td class="num">0</td></tr>
+      <tr class="tot"><td><b>НДС к уплате в бюджет</b></td><td class="num"><b>${Fmt.rub(res.payable)}</b></td></tr>
     </tbody></table>`;
   }
 }

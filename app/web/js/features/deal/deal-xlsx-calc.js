@@ -4,6 +4,7 @@ import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
 import { DealXlsxCustoms } from './deal-xlsx-customs.js';
+import { DealBxFix } from './deal-bx-fix.js';
 import { InputNum } from './input-num.js';
 import { Money } from '../../core/money.js';
 import { XlsxBook } from '../../core/xlsx.js';
@@ -229,16 +230,43 @@ export class DealXlsxCalc {
         `Сборка станции у «${asm.A.name}» (с НДС)`,
         'ASM',
         asm.cost,
-        note(`Сборка ${asm.days} дн.; НДС ${calc.sv} % — к вычету`),
+        note(`Сборка ${asm.days} дн.; НДС ${calc.sv} % — ${this.vatWord('к вычету', 'без вычета')}`),
       );
     }
-    this._plain('Прочий НДС к вычету', 'Vo', calc.Vo);
+    this._plain(this.vatWord('Прочий НДС к вычету', 'Прочий НДС (без вычета)'), 'Vo', calc.Vo);
     this.row(['Резерв на гарантию', { v: calc.warrP, s: 'inp' }, '% выручки без НДС'], 'WARR');
     this.row(['Бонусы и комиссии с продажи', { v: calc.bonusP, s: 'inp' }, '% выручки без НДС'], 'BON');
     if (calc.BG > 0) this._plain('Банковская гарантия — комиссия банка', 'BG', calc.BG, note(this._bgNote()));
+    this.bxOn = this._bxFix();
     this.xOn = this.res.K > 0;
     this.xMode = calc.xc.mode;
     if (this.xOn) this._cash();
+  }
+
+  /**
+   * Подпись строки НДС: при продавце без вычета (УСН с НДС 5–7 %, «без НДС») — своя.
+   * @param {string} deducted
+   * @param {string} kept
+   * @returns {string}
+   */
+  vatWord(deducted, kept) {
+    return this.calc.deduct === false ? kept : deducted;
+  }
+
+  // поправки статей из Битрикс24 — как в расчёте программы и на «Сводке» (без них «Расчёт» давал другую прибыль)
+  _bxFix() {
+    const active = (this.calc.bxFix || []).filter(line => line.active);
+    const sum = active.reduce((total, line) => total + line.delta, 0);
+    const vat = active.reduce((total, line) => total + line.vat, 0);
+    if (Math.abs(sum) < DealBxFix.EPS && Math.abs(vat) < DealBxFix.EPS) return false;
+    const what = active.map(line => line.label).join(', ');
+    this._plain('Поправки из Битрикс24 — к прямым платежам', 'BXF', sum, DealXlsxCalc.note(what));
+    this._plain(
+      this.vatWord('Поправки из Битрикс24 — НДС к вычету в них', 'Поправки из Битрикс24 — НДС в них (без вычета)'),
+      'BXV',
+      vat,
+    );
+    return true;
   }
 
   _bgNote() {
@@ -546,7 +574,7 @@ export class DealXlsxSupplier {
         : { v: sup.vo, s: 'inpMoney' };
       sheet.row(
         [
-          'НДС поставщика к вычету',
+          sheet.vatWord('НДС поставщика к вычету', 'НДС поставщика (без вычета — в себестоимости)'),
           value,
           '₽',
           { f: this._self(), v: sup.vo, s: 'money' },
@@ -564,7 +592,13 @@ export class DealXlsxSupplier {
         ? [note(`Без страховой премии ${Money.int(sup.LruIns)} ₽ в доставке: страхование НДС не облагается`)]
         : [];
     sheet.row(
-      ['НДС к вычету по услугам в России', value, '₽', { f: this._self(), v: sup.voRu, s: 'money' }, ...tail],
+      [
+        sheet.vatWord('НДС к вычету по услугам в России', 'НДС по услугам в России (без вычета)'),
+        value,
+        '₽',
+        { f: this._self(), v: sup.voRu, s: 'money' },
+        ...tail,
+      ],
       `voru${k}`,
     );
   }

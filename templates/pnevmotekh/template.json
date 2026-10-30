@@ -153,6 +153,7 @@
     "inWords": "{words}, в т. ч. НДС {vat} % — {vatSum} {cur}",
     "currencyNote": "Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.",
     "currencyRate": " Справочно: курс ЦБ РФ{rateDate} — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.",
+    "currencyRateOwn": " Справочно: курс расчёта — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.",
     "conditionsTitle": "Условия предложения",
     "condExtraTitle": "Дополнительные условия",
     "contactsTitle": "Контактная информация",

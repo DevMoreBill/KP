@@ -15,6 +15,7 @@ import { $ } from '../core/util.js';
 import { KpState, S } from '../core/state.js';
 import { ObjPath, Price, Str } from '../core/str.js';
 import { OptionSale } from '../features/kp/option-sale.js';
+import { RateSource } from '../features/kp/rate-source.js';
 
 /** Ввод в поля формы КП: поля по пути (data-p), цены, скидки, цены опций, курсы валют. */
 export class FieldEvents {
@@ -110,7 +111,7 @@ export class FieldEvents {
 
   static _rate(target) {
     S.pricing.rates[target.dataset.rate] = target.value;
-    S.pricing.rateSrc = 'вручную';
+    RateSource.mark(S.pricing, target.dataset.rate);
     OptionSale.syncAll();
     const shown = document.querySelector(`[data-rshow="${target.dataset.rate}"]`);
     if (shown) shown.textContent = target.value || '—';

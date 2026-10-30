@@ -1,5 +1,6 @@
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { XlsxBook } from '../../core/xlsx.js';
+import { SellerTax } from '../../core/seller-tax.js';
 
 /** Лист Excel «График платежей»: деньги по дням — день, дата, событие, платёж (формулой от листа «Расчёт»), остаток, финансирование. */
 export class DealXlsxGraph {
@@ -255,7 +256,11 @@ export class DealXlsxResult {
     this._line(
       'НДС к вычету',
       { f: this._vatIn(), v: res.VATin, s: 'money' },
-      note('Ввозной + НДС поставщиков + услуги в России + прочий'),
+      note(
+        calc.deduct === false
+          ? `Вычета нет — продавец: ${SellerTax.label(calc.sellerVat)}; входной НДС — в прямых платежах`
+          : 'Ввозной + НДС поставщиков + услуги в России + прочий',
+      ),
       'VI',
     );
     this._line(
@@ -277,17 +282,19 @@ export class DealXlsxResult {
     const { calc, sheet } = this;
     const ref = key => this._ref(key);
     const cash = calc.sup.map((sup, k) => this._rub(`CASH${k}`)).join('+') || '0';
-    return `${cash}+${this._rub('M')}+${this._rub('E')}+${this._rub('DOC')}+${ref('Rv')}*(${ref('WARR')}+${ref('BON')})/100${calc.BG > 0 ? `+${this._rub('BG')}` : ''}${sheet.asmOn ? `+${this._rub('ASM')}` : ''}`;
+    return `${cash}+${this._rub('M')}+${this._rub('E')}+${this._rub('DOC')}+${ref('Rv')}*(${ref('WARR')}+${ref('BON')})/100${calc.BG > 0 ? `+${this._rub('BG')}` : ''}${sheet.asmOn ? `+${this._rub('ASM')}` : ''}${sheet.bxOn ? `+${this._rub('BXF')}` : ''}`;
   }
 
   _vatIn() {
     const { calc, sheet } = this;
+    if (calc.deduct === false) return '0';
     return [
       ...calc.sup.map((sup, k) => this._rub(`vi${k}`)),
       ...calc.sup.map((sup, k) => (sheet.deal.sup[k].vatIn ? this._rub(`vo${k}`) : null)).filter(Boolean),
       ...calc.sup.map((sup, k) => this._rub(`voru${k}`)),
       this._rub('Vo'),
       ...(sheet.asmOn ? [`${this._rub('ASM')}*${sheet.vatK}`] : []),
+      ...(sheet.bxOn ? [this._rub('BXV')] : []),
     ].join('+');
   }
 

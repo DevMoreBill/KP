@@ -86,6 +86,8 @@ OLD_FACTORY = {
         '974d5cfb3ea81e277751a04974a3d97f',
         '92c67f11a0a934e6be34451769dad715',
         'c6340138a39635cd5fd817088996556f',
+        '32305709cded8cfcedca2b5a03299edb',
+        'c8cbf197919d88fc0240278732aad563',
     ),
     'editor.json': (
         '05add2124882dec245a673c9949a8e12',
@@ -94,6 +96,8 @@ OLD_FACTORY = {
         'b0fa2e8c9160d3267e23e289869b08cd',
         'a000ceecf14d89ed64628a35bd1c4b67',
         'd9cdcd589e6092eeecba7641c22db0d2',
+        '634314f94a21ce467549b7dac6ab5cb3',
+        '6bd75a701b548be37edf656ce0b9eeb1',
     ),
 }
 

@@ -4,6 +4,7 @@ import { AppTabs } from '../../core/app-tabs.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealDefaults } from './deal-defaults.js';
 import { DealHs } from './deal-hs.js';
+import { DealSeller } from './deal-seller.js';
 import { DealLogistics } from './deal-logistics.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
@@ -74,6 +75,7 @@ export class DealState {
       vat: +state.vat || 0,
       rates: { ...(pricing.rates || {}) },
       costNoVat: !!pricing.costNoVat,
+      sellerVat: DealSeller.vatOf(state.deal),
       moneyAuto: DealDefaults.moneyAuto(),
       items: KitDoc.lines(state).map(line => DealState._line(line, state)),
     };
@@ -303,8 +305,8 @@ export class DealState {
         '<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>';
     }
     AppTabs.show(dlg, 'deal');
-    await Promise.all([DealSuppliers.loadDirs(), DealLogistics.loadAll()]);
-    DealState.ensure();
+    await Promise.all([DealSuppliers.loadDirs(), DealLogistics.loadAll(), DealSeller.load()]);
+    DealSeller.sync(DealState.ensure());
     dlg.innerHTML = '';
     DealWin.show();
   }

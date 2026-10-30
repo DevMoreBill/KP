@@ -1,9 +1,11 @@
 import { DealDefaults, DealMoneyRate } from './deal-defaults.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealResult } from './deal-result.js';
+import { DealSeller } from './deal-seller.js';
 import { DealSteps } from './deal-steps.js';
 import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
+import { FEAT } from '../../core/features.js';
 import { S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
@@ -24,7 +26,7 @@ export class DealMoney {
       ? `${Fmt.rub(calc.hi.payable)} … ${Fmt.rub(calc.lo.payable)}`
       : Fmt.rub(res.payable);
     const vatHelp = DealFmt.help(
-      'НДС с продажи минус весь НДС к вычету по сделке. Ставка НДС продажи — из КП. Ввозной НДС платится на таможне и целиком идёт к вычету, поэтому на прибыль не влияет — только на деньги в обороте.',
+      'НДС с продажи минус весь НДС к вычету по сделке. Ставка НДС продажи — из КП. Ввозной НДС платится на таможне и целиком идёт к вычету, поэтому на прибыль не влияет — только на деньги в обороте. Продавец на УСН с НДС 5–7 % или «без НДС» — вычета нет: входной НДС в себестоимости.',
     );
     return DealSteps.html({
       n: 0,
@@ -32,6 +34,7 @@ export class DealMoney {
       sub: 'Обычно менять не нужно: стоимость денег — по ключевой ставке ЦБ, НДС продажи — как в КП, налог на прибыль — 25 %.',
       body: `<div class="dl-card"><div class="dl-g dl-money">
         ${DealMoney._money(calc, kpData)}
+        ${DealMoney._seller()}
         ${DealMoney._vat()}
         ${DealMoney._tax(calc)}</div></div>
         <div class="dl-card dl-vatsec"><h5>НДС к уплате${vatHelp}</h5>${DealResult.vat(calc, res, { wide: true })}</div>`,
@@ -72,6 +75,28 @@ export class DealMoney {
       'Ставка НДС в цене КП — та же, что в разделе «Условия». С 2026 года основная ставка — 22 %.',
     );
     return `<label class="f dl-f"><span>НДС продажи <i>%</i>${help}</span><span class="dl-in"><input type="text" inputmode="numeric" data-kpvat value="${esc(S.vat)}" aria-label="НДС продажи, %"></span><small class="muted">Как в КП и разделе «Условия»</small></label>`;
+  }
+
+  // наше юрлицо-продавец: от его налогообложения — вычет входного НДС
+  static _seller() {
+    if (!FEAT.on('sellerTax')) return '';
+    const deal = S.deal || {};
+    const items = DealSeller.own.items || [];
+    const help = DealFmt.help(
+      'Наше юрлицо, которое продаёт («Настройки → Документы → Наши реквизиты»), по умолчанию — основное. ОСНО и экспорт 0 % — НДС поставщиков, ввоза и услуг к вычету; УСН с НДС 5 или 7 % и «без НДС» — вычета нет, этот НДС остаётся в себестоимости (НК РФ, ст. 170, п. 2).',
+    );
+    const none = DealSeller.failed ? 'Наши реквизиты не загрузились' : 'Наши реквизиты не заполнены';
+    const options = items
+      .map(
+        item =>
+          `<option value="${esc(item.id)}"${item.id === deal.seller ? ' selected' : ''}>${esc(item.name)}</option>`,
+      )
+      .join('');
+    const input =
+      items.length > 1
+        ? `<select data-dlseller aria-label="Продавец">${options}</select>`
+        : `<b>${esc(items.length ? items[0].name : none)}</b>`;
+    return `<label class="f dl-f"><span>Продавец${help}</span><span class="dl-in">${input}</span><small class="muted">${esc(DealSeller.label(deal))}</small></label>`;
   }
 
   static _tax(calc) {

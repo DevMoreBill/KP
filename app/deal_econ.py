@@ -458,7 +458,7 @@ class DealEcon:
         kind = row.get('type')
         percent = item.key in EconValues.PERCENT
         if kind == 'money':
-            return None if percent else f'{round(number, 2):g}|RUB'
+            return None if percent else DealEcon.money(number)
         if kind == 'integer':
             return str(round(number))
         if kind == 'double':
@@ -470,10 +470,16 @@ class DealEcon:
         return None
 
     @staticmethod
+    def money(number: float) -> str:
+        """Поле «Деньги»: с копейками и без экспоненты; целая сумма — без «.00», как записывалась раньше."""
+        text = f'{round(number, 2):.2f}'.rstrip('0').rstrip('.')
+        return f'{text}|RUB'
+
+    @staticmethod
     def number(raw: Any) -> float | None:
-        """Число из значения поля портала: «1 234,5», «1234.5|RUB», «12,5 %»."""
+        """Число из значения поля портала: «1 234,5», «1234.5|RUB», «12,5 %», «1.23457e+06»."""
         text = str(raw[0] if isinstance(raw, list) and raw else raw or '').split('|')[0]
-        text = re.sub(r'[^\d,.\-]', '', text).replace(',', '.')
+        text = re.sub(r'[^\d,.\-eE+]', '', text).replace(',', '.')
         try:
             return float(text)
         except ValueError:

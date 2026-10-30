@@ -192,9 +192,20 @@ class UiStand:
             f.write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + ch(b'IDAT', zlib.compress(rows)) + ch(b'IEND', b''))
         return path
 
+    # «Наши реквизиты» стенда (вымышленные): основное — ОСНО, второе — УСН с НДС 5 % (продавец в экономике сделки, документы)
+    REQUISITES = {
+        'main': 'pr1',
+        'items': [
+            {'id': 'pr1', 'name': 'ООО «Пример-Пневмо»', 'inn': '7700000001', 'vat': ''},
+            {'id': 'pr2', 'name': 'ИП Примеров Пётр Петрович', 'inn': '770000000002', 'vat': '5'},
+        ],
+    }
+
     def __init__(self, db=None):
         from kit import SampleData, Stand
         self.st = Stand(mode='server', sample=None if db else SampleData())
+        if not db:
+            self.st.kv_set('ourRequisites', self.REQUISITES)
         if db:
             os.makedirs(self.st.data, exist_ok=True)
             with open(db, 'rb') as src, open(self.st.db, 'wb') as dst:
@@ -804,6 +815,22 @@ class Scenario(UiRun):
         b = self.pg.locator('#form [data-a=deal]').first
         b.click() if b.count() else self.ev("DealState.open()")
 
+    def _deal_seller(self, root):
+        """«Деньги и налог» → «Продавец»: на УСН с НДС 5 % (второе юрлицо стенда) вычета нет — строка «Вычета нет»."""
+        pg, pick = self.pg, 'dialog[open] select[data-dlseller]'
+        pg.locator('dialog[open] .dl-tab[data-id="money"]').first.click()
+        self.wait(800)
+        if not pg.locator(pick).count():
+            self.errs.append(('deal', 'NOTE', 'нет выбора продавца («Наши реквизиты» стенда)'))
+            return
+        pg.select_option(pick, 'pr2')
+        self.wait(1200)
+        if not self.ev("/Вычета нет/.test((document.querySelector('dialog[open] .dl-vat') || {}).textContent || '')"):
+            self.errs.append(('deal', 'SCRIPT', 'продавец на УСН 5 %: нет строки «Вычета нет» в «НДС к уплате»'))
+        self.snap('60_deal_money_usn', root, wait=300)
+        pg.select_option(pick, 'pr1')
+        self.wait(800)
+
     def _deal_addr_to_kp(self, tabs):
         """«Логистика» → «→ В КП»: адрес поставки — в «Адрес объекта» КП."""
         pg, addr = self.pg, 'г. Казань, ул. Прогонная, д. 7'
@@ -847,6 +874,7 @@ class Scenario(UiRun):
                 self.ev("[...document.querySelectorAll('dialog[open] *')].filter(e=>e.scrollHeight>e.clientHeight+20&&"
                         "/(auto|scroll)/.test(getComputedStyle(e).overflowY)).forEach(e=>e.scrollTop=e.scrollHeight)")
                 self.snap('60_deal_%s_bottom' % t, root, wait=300)
+        self._deal_seller(root)
         self._deal_addr_to_kp(tabs)
         self.closeall()
         self._open_deal()   # повторное открытие — окно не пустое

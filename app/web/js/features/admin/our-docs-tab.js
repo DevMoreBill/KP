@@ -1,4 +1,5 @@
 import { Api } from '../../core/net.js';
+import { SellerTax } from '../../core/seller-tax.js';
 import { Toast } from '../../core/toast.js';
 import { Uid, esc } from '../../core/util.js';
 import { UiKit } from '../../ui/ui-kit.js';
@@ -23,7 +24,6 @@ export class OurDocsTab {
     ['directorPost', 'Должность руководителя', 'Генеральный директор'],
     ['accountant', 'Главный бухгалтер (ФИО)', ''],
   ];
-  static VATS = ['', '22', '20', '10', '7', '5', '0', 'без НДС'];
   static KINDS = [
     ['contract', 'Договор', 'без шаблона договор не формируется'],
     ['spec', 'Спецификация', 'без шаблона — типовая'],
@@ -64,13 +64,16 @@ export class OurDocsTab {
       ([key, label, hint]) =>
         `<label class="f"><span>${esc(label)}</span><input type="text" data-of="${key}" data-oi="${index}" value="${esc(item[key] || '')}" placeholder="${esc(hint)}" autocomplete="off"></label>`,
     ).join('');
-    const vats = this.VATS.map(
-      vat =>
-        `<option value="${esc(vat)}"${(item.vat || '') === vat ? ' selected' : ''}>${vat ? esc(vat === 'без НДС' ? vat : `${vat} %`) : 'как в КП'}</option>`,
+    const vats = SellerTax.OPTIONS.map(
+      ([vat, label]) =>
+        `<option value="${esc(vat)}"${(item.vat || '') === vat ? ' selected' : ''}>${esc(label)}</option>`,
     ).join('');
+    const taxTip = UiKit.tip(
+      '<p>Ставка НДС в счёте и спецификации этого юрлица и вычет НДС в экономике сделки, где оно продавец.</p><p>ОСНО и экспорт 0 % — НДС поставщиков, ввоза и услуг к вычету. УСН с НДС 5 или 7 % и «без НДС» — вычета нет (НК РФ, ст. 170, п. 2): этот НДС остаётся в себестоимости сделки.</p>',
+    );
     const main = item.id === this.data.main;
     return `<details class="od-item"${index === 0 || !item.name ? ' open' : ''}><summary><b>${esc(item.name || 'Новое юрлицо')}</b>${main ? ' <span class="badge">основное</span>' : ''}</summary>
-      <div class="od-grid">${fields}<label class="f"><span>НДС продавца</span><select data-of="vat" data-oi="${index}">${vats}</select></label></div>
+      <div class="od-grid">${fields}<label class="f"><span>Налогообложение (НДС продавца)${taxTip}</span><select data-of="vat" data-oi="${index}">${vats}</select></label></div>
       <div class="row">${main ? '' : `<button class="btn" type="button" data-od="main" data-oi="${index}">Сделать основным</button>`}<button class="btn ghost" type="button" data-od="drop" data-oi="${index}">Убрать</button></div></details>`;
   }
 

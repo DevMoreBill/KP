@@ -1,4 +1,4 @@
-// Слепок расчёта экономики сделки (app/web/js/features/deal/): 15 типовых сделок — поставщик в России, Китай и
+// Слепок расчёта экономики сделки (app/web/js/features/deal/): 18 типовых сделок — поставщик в России, Китай и
 // Европа с растаможкой по позициям, ЕАЭС, растаможка суммой, два поставщика, сборка станции, расходы, наличные, банковские
 // гарантии, своя цена и НДС, ошибки ввода, подбор цены под цель. Все итоговые величины, график платежей и структура затрат
 // сверяются с tests/js/deal_golden.json — любое изменение расчёта (хоть на копейку) видно сразу. Расчёт поменяли
@@ -47,6 +47,10 @@ class Golden {
         {id:'a', name:'Компрессор', qty:1, cost:28000, cur:'CNY', duty:0, kit:true, code:'8414805900'}], sumRub:2400000}),
         (()=>{ const d=D(); d.sup.push({...this.china(), id:'s2'}); d.map={a:'s2'}; d.asm={on:true, sup:'s1', days:'14', cost:{v:'120000'}}; return d; })()],
       ['Ошибки ввода: отрицательное, буквы, этапы больше 100 %', K(), D({mnt:'-5', oth:'сто', cust:{tr:[{pct:'70', ev:'sign', off:'0'}, {pct:'40', ev:'ready', off:'0'}, {pct:'', ev:'delivery', off:'0'}]}})],
+      // налогообложение продавца («Наши реквизиты» → «НДС продавца»): УСН с НДС 5–7 % и «без НДС» — без вычета (НК РФ, ст. 170, п. 2)
+      ['Продавец на УСН с НДС 5 %: входной НДС без вычета — в себестоимости', K({sumRub:1050000, vat:5, sellerVat:'5', items:[{id:'a', name:'Компрессор', qty:1, cost:610000, cur:'RUB'}]}), D()],
+      ['Продавец — экспорт 0 %: вычет НДС поставщика, к возмещению', K({sumRub:1000000, vat:0, sellerVat:'0'}), D()],
+      ['Продавец без НДС, а в КП НДС 22 % — предупреждение', K({sellerVat:'без НДС'}), D()],
     ];
   }
 
@@ -88,4 +92,11 @@ for (const k of new Set([...Object.keys(was), ...Object.keys(now)])){
 // контроль самого расчёта (не только слепка): равенство «прибыль = деньги после сделки + переплата НДС» во всех сделках без ошибок
 for (const [name, kp, d] of Golden.cases()){ const c=DealCalculator.calc(kp, JSON.parse(JSON.stringify(d))), b=c.base;
   if (b && c.ok && Math.abs(b.P-(b.cashAfter+b.excess))>0.01){ bad++; console.error('НЕ СХОДИТСЯ — '+name); } }
+// пример отчёта аудита (CALC-015): КП с НДС 5 % на 1 050 000 ₽, закупка 610 000 ₽ с НДС 22 % — себестоимость с НДС поставщика,
+// НДС к уплате 50 000 ₽; при ОСНО тот же расчёт вычитает 110 000 ₽
+{ const kp=Golden.KP({sumRub:1050000, vat:5, items:[{id:'a', name:'Компрессор', qty:1, cost:610000, cur:'RUB'}]}), d=Golden.deal();
+  const usn=DealCalculator.calc({ ...kp, sellerVat:'5' }, JSON.parse(JSON.stringify(d))).base, osno=DealCalculator.calc(kp, JSON.parse(JSON.stringify(d))).base;
+  const near=(a, b)=>Math.abs(a-b)<0.01;
+  if (!(usn.VATin===0 && near(usn.payable, 50000) && near(osno.VATin, 110000) && near(usn.Cnet-osno.Cnet, 110000))){
+    bad++; console.error('УСН 5 %: входной НДС не в себестоимости — '+JSON.stringify({ usn, osno })); } }
 if (bad) process.exitCode=1; else console.log('экономика сделки: '+Object.keys(now).length+' слепков совпали');

@@ -2,6 +2,7 @@ import { DealTerms } from './deal-terms.js';
 import { DealValues } from './deal-values.js';
 import { InputNum } from './input-num.js';
 import { SupplierCalc } from './supplier-calc.js';
+import { SellerTax } from '../../core/seller-tax.js';
 
 /**
  * Основа расчёта сделки: поля с проверкой, курсы, цена и НДС, поставщики, сборка станции, прочие расходы. Все суммы — в
@@ -135,7 +136,7 @@ export class DealCalcBase {
     return (sum * vat) / (DealCalcBase.PCT + vat);
   }
 
-  /** Цена с НДС и ставка НДС: своя в расчёте или из КП. */
+  /** Цена с НДС и ставка НДС: своя в расчёте или из КП; вычет входного НДС — по налогообложению продавца. */
   price() {
     const over = this.d.over;
     this.S =
@@ -143,6 +144,8 @@ export class DealCalcBase {
     this.vatFromKp = over.vat === '' || over.vat == null;
     this.v = this.vatFromKp ? +this.kp.vat || 0 : this.num('over.vat', over.vat, { def: 0, max: DealCalcBase.PCT });
     this.vatK = 1 + this.v / DealCalcBase.PCT;
+    this.sellerVat = String(this.kp.sellerVat ?? '');
+    this.deduct = SellerTax.deducts(this.sellerVat);
   }
 
   /** Поставщики сделки; позиция без своего поставщика — к первому. */

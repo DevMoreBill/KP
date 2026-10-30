@@ -8,6 +8,7 @@ import { esc, isoDay } from '../../core/util.js';
 import { S } from '../../core/state.js';
 import { WorkCalendar } from '../../ui/date-picker.js';
 import { KpEconomics } from './price-calc.js';
+import { RateSource } from './rate-source.js';
 import { DefRegistry } from '../../core/defaults.js';
 
 /** Проверка цен перед сохранением и отправкой КП: ниже закупки, маржа ниже красного порога, курс ЦБ старше суток. */
@@ -106,7 +107,8 @@ export class PriceGuard {
 
   // курс ЦБ устанавливается на рабочий день: в понедельник утром курс субботы ещё действует
   static _rate() {
-    if (Currency.current() === 'RUB' || !S.pricing.rateDate) return [];
+    const code = Currency.current();
+    if (code === 'RUB' || !S.pricing.rateDate || RateSource.manual(S.pricing, code)) return []; // договорной — не устаревает
     return S.pricing.rateDate < this._lastWorkDay() ? ['Курс ЦБ устарел — обновите курс в «Ценах и валюте»'] : [];
   }
 

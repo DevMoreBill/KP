@@ -4,6 +4,7 @@ import { LgValues } from './lg-values.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { S } from '../../core/state.js';
+import { RateSource } from '../kp/rate-source.js';
 
 /**
  * «Своя сумма» доставки по России — в рублях или валюте: sup.logRu = {v, cur}; в рубли переводит расчёт сделки по курсу ЦБ
@@ -75,7 +76,7 @@ export class LgMoney {
       return `<small class="bad-t lg-rub">Нет курса ${esc(cur)} — <button type="button" class="lnk" data-dlx="cbr">загрузить курс ЦБ</button> или впишите его в «Цене КП»</small>`;
     }
     const when =
-      calc.rateSrc[cur] === 'deal'
+      calc.rateSrc[cur] === 'deal' || RateSource.manual(pricing, cur)
         ? 'курс расчёта'
         : `курс ЦБ${pricing.rateDate ? ` на ${esc(KPGen.ruDate(pricing.rateDate))}` : ''}`;
     const value = String(Math.round(rate * LgMoney.RATE_DIGITS) / LgMoney.RATE_DIGITS).replace('.', ',');

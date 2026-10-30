@@ -600,6 +600,13 @@
           "hint": "{rateDate}, {cur}, {rate}, {rub}"
         },
         {
+          "key": "texts.currencyRateOwn",
+          "type": "textarea",
+          "rows": 2,
+          "label": "Справка о курсе — курс вписан вручную (договорной)",
+          "hint": "{cur}, {rate}, {rub}"
+        },
+        {
           "type": "group",
           "title": "Условия и контакты"
         },

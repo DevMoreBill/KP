@@ -496,6 +496,11 @@
           "label": "Курс справочно"
         },
         {
+          "key": "texts.currencyRateOwn",
+          "type": "textarea",
+          "label": "Курс справочно — вписан вручную (договорной)"
+        },
+        {
           "type": "group",
           "title": "Условия"
         },

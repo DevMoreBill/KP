@@ -60,7 +60,7 @@ export class CabTodaySide {
   static _month() {
     const month = today().slice(0, 7);
     const open = CrmData.openDeals();
-    const expected = open.filter(deal => String(deal.expected || '').slice(0, 7) <= month);
+    const expected = open.filter(deal => CrmData.expectedBy(deal, month));
     const won = CrmData.deals().filter(
       deal => deal.stage === 'won' && String(deal.stageAt || '').slice(0, 7) === month,
     );

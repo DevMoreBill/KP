@@ -36,7 +36,7 @@ export class CabDeals {
   static FILTERS = {
     ...Object.fromEntries(Object.entries(CabDeals.COUNTERS).map(([key, [label, test]]) => [key, [label, test]])),
     late: ['Срок сделки прошёл', deal => deal.expected && deal.expected < today()],
-    month: ['Ожидаются в этом месяце', deal => String(deal.expected || '').slice(0, 7) <= today().slice(0, 7)],
+    month: ['Ожидаются в этом месяце', deal => CrmData.expectedBy(deal, today().slice(0, 7))],
     new: ['Новые из Битрикс24', deal => deal.bxNew],
     exec: ['Исполнение просрочено', deal => deal.execSum && deal.execSum.overdue],
     idle: ['Без движения', deal => FEAT.on('idleDeals') && CabDeals.idle(deal)],

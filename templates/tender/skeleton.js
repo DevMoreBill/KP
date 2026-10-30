@@ -72,6 +72,7 @@ function kpSkeleton(KP) {
       inWords: 'Всего к оплате: {words}, в т. ч. НДС {vat} % — {vatSum} {cur}', inWordsNoVat: 'Всего к оплате: {words}, НДС не облагается',
       currencyNote: 'Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.',
       currencyRate: ' Справочно: курс ЦБ РФ{rateDate} — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.',
+      currencyRateOwn: ' Справочно: курс расчёта — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.',
       conditionsTitle: '2. Условия поставки', condExtraTitle: 'Дополнительные условия:',
       specsTitle: '3. Техническое описание предлагаемого оборудования', specsItem: '3.{n}. {name}',
       qtyLine: 'Количество: {qty} {unit}',
@@ -370,7 +371,7 @@ function kpSkeleton(KP) {
     if (BLK.amountInWords) out.push(p(r(vo ? txt('inWords', { words: words(t.sum, curCode(S)), vat: S.vat, vatSum: money(t.vat), cur }) : txt('inWordsNoVat', { words: words(t.sum, curCode(S)) }), 'words'), { before: 120, jc: 'both', hy: true, keep: note }));
     if (note) {
       const C = CURS[curCode(S)], rt = S.cur && +S.cur.rate;
-      out.push(p(r(txt('currencyNote', { curName: C.name }) + (rt ? txt('currencyRate', { rateDate: S.cur.date ? ' на ' + ruDate(S.cur.date) : '', cur: C.sh, rate: String(rt).replace('.', ','), rub: money(Math.round(t.sum * rt)) }) : ''), 'note'), { before: 60, jc: 'both', hy: true }));
+      out.push(p(r(txt('currencyNote', { curName: C.name }) + (rt ? txt(S.cur.own ? 'currencyRateOwn' : 'currencyRate', { rateDate: S.cur.date ? ' на ' + ruDate(S.cur.date) : '', cur: C.sh, rate: String(rt).replace('.', ','), rub: money(Math.round(t.sum * rt)) }) : ''), 'note'), { before: 60, jc: 'both', hy: true }));
     }
     return out.join('');
   }

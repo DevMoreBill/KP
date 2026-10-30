@@ -8,6 +8,7 @@ import { DealHs } from './deal-hs.js';
 import { DealLogistics } from './deal-logistics.js';
 import { DealPresets } from './deal-presets.js';
 import { DealRows } from './deal-rows.js';
+import { DealSeller } from './deal-seller.js';
 import { DealState } from './deal-state.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
@@ -25,6 +26,7 @@ import { Mobile } from '../../ui/mobile.js';
 import { SidePanel } from '../../ui/side-panel.js';
 import { KpState, S } from '../../core/state.js';
 import { OptionSale } from '../kp/option-sale.js';
+import { RateSource } from '../kp/rate-source.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
@@ -173,7 +175,7 @@ export class DealBind {
 
   _kpRate(field) {
     S.pricing.rates[field.dataset.kprate] = field.value;
-    S.pricing.rateSrc = 'вручную';
+    RateSource.mark(S.pricing, field.dataset.kprate);
     if (S.deal && S.deal.rates) delete S.deal.rates[field.dataset.kprate];
     OptionSale.syncAll();
     this._touchLive();
@@ -265,6 +267,7 @@ export class DealBind {
     ['costcurI', '_costCur'],
     ['kpvat', '_kpDone'],
     ['kprate', '_kpDone'],
+    ['dlseller', '_seller'],
   ];
 
   _change(field) {
@@ -284,6 +287,11 @@ export class DealBind {
       deal.map = { ...(deal.map || {}), [field.dataset.dlmap]: field.value };
       this._done();
     }
+  }
+
+  _seller(field) {
+    DealSeller.choose(DealState.deal(), field.value);
+    this._done();
   }
 
   _start(field) {

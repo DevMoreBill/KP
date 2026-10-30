@@ -9,6 +9,7 @@ import { $, esc, today } from '../../core/util.js';
 import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
 import { OptionSale } from './option-sale.js';
+import { RateSource } from './rate-source.js';
 
 /** Курсы ЦБ РФ: кнопка «Курс ЦБ» — все валюты; программа сама (нет курса нужной валюты) — только пустые. */
 export class CbrRates {
@@ -62,8 +63,7 @@ export class CbrRates {
     for (const code of got) S.pricing.rates[code] = (+answer.rates[code]).toFixed(this.DIGITS).replace('.', ',');
     if (!got.length) return;
     OptionSale.syncAll();
-    S.pricing.rateDate = answer.rates.date || today();
-    S.pricing.rateSrc = answer.src;
+    RateSource.cbr(S.pricing, got, { date: answer.rates.date || today(), src: answer.src });
     FormView.render();
     KpState.persist();
     DealWin.render();

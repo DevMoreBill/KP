@@ -153,7 +153,7 @@ export class CabToday {
     const freeDeals = open.filter(deal => !deal.next);
     const free = freeDeals.length;
     const month = now.slice(0, 7);
-    const soon = open.filter(deal => deal.expected && String(deal.expected).slice(0, 7) <= month).length;
+    const soon = open.filter(deal => CrmData.expectedBy(deal, month)).length;
     const fresh = this.bxNew();
     const waiting = fresh.filter(deal => this._late(deal)).length;
     const tiles = [

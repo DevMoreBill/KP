@@ -10,6 +10,7 @@ import { Kit } from '../kit/kit.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Currency } from '../kp/currency.js';
+import { RateSource } from '../kp/rate-source.js';
 import { ItemLinks } from '../catalog/item-links.js';
 import { S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
@@ -31,10 +32,14 @@ export class KpDocx {
     S.items.forEach(item => (item.features || []).forEach(feat => ItemLinks.featId(feat)));
     const out = JSON.parse(JSON.stringify(S, (key, value) => (key.startsWith('_') ? undefined : value)));
     out.vat = +S.vat;
+    const code = Currency.current();
+    // договорной курс (вписан вручную) — «курс расчёта», без даты ЦБ
+    const own = code !== 'RUB' && RateSource.manual(S.pricing, code);
     out.cur = {
-      code: Currency.current(),
-      rate: Currency.current() !== 'RUB' ? Currency.rate(Currency.current()) : null,
-      date: S.pricing.rateDate || '',
+      code,
+      rate: code !== 'RUB' ? Currency.rate(code) : null,
+      date: own ? '' : S.pricing.rateDate || '',
+      own,
     };
     out.items = S.items.map(item => this._item(item));
     out.conditions = KpConditions.forDoc(out.conditions, (S.object || {}).address);

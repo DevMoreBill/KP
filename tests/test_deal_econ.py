@@ -57,6 +57,24 @@ class ShiftTest(unittest.TestCase):
             self.assertEqual(row['stale'].get('profit'), row['before'].get('profit'), row['name'])
 
 
+class MoneyTest(unittest.TestCase):
+    """Поле «Деньги» — с копейками и без экспоненты (было «1.23457e+06|RUB»: от миллиона суммы округлялись, а обратно
+    читались как 1,23 ₽ — ложная «правка в Битрикс24»)."""
+
+    def test_money_and_back(self):
+        from deal_econ import DealEcon
+        self.assertEqual(DealEcon.money(60000), '60000|RUB', 'целая — как раньше (уже записанные поля не переотправляются)')
+        self.assertEqual(DealEcon.money(1234567.891), '1234567.89|RUB')
+        self.assertEqual(DealEcon.money(2700060.5), '2700060.5|RUB')
+        self.assertEqual(DealEcon.money(0), '0|RUB')
+        for value in (1234567.89, 2700060.5, 15000000.01, 60000.0):
+            self.assertAlmostEqual(DealEcon.number(DealEcon.money(value)), value, places=2)
+        self.assertEqual(DealEcon.number('1.23457e+06|RUB'), 1234570.0, 'прежняя запись читается числом, а не 1,23')
+        self.assertEqual(DealEcon.number('1 234,5'), 1234.5)
+        self.assertEqual(DealEcon.number('12,5 %'), 12.5)
+        self.assertIsNone(DealEcon.number('нет'))
+
+
 class MatchTest(unittest.TestCase):
     def test_titles(self):
         from deal_econ import EconValues

@@ -53,10 +53,11 @@ export class DocsGen {
   }
 
   static _html(state, own) {
+    // продавец сделки (экономика сделки → «Продавец»), иначе основное юрлицо
+    const dealSeller = state.deal && state.deal.seller;
+    const pick = own.items.some(item => item.id === dealSeller) ? dealSeller : own.main;
     const sellers = own.items
-      .map(
-        item => `<option value="${esc(item.id)}"${item.id === own.main ? ' selected' : ''}>${esc(item.name)}</option>`,
-      )
+      .map(item => `<option value="${esc(item.id)}"${item.id === pick ? ' selected' : ''}>${esc(item.name)}</option>`)
       .join('');
     const buttons = this.KINDS.map(([kind, label, hint]) => {
       const off = kind === 'contract' && !own.templates.contract;

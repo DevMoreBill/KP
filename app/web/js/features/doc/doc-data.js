@@ -1,7 +1,8 @@
+import { SellerTax } from '../../core/seller-tax.js';
+
 /** Данные КП для счёта, спецификации и договора: строки товаров, итоги, реквизиты сторон и метки шаблона Word. */
 export class DocData {
   static UNIT = 'шт.';
-  static NO_VAT = 'без НДС';
   static COND = { delivery: 'Срок поставки', payment: 'Условия оплаты' };
 
   /**
@@ -22,12 +23,13 @@ export class DocData {
       const qty = +item.qty || 0;
       const price = KPGen.netPrice(item);
       const main = { name: item.name || 'Оборудование', qty, unit: DocData.UNIT, price, sum: qty * price };
+      // как в КП (KpDocx._item): «нет цены — не в КП» заказчику не идёт, единица — своя у опции («усл.»)
       const options = (item.options || [])
-        .filter(option => option.name && +option.qty > 0)
+        .filter(option => String(option.name || '').trim() && +option.qty > 0 && !option.askPrice)
         .map(option => ({
           name: option.name,
           qty: +option.qty,
-          unit: DocData.UNIT,
+          unit: option.unit || DocData.UNIT,
           price: option.price || 0,
           sum: +option.qty * (option.price || 0),
         }));
@@ -64,10 +66,8 @@ export class DocData {
    * @returns {number}
    */
   rate() {
-    const own = this.seller.vat;
-    if (own === DocData.NO_VAT) return 0;
-    const fixed = own === undefined || own === null || own === '' ? NaN : Number(own);
-    return Number.isFinite(fixed) ? fixed : +this.state.vat || 0;
+    const own = SellerTax.rate(this.seller.vat);
+    return Number.isFinite(own) ? own : +this.state.vat || 0;
   }
 
   /**
@@ -156,8 +156,8 @@ export class DocData {
       ...this._seller(own),
       сумма: this.money(total.sum),
       сумма_прописью: KPGen.words(total.sum, this.cur()),
-      ндс: this.noVat() ? DocData.NO_VAT : this.money(total.vat),
-      ставка_ндс: this.noVat() ? DocData.NO_VAT : `${this.rate()} %`,
+      ндс: this.noVat() ? SellerTax.NO_VAT : this.money(total.vat),
+      ставка_ндс: this.noVat() ? SellerTax.NO_VAT : `${this.rate()} %`,
       валюта: this.cur(),
       срок_поставки: this.cond(DocData.COND.delivery),
       оплата: this.cond(DocData.COND.payment),

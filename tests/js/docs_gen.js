@@ -46,6 +46,13 @@ check('строки и итоги', ()=>{
   assert.strictEqual(free.vatLine(), 'Без налога (НДС)');
 });
 
+check('опции — как в КП: «нет цены — не в КП» не печатаются, единица — своя (было: строкой 0,00 и «шт.»)', ()=>{
+  const withOpts={ ...offer, items:[{ name:'Компрессор', qty:1, price:100000000, options:[
+    { name:'Шеф-монтаж', qty:1, price:3000000, unit:'усл.' }, { name:'Доставка', qty:1, price:0, askPrice:true }, { name:'  ', qty:1, price:1 }] }] };
+  const rows=new DocData(withOpts, firm).rows();
+  assert.deepStrictEqual(rows.map(r=>[r.name, r.qty, r.unit, r.sum]), [['Компрессор', 1, 'шт.', 100000000], ['Шеф-монтаж', 1, 'усл.', 3000000]]);
+});
+
 check('метки договора', ()=>{
   const tags=new DocData(offer, firm).tags({ number:'7', date:'2026-10-23' });
   assert.strictEqual(tags['покупатель_инн'], '7701234567');

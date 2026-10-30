@@ -131,6 +131,7 @@ function kpSkeleton(KP) {
       inWordsLabel: 'Итого: ', inWords: '{words}, в т. ч. НДС {vat} % — {vatSum} {cur}',
       currencyNote: 'Цены указаны в {curName}. Оплата производится в рублях по курсу ЦБ РФ на дату оплаты.',
       currencyRate: ' Справочно: курс ЦБ РФ{rateDate} — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.',
+      currencyRateOwn: ' Справочно: курс расчёта — 1 {cur} = {rate} руб.; сумма в рублях — {rub} руб.',
       conditionsTitle: 'Условия предложения', condExtraTitle: 'Дополнительные условия', contactsTitle: 'Контактная информация',
       signLine: 'Подпись:', closing1: 'С уважением и надеждой', closing2: 'на плодотворное сотрудничество',
       phone: 'Телефон', ext: ' доб. {ext}', mobile: 'Мобильный', email: 'E-mail', site: 'Сайт', hours: 'Часы работы', address: 'Адрес',
@@ -1113,7 +1114,7 @@ function kpSkeleton(KP) {
     const C = CURS[curCode(S)], rt = S.cur && +S.cur.rate;
     const inWords = BLK.amountInWords ? r(T.inWordsLabel, 'wordsLabel') + r(txt('inWords', { words: words(t.sum, curCode(S)), vat: S.vat, vatSum: money(t.vat), cur }), 'words') : '';
     const note = curCode(S) !== 'RUB' && BLK.currencyNote ? txt('currencyNote', { curName: C.name }) +
-      (rt ? txt('currencyRate', { rateDate: S.cur.date ? ' на ' + ruDate(S.cur.date) : '', cur: C.sh, rate: String(rt).replace('.', ','), rub: money(Math.round(t.sum * rt)) }) : '') : '';
+      (rt ? txt(S.cur.own ? 'currencyRateOwn' : 'currencyRate', { rateDate: S.cur.date ? ' на ' + ruDate(S.cur.date) : '', cur: C.sh, rate: String(rt).replace('.', ','), rub: money(Math.round(t.sum * rt)) }) : '') : '';
     // «Итого к оплате», сумма прописью и примечание о валюте — одной неразрывной строкой-контейнером:
     // не расходятся по страницам ни в Word, ни в LibreOffice
     const band = bgpara(W, 640, BLUE, 120, 120) + tbl([[tc(p(r(T.grandTotal, 'grandLabel'), { jc: 'right' }), L4, { mar: [0, 120, 0, 160] }),
