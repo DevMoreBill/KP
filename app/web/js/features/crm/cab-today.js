@@ -13,7 +13,6 @@ import { Drafts } from '../kp/drafts.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpLoader, Reminders } from '../kp/reminders.js';
 import { FEAT } from '../../core/features.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { KpDate } from '../kp/kp-date.js';
 import { esc, today } from '../../core/util.js';
 import { MyDay } from '../kp/my-day.js';
@@ -21,6 +20,7 @@ import { DealPause } from './deal-pause.js';
 import { BrowserNotify } from './browser-notify.js';
 import { CabLayout } from './cab-layout.js';
 import { MyPrefs } from '../kp/my-prefs.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «Сегодня»: плитки дня, «Что сделать» (дела и сделки, которым нужно действие), напоминания по КП; справа — неделя, месяц, воронка. */
 export class CabToday {

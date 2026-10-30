@@ -5,8 +5,8 @@ import { esc } from '../../core/util.js';
 import { DealTerms } from '../deal/deal-terms.js';
 import { DealWin } from '../deal/deal-win.js';
 import { CbrRates } from './cbr-rates.js';
-import { FormView } from '../../ui/form-view.js';
 import { Currency } from './currency.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Цена продажи опции или услуги в своей валюте (option.sale, option.saleCur), как закупка. В КП, итоги, документ и
@@ -154,7 +154,7 @@ export class OptionSale {
     this.set(option, amount);
     if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     KpState.persist();
-    FormView.render();
+    KpForm.render();
     DealWin.render();
   }
 }

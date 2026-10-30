@@ -1,4 +1,3 @@
-import { UiKit } from './ui-kit.js';
 import { PriceHints } from '../features/kp/price-hints.js';
 import { esc } from '../core/util.js';
 import { Price } from '../core/str.js';
@@ -7,6 +6,7 @@ import { PricingBlock } from '../features/kp/cbr-rates.js';
 import { KpState, S } from '../core/state.js';
 import { Currency, Discount } from '../features/kp/currency.js';
 import { OptionSale } from '../features/kp/option-sale.js';
+import { UiKit } from '../core/ui-kit.js';
 
 /**
  * Раздел 3 «Цены и валюта»: цены продажи вводятся вручную, одна строка на позицию; скидка попадает в КП. Закупка,

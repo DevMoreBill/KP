@@ -4,7 +4,6 @@ import { CatalogCache } from './catalog-cache.js';
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { Logos } from './image-slots.js';
 import { Kit } from '../kit/kit.js';
-import { FormView } from '../../ui/form-view.js';
 import { Auth } from '../kp/auth.js';
 import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -13,7 +12,6 @@ import { KpState, S } from '../../core/state.js';
 import { Currency } from '../kp/currency.js';
 import { CatFeatures } from '../kit/kit-part.js';
 import { PriceCalc } from '../kp/price-calc.js';
-import { CoverSync } from '../../ui/step-cover.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { CoverHint } from '../kit/cover-hint.js';
 import { Uid } from '../../core/util.js';
@@ -23,6 +21,8 @@ import { CatalogEditor } from './catalog-edit.js';
 import { ItemEditor } from './item-editor.js';
 import { CardRules } from './card-rules.js';
 import { AdminSession } from '../../core/net.js';
+import { CoverSync } from '../kit/cover-sync.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Позиция КП из карточки каталога: всё содержимое карточки, цена — в валюте КП, без следов прежнего оборудования. */
 export class CatalogFill {
@@ -342,7 +342,7 @@ export class CatalogSync {
     const doc = this._saveDoc(item, cur);
     if (!(await this._quality(item, doc, index))) return;
     await this._put(item, doc);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 

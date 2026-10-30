@@ -1,5 +1,4 @@
 import { FormView } from './form-view.js';
-import { UiKit } from './ui-kit.js';
 import { Toast } from '../core/toast.js';
 import { AdminDialog } from '../features/admin/admin-core.js';
 import { KpFilesPanel } from '../features/kp/kp-files.js';
@@ -9,54 +8,8 @@ import { DealCalculator } from '../features/deal/deal-calculator.js';
 import { DealConds } from '../features/deal/deal-conds.js';
 import { KpState, S } from '../core/state.js';
 import { KpConditions } from '../core/conditions.js';
-
-/** Условия прошлых КП в этом браузере: для «Как в прошлом КП» и свои значения — для списка ▾. */
-export class CondMemory {
-  static RECENT_KEY = 'kp.condRecent';
-  static LAST_KEY = 'kp.lastConds';
-  static RECENT = 5;
-
-  /**
-   * Свои значения условий из прошлых КП: {название: [значения]}.
-   * @returns {object}
-   */
-  static recent() {
-    try {
-      return JSON.parse(localStorage.getItem(this.RECENT_KEY) || '{}') || {};
-    } catch {
-      return {};
-    }
-  }
-
-  /**
-   * Условия последнего сохранённого КП.
-   * @returns {{conditions: object[], condExtra: string}|null}
-   */
-  static last() {
-    try {
-      return JSON.parse(localStorage.getItem(this.LAST_KEY) || 'null');
-    } catch {
-      return null;
-    }
-  }
-
-  /** Запомнить условия сохранённого КП. */
-  static remember() {
-    try {
-      const conditions = S.conditions.map(cond => ({ label: cond.label, value: cond.value }));
-      localStorage.setItem(this.LAST_KEY, JSON.stringify({ conditions, condExtra: S.condExtra || '' }));
-      const recent = this.recent();
-      S.conditions.forEach(cond => {
-        const value = String(cond.value || '').trim();
-        if (!value || CondsStep.options(cond.label).includes(value)) return;
-        recent[cond.label] = [value, ...(recent[cond.label] || []).filter(old => old !== value)].slice(0, this.RECENT);
-      });
-      localStorage.setItem(this.RECENT_KEY, JSON.stringify(recent));
-    } catch {
-      // хранилище недоступно — не запоминаем
-    }
-  }
-}
+import { CondMemory } from '../core/cond-memory.js';
+import { UiKit } from '../core/ui-kit.js';
 
 /**
  * Раздел 5 «Условия»: поле и список вариантов ▾ у каждого условия, «Как в прошлом КП»; «Очистить все условия» —
@@ -64,15 +17,6 @@ export class CondMemory {
  */
 export class CondsStep {
   static SYNC_TEXT = 70;
-
-  /**
-   * Базовые варианты условия — по его названию (условия, добавленные позже, могут стоять не на своём месте).
-   * @param {string} label
-   * @returns {string[]}
-   */
-  static options(label) {
-    return (KpConditions.LIST.find(cond => cond[0] === label) || [])[1] || [];
-  }
 
   /**
    * Что предлагает экономика сделки (если её заполняли).
@@ -97,7 +41,7 @@ export class CondsStep {
     const value = String(cond.value || '').trim();
     const fromDeal = suggested[cond.label];
     const same = value && fromDeal && value === fromDeal;
-    const options = this.options(cond.label);
+    const options = KpConditions.options(cond.label);
     const own = (recent[cond.label] || []).filter(old => !options.includes(old));
     const sync =
       fromDeal && value !== fromDeal

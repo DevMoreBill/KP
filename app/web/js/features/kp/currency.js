@@ -1,10 +1,10 @@
 import { CbrRates } from './cbr-rates.js';
 import { Price } from '../../core/str.js';
 import { DealWin } from '../deal/deal-win.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { OptionSale } from './option-sale.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Валюта КП и курсы: короткое обозначение, курс к рублю, смена валюты с пересчётом цен. */
 export class Currency {
@@ -66,7 +66,7 @@ export class Currency {
       this._convert(value => Math.round((value * from) / rateTo));
       Toast.show(`Цены переведены в ${code} по курсу`);
     } else Toast.show('Укажите курс, чтобы перевести цены: сейчас цены не пересчитаны');
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     DealWin.render();
     if (code !== 'RUB' && !(this.rate(code) > 0)) CbrRates.fillEmpty();

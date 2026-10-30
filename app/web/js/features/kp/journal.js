@@ -16,7 +16,6 @@ import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { DealState } from '../deal/deal-state.js';
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
@@ -27,6 +26,7 @@ import { $, esc, today } from '../../core/util.js';
 import { KpTabs } from './kp-tabs.js';
 import { DealCard } from '../crm/deal-card.js';
 import { KpTransferView } from './kp-transfer.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -371,7 +371,7 @@ export class Journal {
         if (row && row.file) S._file = row.file;
       }
       this._leave();
-      FormView.render();
+      KpForm.render();
       KpState.persist();
       window.scrollTo({ top: 0 });
       if (copy) Drafts.loaded();
@@ -473,7 +473,7 @@ export class KpVersions {
       }
       modal.close();
       if (closeJournal) closeJournal();
-      FormView.render();
+      KpForm.render();
       KpState.persist();
       window.scrollTo({ top: 0 });
       Toast.show(

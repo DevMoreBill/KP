@@ -9,9 +9,9 @@ import { LgTariffFile } from './lg-tariff-file.js';
 import { Toast } from '../../core/toast.js';
 import { XlsTable } from '../catalog/excel-import.js';
 import { Fmt } from '../../core/str.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /**
  * «Настройки» → «Тарифы доставки» (администратор): машины, разгрузка, общие параметры, автообновление ставок по ATI.SU,

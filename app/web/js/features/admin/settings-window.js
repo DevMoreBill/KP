@@ -2,16 +2,16 @@ import { AdminApi, AdminState } from './admin-core.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { AdminNav } from './admin-nav.js';
 import { SettingsSearch, StAutoSave, StDirty, StNav } from './settings-tools.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { LoginForm } from '../kp/login-form.js';
 import { Toast } from '../../core/toast.js';
 import { FEAT } from '../../core/features.js';
 import { $, esc } from '../../core/util.js';
 import { AdminSession, Api } from '../../core/net.js';
-import { Mobile } from '../../ui/mobile.js';
 import { WinSize } from '../../core/win-size.js';
 import { Modal } from '../../core/modal.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * Окно «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py): размер окна запоминается, вход,
@@ -40,7 +40,12 @@ export class SettingsWindow {
     });
     let timer = null;
     new ResizeObserver(() => {
-      if (!dialog.open || Mobile.isPhone() || dialog.classList.contains('max') || dialog.classList.contains('login'))
+      if (
+        !dialog.open ||
+        PhoneLayout.active() ||
+        dialog.classList.contains('max') ||
+        dialog.classList.contains('login')
+      )
         return;
       clearTimeout(timer);
       timer = setTimeout(() => this._resized(dialog), this.RESIZE_WAIT);

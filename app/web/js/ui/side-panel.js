@@ -1,7 +1,6 @@
 import { LivePreview } from '../features/doc/live-preview.js';
 import { OptionCost } from '../features/kp/option-cost.js';
 import { Steps } from './steps.js';
-import { Tender } from './tender.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { Templates } from '../features/doc/templates.js';
 import { ShortName } from '../features/kp/journal-row.js';
@@ -19,6 +18,7 @@ import { Price } from '../core/str.js';
 import { Inn } from '../features/kp/client-store.js';
 import { KpState, S } from '../core/state.js';
 import { OptionSale } from '../features/kp/option-sale.js';
+import { Tender } from '../core/tender.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {

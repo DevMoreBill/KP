@@ -12,8 +12,8 @@ import { Catalog } from '../catalog/catalog-store.js';
 import { $ } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Api } from '../../core/net.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «Фиды поставщиков»: товарный фид (YML) или фид из файлов (парс сайта + прайс) — загрузка в каталог и сверка цен. */
 export class FeedsTab {

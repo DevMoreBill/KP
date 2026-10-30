@@ -10,10 +10,8 @@ import { StationGeo } from '../layout/station-geo.js';
 import { StationSize } from '../station/station-size.js';
 import { PaintView } from './paint-view.js';
 import { DealWin } from '../deal/deal-win.js';
-import { SidePanel } from '../../ui/side-panel.js';
 import { InputNum } from '../deal/input-num.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { ImageFiles } from '../catalog/images.js';
 import { $ } from '../../core/util.js';
 import { KitNeed } from './kit-need.js';
@@ -21,6 +19,7 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { KitView } from './kit-view.js';
 import { KitScope } from './kit-scope.js';
 import { KpState, S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,
@@ -147,7 +146,7 @@ export class KitActions {
       if (!file) return;
       try {
         parts[j].photo = await ImageFiles.gallery(file);
-        FormView.render();
+        KpForm.render();
         KpState.persist();
       } catch {
         Toast.show('Не удалось открыть изображение');
@@ -173,7 +172,7 @@ export class KitActions {
     field.classList.toggle('bad', Number.isNaN(cost));
     if (!Number.isNaN(cost)) found.part.cost = cost == null ? 0 : Math.round(cost * this.KOPECKS);
     Kit.sync(found.item);
-    SidePanel.updateLive();
+    KpForm.updateLive();
     KpState.persist();
     this._deal();
   }
@@ -182,7 +181,7 @@ export class KitActions {
     if (field.dataset.kitcost == null) return;
     const found = PartField.of(field.dataset.kitcost);
     if (found && !Number.isNaN(InputNum.parse(found.part._costText))) delete found.part._costText;
-    FormView.render();
+    KpForm.render();
     this._deal();
   }
 
@@ -213,7 +212,7 @@ export class KitActions {
     StationSize.apply(item);
     StationAuto.fill(item);
     StationName.apply(item);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 
@@ -238,14 +237,14 @@ export class KitActions {
     found.part.costCur = field.value;
     if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     Kit.sync(found.item);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     this._deal();
   }
 
   static _qty(path) {
     Kit.sync(S.items[+path.split('.')[1]]);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 }

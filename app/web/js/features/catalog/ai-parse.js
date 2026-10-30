@@ -1,7 +1,7 @@
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
+import { KpForm } from '../../core/kp-form.js';
 /**
  * Ответ ИИ → объект. Понимает блок ```json, текст вокруг, «умные» кавычки, запятые перед } и ], комментарии //.
  * Не JSON — строки «Параметр: значение» / таблица из двух колонок становятся характеристиками.
@@ -167,7 +167,7 @@ export class SpecPaste {
     const item = S.items[i];
     item.groups = $('#pasteRepl').checked ? groups : item.groups.concat(groups);
     dialog.close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Добавлено строк: ${groups.reduce((sum, group) => sum + group.rows.length, 0)}`);
   }

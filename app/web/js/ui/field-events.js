@@ -1,6 +1,5 @@
 import { FormView } from './form-view.js';
 import { SidePanel } from './side-panel.js';
-import { Tender } from './tender.js';
 import { Attrs } from '../core/item-attrs.js';
 import { EquipTypes } from '../core/equip-types.js';
 import { CatalogFill } from '../features/catalog/catalog-fill.js';
@@ -16,6 +15,8 @@ import { KpState, S } from '../core/state.js';
 import { ObjPath, Price, Str } from '../core/str.js';
 import { OptionSale } from '../features/kp/option-sale.js';
 import { RateSource } from '../features/kp/rate-source.js';
+import { Tender } from '../core/tender.js';
+import { TenderBlock } from './tender.js';
 
 /** Ввод в поля формы КП: поля по пути (data-p), цены, скидки, цены опций, курсы валют. */
 export class FieldEvents {
@@ -70,7 +71,7 @@ export class FieldEvents {
     }
     document.querySelector('[data-p="tender.number"]')?.classList.toggle('bad', !String(S.tender.number || '').trim());
     const note = $('#kkNote');
-    if (note) note.innerHTML = Tender.note();
+    if (note) note.innerHTML = TenderBlock.note();
     const file = document.querySelector('#side .fname');
     if (file && S.kpId) file.textContent = KpFile.saved();
   }

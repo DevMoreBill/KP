@@ -7,8 +7,8 @@ import { TypesEditor } from './types-editor.js';
 import { XlsImport } from './excel-import.js';
 import { EquipWizard } from '../wizard/equip-wizard.js';
 import { $ } from '../../core/util.js';
-import { Steps } from '../../ui/steps.js';
 import { CatalogExportDlg } from './catalog-export.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Щелчки в окне каталога: отметки, вкладки, плашки, категории, пакетные действия, карточка, меню. */
 export class CatalogClicks {
@@ -43,7 +43,7 @@ export class CatalogClicks {
     close: win => win.close(),
     done: win => {
       win.close();
-      if (win.optFor == null && Steps.current !== 'equip') Steps.open('equip');
+      if (win.optFor == null && KpForm.step() !== 'equip') KpForm.open('equip');
     },
     max: (win, dialog) => {
       dialog.classList.toggle('max');

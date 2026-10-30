@@ -1,6 +1,5 @@
 import { FormView } from './form-view.js';
 import { TenderBlock } from './tender.js';
-import { UiKit } from './ui-kit.js';
 import { Str } from '../core/str.js';
 import { ClientCard } from '../features/kp/client-card.js';
 import { DealPick } from '../features/crm/deal-pick.js';
@@ -15,6 +14,7 @@ import { KpDate } from '../features/kp/kp-date.js';
 import { esc, today } from '../core/util.js';
 import { S } from '../core/state.js';
 import { FEAT } from '../core/features.js';
+import { UiKit } from '../core/ui-kit.js';
 
 /**
  * У клиента уже есть недавние КП (по ИНН, за срок «kp.dupDays» из «Значений программы») — чтобы два менеджера не

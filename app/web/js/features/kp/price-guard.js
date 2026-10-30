@@ -6,9 +6,9 @@ import { FEAT } from '../../core/features.js';
 import { Modal } from '../../core/modal.js';
 import { esc, isoDay } from '../../core/util.js';
 import { S } from '../../core/state.js';
-import { WorkCalendar } from '../../ui/date-picker.js';
 import { KpEconomics } from './price-calc.js';
 import { RateSource } from './rate-source.js';
+import { WorkCalendar } from '../../core/date-picker.js';
 
 /** Проверка цен перед сохранением и отправкой КП: ниже закупки, маржа ниже красного порога, курс ЦБ старше суток. */
 export class PriceGuard {

@@ -1,8 +1,8 @@
 import { AdminApi, AdminDialog } from './admin-core.js';
 import { Toast } from '../../core/toast.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** Обслуживание базы: автокопии (архивы ZIP), сжатие и проверка, срок журнала действий, изображения без ссылок. */
 export class DbMaint {

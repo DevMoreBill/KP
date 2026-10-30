@@ -4,7 +4,7 @@ import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
 import { S } from '../../core/state.js';
-import { FormView } from '../../ui/form-view.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Чужое КП — только просмотр: администратор или менеджер с правом «КП других менеджеров», открыв КП коллеги, видит его как
@@ -73,7 +73,7 @@ export class KpGuard {
   static listen() {
     document.addEventListener('click', async event => {
       if (!event.target.closest('[data-kpunlock]')) return;
-      if (await this.unlock()) FormView.render();
+      if (await this.unlock()) KpForm.render();
     });
   }
 

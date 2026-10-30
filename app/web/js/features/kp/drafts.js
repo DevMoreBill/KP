@@ -1,7 +1,6 @@
 import { Currency } from './currency.js';
 import { Modal } from '../../core/modal.js';
 import { Fmt } from '../../core/str.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
@@ -11,6 +10,7 @@ import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from './kp-tabs.js';
 import { KpGuard } from './kp-guard.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Черновики КП на сервере (DraftsController, таблица drafts): незаконченное КП или несохранённые правки сохранённого,
@@ -286,7 +286,7 @@ export class Drafts {
     if (answer.data.rev != null) S._rev = answer.data.rev;
     S._draft = id;
     KpTabs.show();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     window.scrollTo({ top: 0 });
     this.loaded();

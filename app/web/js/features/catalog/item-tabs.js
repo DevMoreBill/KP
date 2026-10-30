@@ -4,7 +4,7 @@ import { OptsBlock } from './item-blocks.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** Вкладки карточки позиции: «Основное», «Характеристики», «Опции и услуги». */
 export class ItemTabs {

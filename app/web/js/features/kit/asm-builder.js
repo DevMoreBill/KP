@@ -7,7 +7,6 @@ import { PickFilter, PickFind } from './kit-pick.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { Currency } from '../kp/currency.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { FEAT } from '../../core/features.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -15,6 +14,7 @@ import { Price } from '../../core/str.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { KpState, S } from '../../core/state.js';
 import { $, esc } from '../../core/util.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Окно «Сборное изделие» (в окне «Добавить оборудование», `#dlg`, та же ширина и шапка, что у подбора станции):
@@ -407,7 +407,7 @@ export class AsmBuilder {
     AsmItem.fill(item, input);
     if (index == null) this._add(item);
     this._close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     if (ItemEditor.current) ItemEditor.render();
     Toast.show(index == null ? `В КП: ${item.name}` : 'Изделие обновлено');

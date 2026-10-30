@@ -4,10 +4,10 @@ import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
-import { SidePanel } from '../../ui/side-panel.js';
 import { KpState, S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { ObjPath } from '../../core/str.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Поле с выпадающим списком (поставщик, страна): подсказки по первым буквам или выбор из списка (кнопка «▾», стрелки, Enter). */
 export class DealCombo {
@@ -118,7 +118,7 @@ export class DealCombo {
     if (match) DealSuppliers.save(deal.sup[+match[1]]);
     S.deal.touched = true;
     KpState.persist();
-    SidePanel.render();
+    KpForm.renderSide();
     DealWin.render();
   }
 

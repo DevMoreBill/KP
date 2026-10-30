@@ -60,7 +60,6 @@ import { SupplierCalc } from './supplier-calc.js';
 import { TnVed } from './tn-ved.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { GeoInput } from '../../ui/geo-input.js';
 
 export const DEAL = {
   DealBind,
@@ -140,7 +139,6 @@ export const DEAL = {
 DealValues.register();
 LgValues.register();
 if (typeof document !== 'undefined' && document.addEventListener) DealRows.listen();
-GeoInput.extra.wh = input => DealLogistics.warehouses(input);
 // страны поставщиков — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
 LISTS.ready(DealTerms.LISTS);
 DefRegistry.options(DealPresets.DEF_OPTS);

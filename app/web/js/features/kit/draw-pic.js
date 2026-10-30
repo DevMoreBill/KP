@@ -1,14 +1,14 @@
 import { Kit } from './kit.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { StationUi } from '../station/station-ui.js';
 import { KpState, S } from '../../core/state.js';
 import { ImageFiles } from '../catalog/images.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { ImgUpload } from '../../core/net.js';
 import { StationEquip } from '../layout/station-equip.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { $, esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Свой рисунок модели для габаритного чертежа: вид спереди и сверху (PNG или JPEG) вписывается в габарит элемента вместо
@@ -110,7 +110,7 @@ export class DrawPic {
         if (!target) return;
         target.draw = { ...(target.draw || {}), [view]: image };
         if (j >= 0) StationUi.cache.delete(item.id);
-        FormView.render();
+        KpForm.render();
         KpState.persist();
       } catch {
         Toast.show('Не удалось открыть изображение');

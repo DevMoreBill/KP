@@ -1,7 +1,7 @@
 import { CrmFmt } from './crm-fmt.js';
 import { Money } from '../../core/money.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { esc, today } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /**
  * Полоса «Исполнение» в карточке сделки: точки из «Экономики сделки» КП (оплаты заказчика, поставщикам, перевозка,

@@ -2,8 +2,8 @@ import { KpModels } from './kp-models.js';
 import { Templates } from './templates.js';
 import { today } from '../../core/util.js';
 import { Str } from '../../core/str.js';
-import { Tender } from '../../ui/tender.js';
 import { S } from '../../core/state.js';
+import { Tender } from '../../core/tender.js';
 
 /**
  * Имя файла КП и папка менеджера: по образцу из шаблона (fileName) с метками {номер} {префикс} {клиент} {оборудование}

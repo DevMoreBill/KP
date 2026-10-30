@@ -1,9 +1,9 @@
 import { ImageFiles } from './images.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { Str } from '../../core/str.js';
 import { Uid } from '../../core/util.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Изображения позиции и их место в КП: к блоку описания, к группе характеристик или в разделе «Фото и схемы»; порядок
@@ -174,7 +174,7 @@ export class ItemLinks {
         on: true,
       });
       item.page = true;
-      FormView.render();
+      KpForm.render();
       KpState.persist();
       Toast.show('Фото добавлено к блоку описания');
     } catch {

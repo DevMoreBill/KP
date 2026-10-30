@@ -18,7 +18,7 @@ const { KpDate }=mod('features/kp/kp-date.js');
 const { KpReport }=mod('features/kp/kp-report.js');
 const { KpReportView }=mod('features/kp/kp-report-view.js');
 const { Currency }=mod('features/kp/currency.js');
-const { WorkCalendar }=mod('ui/date-picker.js');
+const { WorkCalendar }=mod('core/date-picker.js');
 const { FEAT }=mod('core/features.js');
 
 const checks=[];

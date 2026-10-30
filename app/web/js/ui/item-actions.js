@@ -1,8 +1,5 @@
 import { FormView } from './form-view.js';
-import { Mobile } from './mobile.js';
 import { Steps } from './steps.js';
-import { CoverSync } from './step-cover.js';
-import { Tender } from './tender.js';
 import { KpSave } from '../features/doc/kp-save.js';
 import { Discount } from '../features/kp/currency.js';
 import { Templates } from '../features/doc/templates.js';
@@ -61,6 +58,9 @@ import { $, Uid } from '../core/util.js';
 import { EquipTypes } from '../core/equip-types.js';
 import { Toast } from '../core/toast.js';
 import { KpState, S } from '../core/state.js';
+import { CoverSync } from '../features/kit/cover-sync.js';
+import { Tender } from '../core/tender.js';
+import { PhoneLayout } from '../core/phone-layout.js';
 
 // действие изменило КП — форма перерисовывается и черновик сохраняется (что вернули окна и загрузки — не в счёт)
 const RENDER = Symbol('render');
@@ -468,16 +468,16 @@ export class ItemActions {
 
   static async _download() {
     const result = await KpSave.run();
-    if (Mobile.isPhone()) $('#dlmsg')?.scrollIntoView({ block: 'center' });
+    if (PhoneLayout.active()) $('#dlmsg')?.scrollIntoView({ block: 'center' });
     return result;
   }
 
   static _toSave() {
     const steps = Steps.visible();
     const last = steps[steps.length - 1].id;
-    if (Mobile.isPhone() && Steps.current !== last) Steps.open(last);
+    if (PhoneLayout.active() && Steps.current !== last) Steps.open(last);
     const side = $('#side');
-    side.scrollIntoView({ behavior: Mobile.isPhone() ? 'auto' : 'smooth' });
+    side.scrollIntoView({ behavior: PhoneLayout.active() ? 'auto' : 'smooth' });
     side.classList.add('pulse');
     setTimeout(() => side.classList.remove('pulse'), this.PULSE);
   }

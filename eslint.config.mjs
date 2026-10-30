@@ -162,6 +162,11 @@ export default [{
   files: ['app/web/js/core/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['../features/**', '../ui/**'], message: 'core/ — нижний слой: раздел подключается событием или регистрацией в своём index.js' }] }] },
 }, {
+  // разделы не подключают форму КП (ui/ выше разделов — циклы import): перерисовать форму, шаг, боковая панель — KpForm
+  // (core/kp-form.js, форму подключает ui/index.js), телефонная раскладка — PhoneLayout, общие виджеты — core/
+  files: ['app/web/js/features/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' }] }] },
+}, {
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },

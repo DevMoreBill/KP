@@ -3,7 +3,7 @@ import { esc } from '../core/util.js';
 import { CopyText } from '../core/files.js';
 import { Toast } from '../core/toast.js';
 import { HelpWindow } from '../features/kp/help-window.js';
-import { Mobile } from './mobile.js';
+import { PhoneLayout } from '../core/phone-layout.js';
 
 /**
  * Своё меню по правой кнопке мыши: у каждого места программы — свои действия (разделы регистрирует ContextSections).
@@ -52,7 +52,7 @@ export class ContextMenu {
   }
 
   static _off(event) {
-    if (!FEAT.on('ctxMenu') || event.shiftKey || Mobile.isPhone()) return true;
+    if (!FEAT.on('ctxMenu') || event.shiftKey || PhoneLayout.active()) return true;
     if (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) return true;
     return !!(event.target.closest && event.target.closest(this.FIELD));
   }

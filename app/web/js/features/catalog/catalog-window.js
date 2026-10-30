@@ -13,7 +13,6 @@ import { Catalog, CatalogStore } from './catalog-store.js';
 import { Suppliers } from './suppliers.js';
 import { Morph } from '../../core/morph.js';
 import { S } from '../../core/state.js';
-import { FormView } from '../../ui/form-view.js';
 import { Auth } from '../kp/auth.js';
 import { Api } from '../../core/net.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -21,6 +20,7 @@ import { Modal } from '../../core/modal.js';
 import { $, esc } from '../../core/util.js';
 import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Окно каталога: отбор сверху, фильтры и категории слева, список с отметками, карточка-предпросмотр справа.
@@ -208,7 +208,7 @@ export class CatalogWindow {
     await Catalog.refresh();
     await this.loadPending();
     this.docs = Catalog.cache;
-    FormView.render();
+    KpForm.render();
   }
 
   /** Левая панель. */

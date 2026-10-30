@@ -20,14 +20,13 @@ import { CbrRates } from '../kp/cbr-rates.js';
 import { Currency } from '../kp/currency.js';
 import { Toast } from '../../core/toast.js';
 import { today } from '../../core/util.js';
-import { FormView } from '../../ui/form-view.js';
 import { ObjPath, Price } from '../../core/str.js';
-import { Mobile } from '../../ui/mobile.js';
-import { SidePanel } from '../../ui/side-panel.js';
 import { KpState, S } from '../../core/state.js';
 import { OptionSale } from '../kp/option-sale.js';
 import { RateSource } from '../kp/rate-source.js';
 import { WinSize } from '../../core/win-size.js';
+import { KpForm } from '../../core/kp-form.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
@@ -64,13 +63,13 @@ export class DealBind {
   touch() {
     S.deal.touched = true;
     KpState.persist();
-    SidePanel.render();
+    KpForm.renderSide();
   }
 
   // правка цены, закупки, курса или НДС КП: updateLive сама перерисует правую панель и сохранит черновик
   _touchLive() {
     S.deal.touched = true;
-    SidePanel.updateLive();
+    KpForm.updateLive();
   }
 
   _done() {
@@ -83,7 +82,7 @@ export class DealBind {
     if (!window.ResizeObserver) return;
     const dlg = this.dlg;
     new ResizeObserver(() => {
-      if (!dlg.open || Mobile.isPhone() || dlg.classList.contains('max')) return;
+      if (!dlg.open || PhoneLayout.active() || dlg.classList.contains('max')) return;
       clearTimeout(this.sizeTimer);
       this.sizeTimer = setTimeout(() => this._keepSize(), DealBind.RESIZE_MS);
     }).observe(dlg);
@@ -214,7 +213,7 @@ export class DealBind {
       const item = S.items[+field.dataset.kppI];
       if (!Number.isNaN(Price.parse(item._priceText))) delete item._priceText;
       KpState.persist();
-      FormView.render();
+      KpForm.render();
       DealWin.render();
     }
   }
@@ -397,7 +396,7 @@ export class DealBind {
   }
 
   _kpDone() {
-    FormView.render();
+    KpForm.render();
   }
 
   _hsPick(field) {

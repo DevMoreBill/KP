@@ -1,7 +1,7 @@
 import { FEAT } from '../../core/features.js';
 import { Debounce } from '../../core/debounce.js';
-import { Mobile } from '../../ui/mobile.js';
 import { MyPrefs } from '../kp/my-prefs.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * Своё расположение разделов кабинета (ПК): две колонки, разделы перетаскиваются за ⠿ между колонками и по порядку,
@@ -47,7 +47,7 @@ export class CabLayout {
    * @returns {boolean}
    */
   static enabled(feature = 'cabLayout') {
-    return FEAT.on(feature) && !Mobile.isPhone();
+    return FEAT.on(feature) && !PhoneLayout.active();
   }
 
   /**

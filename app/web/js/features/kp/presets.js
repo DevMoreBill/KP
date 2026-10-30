@@ -3,8 +3,6 @@ import { Drafts } from './drafts.js';
 import { Managers } from './managers.js';
 import { ShortName } from './journal-row.js';
 import { Fmt } from '../../core/str.js';
-import { Steps } from '../../ui/steps.js';
-import { FormView } from '../../ui/form-view.js';
 import { Uid, esc, today } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
@@ -13,6 +11,7 @@ import { AdminSession, Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { KpTabs } from './kp-tabs.js';
 import { KpRepeat } from './kp-repeat.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Заготовка — КП без клиента (позиции, условия, цены), общая для всех: новое КП из заготовки за один щелчок. */
 export class Presets {
@@ -147,11 +146,11 @@ export class Presets {
     });
     const changes = FEAT.on('presetPrices') ? KpRepeat.prices() : [];
     KpTabs.show();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Drafts.loaded();
     window.scrollTo({ top: 0 });
-    Steps.open('client');
+    KpForm.open('client');
     Toast.show(`Новое КП по заготовке «${answer.row.title}» — укажите клиента`);
     if (changes.length)
       KpRepeat.show(`Заготовка «${answer.row.title}»: цены по каталогу`, 'Позиции и условия — из заготовки.', changes);

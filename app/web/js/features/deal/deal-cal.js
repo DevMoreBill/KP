@@ -2,8 +2,8 @@ import { DealState } from './deal-state.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { esc } from '../../core/util.js';
-import { SidePanel } from '../../ui/side-panel.js';
 import { Api } from '../../core/net.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Производственный календарь (/api/calendar: '1' — нерабочий день) и дни сделки: день 0 — дата договора, рабочие дни,
@@ -42,7 +42,7 @@ export class DealCal {
           if (!(res && res.days)) return;
           DealUi.cal[year] = res;
           DealWin.render();
-          SidePanel.render();
+          KpForm.renderSide();
         })
         .catch(error => console.warn(`Производственный календарь ${year} не загружен:`, error));
     }

@@ -1,8 +1,8 @@
 import { ClientStore, Inn, OrgName } from './client-store.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
-import { FormView } from '../../ui/form-view.js';
 import { $, esc, today } from '../../core/util.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Загрузка клиентов списком ИНН: реквизиты из ЕГРЮЛ ФНС (или Checko / DaData, если указаны ключи) → справочник. */
 export class ClientsImport {
@@ -153,7 +153,7 @@ export class ClientsImport {
     await ClientStore.load();
     this._table();
     this._count();
-    FormView.render();
+    KpForm.render();
   }
 
   static async _one(row) {

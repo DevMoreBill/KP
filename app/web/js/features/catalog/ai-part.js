@@ -3,10 +3,10 @@ import { AiParse } from './ai-parse.js';
 import { Kit } from '../kit/kit.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
-import { FormView } from '../../ui/form-view.js';
 import { $, esc } from '../../core/util.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Окно «Заполнить с ИИ» для элемента станции: описание и характеристики элемента. */
 export class AiPart {
@@ -91,7 +91,7 @@ ${String(part._src || '').trim() || '(только наименование — 
     this._fill(part, answer.j);
     delete part._ans;
     dialog.close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show('Элемент заполнен из ответа ИИ');
   }

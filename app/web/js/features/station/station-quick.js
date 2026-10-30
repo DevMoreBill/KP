@@ -4,7 +4,6 @@ import { StationImages } from './station-images.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { StationView3D } from '../draw/station-view3d.js';
 import { StationRender } from '../view/station-render.js';
@@ -23,6 +22,7 @@ import { esc } from '../../core/util.js';
 import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { StationSteps } from './station-steps.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна
@@ -387,7 +387,7 @@ export class StationQuick {
     if (!item || this.busy.has(item.id)) return;
     const query = this.query(item);
     if (!this._ready(item) || StationReq.ensure(item).pickSig === this.sig(query)) {
-      FormView.render();
+      KpForm.render();
       return;
     }
     const before = this.parts(item);
@@ -422,7 +422,7 @@ export class StationQuick {
       this.busy.delete(item.id);
     }
     ItemEditor.render();
-    FormView.render();
+    KpForm.render();
     StationImages.soon(item);
   }
 

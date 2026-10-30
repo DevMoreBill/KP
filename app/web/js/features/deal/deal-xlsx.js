@@ -4,10 +4,10 @@ import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { DealXlsxGraph, DealXlsxResult } from './deal-xlsx-graph.js';
 import { DealXlsxSummary } from './deal-xlsx-summary.js';
 import { XlsxBook } from '../../core/xlsx.js';
-import { Tender } from '../../ui/tender.js';
 import { Toast } from '../../core/toast.js';
 import { FileSave } from '../../core/files.js';
 import { S } from '../../core/state.js';
+import { Tender } from '../../core/tender.js';
 
 /**
  * Выгрузка «Экономики сделки» в Excel для согласования: «Сводка» — одна страница для коммерческого директора, «Расчёт» —

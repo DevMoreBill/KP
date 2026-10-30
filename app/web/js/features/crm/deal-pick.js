@@ -1,11 +1,10 @@
-import { FormView } from '../../ui/form-view.js';
-import { Steps } from '../../ui/steps.js';
 import { Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { MyDay } from '../kp/my-day.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 /** Раздел «Клиент» КП: в какую сделку попадёт КП (показывается, когда у клиента есть незакрытые сделки или КП уже в сделке). */
 export class DealPick {
   static state = { key: '', items: [], current: '', stages: [], busy: false };
@@ -62,6 +61,6 @@ export class DealPick {
     }
     state.key = key;
     state.busy = false;
-    if (Steps.current === 'client' && state.items.length) FormView.render();
+    if (KpForm.step() === 'client' && state.items.length) KpForm.render();
   }
 }

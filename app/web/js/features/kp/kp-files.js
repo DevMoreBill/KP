@@ -5,13 +5,12 @@ import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
-import { FormView } from '../../ui/form-view.js';
-import { Steps } from '../../ui/steps.js';
 import { S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { FEAT } from '../../core/features.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Справочные документы к КП (сервер: app/kp_files.py): паспорта, сертификаты, схемы, опросные листы — хранятся вместе
@@ -97,7 +96,7 @@ export class KpFilesPanel {
    * @param {string} kid
    */
   static refresh(kid) {
-    if (S.kpId === kid && Steps.current === 'conds') FormView.render();
+    if (S.kpId === kid && KpForm.step() === 'conds') KpForm.render();
     for (const win of this.wins) if (win.kid === kid) win.draw();
   }
 

@@ -10,6 +10,7 @@ import { MyDay } from '../features/kp/my-day.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { Mobile } from './mobile.js';
+import { PhoneLayout } from '../core/phone-layout.js';
 
 /** Разделы программы во вкладках: постоянные (Кабинет — главный экран, Каталог, Журнал, КП — по вкладке на каждое открытое) и открытые «по месту». */
 export class AppSections {
@@ -53,7 +54,7 @@ export class AppSections {
       icon: '⋯',
       fixed: true,
       open: () => Mobile.openMenu(),
-      shown: () => Mobile.isPhone(),
+      shown: () => PhoneLayout.active(),
     });
   }
 }

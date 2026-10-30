@@ -14,13 +14,13 @@ import { LgValues } from './lg-values.js';
 import { LgView } from './lg-view.js';
 import { Toast } from '../../core/toast.js';
 import { Catalog, CatalogStore } from '../catalog/catalog-store.js';
-import { FormView } from '../../ui/form-view.js';
 import { Currency } from '../kp/currency.js';
 import { StationMods } from '../layout/station-mods.js';
 import { Kit } from '../kit/kit.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Вкладка «Логистика» экономики сделки: тарифы, груз позиций и станций, маршрут, расчёт перед каждой отрисовкой окна —
@@ -330,7 +330,7 @@ export class DealLogistics {
     if (!addr) return;
     S.object = { ...S.object, address: addr };
     KpState.persist();
-    FormView.render();
+    KpForm.render();
     Toast.show('Адрес поставки скопирован в КП — «Клиент» → «Адрес объекта»');
   }
 
@@ -357,7 +357,7 @@ export class DealLogistics {
     const done = { saved: 0, pend: 0, noCat: [], fail: [] };
     for (const id of Object.keys(own)) await DealLogistics._saveOne({ id, own, items }, done);
     KpState.persist();
-    FormView.render();
+    KpForm.render();
     Catalog.refresh();
     const report = [
       done.saved ? `Масса и габариты сохранены в каталог: ${done.saved}` : '',

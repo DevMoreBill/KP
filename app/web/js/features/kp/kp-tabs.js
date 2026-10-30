@@ -5,13 +5,12 @@ import { KpState, LocalDraft, S } from '../../core/state.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc, Uid } from '../../core/util.js';
-import { FormView } from '../../ui/form-view.js';
-import { Steps } from '../../ui/steps.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { KpSave } from '../doc/kp-save.js';
 import { KpEconomics } from './price-calc.js';
 import { StationImages } from '../station/station-images.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Несколько КП в работе — каждое своей вкладкой. Открыто всегда одно (`S`), остальные лежат целиком в своих вкладках и
@@ -272,7 +271,7 @@ export class KpTabs {
     const slot = this._slot(this.current);
     slot.state = S;
     slot.drafts = { kpId: Drafts.kpId, base: Drafts.base };
-    slot.step = Steps.current;
+    slot.step = KpForm.step();
     KpState.flush();
   }
 
@@ -282,8 +281,8 @@ export class KpTabs {
     KpState.replace(state);
     Drafts.kpId = slot.drafts ? slot.drafts.kpId : null;
     Drafts.base = slot.drafts ? slot.drafts.base : null;
-    Steps.current = slot.step || 'client';
-    FormView.render();
+    KpForm.select(slot.step || 'client');
+    KpForm.render();
     KpState.persist();
     KpState.flush();
     if ($('#catdlg')?.open) CatalogWindow.win.foot();

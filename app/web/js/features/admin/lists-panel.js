@@ -5,10 +5,10 @@ import { Debounce } from '../../core/debounce.js';
 import { Api } from '../../core/net.js';
 import { Str } from '../../core/str.js';
 import { UiTexts } from '../kp/ui-texts.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { LISTS } from '../../core/lists.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** «Списки выбора»: слева — списки по группам, справа — строки выбранного (добавить, порядок, удалить, вернуть встроенный). */
 export class ListsPanel {
@@ -154,7 +154,7 @@ export class ListsPanel {
       if (spot)
         this.main.querySelector(`[data-lsf="${CSS.escape(spot[0])}"][data-i="${CSS.escape(spot[1])}"]`)?.focus();
       Toast.show(msg);
-      FormView.render();
+      KpForm.render();
     } catch (error) {
       Toast.show(`Не сохранено: ${error.message || error}`);
     }

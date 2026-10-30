@@ -141,7 +141,7 @@ check('сохранение КП: сделка, которую назначил 
       [KpSave, '_pack', async ()=>({ settings:{} })], [KpSave, '_number', async ()=>{}], [KpSave, '_uploadImages', async ()=>{}],
       [KpSave, '_putDocx', async ()=>{ if (edit) S.client='ООО «Правка во время сохранения»'; if (dealEdit) S.dealId=dealEdit; return {}; }],
       [KpSave, '_metaBody', ()=>({})], [KpSave, '_pdf', async ()=>null], [KpSave, '_done', ()=>{}],
-      [mod('ui/step-conds.js').CondMemory, 'remember', ()=>{}], [KpState, 'persist', ()=>{}], [KpState, 'totals', ()=>({})],
+      [mod('core/cond-memory.js').CondMemory, 'remember', ()=>{}], [KpState, 'persist', ()=>{}], [KpState, 'totals', ()=>({})],
       [FormView, 'render', ()=>{}], [Toast, 'show', text=>said.push(text)],
       [Api, 'request', async (url, opts)=>{ if (url.includes('/state')) states.push(JSON.parse(opts.body)); return url.includes('/meta') ? { ok:true, deal } : { rev:1 }; }],
     ], ()=>KpSave._save({ textContent:'' }));
@@ -322,7 +322,7 @@ check('календарь сделки: год, который сервер не
 });
 
 check('календарь дат: год, который сервер не отдал, не запрашивается снова (было: перерисовка → запрос → отказ без конца)', async ()=>{
-  const { WorkCalendar, DatePicker }=mod('ui/date-picker.js');
+  const { WorkCalendar, DatePicker }=mod('core/date-picker.js');
   const { Api }=mod('core/net.js');
   const asked=[];
   DatePicker.state.input={};

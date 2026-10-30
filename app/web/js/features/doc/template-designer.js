@@ -8,11 +8,11 @@ import { TemplateEditor } from './template-editor.js';
 import { Templates } from './templates.js';
 import { Translit } from './translit.js';
 import { $ } from '../../core/util.js';
-import { FormView } from '../../ui/form-view.js';
 import { S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { Modal } from '../../core/modal.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Графический редактор шаблона КП (только администратор): документ виден как в Word, свои картинки и надписи ставятся мышью
@@ -114,7 +114,7 @@ export class TemplateDesigner {
     state.saved = JSON.stringify(state.work);
     Templates.dropCache(state.id);
     await Templates.load();
-    FormView.render();
+    KpForm.render();
     state.pack = await Templates.pack(state.id);
     state.note = 'Шаблон сохранён. Прежняя версия — в истории («Форма» → «Файлы шаблона»).';
     DesignPanels.top();
@@ -145,7 +145,7 @@ export class TemplateDesigner {
     await this._putJson(id, work);
     state.saved = JSON.stringify(state.work);
     await Templates.load();
-    FormView.render();
+    KpForm.render();
     await this.open(id);
     state.note = `Создан шаблон «${name.trim()}» (папка templates/${id}). Выбрать его для КП — в разделе «Оформление КП».`;
     DesignPanels.top();
@@ -164,7 +164,7 @@ export class TemplateDesigner {
     if (!name || !name.trim()) return;
     const id = await this._copy(from, name);
     await Templates.load();
-    FormView.render();
+    KpForm.render();
     Design.state.tab = 'head';
     await this.open(id);
     Design.state.note = `Создан шаблон «${name.trim()}». Задайте шапку с логотипом, фирменный знак и цвета, затем «Сохранить».`;

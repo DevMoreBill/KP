@@ -528,6 +528,23 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.248.0 — что сделано:** (30.10, циклы импортов интерфейса, этап 1 — «Это все делай кроме прокси»: разделы без ссылок на форму)
+- Слои: `core/` (нижний) ← разделы `features/` ← форма КП `ui/` ← `main.js`. Разделы больше не подключают `ui/` — ESLint
+  `no-restricted-imports` для `features/**` (как у `core/` с 3.238.0); форма подключает разделы, как и раньше.
+- `core/kp-form.js` — `KpForm`: что разделам нужно от формы — `render()` (было `FormView.render`, 101 вызов в 59 файлах),
+  `step()` / `select(id)` (было чтение и запись `Steps.current`), `open(id, target)` (`Steps.open`), `renderSide()` /
+  `updateLive()` (`SidePanel`), `problems()` (`Problems.list`); форма подключает себя в `ui/index.js` (`KpForm.connect`).
+- `core/phone-layout.js` — `PhoneLayout.active()` вместо `Mobile.isPhone()` (класс «mob» ставит `Mobile.watch`).
+- В `core/` перенесены общие виджеты без ссылок на разделы: `ui-kit.js` (`UiKit`), `date-picker.js` (`DatePicker`,
+  `WorkCalendar`), данные тендера `tender.js` (`Tender`: номер, ссылка; блок формы — `TenderBlock` в `ui/tender.js`),
+  `cond-memory.js` (`CondMemory`; варианты условия — `KpConditions.options`, было `CondsStep.options`).
+- `CoverSync` (титул по оборудованию) — `features/kit/cover-sync.js`; поиск «Быстро добавить» — `features/catalog/
+  quick-find.js` (`QuickFind.matches/add`), поле в шаге «Оборудование» — `QuickAdd` (`ui/step-equipment.js`); склады
+  поставщиков в подсказках адреса (`GeoInput.extra.wh`) подключает форма (`ui/index.js`), а не раздел сделки.
+- Итог по графу import (561 → 567 модулей): самый большой цикл 342 → 310 модулей, взаимных пар разделов 39 → 29 (все пары
+  «раздел ⇄ форма» ушли); внутри формы остался свой малый цикл из 6 модулей (`form-view`, `steps`, `side-panel`…).
+- Проверено: ESLint (новое правило), проверки в Node и кнопок, прогон 5 режимов со сверкой разметки и геометрии.
+
 **3.247.0 — что сделано:** (30.10, разбор чисел на сервере — «Это все делай кроме прокси», решение по редким вводам — за мной)
 - `num.py` — `Num.parse(значение)` (число или None) и `Num.of(текст)` (найденное выражением число; иначе ValueError) вместо
   10 копий: `feed_text.parse_number` (19 мест в фидах и «Настройках»), `feed_xlsx._num` (прайсы, остатки, описания, подбор),

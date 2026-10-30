@@ -8,14 +8,14 @@ import { ContainerPart } from '../kit/container-part.js';
 import { Str } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { CoverSync } from '../../ui/step-cover.js';
 import { CatalogEditor } from './catalog-edit.js';
 import { Uid, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { FormView } from '../../ui/form-view.js';
 import { Api } from '../../core/net.js';
 import { Attrs } from '../../core/item-attrs.js';
+import { CoverSync } from '../kit/cover-sync.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Заполнение карточки с ИИ: объём — как у карточек этой категории в каталоге (образец — /api/ai/profile), недостающее
@@ -69,7 +69,7 @@ export class AiFill {
    */
   static promptNow(item) {
     const context = this.ctx[this._key(item)];
-    if (!context) this.context(item).then(() => FormView.render());
+    if (!context) this.context(item).then(() => KpForm.render());
     return AiPrompt.main(item, context || {});
   }
 
@@ -208,13 +208,13 @@ export class AiFill {
     if (String(item._src || '').trim() || !this.URL_RE.test(item._srcUrl || item.pageUrl || '')) return;
     item._srcUrl = item._srcUrl || item.pageUrl;
     item._aiMsg = 'Загружаю страницу товара — это достоверный источник…';
-    FormView.render();
+    KpForm.render();
     await AiSource.fetchInto(item);
   }
 
   static async _supplement(item, data, { gap, context, who }) {
     item._aiMsg = `Не хватает: ${AiPrompt.gapsText(gap)} — ${who} ищет достоверные данные…`;
-    FormView.render();
+    KpForm.render();
     try {
       const add = AiParse.parse(await AiDirect.ask(AiPrompt.supplement(item, data, gap, context)));
       if (add && add.kind !== 'bad') return this.merge(data, add.j);
@@ -238,7 +238,7 @@ export class AiFill {
   static async _run(item, who) {
     await this._page(item);
     item._aiMsg = `${who} заполняет карточку… обычно 20–60 секунд`;
-    FormView.render();
+    KpForm.render();
     const context = await this.context(item);
     const raw = await AiDirect.ask(AiPrompt.main(item, context));
     const answer = AiParse.parse(raw);
@@ -268,7 +268,7 @@ export class AiFill {
     if (!item || AiDirect.state.busy[item.id]) return;
     if (this._empty(item)) {
       item._aiMsg = 'Сначала шаг 1: ссылка, текст или хотя бы модель в наименовании.';
-      FormView.render();
+      KpForm.render();
       return;
     }
     AiDirect.state.busy[item.id] = true;
@@ -278,7 +278,7 @@ export class AiFill {
       item._aiMsg = String(error.message || error);
     } finally {
       delete AiDirect.state.busy[item.id];
-      FormView.render();
+      KpForm.render();
       KpState.persist();
     }
   }
@@ -292,7 +292,7 @@ export class AiFill {
     const item = S.items[i];
     if (this._empty(item)) {
       item._aiMsg = 'Сначала шаг 1: ссылка, текст или хотя бы модель.';
-      FormView.render();
+      KpForm.render();
       return;
     }
     const context = this.ctx[this._key(item)] || {}; // образец уже загружен при показе вкладки; копирование — сразу
@@ -303,7 +303,7 @@ export class AiFill {
         : 'Скопируйте запрос из окна.';
       item._aiStep = 3;
       item._ansBase = '';
-      FormView.render();
+      KpForm.render();
       KpState.persist();
     });
   }
@@ -325,7 +325,7 @@ export class AiFill {
       item._aiMsg = ok
         ? 'Запрос «дополнить» скопирован — отправьте его в том же чате, ответ вставьте в шаг 3: он добавится к основному.'
         : 'Скопируйте запрос из окна.';
-      FormView.render();
+      KpForm.render();
       KpState.persist();
     });
   }
@@ -412,7 +412,7 @@ class AiApply {
   static run(item, answer) {
     if (!answer || answer.kind === 'bad') {
       item._aiMsg = answer ? answer.err : 'Вставьте ответ ИИ в поле шага 3.';
-      FormView.render();
+      KpForm.render();
       return;
     }
     const data = answer.j;
@@ -427,7 +427,7 @@ class AiApply {
     item._ansBase = '';
     item._aiStep = 0;
     item._aiMsg = this._note(data.added) + (extra ? AiOptions.note(extra) : '');
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show('Карточка заполнена из ответа ИИ');
   }

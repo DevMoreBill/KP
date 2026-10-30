@@ -5,7 +5,6 @@ import { StationAuto, StationName } from './station-auto.js';
 import { StationUi } from '../station/station-ui.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { KitScope } from './kit-scope.js';
 import { KpState, S } from '../../core/state.js';
 import { ItemSpec } from '../../core/item-spec.js';
@@ -16,6 +15,7 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { Str } from '../../core/str.js';
 import { Attrs, CatAttrs } from '../../core/item-attrs.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций
@@ -455,7 +455,7 @@ export class KitPick {
     item.kit.parts.push(part);
     item.page = true;
     this.dialog.close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show('Элемент добавлен — описание и характеристики: вручную или кнопкой «✨ ИИ»');
   }
@@ -488,7 +488,7 @@ export class KitPick {
     StationName.apply(item);
     StationUi.cache.delete(item.id);
     this.dialog.close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     const qty = +part.qty > 1 ? `${part.qty} × ` : '';
     Toast.show(`${this.preset && this.preset.replace ? 'Заменено: ' : 'Добавлено в состав: '}${qty}${doc.name}`);

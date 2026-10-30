@@ -2,9 +2,9 @@ import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { Cabinet } from './cabinet.js';
-import { Mobile } from '../../ui/mobile.js';
 import { KpDate } from '../kp/kp-date.js';
 import { esc, today } from '../../core/util.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /** «График»: лента времени — сделка (создана → ожидаемая дата), срок КП, поставка и оплаты по расчёту сделки, дела. */
 export class CabGantt {
@@ -166,7 +166,7 @@ export class CabGantt {
     const check = (key, label) =>
       `<label class="cab-ck"><input type="checkbox" data-gsh="${key}"${opts[key] ? ' checked' : ''}> ${label}</label>`;
     return `<div class="cab-bar">${Cabinet.search('Сделка или клиент')}${lead}<div class="seg" role="radiogroup" aria-label="Масштаб">${scales}</div>${check('deal', 'Сроки сделок')}${check('sup', 'Поставка')}${check('task', 'Дела')}</div>
-      <details class="gn-lg muted"${Mobile.isPhone() ? '' : ' open'}><summary>Обозначения</summary><div class="gn-lgi"><span><i class="gb-d t-s2"></i> сделка: создана → ожидаемая дата</span><span><i class="gb-s"></i> поставка по расчёту сделки</span><span>◇ КП действует до</span><span>◆ готовность</span><span>₽ оплата заказчика</span><span>☎ 👥 ✉ ✓ дела</span></div></details>`;
+      <details class="gn-lg muted"${PhoneLayout.active() ? '' : ' open'}><summary>Обозначения</summary><div class="gn-lgi"><span><i class="gb-d t-s2"></i> сделка: создана → ожидаемая дата</span><span><i class="gb-s"></i> поставка по расчёту сделки</span><span>◇ КП действует до</span><span>◆ готовность</span><span>₽ оплата заказчика</span><span>☎ 👥 ✉ ✓ дела</span></div></details>`;
   }
 
   static _line(row, tape, opts) {

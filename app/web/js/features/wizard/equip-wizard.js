@@ -5,19 +5,18 @@ import { SpecPaste } from '../catalog/ai-parse.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { FormView } from '../../ui/form-view.js';
-import { Steps } from '../../ui/steps.js';
 import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
 import { AiDirect } from '../catalog/ai-chat.js';
 import { ItemSpec } from '../../core/item-spec.js';
-import { QuickFind } from '../../ui/step-equipment.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { FEAT } from '../../core/features.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Auth } from '../kp/auth.js';
 import { CatPicker } from './cat-picker.js';
+import { QuickFind } from '../catalog/quick-find.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Окно «Добавить оборудование» — один порядок для КП и для каталога: что добавляем (найти в каталоге — только в КП,
@@ -202,8 +201,8 @@ export class EquipWizard {
     const blank = S.items.length === 1 && !first.name.trim() && !first.price && !Kit.has(first);
     if (blank) S.items = [item];
     else S.items.push(item);
-    if (Steps.current !== 'equip') Steps.current = 'equip';
-    FormView.render();
+    if (KpForm.step() !== 'equip') KpForm.select('equip');
+    KpForm.render();
     KpState.persist();
     ItemEditor.open(S.items.indexOf(item), tab);
     if (after) after(S.items.indexOf(item));

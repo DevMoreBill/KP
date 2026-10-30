@@ -1,13 +1,13 @@
 import { Currency } from './currency.js';
 import { KpDate } from './kp-date.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { Modal } from '../../core/modal.js';
 import { FEAT } from '../../core/features.js';
 import { CatFind, Catalog } from '../catalog/catalog-store.js';
 import { FeedBadge } from '../catalog/feed-badge.js';
 import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Подсказка под строкой цены: скидка для заказчика, контроль РРЦ, цена в каталоге, цены в прошлых КП. */
 export class PriceHints {
@@ -162,7 +162,7 @@ export class PriceHist {
     item.priceManual = true;
     delete item._priceText;
     modal.close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Цена из КП № ${row.number || ''}: ${this._fmt(row)}`);
   }
@@ -230,7 +230,7 @@ export class CatPrice {
     item.price = diff.cat;
     delete item._priceText;
     item.priceManual = false;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Цена «${item.name}» — как в каталоге: ${KPGen.money(diff.cat)} ${Currency.short(Currency.current())}`);
   }

@@ -2,7 +2,6 @@ import { StationDesign } from './station-design.js';
 import { Toast } from '../../core/toast.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { KpState, S } from '../../core/state.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { AiChat, AiDirect } from '../catalog/ai-chat.js';
 import { Uid } from '../../core/util.js';
 import { AiParse } from '../catalog/ai-parse.js';
@@ -18,6 +17,7 @@ import { StationUi } from './station-ui.js';
 import { TankSize } from '../layout/tank-size.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /**
  * Станция в документе КП: какие элементы состава — карточками с описанием (основные агрегаты), какие характеристики —

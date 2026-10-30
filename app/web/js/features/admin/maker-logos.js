@@ -2,7 +2,7 @@ import { AdminApi, AdminDialog } from './admin-core.js';
 import { Logos } from '../catalog/image-slots.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «Логотипы производителей» во вкладке фидов: логотип марки ставится на всё её оборудование и закрепляется за ней. */
 export class MakerLogoPanel {

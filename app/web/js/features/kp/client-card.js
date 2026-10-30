@@ -8,8 +8,6 @@ import { KpTrack } from './kp-track.js';
 import { Managers } from './managers.js';
 import { KpLoader } from './reminders.js';
 import { ShortName } from './journal-row.js';
-import { Steps } from '../../ui/steps.js';
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
@@ -25,6 +23,7 @@ import { Fmt, Str } from '../../core/str.js';
 import { CopyText } from '../../core/files.js';
 import { ClientFeed } from './client-feed.js';
 import { ClientContactsView } from './client-contacts.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.
@@ -324,11 +323,11 @@ export class ClientCard {
     else {
       S.client = answer.name || '';
       S.clientInn = answer.inn || '';
-      FormView.render();
+      KpForm.render();
       KpState.persist();
     }
     Drafts.loaded();
-    Steps.open('equip');
+    KpForm.open('equip');
     Toast.show(`Новое КП для ${client.name || answer.name || 'клиента'}`);
   }
 

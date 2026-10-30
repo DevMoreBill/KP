@@ -8,11 +8,10 @@ import { Api } from '../../core/net.js';
 import { CatalogBin } from './catalog-export.js';
 import { Auth } from '../kp/auth.js';
 import { $, Uid, esc, today } from '../../core/util.js';
-import { Steps } from '../../ui/steps.js';
-import { FormView } from '../../ui/form-view.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { KpState, S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Действия окна каталога: добавить в КП, перенести в категорию (с отменой), правка, копия, корзина, файл каталога. */
 export class CatalogActions {
@@ -59,7 +58,7 @@ export class CatalogActions {
       );
       added++;
     }
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     win.sel.clear();
     win.list();
@@ -105,15 +104,15 @@ export class CatalogActions {
     }
     const { added, more } = await this._addItems(win, ids);
     win.setBusy('');
-    if (Steps.current !== 'equip') {
-      Steps.current = 'equip';
+    if (KpForm.step() !== 'equip') {
+      KpForm.select('equip');
       try {
         localStorage.setItem('kp.step', 'equip');
       } catch {
         // браузер не хранит
       }
     }
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     if (ids.length > 1) win.sel.clear();
     win.list();

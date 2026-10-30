@@ -1,12 +1,12 @@
 import { Drafts } from './drafts.js';
 import { Managers } from './managers.js';
 import { Presets } from './presets.js';
-import { Steps } from '../../ui/steps.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpState, S } from '../../core/state.js';
 import { Modal } from '../../core/modal.js';
 import { KpTabs } from './kp-tabs.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики. */
 export class NewKp {
@@ -136,7 +136,7 @@ export class NewKp {
     this.fresh();
     KpState.persist();
     AppTabs.open(AppTabs.HOME);
-    Steps.open('client');
+    KpForm.open('client');
   }
 
   /** Контакты менеджера в новом КП: запомненные этим браузером, иначе — из карточки «кто я» (новый компьютер). */

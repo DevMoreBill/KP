@@ -1,5 +1,4 @@
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { CopyText } from '../../core/files.js';
@@ -7,6 +6,7 @@ import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { PageImages } from './page-images.js';
+import { KpForm } from '../../core/kp-form.js';
 /** Нейросеть прямо в программе (включает администратор: «Настройки → Нейросеть»): запрос через сервер. */
 export class AiDirect {
   static state = { enabled: false, provider: '', model: '', busy: {} };
@@ -218,9 +218,9 @@ export class AiSource {
   static async fetch(i) {
     const item = S.items[i];
     item._aiMsg = 'Загружаю страницу…';
-    FormView.render();
+    KpForm.render();
     await this.fetchInto(item);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 
@@ -238,7 +238,7 @@ export class AiSource {
     item.groups = [group];
     item.page = true;
     item._aiMsg = `В характеристики перенесено строк: ${props.length}. Описание и параметры — через ИИ (шаг 2) или вручную.`;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show('Характеристики со страницы перенесены');
   }
@@ -248,7 +248,7 @@ export class AiSource {
     const file = field.files[0];
     field.value = '';
     item._aiMsg = `Читаю «${file.name}»…`;
-    FormView.render();
+    KpForm.render();
     const imgs = await AiFileImages.read(file);
     try {
       const text = await AiFileText.read(file);
@@ -259,7 +259,7 @@ export class AiSource {
       item._aiMsg = String(error.message || error) + (imgs.length ? AiFileImages.note(imgs) : '');
     }
     AiFileImages.offer(item, imgs);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 

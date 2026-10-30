@@ -8,7 +8,6 @@ import { ContainerPart } from '../kit/container-part.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { StationImages } from '../station/station-images.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { FormView } from '../../ui/form-view.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { Spoiler } from '../station/spoiler.js';
 import { AiDirect } from '../catalog/ai-chat.js';
@@ -23,6 +22,7 @@ import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { CopyText } from '../../core/files.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -615,7 +615,7 @@ export class TzImport {
     else this._fill(station, need, req);
     KpState.persist();
     this.m.close();
-    FormView.render();
+    KpForm.render();
     ItemEditor.open(i, 'kit');
     StationImages.soon(station);
     Toast.show(

@@ -5,7 +5,6 @@ import { StationAuto, StationName } from './station-auto.js';
 import { StationDefaults } from './station-defaults.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { StationSize } from '../station/station-size.js';
 import { KpState, S } from '../../core/state.js';
@@ -23,6 +22,7 @@ import { AirChain } from '../layout/air-chain.js';
 import { DryerDerate } from '../layout/dryer-derate.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -512,7 +512,7 @@ export class KitNeed {
     item.page = true;
     KpState.persist();
     ItemEditor.render();
-    FormView.render();
+    KpForm.render();
   }
 
   /**

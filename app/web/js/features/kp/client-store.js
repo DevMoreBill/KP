@@ -1,10 +1,10 @@
 import { $ } from '../../core/util.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Api } from '../../core/net.js';
 import { Str } from '../../core/str.js';
+import { KpForm } from '../../core/kp-form.js';
 /** ИНН: контрольные суммы (10 цифр — организация, 12 — ИП). */
 export class Inn {
   static W10 = [2, 4, 10, 3, 5, 9, 4, 6, 8];
@@ -257,7 +257,7 @@ export class ClientStore {
     if (!this.fetched.has(id)) {
       this.fetched.add(id);
       this.byId(id).then(found => {
-        if (found) FormView.render();
+        if (found) KpForm.render();
       });
     }
     return null;
@@ -331,7 +331,7 @@ export class ClientStore {
     if (client.contacts && client.contacts[0] && !S.contact.name) S.contact = { ...S.contact, ...client.contacts[0] };
     S._clEdit = false;
     S._clManual = false;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Контрагент подставлен: ${client.name || ''}`);
   }
@@ -382,7 +382,7 @@ export class PartyFind {
     if (contact && !S.contact.name) S.contact = { ...S.contact, ...contact };
     S.clientId = `inn${party.inn || inn}`;
     S._clManual = false;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Реквизиты заполнены (${party.source || ''})`);
     ClientStore.save();

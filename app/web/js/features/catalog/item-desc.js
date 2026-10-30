@@ -6,12 +6,12 @@ import { DrawPic } from '../kit/draw-pic.js';
 import { StationBrief } from '../station/station-doc.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Str } from '../../core/str.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Kit } from '../kit/kit.js';
 import { StationUi } from '../station/station-ui.js';
 import { esc } from '../../core/util.js';
 import { CardGaps } from './card-gaps.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** Вкладка «Описание и фото»: главное фото и логотип, блоки описания со своими фото, схемы и другие изображения. */
 export class DescTab {

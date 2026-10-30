@@ -4,8 +4,8 @@ import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /**
  * Сверка тарифов со счетами перевозчиков (администратор): счета хранятся вместе с тарифами (facts); каждый счёт

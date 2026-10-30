@@ -6,7 +6,6 @@ import { KpRepeat } from './kp-repeat.js';
 import { MyDay } from './my-day.js';
 import { KpLoader } from './reminders.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
-import { Steps } from '../../ui/steps.js';
 import { DealCard } from '../crm/deal-card.js';
 import { CabDeals } from '../crm/cab-deals.js';
 import { Cabinet } from '../crm/cabinet.js';
@@ -15,12 +14,13 @@ import { AppTabs } from '../../core/app-tabs.js';
 import { S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { CrmFmt } from '../crm/crm-fmt.js';
-import { QuickFind } from '../../ui/step-equipment.js';
 import { CatFind } from '../catalog/catalog-store.js';
 import { Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
 import { Debounce } from '../../core/debounce.js';
 import { Modal } from '../../core/modal.js';
+import { QuickFind } from '../catalog/quick-find.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Модели, недавно добавленные в КП (этот браузер) — для «Недавнего» в едином поиске. */
 export class RecentModels {
@@ -335,7 +335,7 @@ export class QuickSearch {
     qadd: id => {
       const item = CatFind.id(id);
       if (!item) return;
-      Steps.open('equip');
+      KpForm.open('equip');
       QuickFind.add(item);
       Toast.show(`В КП: ${item.name} — позиций ${S.items.length}. Можно искать и добавлять дальше`);
     },

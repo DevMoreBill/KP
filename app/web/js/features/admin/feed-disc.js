@@ -3,8 +3,8 @@ import { FeedFmt, FeedState } from './feed-state.js';
 import { FeedsTab } from './feeds-tab.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** Сетка скидок поставщика: правила по категориям, приводу и мощности, «остальное», серии по приводу. */
 export class FeedDiscounts {

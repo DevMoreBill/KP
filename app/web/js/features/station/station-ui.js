@@ -1,6 +1,5 @@
 import { LayoutTab } from './layout-tab.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { FormView } from '../../ui/form-view.js';
 import { KitNeed } from '../kit/kit-need.js';
 import { Toast } from '../../core/toast.js';
 import { StationAuto, StationName } from '../kit/station-auto.js';
@@ -19,6 +18,7 @@ import { StationGeo } from '../layout/station-geo.js';
 import { StationReq } from '../req/station-req.js';
 import { FEAT } from '../../core/features.js';
 import { Kit } from '../kit/kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Компоновка станции в программе: расстановка (с кэшем), что вставлять в КП, вкладка «Компоновка», метка в разделе
@@ -321,7 +321,7 @@ export class StationUi {
     if (key === 'draw' && input.checked) item.stLayout.skip = [];
     if (key === 'air' || key === 'calc') {
       KpState.persist();
-      FormView.render();
+      KpForm.render();
       return;
     }
     if (key === 'photo' && input.checked && item.photo && item.photo.gen !== 'st3d' && !this._takePhoto(item, input))
@@ -329,7 +329,7 @@ export class StationUi {
     await StationImages.sync(item);
     KpState.persist();
     ItemEditor.render();
-    FormView.render();
+    KpForm.render();
   }
 
   /** главное фото станции → 3D-вид (с согласия): прежнее фото — в изображения позиции (фото элемента — остаётся у него) */

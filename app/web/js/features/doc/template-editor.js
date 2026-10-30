@@ -4,11 +4,11 @@ import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
 import { Translit } from './translit.js';
 import { ObjPath } from '../../core/str.js';
-import { FormView } from '../../ui/form-view.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Редактор шаблона КП («Настроить»): форма строится по editor.json из папки шаблона, настройки сохраняются в template.json.
@@ -164,7 +164,7 @@ export class TemplateEditor {
 
   static async _reload() {
     await Templates.load();
-    FormView.render();
+    KpForm.render();
   }
 
   static async _save() {

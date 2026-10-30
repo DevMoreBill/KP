@@ -1,4 +1,3 @@
-import { UiKit } from '../../ui/ui-kit.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { esc } from '../../core/util.js';
@@ -6,6 +5,7 @@ import { DimInput } from '../../core/dim-input.js';
 import { Makers } from './makers.js';
 import { CardRules } from './card-rules.js';
 import { CardGaps } from './card-gaps.js';
+import { UiKit } from '../../core/ui-kit.js';
 /**
  * Варианты выбора параметра позиции: значение не из списка категории («2/1» в ступенях Remeza, «Прямой» в приводе) остаётся
  * в списке — иначе окно показало бы «—» и при сохранении карточки стёрло бы его.

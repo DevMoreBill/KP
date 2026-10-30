@@ -2,15 +2,15 @@ import { AdminState } from './admin-core.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
 import { DealUi } from '../deal/deal-ui.js';
-import { FormView } from '../../ui/form-view.js';
 import { Managers } from '../kp/managers.js';
 import { ClientStore, Inn } from '../kp/client-store.js';
 import { Toast } from '../../core/toast.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { CatFind, Catalog } from '../catalog/catalog-store.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Значение по пути «a.b.0.c» в документе: прочитать, записать (недостающее создаётся — массив, если дальше номер). */
 export class DocPath {
@@ -477,7 +477,7 @@ export class DirEditor {
         rev,
         Object.fromEntries(Managers.KEYS.map(key => [key, doc[key] ?? ''])),
       );
-      Managers.load().then(() => FormView.render());
+      Managers.load().then(() => KpForm.render());
       return;
     }
     if (edit.type === 'client') {

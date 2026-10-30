@@ -1,5 +1,4 @@
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { StationAuto } from '../kit/station-auto.js';
 import { StationSize } from './station-size.js';
@@ -14,6 +13,7 @@ import { esc } from '../../core/util.js';
 import { StationMods } from '../layout/station-mods.js';
 import { Kit } from '../kit/kit.js';
 import { StationGeo } from '../layout/station-geo.js';
+import { KpForm } from '../../core/kp-form.js';
 /**
  * Станция из нескольких модулей: окно раскладки. Всегда кнопкой «Модули…» в «Компоновке» и всегда с вопросом «сделать
  * так?»; раскладка — на сетке (модули перетаскиваются; на телефоне — нажать модуль, затем клетку), варианты a × b — с
@@ -498,7 +498,7 @@ export class StationModsUi {
     StationAuto.fill(item);
     KpState.persist();
     ItemEditor.render();
-    FormView.render();
+    KpForm.render();
     Toast.show(message, this.TOAST_MS);
   }
 }

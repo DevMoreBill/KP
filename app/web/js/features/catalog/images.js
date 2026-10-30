@@ -1,8 +1,8 @@
 import { $, Uid } from '../../core/util.js';
-import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { KpForm } from '../../core/kp-form.js';
 /** Подготовка картинок, которые менеджер добавляет сам: уменьшение, сжатие JPEG, обрезка белых полей. */
 export class ImgPrep {
   static DEFAULTS = [
@@ -254,7 +254,7 @@ export class ImageFiles {
     try {
       const img = await this.prep(await this.toUrl(file), kind);
       item[kind] = img;
-      FormView.render();
+      KpForm.render();
       KpState.persist();
     } catch {
       Toast.show('Не удалось открыть изображение');
@@ -363,7 +363,7 @@ export class ImageFiles {
     }
     item.page = true;
     item._open = true;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(added > 1 ? `Добавлено изображений: ${added}` : 'Изображение добавлено');
   }

@@ -1,13 +1,13 @@
 import { CatPrice } from './price-hints.js';
 import { Drafts } from './drafts.js';
 import { Modal } from '../../core/modal.js';
-import { FormView } from '../../ui/form-view.js';
 import { Managers } from './managers.js';
 import { esc, today } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { KpTabs } from './kp-tabs.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** «Повторить КП» (журнал, карточка клиента): новое КП тому же клиенту, дата — сегодня, цены — как сейчас в каталоге. */
 export class KpRepeat {
@@ -34,7 +34,7 @@ export class KpRepeat {
     if (S.tender && S.tender.on) S.tender = { on: true, number: '', url: '' }; // другая закупка
     const changes = this.prices();
     KpTabs.show();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     window.scrollTo({ top: 0 });
     Drafts.loaded();

@@ -11,7 +11,6 @@ import { DealPlan, KpLines } from '../deal/deal-side.js';
 import { KpDate } from '../kp/kp-date.js';
 import { DealState } from '../deal/deal-state.js';
 import { KpEconomics } from '../kp/price-calc.js';
-import { Tender } from '../../ui/tender.js';
 import { ClientFields, ClientStore } from '../kp/client-store.js';
 import { CatalogSync } from '../catalog/catalog-fill.js';
 import { DrawPic } from '../kit/draw-pic.js';
@@ -19,18 +18,18 @@ import { Kit } from '../kit/kit.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { DealDefaults } from '../deal/deal-defaults.js';
 import { Api, ImgUpload, Srv } from '../../core/net.js';
-import { FormView } from '../../ui/form-view.js';
-import { CondMemory } from '../../ui/step-conds.js';
 import { Toast } from '../../core/toast.js';
 import { MgrBar } from '../kp/mgr-bar.js';
 import { Managers, MgrLock } from '../kp/managers.js';
 import { Drafts } from '../kp/drafts.js';
-import { Problems } from '../../ui/side-panel.js';
 import { $, esc } from '../../core/util.js';
 import { StationImages } from '../station/station-images.js';
 import { KpState, S } from '../../core/state.js';
 import { OfflineSave } from './offline-save.js';
 import { KpGuard } from '../kp/kp-guard.js';
+import { Tender } from '../../core/tender.js';
+import { CondMemory } from '../../core/cond-memory.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
@@ -74,7 +73,7 @@ export class KpSave {
 
   // не сохранять: не заполнено, уже сохраняется, чужое КП на просмотре
   static _refused() {
-    return Problems.list().length > 0 || this.busy || KpGuard.blocksSave();
+    return KpForm.problems().length > 0 || this.busy || KpGuard.blocksSave();
   }
 
   /** «Сохранить КП»: второе нажатие (кнопка панели телефона) — не второе КП. */
@@ -146,7 +145,7 @@ export class KpSave {
     const pdf = await this._pdf(button);
     CondMemory.remember();
     KpState.persist();
-    FormView.render();
+    KpForm.render();
     this._done(pdf, isNew);
   }
 

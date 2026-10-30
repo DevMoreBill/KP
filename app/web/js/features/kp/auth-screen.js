@@ -5,9 +5,9 @@ import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { SettingsWindow } from '../admin/settings-window.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { AppVersion } from '../help.js';
 import { $, esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** Экран входа менеджера (вход по паролю включён, сессии нет). */
 export class AuthScreen {

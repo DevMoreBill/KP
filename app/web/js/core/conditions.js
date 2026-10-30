@@ -104,4 +104,13 @@ export class KpConditions {
     'Монтаж оборудования в стоимость не входит.',
     'Гарантия действует при обслуживании в авторизованном сервисном центре.',
   ];
+
+  /**
+   * Готовые варианты условия по названию (для списка ▾).
+   * @param {string} label
+   * @returns {string[]}
+   */
+  static options(label) {
+    return (this.LIST.find(cond => cond[0] === label) || [])[1] || [];
+  }
 }

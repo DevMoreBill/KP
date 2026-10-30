@@ -8,7 +8,7 @@ import { FileSave } from '../../core/files.js';
 import { Modal } from '../../core/modal.js';
 import { $, esc } from '../../core/util.js';
 import { S } from '../../core/state.js';
-import { Problems } from '../../ui/side-panel.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Окно предпросмотра всего КП без скачивания; PDF — с компьютера-сервера, иначе печать «Сохранить как PDF». */
 export class KpPreview {
@@ -28,7 +28,7 @@ export class KpPreview {
   };
 
   static _head() {
-    const blocked = Problems.list().length
+    const blocked = KpForm.problems().length
       ? ' disabled title="Сначала заполните обязательные поля — список справа"'
       : '';
     return `<div class="pv-hd"><h3>Предпросмотр КП${S.number ? ` № ${esc(S.number)}` : ''}</h3><span class="muted pv-note">${S.kpId ? '' : 'Номер присвоится при сохранении'}</span><span class="sp"></span>

@@ -1,10 +1,10 @@
 import { CatalogIndex } from './catalog-index.js';
-import { FormView } from '../../ui/form-view.js';
 import { Catalog } from './catalog-store.js';
 import { Api } from '../../core/net.js';
 import { Str } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Новая категория из окна каталога: параметры, фильтры и раздел берутся у категории-образца. */
 export class NewTypeDialog {
@@ -86,7 +86,7 @@ export class NewTypeDialog {
       return this._err(`Не удалось сохранить категорию: ${error.message || error}`);
     }
     dialog.close();
-    FormView.render();
+    KpForm.render();
     win.redraw();
     win.say(`Создана категория «${name}»`);
     if (then) then(type.id);

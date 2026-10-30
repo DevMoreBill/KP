@@ -1,7 +1,7 @@
 import { CrmFunnel } from './crm-funnel.js';
 import { DealExec } from './deal-exec.js';
-import { Mobile } from '../../ui/mobile.js';
 import { esc } from '../../core/util.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * Вкладки карточки сделки слева: «Сделка · Поля Битрикс24 · Документы · Исполнение»; на телефоне — ещё «Дела» (лента).
@@ -53,7 +53,7 @@ export class DealTabs {
    * @returns {boolean}
    */
   static feedTab() {
-    return Mobile.isPhone();
+    return PhoneLayout.active();
   }
 
   /**

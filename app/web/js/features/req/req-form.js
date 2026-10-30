@@ -7,7 +7,6 @@ import { Toast } from '../../core/toast.js';
 import { Kit } from '../kit/kit.js';
 import { StationSize } from '../station/station-size.js';
 import { StationUi } from '../station/station-ui.js';
-import { FormView } from '../../ui/form-view.js';
 import { StationParams } from '../station/station-params.js';
 import { KpState, S } from '../../core/state.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
@@ -16,6 +15,7 @@ import { ExpertFix } from '../station/expert-fix.js';
 import { Spoiler } from '../station/spoiler.js';
 import { SupplyDocs } from '../kit/supply-docs.js';
 import { esc } from '../../core/util.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Форма «Все требования, условия расчёта и проверки» (под раскрывающимся блоком «Подбора станции»): проверки состава,
@@ -220,7 +220,7 @@ export class ReqForm {
     if (this._repick({ index, item, target, key, field })) return;
     if ((key === 'ats' || key === 'scada') && target.checked) this._addCabinets(item);
     KpState.persist();
-    FormView.render();
+    KpForm.render();
   }
 
   // значение поля в требования; менеджер решил сам — подбор «снаружи» и типоразмер 500 л больше не меняет

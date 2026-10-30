@@ -19,7 +19,6 @@ import { ItemEditor } from '../catalog/item-editor.js';
 import { IssueSpot } from './issue-spot.js';
 import { ExpertFix } from './expert-fix.js';
 import { Spoiler } from './spoiler.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Mm } from '../layout/mm.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationModsUi } from './station-mods-ui.js';
@@ -31,6 +30,7 @@ import { esc } from '../../core/util.js';
 import { StationUi } from './station-ui.js';
 import { KpState } from '../../core/state.js';
 import { StationSize } from './station-size.js';
+import { UiKit } from '../../core/ui-kit.js';
 /**
  * Вкладка «Компоновка» карточки станции: помещается ли оборудование, замечания с решениями, разрез и виды снаружи,
  * габаритный чертёж и схема, доступ к оборудованию, подготовка воздуха, системы контейнера, расчёт и как расставляется.

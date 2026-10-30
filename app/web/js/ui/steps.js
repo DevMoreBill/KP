@@ -1,5 +1,4 @@
 import { FormView } from './form-view.js';
-import { Mobile } from './mobile.js';
 import { Problems } from './side-panel.js';
 import { ClientStep } from './step-client.js';
 import { CondsStep } from './step-conds.js';
@@ -12,6 +11,7 @@ import { CbrRates } from '../features/kp/cbr-rates.js';
 import { FEAT } from '../core/features.js';
 import { KpModels } from '../features/doc/kp-models.js';
 import { S } from '../core/state.js';
+import { PhoneLayout } from '../core/phone-layout.js';
 
 /** Разделы (шаги) КП: список, какие показаны, переход, полоса шагов и кнопки «назад / далее». */
 export class Steps {
@@ -98,7 +98,7 @@ export class Steps {
       // хранилище недоступно — шаг не запоминается
     }
     FormView.render();
-    window.scrollTo({ top: 0, behavior: Mobile.isPhone() ? 'auto' : 'smooth' });
+    window.scrollTo({ top: 0, behavior: PhoneLayout.active() ? 'auto' : 'smooth' });
     if (id === 'price') CbrRates.auto();
     if (target) setTimeout(() => this._focus(target), this.FOCUS_DELAY);
   }

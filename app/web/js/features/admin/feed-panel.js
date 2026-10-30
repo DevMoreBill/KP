@@ -3,11 +3,11 @@ import { FeedDiscounts } from './feed-disc.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { FeedPurgeUi, FeedRulesUi } from './feed-rules.js';
 import { FeedJob, FeedPreview } from './feed-view.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Spoiler } from '../station/spoiler.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** Открытый фид: сверху — что сделать сейчас и файлы поставщика; редкое — под раскрытием (запоминается). */
 export class FeedPanel {

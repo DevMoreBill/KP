@@ -4,9 +4,9 @@ import { StDirty } from './settings-tools.js';
 import { CopyText, FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «Доставка из Китая»: перевозка до места прибытия в ЕАЭС для таможенной стоимости (ТК ЕАЭС ст. 40) по ставкам экспедиторов. */
 export class ChinaFreightTab {

@@ -1,14 +1,14 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { ClientStore, Inn } from './client-store.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Money } from '../../core/money.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Проверка контрагента: Checko — основной сервис, OFData — резерв (тот же формат данных), бухотчётность — бесплатно из
@@ -237,11 +237,11 @@ export class PartyCheck {
     if (answer && answer.quotaNow) this.quota = answer.quotaNow;
     if (S !== state || Inn.digits(S.clientInn) !== inn) {
       Toast.show(`Проверка ИНН ${inn} готова, но клиент уже другой — запустите проверку снова`);
-      FormView.render();
+      KpForm.render();
       return;
     }
     S.check = answer;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     if (!S.check.error && S.client) ClientStore.save();
   }

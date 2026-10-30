@@ -1,4 +1,3 @@
-import { FormView } from '../../ui/form-view.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { $, Uid, esc } from '../../core/util.js';
@@ -6,6 +5,7 @@ import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { ImageFiles } from './images.js';
+import { KpForm } from '../../core/kp-form.js';
 /**
  * Фото со страницы товара (автозаполнение и «Фото с сайта поставщика»): ★ — главное, галочки — какие добавить в изображения.
  * Сервер скачивает их в изображения позиции; уже добавленные (тот же адрес у поставщика) пропускаются.
@@ -269,7 +269,7 @@ export class PageImages {
     const { added, first } = this._place(item, { answer, main, keys, imgs });
     if (url && !item.pageUrl && !(item.feed && item.feed.url)) item.pageUrl = url;
     item.page = true;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(this._report(added, !!first, (answer.errors || []).length));
     return true;

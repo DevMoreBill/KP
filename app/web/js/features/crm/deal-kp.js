@@ -8,13 +8,13 @@ import { Api } from '../../core/net.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { CatalogFill } from '../catalog/catalog-fill.js';
-import { FormView } from '../../ui/form-view.js';
 import { ClientStore } from '../kp/client-store.js';
 import { NewKp } from '../kp/new-kp.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { KpLoader } from '../kp/reminders.js';
 import { KpTabs } from '../kp/kp-tabs.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** КП сделки: открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из журнала — в сделку. */
 export class DealKp {
@@ -52,7 +52,7 @@ export class DealKp {
     const opened = S;
     if (!(await this._client(deal, opened))) return;
     const added = await this._items(ids, opened);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Новое КП для сделки «${deal.title || deal.client}»${added ? ` — позиций из заявки: ${added}` : ''}`);
     if (!added && Catalog.cache.length) CatalogWindow.open({});

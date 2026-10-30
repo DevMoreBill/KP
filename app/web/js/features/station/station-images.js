@@ -2,7 +2,6 @@ import { StationRules } from '../rules/station-rules.js';
 import { EskdSheet } from '../eskd/eskd-sheet.js';
 import { ImageFiles } from '../catalog/images.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { FormView } from '../../ui/form-view.js';
 import { StationDrawing } from '../draw/station-drawing.js';
 import { Uid } from '../../core/util.js';
 import { StationView3D } from '../draw/station-view3d.js';
@@ -14,6 +13,7 @@ import { StationSize } from './station-size.js';
 import { Kit } from '../kit/kit.js';
 import { StationUi } from './station-ui.js';
 import { KpState, S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 /**
  * Картинки станции для КП по расстановке: 3D-вид — главное фото, виды снаружи с четырёх сторон, габаритный чертёж (все
  * листы) и схема — в изображениях после характеристик. Своё фото менеджера не заменяется; убранное менеджером — выключает
@@ -379,7 +379,7 @@ export class StationImages {
     }
     if (!(await this.sync(item))) return;
     KpState.persist();
-    FormView.render();
+    KpForm.render();
     if (ItemEditor.current && ItemEditor.current.tab === 'layout' && S.items[ItemEditor.current.i] === item)
       ItemEditor.render();
   }

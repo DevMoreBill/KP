@@ -1,6 +1,6 @@
-import { esc } from '../core/util.js';
-import { S } from '../core/state.js';
-import { ObjPath } from '../core/str.js';
+import { esc } from './util.js';
+import { S } from './state.js';
+import { ObjPath } from './str.js';
 /** Общие элементы формы: подсказка «?» и поле ввода, привязанное к пути в данных КП. */
 export class UiKit {
   // подписи, у которых «?» — прямо внутри: поле формы, заголовки разделов и блоков

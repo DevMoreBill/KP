@@ -2,7 +2,6 @@ import { CatalogCache } from './catalog-cache.js';
 import { CatalogStore } from './catalog-store.js';
 import { CatalogWindow } from './catalog-window.js';
 import { Price } from '../../core/str.js';
-import { FormView } from '../../ui/form-view.js';
 import { Toast } from '../../core/toast.js';
 import { AdminSession } from '../../core/net.js';
 import { ItemEditor } from './item-editor.js';
@@ -12,6 +11,7 @@ import { KpState, S } from '../../core/state.js';
 import { Makers } from './makers.js';
 import { CardRules } from './card-rules.js';
 import { CardGaps } from './card-gaps.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.
@@ -215,7 +215,7 @@ export class CatalogEditor {
     ItemEditor.current = null;
     const dialog = $('#edlg');
     if (dialog.open) dialog.close();
-    FormView.render();
+    KpForm.render();
     if (doc && after) await after(doc);
   }
 

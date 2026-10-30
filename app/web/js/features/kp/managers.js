@@ -1,14 +1,13 @@
 import { Auth } from './auth.js';
 import { MyPrefs } from './my-prefs.js';
-import { Steps } from '../../ui/steps.js';
 import { $, Uid, esc } from '../../core/util.js';
-import { FormView } from '../../ui/form-view.js';
 import { Str } from '../../core/str.js';
 import { KpState, S } from '../../core/state.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { Toast } from '../../core/toast.js';
 import { KpGuard } from './kp-guard.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Менеджеры: справочник в базе программы (общий для отдела), выбор менеджера в разделе «Менеджер». Выбранный менеджер
@@ -168,7 +167,7 @@ export class Managers {
     if (!manager) return;
     this.use(manager);
     this.setMe(manager.id);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     Toast.show(`Менеджер: ${manager.name}`);
   }
@@ -179,7 +178,7 @@ export class Managers {
     S.managerId = '';
     S.manager = { ...KpState.defManager(), name: '', position: '', ext: '', mobile: '', email: '', folder: '' };
     this._remember('');
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     setTimeout(() => $('[data-p="manager.name"]')?.focus(), this.FOCUS_DELAY);
   }
@@ -281,7 +280,7 @@ export class Managers {
     if (wasNew) {
       this.setMe(id);
       KpState.persist();
-      if (Steps.current === 'mgr') FormView.render();
+      if (KpForm.step() === 'mgr') KpForm.render();
     }
     const status = $('#mgrStat');
     if (status) status.textContent = 'Сохранено в справочнике менеджеров';

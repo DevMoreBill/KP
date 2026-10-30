@@ -3,7 +3,6 @@ import { HelpLinkClicks } from './help-link.js';
 import { ContextMenu } from './context-menu.js';
 import { ContextSections } from './context-sections.js';
 import { AppKeys, TopBar } from './app-keys.js';
-import { DatePicker, WorkCalendar } from './date-picker.js';
 import { FieldEvents } from './field-events.js';
 import { FormView, Popups } from './form-view.js';
 import { GeoInput, GeoParse } from './geo-input.js';
@@ -13,18 +12,22 @@ import { Mobile } from './mobile.js';
 import { ProblemReport } from './problem-report.js';
 import { Problems, SidePanel } from './side-panel.js';
 import { ClientPrev, ClientStep } from './step-client.js';
-import { CondMemory, CondsStep } from './step-conds.js';
-import { CoverStep, CoverSync } from './step-cover.js';
-import { EquipStep, QuickFind } from './step-equipment.js';
+import { CondsStep } from './step-conds.js';
+import { CoverStep } from './step-cover.js';
+import { EquipStep, QuickAdd } from './step-equipment.js';
 import { ManagerStep } from './step-manager.js';
 import { PriceStep } from './step-price.js';
 import { Steps } from './steps.js';
-import { Tender, TenderBlock } from './tender.js';
+import { TenderBlock } from './tender.js';
 import { Tour } from './tour.js';
 import { BigMode } from './big-mode.js';
 import { PicView } from './pic-view.js';
-import { UiKit } from './ui-kit.js';
 import { KpState } from '../core/state.js';
+import { DatePicker } from '../core/date-picker.js';
+import { CoverSync } from '../features/kit/cover-sync.js';
+import { UiKit } from '../core/ui-kit.js';
+import { KpForm } from '../core/kp-form.js';
+import { DealLogistics } from '../features/deal/deal-logistics.js';
 
 export const UI_PARTS = {
   AdminGearClicks,
@@ -33,8 +36,6 @@ export const UI_PARTS = {
   ContextSections,
   AppKeys,
   TopBar,
-  DatePicker,
-  WorkCalendar,
   FieldEvents,
   FormView,
   Popups,
@@ -48,23 +49,33 @@ export const UI_PARTS = {
   SidePanel,
   ClientPrev,
   ClientStep,
-  CondMemory,
   CondsStep,
   CoverStep,
-  CoverSync,
   EquipStep,
-  QuickFind,
+  QuickAdd,
   ManagerStep,
   PriceStep,
   Steps,
-  Tender,
   TenderBlock,
   Tour,
   BigMode,
   PicView,
-  UiKit,
 };
 
+// разделы просят форму (KpForm) — без import формы
+KpForm.connect({
+  render: () => FormView.render(),
+  step: () => Steps.current,
+  select: id => {
+    Steps.current = id;
+  },
+  open: (id, target) => Steps.open(id, target),
+  side: () => SidePanel.render(),
+  live: () => SidePanel.updateLive(),
+  problems: () => Problems.list(),
+});
+// склады поставщиков сделки — в подсказках адреса (поле «Откуда»)
+GeoInput.extra.wh = input => DealLogistics.warehouses(input);
 Steps.restore();
 Mobile.watch();
 // титул КП — по оборудованию, перед записью черновика
@@ -74,7 +85,7 @@ KpState.onPersist(() => CoverSync.run());
 GeoInput.listen();
 Popups.listen();
 FormView.listen();
-QuickFind.listen();
+QuickAdd.listen();
 CondsStep.listen();
 FieldEvents.listen();
 ItemActions.listen();

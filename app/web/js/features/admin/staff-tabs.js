@@ -3,11 +3,11 @@ import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
 import { CopyText } from '../../core/files.js';
 import { Modal } from '../../core/modal.js';
 import { Powers } from '../kp/auth.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { Fmt } from '../../core/str.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «Мой пароль»: смена своего пароля и правила доступа. */
 export class SecurityTab {

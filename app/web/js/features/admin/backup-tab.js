@@ -5,10 +5,10 @@ import { SettingsFileCard } from './settings-file.js';
 import { MirrorCard } from './settings-panels.js';
 import { StNav } from './settings-tools.js';
 import { Toast } from '../../core/toast.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { esc } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Fmt } from '../../core/str.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «База и копии»: сводка плитками и подвкладки Выгрузить · Загрузить · Автокопии · Обслуживание · История. */
 export class BackupTab {

@@ -1,6 +1,6 @@
-import { esc, isoDay } from '../core/util.js';
-import { Mobile } from './mobile.js';
-import { Api } from '../core/net.js';
+import { esc, isoDay } from './util.js';
+import { PhoneLayout } from './phone-layout.js';
+import { Api } from './net.js';
 /**
  * Производственный календарь РФ (/api/calendar: выходные, праздники, переносы, сокращённые дни; сервер обновляет раз в
  * 30 дней). Без загруженного года — выходные по дням недели и праздники ст. 112 ТК РФ.
@@ -144,7 +144,7 @@ export class DatePicker {
   static place() {
     const { box, input } = this.state;
     if (!box || !input) return;
-    if (Mobile.isPhone()) {
+    if (PhoneLayout.active()) {
       box.classList.add('sheet');
       box.style.removeProperty('left');
       box.style.removeProperty('top');

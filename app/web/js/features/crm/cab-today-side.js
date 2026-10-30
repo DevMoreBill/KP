@@ -2,10 +2,10 @@ import { CrmData } from './crm-data.js';
 import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { KpDate } from '../kp/kp-date.js';
-import { UiKit } from '../../ui/ui-kit.js';
-import { WorkCalendar } from '../../ui/date-picker.js';
 import { FEAT } from '../../core/features.js';
 import { esc, today } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { WorkCalendar } from '../../core/date-picker.js';
 
 /**
  * Правая колонка «Сегодня» — картина без поиска по разделам: неделя по дням (дела и ожидаемые договоры), план месяца,

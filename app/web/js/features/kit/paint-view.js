@@ -6,13 +6,13 @@ import { ItemSpec } from '../../core/item-spec.js';
 import { Api, ImgUpload } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { InputNum } from '../deal/input-num.js';
-import { FormView } from '../../ui/form-view.js';
 import { StationUi } from '../station/station-ui.js';
 import { KpState, S } from '../../core/state.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { $, esc } from '../../core/util.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { StationPaint } from '../layout/station-paint.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и
@@ -143,7 +143,7 @@ export class PaintView {
     else if (!this._artChange(part, k, target)) return;
     ContainerPart.apply(part);
     StationUi.cache.delete(item.id);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 
@@ -204,7 +204,7 @@ export class PaintView {
         await load.call(this, item, part, file);
         ContainerPart.apply(part);
         StationUi.cache.delete(item.id);
-        FormView.render();
+        KpForm.render();
         KpState.persist();
       } catch (error) {
         Toast.show(`Не удалось загрузить файл: ${(error && error.message) || error}`);

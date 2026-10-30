@@ -1,10 +1,10 @@
 import { TemplateBase } from './template-base.js';
 import { Toast } from '../../core/toast.js';
-import { FormView } from '../../ui/form-view.js';
 import { esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Шаблоны КП (папка templates): выбор шаблона и загрузка всего, что в папке шаблона — настроек (template.json), скелета
@@ -178,7 +178,7 @@ export class Templates {
       } catch {
         // браузер без хранилища — выбор только в этом КП
       }
-      FormView.render();
+      KpForm.render();
       KpState.persist();
       Toast.show(`Шаблон КП: ${(this.current() || {}).name || ''}`);
     });

@@ -1,7 +1,7 @@
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /**
  * «Настройки → Связи → 1С»: адрес публикации базы (OData), логин и пароль (только в базе программы), проверка связи,

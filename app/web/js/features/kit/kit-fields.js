@@ -1,9 +1,9 @@
 import { Kit } from './kit.js';
-import { FormView } from '../../ui/form-view.js';
 import { esc } from '../../core/util.js';
 import { PipeMaterial } from '../layout/pipe-material.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { KpState, S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Поле состава станции `data-…="i.j"` → позиция КП и элемент. */
 class PartField {
@@ -83,7 +83,7 @@ export class KitPipe {
         .trim()
         .slice(0, this.DN_MAX);
     this.rows(part);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 
@@ -144,7 +144,7 @@ export class KitCabinet {
     if (!found) return;
     found.part.mount = field.value === 'floor' ? 'floor' : 'wall';
     this.rows(found.part);
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 

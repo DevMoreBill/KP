@@ -17,7 +17,6 @@ import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { DealUi } from './deal-ui.js';
 import { Fmt } from '../../core/str.js';
-import { Mobile } from '../../ui/mobile.js';
 import { KpState, S } from '../../core/state.js';
 import { Morph } from '../../core/morph.js';
 import { ItemAttrs } from '../../core/item-attrs.js';
@@ -26,6 +25,7 @@ import { AdminGear } from '../../core/admin-gear.js';
 import { HelpLink } from '../../core/help-link.js';
 import { DealSeen } from './deal-seen.js';
 import { WinSize } from '../../core/win-size.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * Окно «Экономика сделки»: шапка с датой договора и Excel, вкладки шагов по порядку заполнения (открыта одна), правая
@@ -77,7 +77,7 @@ export class DealWin {
     if (DealConds.sync(calc)) KpState.persist();
     DealSeen.shown(calc);
     // на телефоне шапка — одна строка, дата договора — в строке с прибылью
-    const mob = Mobile.isPhone();
+    const mob = PhoneLayout.active();
     const date = DealWin._date(deal);
     const tabs = DealWin._tabs(calc, deal);
     const customs = DealCustoms.html(calc);

@@ -8,8 +8,8 @@ import { Toast } from '../../core/toast.js';
 import { FileSave } from '../../core/files.js';
 import { Api } from '../../core/net.js';
 import { Fmt, Str } from '../../core/str.js';
-import { UiKit } from '../../ui/ui-kit.js';
 import { esc } from '../../core/util.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /** «Проверка базы» (db_health.DbHealth): целостность, позиции без категории, одинаковые названия, КП без файла Word. */
 export class DbHealthCard {

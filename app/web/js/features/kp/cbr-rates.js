@@ -4,12 +4,12 @@ import { DEF_BY } from '../../core/defaults.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { DealWin } from '../deal/deal-win.js';
-import { FormView } from '../../ui/form-view.js';
 import { $, esc, today } from '../../core/util.js';
 import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
 import { OptionSale } from './option-sale.js';
 import { RateSource } from './rate-source.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /** Курсы ЦБ РФ: кнопка «Курс ЦБ» — все валюты; программа сама (нет курса нужной валюты) — только пустые. */
 export class CbrRates {
@@ -64,7 +64,7 @@ export class CbrRates {
     if (!got.length) return;
     OptionSale.syncAll();
     RateSource.cbr(S.pricing, got, { date: answer.rates.date || today(), src: answer.src });
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     DealWin.render();
     this._flash(got);

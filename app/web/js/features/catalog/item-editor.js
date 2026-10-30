@@ -10,7 +10,6 @@ import { ItemTabs } from './item-tabs.js';
 import { Morph } from '../../core/morph.js';
 import { AdminSession } from '../../core/net.js';
 import { StationImages } from '../station/station-images.js';
-import { FormView } from '../../ui/form-view.js';
 import { $, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
@@ -18,6 +17,7 @@ import { Kit } from '../kit/kit.js';
 import { StationUi } from '../station/station-ui.js';
 import { AsmTab } from '../kit/asm-tab.js';
 import { KitView } from '../kit/kit-view.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Карточка позиции (окно с вкладками): основное, состав и компоновка станции, автозаполнение, описание и фото,
@@ -88,10 +88,10 @@ export class ItemEditor {
     ItemEditor.current = null;
     CardGaps.reset();
     if (dialog.open) dialog.close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     StationImages.syncAll().then(changed => {
-      if (changed) FormView.render();
+      if (changed) KpForm.render();
     });
   }
 
@@ -253,12 +253,12 @@ export class ItemEditor {
       S.items = CatalogEditor.session.items; // окно закрыто не кнопками карточки каталога — правки не сохраняются
       CatalogEditor.session = null;
       ItemEditor.current = null;
-      FormView.render();
+      KpForm.render();
       return;
     }
     if (!ItemEditor.current) return;
     ItemEditor.current = null;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 
@@ -272,7 +272,7 @@ export class ItemEditor {
       if (field.dataset.gat == null) return;
       const pic = S.items[+field.dataset.gat].gallery[+field.dataset.j];
       pic.at = field.value === 'free' ? 'free' : field.value;
-      FormView.render();
+      KpForm.render();
       KpState.persist();
     });
     EditorDrag.listen();
@@ -361,7 +361,7 @@ export class EditorDrag {
       moved = ItemLinks.moveFeat(item, from, place);
     } else moved = this._moveGal(item, from, { target: +box.dataset.gj, after });
     if (!moved) return;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 

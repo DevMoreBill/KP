@@ -20,6 +20,7 @@ import { QuickSearch } from '../features/kp/quick-search.js';
 import { Journal } from '../features/kp/journal.js';
 import { UiTexts } from '../features/kp/ui-texts.js';
 import { $ } from '../core/util.js';
+import { PhoneLayout } from '../core/phone-layout.js';
 /**
  * Телефон (Safari iOS, Chrome Android): режим «mob» на <html> (ставится ещё в <head>, чтобы не мигала настольная
  * раскладка), меню «☰», поле названия по высоте текста, пустые поля дат, шапка прячется при прокрутке вниз.
@@ -53,22 +54,14 @@ export class Mobile {
   };
 
   /**
-   * Телефонная раскладка включена.
-   * @returns {boolean}
-   */
-  static isPhone() {
-    return document.documentElement.classList.contains('mob');
-  }
-
-  /**
    * Следить за шириной экрана: раскладка сменилась — перерисовать форму. При загрузке только ставится раскладка:
    * форму первым рисует main.js, когда загружены все разделы.
    */
   static watch() {
     const query = matchMedia(this.QUERY);
-    const apply = () => document.documentElement.classList.toggle('mob', query.matches);
+    const apply = () => document.documentElement.classList.toggle(PhoneLayout.CLASS, query.matches);
     query.addEventListener('change', () => {
-      const was = this.isPhone();
+      const was = PhoneLayout.active();
       apply();
       if (was !== query.matches) FormView.render();
     });
@@ -138,7 +131,7 @@ export class Mobile {
 
   // шапка с логотипом прячется при прокрутке вниз и возвращается при прокрутке вверх — больше рабочей зоны
   static _scroll() {
-    if (!this.isPhone()) return;
+    if (!PhoneLayout.active()) return;
     const top = scrollY;
     const delta = top - this.topY;
     if (Math.abs(delta) < this.SCROLL_STEP) return;

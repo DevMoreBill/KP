@@ -13,10 +13,10 @@ import { CabPay } from './cab-pay.js';
 import { Toast } from '../../core/toast.js';
 import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
-import { Mobile } from '../../ui/mobile.js';
 import { esc, today } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpDate } from '../kp/kp-date.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * «Сделки»: доска по стадиям (перетаскивание мышью) или список (на телефоне — по умолчанию, с отбором стадии чипами).
@@ -85,7 +85,7 @@ export class CabDeals {
       this.view = this._stored(
         this.VIEW_KEY,
         ['board', 'list', 'gantt', 'pay'],
-        MyPrefs.prefs.dealsView || (Mobile.isPhone() ? 'list' : 'board'),
+        MyPrefs.prefs.dealsView || (PhoneLayout.active() ? 'list' : 'board'),
       );
     if (this.view === 'pay' && !FEAT.on('payCalendar')) this.view = 'board';
   }

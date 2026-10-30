@@ -29,8 +29,6 @@ import { KpTrack } from '../kp/kp-track.js';
 import { MailDlg } from '../kp/mail-dlg.js';
 import { FEAT } from '../../core/features.js';
 import { ClientStore } from '../kp/client-store.js';
-import { UiKit } from '../../ui/ui-kit.js';
-import { Mobile } from '../../ui/mobile.js';
 import { Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
@@ -40,6 +38,8 @@ import { Morph } from '../../core/morph.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { Modal } from '../../core/modal.js';
+import { UiKit } from '../../core/ui-kit.js';
+import { PhoneLayout } from '../../core/phone-layout.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,
@@ -309,7 +309,7 @@ export class DealCard {
   static _steps(deal) {
     const stages = CrmFunnel.columns(deal.funnel);
     const open = stages.filter(stage => !stage.closed);
-    if (Mobile.isPhone()) return this._stepList(deal, open, stages);
+    if (PhoneLayout.active()) return this._stepList(deal, open, stages);
     const index = open.findIndex(stage => stage.key === deal.stage);
     const closed = CrmFunnel.closed(deal);
     const chevrons = open

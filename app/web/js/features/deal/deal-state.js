@@ -13,7 +13,6 @@ import { DealWin } from './deal-win.js';
 import { InputNum } from './input-num.js';
 import { KpDate } from '../kp/kp-date.js';
 import { Modal } from '../../core/modal.js';
-import { FormView } from '../../ui/form-view.js';
 import { AdminDialog } from '../admin/admin-core.js';
 import { Toast } from '../../core/toast.js';
 import { Currency } from '../kp/currency.js';
@@ -23,6 +22,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { KpEconomics, PriceCalc } from '../kp/price-calc.js';
 import { KpState, S } from '../../core/state.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Данные сделки: входы расчёта из КП, расчёт КП (новый — из «Умолчаний» и справочника поставщиков), цены позиций под цену
@@ -286,7 +286,7 @@ export class DealState {
     const deal = DealState.ensure();
     deal.over.price = '';
     deal.touched = true;
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     DealWin.render();
     Toast.show(`Цены позиций перенесены: итог КП ${KPGen.money(plan.total)} ${Currency.short(plan.cur)}`);

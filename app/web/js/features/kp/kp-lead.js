@@ -5,7 +5,7 @@ import { DealTerms } from '../deal/deal-terms.js';
 import { FEAT } from '../../core/features.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';
-import { FormView } from '../../ui/form-view.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Срок поставки позиции из каталога: свой у позиции («Срок поставки» в карточке) или по поставщику (срок изготовления и
@@ -43,7 +43,7 @@ export class KpLead {
     const lead = this.of(card);
     if (lead) item.supLead = lead;
     else delete item.supLead;
-    if (this.sync() && later) FormView.render(); // поставщики догрузились после показа КП
+    if (this.sync() && later) KpForm.render(); // поставщики догрузились после показа КП
   }
 
   /**

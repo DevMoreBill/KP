@@ -1,7 +1,7 @@
-import { UiKit } from './ui-kit.js';
 import { MgrBar } from '../features/kp/mgr-bar.js';
 import { KpFile } from '../features/doc/kp-file.js';
 import { esc } from '../core/util.js';
+import { UiKit } from '../core/ui-kit.js';
 
 /** Раздел 6 «Менеджер»: контакты в КП, справочник менеджеров, папка КП. */
 export class ManagerStep {

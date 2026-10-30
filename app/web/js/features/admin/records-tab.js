@@ -7,7 +7,6 @@ import { CatalogWindow } from '../catalog/catalog-window.js';
 import { KpState, S } from '../../core/state.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { Api } from '../../core/net.js';
-import { FormView } from '../../ui/form-view.js';
 import { Managers } from '../kp/managers.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Toast } from '../../core/toast.js';
@@ -17,6 +16,7 @@ import { Debounce } from '../../core/debounce.js';
 import { $, esc } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from '../kp/kp-tabs.js';
+import { KpForm } from '../../core/kp-form.js';
 
 /**
  * Записи базы: КП, товары, клиенты, поставщики, контакты менеджеров — поиск, правка, удаление в корзину (вкладка на каждый
@@ -219,7 +219,7 @@ export class RecordsTab {
     del.sel.clear();
     Toast.show(`Удалено: ${reply.deleted}`);
     if (del.type === 'catalog') Catalog.refresh();
-    if (del.type === 'manager') Managers.load().then(() => FormView.render());
+    if (del.type === 'manager') Managers.load().then(() => KpForm.render());
     this.render(main);
   }
 }
@@ -250,7 +250,7 @@ export class RecordEdit {
     if (!(await KpTabs.prepare({ kpId: id }))) return;
     KpState.replace(Object.assign(KpState.fresh(), state));
     SettingsWindow.dialog().close();
-    FormView.render();
+    KpForm.render();
     KpState.persist();
     window.scrollTo({ top: 0 });
     Toast.show(`КП № ${S.number || ''} открыто для редактирования`);

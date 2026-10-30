@@ -3,7 +3,7 @@ import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 import { Toast } from '../../core/toast.js';
 import { Uid, esc } from '../../core/util.js';
-import { UiKit } from '../../ui/ui-kit.js';
+import { UiKit } from '../../core/ui-kit.js';
 
 /**
  * «Настройки → Документы → Наши реквизиты»: юрлица продавца для счёта, спецификации и договора из КП и свои шаблоны Word

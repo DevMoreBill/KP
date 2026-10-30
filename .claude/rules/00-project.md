@@ -29,7 +29,7 @@
   (`tz-out/`, `rules-doc/`) не импортируются статически — только `LazyJs.load('…/index.js')`, классы — из его результата.
 - Общие данные — у класса-владельца, а не в общих переменных: открытое КП — `S` (`core/state.js`, `export let`, меняется только
   `KpState.replace(…)`), каталог — `Catalog.cache`, открытая карточка — `ItemEditor.current`, правка позиции каталога —
-  `CatalogEditor.session`, раздел формы — `Steps.current`, типы оборудования — `EquipTypes.list`/`.builtin`, клиенты —
+  `CatalogEditor.session`, раздел формы — `Steps.current` (разделы — `KpForm.step()`), типы оборудования — `EquipTypes.list`/`.builtin`, клиенты —
   `ClientStore.list`/`.total`, менеджеры — `Managers.list`, «Значения программы» — `DefRegistry.value/num`, `DefRegistry.srv`,
   версия — `AppVersion.current`. Модуль, который выполняет код при загрузке, не должен ждать модулей, подключающих его
   (циклы `import`): реестр значений `core/defaults.js` и условия `core/conditions.js` — без тяжёлых зависимостей.
@@ -37,6 +37,11 @@
   разделы подписываются на события `kp:features`, `kp:theme`, `kp:saved`, `kp:password`, `kp:unauthorized` и подключаются в
   своём `index.js`: `LISTS.ready({ключ: () => массив})`, `DefRegistry.options`, `KpState.onItem/onPersist/paused`, `Api.who`;
   экземпляр, которому нужны другие модули, создаётся при первом обращении (`CatalogWindow.win`), а не при загрузке.
+  (30.10, циклы импортов, этап 1) Слои: `core/` ← разделы `features/` ← форма КП `ui/` ← `main.js`; разделы не подключают
+  `ui/` (ESLint `no-restricted-imports`): перерисовать форму, открытый шаг, выбрать или открыть шаг, боковая панель,
+  «что мешает сохранить» — `KpForm` (`core/kp-form.js`, форму подключает `ui/index.js` — `KpForm.connect`), телефонная
+  раскладка — `PhoneLayout.active()`, общие виджеты — в `core/` (`UiKit`, `DatePicker`/`WorkCalendar`, данные тендера
+  `Tender`, `CondMemory`); раздел, которому нужна форма, просит через `KpForm`, а не импортирует её.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона
