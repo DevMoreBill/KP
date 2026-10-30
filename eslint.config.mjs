@@ -157,6 +157,11 @@ export default [{
   files: ['app/web/js/features/help.js', 'app/web/js/features/help-versions.js', 'app/web/js/core/defaults-srv.js', 'app/web/js/core/defaults-kp.js'],
   rules: { 'max-lines': 'off' },
 }, {
+  // нижний слой интерфейса не подключает разделы и форму (циклы import): разделы подписываются на события
+  // (kp:features, kp:theme, kp:saved, kp:password, kp:unauthorized) и подключаются в своём index.js
+  files: ['app/web/js/core/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['../features/**', '../ui/**'], message: 'core/ — нижний слой: раздел подключается событием или регистрацией в своём index.js' }] }] },
+}, {
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },

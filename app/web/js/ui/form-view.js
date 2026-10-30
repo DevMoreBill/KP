@@ -18,6 +18,11 @@ export class FormView {
   // шаги, у которых ⚙ ведёт в «Параметры → КП и документы»
   static GEAR = ['client', 'manager', 'conds', 'price', 'cover'];
 
+  /** Права изменились (kp:features) — форма заново. */
+  static listen() {
+    document.addEventListener('kp:features', () => this.render());
+  }
+
   /** Перерисовать форму (во время правки позиции каталога — только её карточку). */
   static render() {
     if (CatalogEditor.session) {

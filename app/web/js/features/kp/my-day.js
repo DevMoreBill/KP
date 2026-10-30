@@ -14,6 +14,11 @@ export class MyDay {
     return FEAT.on('myDay');
   }
 
+  /** Права изменились (kp:features) — кнопки кабинета по функции. */
+  static listen() {
+    document.addEventListener('kp:features', () => this.badge());
+  }
+
   /** Кнопки кабинета — только когда функция включена. */
   static badge() {
     document.querySelectorAll('[data-a=myDay]').forEach(button => {

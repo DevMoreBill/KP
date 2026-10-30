@@ -1,5 +1,3 @@
-import { ContainerKind } from '../features/kit/container-kind.js';
-import { DealPresets } from '../features/deal/deal-presets.js';
 import { KpConditions } from './conditions.js';
 
 // Значения по умолчанию программы («Настройки → Значения программы»; сервер: app/defaults.py, kv settings.defaults =
@@ -58,6 +56,17 @@ export class DefRegistry {
       if (DEF_BY[row[0]]) continue;
       DEF_SCHEMA.push(row);
       DEF_BY[row[0]] = row;
+    }
+  }
+
+  /**
+   * Варианты выбора значений из данных раздела (подключает раздел в index.js).
+   * @param {Object<string, function(): Array[]>} opts ключ значения → [[значение, подпись]]
+   */
+  static options(opts) {
+    for (const [key, list] of Object.entries(opts)) {
+      const row = DEF_BY[key];
+      if (row) row[5] = { ...row[5], opts: list };
     }
   }
 
@@ -231,8 +240,8 @@ export const DEF_SCHEMA = [
   ['deal.startToday', 'deal', 'Дата договора — сегодня (с напоминанием «уточните»)', 'bool', true],
   ['deal.prod', 'deal', 'Срок изготовления у поставщика', 'num', '40', { unit: 'дн.' }],
   ['deal.ship', 'deal', 'Срок доставки до заказчика', 'num', '40', { unit: 'дн.' }],
-  ['deal.supPay', 'deal', 'Оплата поставщику', 'select', 'a20', { opts: () => DealPresets.options(DealPresets.SUP) }],
-  ['deal.custPay', 'deal', 'Оплата заказчика', 'select', 'post', { opts: () => DealPresets.options(DealPresets.CUST) }],
+  ['deal.supPay', 'deal', 'Оплата поставщику', 'select', 'a20'],
+  ['deal.custPay', 'deal', 'Оплата заказчика', 'select', 'post'],
   ['deal.spread', 'deal', 'Стоимость денег: ключевая ставка ЦБ плюс', 'num', '3', { unit: 'п.п. годовых', req: true }],
   ['deal.tax', 'deal', 'Налог на прибыль', 'num', '25', { unit: '%', req: true }],
   ['deal.bgRate', 'deal', 'Ставка банковской гарантии', 'num', '3', { unit: '% годовых', req: true }],
@@ -259,16 +268,7 @@ export const DEF_SCHEMA = [
     '20',
     { unit: '%', off: true, hint: 'Включено — в «Цене продажи» сразу считается цена КП под эту маржинальность.' },
   ],
-  [
-    'st.ins',
-    'st',
-    'Утепление контейнера',
-    'select',
-    '100 мм',
-    {
-      opts: () => ContainerKind.INSULATION.map(value => [value, value]),
-    },
-  ],
+  ['st.ins', 'st', 'Утепление контейнера', 'select', '100 мм'],
   [
     'st.joinCost',
     'st',
@@ -280,16 +280,7 @@ export const DEF_SCHEMA = [
       hint: 'Станция из нескольких модулей (кнопка «Модули…» в «Компоновке»): строка «Стыковка модулей на объекте» × число стыков. Пусто — цену вписывает менеджер.',
     },
   ],
-  [
-    'st.climate',
-    'st',
-    'Климатическое исполнение',
-    'select',
-    'УХЛ1',
-    {
-      opts: () => ContainerKind.CLIMATES.map(climate => [climate[0], `${climate[0]} — ${climate[1]}`]),
-    },
-  ],
+  ['st.climate', 'st', 'Климатическое исполнение', 'select', 'УХЛ1'],
   ['img.mainOnly', 'img', 'Отмечать только главное фото (остальные — по выбору)', 'bool', true],
   [
     'img.minKB',

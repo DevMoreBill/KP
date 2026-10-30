@@ -30,6 +30,11 @@ export class MyPrefs {
     ['EUR', 'Евро'],
     ['CNY', 'Юани'],
   ];
+  /** Тему переключили из меню (kp:theme) — запомнить. */
+  static listen() {
+    document.addEventListener('kp:theme', event => this.remember({ theme: event.detail.theme }));
+  }
+
   /**
    * Загрузить свои настройки.
    * @returns {Promise<object>}

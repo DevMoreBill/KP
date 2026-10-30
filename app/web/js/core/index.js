@@ -8,7 +8,7 @@ import { FeatureRegistry, FEAT } from './features.js';
 import { CopyText, FileSave } from './files.js';
 import { Debounce } from './debounce.js';
 import { Attrs, CatAttrs, ItemAttrs, ItemParse } from './item-attrs.js';
-import { CoverHint, ItemSpec } from './item-spec.js';
+import { ItemSpec } from './item-spec.js';
 import { ImgMiss, LazyJs } from './lazy-js.js';
 import { DblClickGuard, Modal } from './modal.js';
 import { Money } from './money.js';
@@ -27,7 +27,6 @@ export const CORE = {
   Attrs,
   CatAttrs,
   CopyText,
-  CoverHint,
   DblClickGuard,
   Debounce,
   DimInput,

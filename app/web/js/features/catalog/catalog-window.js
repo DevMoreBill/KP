@@ -32,7 +32,23 @@ export class CatalogWindow {
   static WARM_LEFT = 2;
   static MORE_MARGIN = '0px 0px 600px 0px';
   static FOCUS_DELAY = 30;
-  static win = null;
+  static _win = null;
+
+  /**
+   * Окно каталога — создаётся при первом обращении: при загрузке модуля фильтр каталога может быть ещё не готов.
+   * @returns {CatalogWindow}
+   */
+  static get win() {
+    return (this._win ??= new CatalogWindow());
+  }
+
+  /**
+   * Подменить окно (проверки).
+   * @param {CatalogWindow} value
+   */
+  static set win(value) {
+    this._win = value;
+  }
 
   /**
    * Строк списка за раз: остальные — при прокрутке («Значения программы» — cat.page).
@@ -572,5 +588,3 @@ export class CatalogWindow {
     }, CatalogWindow.FOCUS_DELAY);
   }
 }
-
-CatalogWindow.win = new CatalogWindow();

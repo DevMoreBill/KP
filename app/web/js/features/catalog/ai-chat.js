@@ -45,7 +45,7 @@ export class AiChat {
     ['GigaChat', 'https://giga.chat/'],
     ['DeepSeek', 'https://chat.deepseek.com/'],
   ];
-  static LISTS = ['ai.sites'];
+  static LISTS = { 'ai.sites': () => AiChat.SITES };
 
   /**
    * Кнопки «Скопировать запрос» и сайтов ИИ.

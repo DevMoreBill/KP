@@ -9,7 +9,7 @@ import { DefRegistry } from '../../core/defaults.js';
  */
 export class DealTerms {
   static CURS = ['RUB', 'CNY', 'USD', 'EUR'];
-  static LISTS = ['deal.countries'];
+  static LISTS = { 'deal.countries': () => DealTerms.COUNTRIES };
   static EAEU = ['Беларусь', 'Казахстан', 'Армения', 'Киргизия'];
   static COUNTRIES = [
     ['Китай', 'CNY'],

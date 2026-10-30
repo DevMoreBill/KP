@@ -1,11 +1,7 @@
 import { ServerLink } from './server-link.js';
 import { CopyText, FileSave } from './files.js';
 import { Toast } from './toast.js';
-import { Auth } from '../features/kp/auth.js';
-import { AuthScreen } from '../features/kp/auth-screen.js';
 import { S } from './state.js';
-import { Managers } from '../features/kp/managers.js';
-import { StDirty } from '../features/admin/settings-tools.js';
 import { DefRegistry } from './defaults.js';
 
 /** Сервер программы: отвечает ли (on) и что о себе сообщил (/api/ping). */
@@ -38,6 +34,11 @@ export class AdminSession {
 
 /** Запросы к серверу программы; каждый подписан менеджером этого устройства — для журнала действий (это не вход). */
 export class Api {
+  /**
+   * Кто работает на этом устройстве — подключает раздел КП (Managers.who).
+   * @returns {{userId: string, name: string}}
+   */
+  static who = () => ({ userId: '', name: '' });
   static CONFLICT = 409;
   static FORBIDDEN = 403;
   static UNAUTHORIZED = 401;
@@ -86,16 +87,15 @@ export class Api {
       err.status = reply.status;
       throw err;
     }
-    if ((opts.method || 'GET') !== 'GET' && !this.NOT_SAVE.test(path)) StDirty.saved();
+    if ((opts.method || 'GET') !== 'GET' && !this.NOT_SAVE.test(path)) document.dispatchEvent(new Event('kp:saved'));
     if (opts.raw) return reply;
     const type = reply.headers.get('content-type') || '';
     return type.includes('json') ? reply.json() : reply.text();
   }
 
-  // кто работает на этом устройстве (meId), а не менеджер открытого КП
+  // кто работает на этом устройстве (Api.who), а не менеджер открытого КП
   static _signature() {
-    const userId = Managers.meId();
-    const name = userId ? Managers.meName() : '';
+    const { userId, name } = this.who();
     return {
       'X-KP-User-Id': encodeURIComponent(userId || S.managerId || ''),
       'X-KP-User': encodeURIComponent(name || (S.manager && S.manager.name) || ''),
@@ -127,10 +127,13 @@ export class Api {
     throw err;
   }
 
+  // вход: смена пароля обязательна (kp:password), сессия закончилась (kp:unauthorized) — экран входа раздела КП
   static _auth(reply, path) {
-    if (reply.status === this.FORBIDDEN && reply.headers.get('X-KP-Auth') === 'change-password') AuthScreen.change();
-    if (reply.status === this.UNAUTHORIZED && Auth.state.enabled && !/^\/api\/(admin|auth)\//.test(path)) {
-      AuthScreen.show('Сессия закончилась — войдите снова.');
+    if (reply.status === this.FORBIDDEN && reply.headers.get('X-KP-Auth') === 'change-password') {
+      document.dispatchEvent(new Event('kp:password'));
+    }
+    if (reply.status === this.UNAUTHORIZED && !/^\/api\/(admin|auth)\//.test(path)) {
+      document.dispatchEvent(new Event('kp:unauthorized'));
     }
   }
 

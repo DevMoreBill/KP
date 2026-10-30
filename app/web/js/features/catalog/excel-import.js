@@ -1,7 +1,8 @@
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { CatalogWindow } from './catalog-window.js';
 import { Toast } from '../../core/toast.js';
-import { CoverHint, ItemSpec } from '../../core/item-spec.js';
+import { ItemSpec } from '../../core/item-spec.js';
+import { CoverHint } from '../kit/cover-hint.js';
 import { Currency } from '../kp/currency.js';
 import { FileSave } from '../../core/files.js';
 import { $ } from '../../core/util.js';

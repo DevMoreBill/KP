@@ -139,11 +139,12 @@ export class Reminders {
     this.open();
   }
 
-  /** Колокольчик в шапке открывает окно. */
+  /** Колокольчик в шапке открывает окно; права изменились (kp:features) — напоминания заново. */
   static listen() {
     document.addEventListener('click', event => {
       if (event.target.closest('#btnRem')) this.open();
     });
+    document.addEventListener('kp:features', () => this.load());
   }
 }
 

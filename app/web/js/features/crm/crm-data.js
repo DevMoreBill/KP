@@ -15,7 +15,7 @@ export class CrmStages {
     { id: 'won', name: 'Выиграно' },
     { id: 'lost', name: 'Проиграно' },
   ];
-  static LISTS = ['crm.stages'];
+  static LISTS = { 'crm.stages': () => CrmStages.LIST };
 }
 
 /** Данные кабинета: ответ /api/crm/board и чей кабинет открыт. */

@@ -4,6 +4,7 @@
  * его подключает core/lists.js.
  */
 export class MailTemplates {
+  static LISTS = { 'mail.templates': () => MailTemplates.LIST };
   static LIST = [
     {
       name: 'Коммерческое предложение',

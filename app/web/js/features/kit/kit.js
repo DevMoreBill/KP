@@ -15,7 +15,7 @@ export class Kit {
     'Система подогрева',
     'Монтажный комплект',
   ];
-  static LISTS = ['kit.presets'];
+  static LISTS = { 'kit.presets': () => Kit.PRESETS };
 
   /**
    * Элементы сборки.

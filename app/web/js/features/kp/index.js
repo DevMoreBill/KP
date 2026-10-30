@@ -35,6 +35,8 @@ import { QuickSearch, RecentModels } from './quick-search.js';
 import { KpLoader, Reminders } from './reminders.js';
 import { UiTexts } from './ui-texts.js';
 import { LISTS } from '../../core/lists.js';
+import { Api } from '../../core/net.js';
+import { MailTemplates } from './mail-templates.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpGuard } from './kp-guard.js';
 import { OptionCost } from './option-cost.js';
@@ -101,7 +103,9 @@ export const KP_PARTS = {
   UiTexts,
 };
 
-LISTS.ready(['obj.purposes', 'kp.lost']);
+LISTS.ready({ ...ClientFields.LISTS, ...KpTrack.LISTS, ...MailTemplates.LISTS });
+// подпись запросов — кто работает на этом устройстве
+Api.who = () => Managers.who();
 // «Мои настройки» менеджера — поверх «Значений программы»
 DefRegistry.personal = key => MyPrefs.def(key);
 
@@ -117,3 +121,6 @@ ClientCard.listen();
 KpFilesPanel.listen();
 QuickSearch.listen();
 Reminders.listen();
+MyDay.listen();
+MyPrefs.listen();
+AuthScreen.listen();

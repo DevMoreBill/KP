@@ -1,4 +1,5 @@
 import { EquipTypes } from '../../core/equip-types.js';
+import { Attrs } from '../../core/item-attrs.js';
 import { Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { OptionCost } from '../kp/option-cost.js';
@@ -36,7 +37,7 @@ export class OptsBlock {
     const opts = item.options || [];
     const rows = opts.map((option, j) => this._row(path, i, option, j)).join('');
     const have = new Set(opts.map(option => Str.norm(option.name)));
-    const chips = EquipTypes.presetsFor(item)
+    const chips = EquipTypes.presetsFor(Attrs.of(item).cat)
       .map(
         (preset, k) =>
           `<button class="chip${have.has(Str.norm(preset.name)) ? ' on' : ''}" type="button" data-a="optPreset" data-i="${i}" data-k="${k}" aria-pressed="${have.has(Str.norm(preset.name))}">${esc(preset.short)}</button>`,

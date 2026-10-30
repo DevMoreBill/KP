@@ -27,7 +27,7 @@ class WebScripts {
     const g=global;
     g.window??=g;
     g.document??={};
-    for (const k of ['addEventListener', 'removeEventListener']) g.document[k]??=()=>{};
+    for (const k of ['addEventListener', 'removeEventListener', 'dispatchEvent']) g.document[k]??=()=>{};
     for (const k of ['querySelector', 'getElementById']) g.document[k]??=()=>null;
     g.document.querySelectorAll??=()=>[];
     g.document.documentElement??={ dataset:{}, style:{}, classList:{ add(){}, remove(){}, toggle(){}, contains:()=>false } };

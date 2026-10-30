@@ -1,8 +1,5 @@
 import { Api } from './net.js';
 import { FEATURE_HOW } from './feature-help.js';
-import { MyDay } from '../features/kp/my-day.js';
-import { Reminders } from '../features/kp/reminders.js';
-import { FormView } from '../ui/form-view.js';
 
 /**
  * Функции программы, которые администратор включает и выключает («Настройки → Функции программы»; сервер: app/features.py):
@@ -93,12 +90,10 @@ export class FeatureRegistry {
     }
   }
 
-  /** Права изменились (вход администратора, другой менеджер на устройстве) — перечитать и перерисовать. */
+  /** Права изменились (вход администратора, другой менеджер на устройстве) — перечитать; разделы перерисуются (kp:features). */
   async refresh() {
     await this.load();
-    FormView.render();
-    Reminders.load();
-    MyDay.badge();
+    document.dispatchEvent(new Event('kp:features'));
   }
 }
 

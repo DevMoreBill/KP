@@ -160,7 +160,17 @@ export class ContainerKind {
     ['ХЛ1', 'холодный климат, до −60 °C', -60],
   ];
 
-  static LISTS = ['st.types', 'st.ins', 'st.climates', 'st.systems'];
+  static LISTS = {
+    'st.types': () => ContainerKind.TYPES,
+    'st.ins': () => ContainerKind.INSULATION,
+    'st.climates': () => ContainerKind.CLIMATES,
+    'st.systems': () => ContainerKind.SYSTEMS,
+  };
+  // варианты «Значений программы» станций (DefRegistry.options)
+  static DEF_OPTS = {
+    'st.ins': () => ContainerKind.INSULATION.map(value => [value, value]),
+    'st.climate': () => ContainerKind.CLIMATES.map(climate => [climate[0], `${climate[0]} — ${climate[1]}`]),
+  };
 
   /**
    * Вид контейнера по коду (неизвестный — первый из списка).

@@ -1,5 +1,4 @@
 import { Api } from './net.js';
-import { Attrs } from './item-attrs.js';
 import { SpecValues } from './spec-values.js';
 import { Uid, esc } from './util.js';
 
@@ -157,11 +156,11 @@ export class EquipTypes {
 
   /**
    * Опции типа позиции (у типа своих нет — доставка и ПНР).
-   * @param {object} item
+   * @param {string} cat категория позиции (Attrs.of(item).cat)
    * @returns {object[]}
    */
-  static presetsFor(item) {
-    const type = this.byId(Attrs.of(item).cat);
+  static presetsFor(cat) {
+    const type = this.byId(cat);
     const list = type.options && type.options.length ? type.options : this.DEFAULT_OPTIONS;
     return list.map(option => this.option(option));
   }

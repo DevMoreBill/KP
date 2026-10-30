@@ -1,5 +1,5 @@
 import { UiKit } from './ui-kit.js';
-import { CoverHint } from '../core/item-spec.js';
+import { CoverHint } from '../features/kit/cover-hint.js';
 import { Kit } from '../features/kit/kit.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { esc } from '../core/util.js';

@@ -1,5 +1,4 @@
 import { $ } from './util.js';
-import { MyPrefs } from '../features/kp/my-prefs.js';
 // Тема оформления: светлая, тёмная или как в системе (выбор хранится в браузере).
 
 /**
@@ -64,11 +63,11 @@ export class Theme {
     }
   }
 
-  /** Переключить светлую и тёмную (и запомнить в «Моих настройках»). */
+  /** Переключить светлую и тёмную (запомнят «Мои настройки» — событие kp:theme). */
   static toggle() {
     const theme = this.current() === 'dark' ? 'light' : 'dark';
     this.set(theme);
-    MyPrefs.remember({ theme });
+    document.dispatchEvent(new CustomEvent('kp:theme', { detail: { theme } }));
   }
 
   /** Надпись пункта меню — тема, на которую переключит. */

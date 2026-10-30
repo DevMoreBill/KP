@@ -1,18 +1,8 @@
-import { TemplateFields } from '../features/doc/template-fields.js';
-import { AiChat } from '../features/catalog/ai-chat.js';
-import { DealTerms } from '../features/deal/deal-terms.js';
-import { Kit } from '../features/kit/kit.js';
-import { ContainerKind } from '../features/kit/container-kind.js';
-import { CrmStages } from '../features/crm/crm-data.js';
-import { KpTrack } from '../features/kp/kp-track.js';
-import { ClientFields } from '../features/kp/client-store.js';
-import { MailTemplates } from '../features/kp/mail-templates.js';
-
 import { Api } from './net.js';
 import { KpConditions } from './conditions.js';
 // Списки и выборы: варианты выпадающих меню и подсказок, которые администратор правит в «Настройках → Списки и выборы»
-// (сервер: app/lists.py, kv settings.lists = {ключ: [строки]}). Списки разделов с пометкой late подхватываются, когда
-// раздел загрузился (LISTS.ready в его index.js). Встроенный вариант запоминается при запуске; свой вариант администратора подменяет
+// (сервер: app/lists.py, kv settings.lists = {ключ: [строки]}). Списки разделов получают свой массив, когда раздел
+// загрузился (LISTS.ready в его index.js). Встроенный вариант запоминается при запуске; свой вариант администратора подменяет
 // содержимое массива на месте — формы, мастер и расчёты сразу видят новые пункты. Последний вариант хранится в браузере.
 /**
  * Список: где он живёт в программе (target — массив, которым пользуются формы), как строка массива превращается в строку
@@ -23,12 +13,12 @@ export class ListDef {
 
   /**
    * @param {object} def {key, group, label, hint, cols: [[поле, подпись, тип ('text' | 'area' | 'num'), {req, id, unique,
-   *   ph}]], target: () => массив, toRow, fromRow (строка → элемент | null), min — меньше строк нельзя, late — массив
-   *   объявлен в ES-модуле (встроенный вариант запоминается в LISTS.ready)}
+   *   ph}]], target: () => массив (у списков разделов — из LISTS.ready, тогда и запоминается встроенный вариант), toRow,
+   *   fromRow (строка → элемент | null), min — меньше строк нельзя}
    */
   constructor(def) {
-    Object.assign(this, { hint: '', min: 1, late: false }, def);
-    this.builtin = this.late ? null : this.read();
+    Object.assign(this, { hint: '', min: 1, target: null }, def);
+    this.builtin = this.target ? this.read() : null;
   }
 
   /**
@@ -141,7 +131,7 @@ export class ListRegistry {
 
   /**
    * Список строк-«значений» (одно поле v).
-   * @param {object} spec {key, group, label, target, hint, ...прочие поля ListDef (late, …)}
+   * @param {object} spec {key, group, label, target, hint, ...прочие поля ListDef (min, …)}
    * @returns {ListDef}
    */
   addStrings(spec) {
@@ -217,13 +207,14 @@ export class ListRegistry {
   }
 
   /**
-   * Списки из ES-модуля: запомнить встроенный вариант и подставить свой (из браузера или сервера).
-   * @param {string[]} keys
+   * Списки раздела: массив программы каждого; встроенный вариант — запомнить, свой (из браузера или сервера) — подставить.
+   * @param {Object<string, function(): Array>} targets ключ списка → массив программы
    */
-  ready(keys) {
-    for (const key of keys) {
+  ready(targets) {
+    for (const [key, target] of Object.entries(targets)) {
       const def = this.defs.get(key);
       if (!def || def.builtin != null) continue;
+      def.target = target;
       def.builtin = def.read();
       this.applyDef(def);
     }
@@ -293,23 +284,18 @@ LISTS.addStrings({
   key: 'obj.purposes',
   group: 'kp',
   label: 'Назначение объекта',
-  target: () => ClientFields.PURPOSES,
   hint: 'Подсказки в поле «Назначение» раздела «Клиент».',
-  late: true,
 });
 LISTS.addStrings({
   key: 'kp.lost',
   group: 'kp',
   label: 'Причины проигрыша КП',
-  target: () => KpTrack.LOST,
   hint: 'Варианты в окне «Ход сделки» при статусе «Проиграно» (журнал КП) и при закрытии сделки как проигранной (кабинет менеджера).',
-  late: true,
 });
 LISTS.add({
   key: 'mail.templates',
   group: 'kp',
   label: 'Шаблоны писем',
-  target: () => MailTemplates.LIST,
   hint: 'Выбор «Шаблон» в окне «Отправить КП письмом»: тема и текст подставляются, менеджер правит перед отправкой. В тексте можно писать {номер}, {клиент}, {менеджер} — подставится своё. Подпись менеджера («Мои настройки») добавляется сама.',
   cols: [
     ['name', 'Название', 'text', { req: true, unique: true }],
@@ -327,9 +313,7 @@ LISTS.add({
   key: 'crm.stages',
   group: 'crm',
   label: 'Этапы сделки',
-  target: () => CrmStages.LIST,
   min: 3,
-  late: true,
   hint: 'Порядок строк — порядок этапов на доске. Код — внутренний (латиница): у этапов, по которым уже есть сделки, его не меняйте. «Выиграно» (won) и «Проиграно» (lost) есть всегда и стоят в конце — их можно только переименовать. По ходу КП сделка сама идёт вперёд до этапов lead (КП подготовлено), sent (отправлено), talks (в работе), contract (выиграно), если они есть в списке.',
   cols: [
     ['id', 'Код', 'text', { req: true, id: true, ph: 'tender' }],
@@ -343,8 +327,6 @@ LISTS.add({
   key: 'st.types',
   group: 'st',
   label: 'Типы контейнеров',
-  target: () => ContainerKind.TYPES,
-  late: true,
   hint: 'Код — внутренний, не меняйте его у типов, которые уже есть в КП. Утепление и климат — свои для этого типа (иначе — из «Умолчаний»).',
   cols: [
     ['id', 'Код', 'text', { req: true, id: true, ph: 'block' }],
@@ -365,16 +347,12 @@ LISTS.addStrings({
   key: 'st.ins',
   group: 'st',
   label: 'Утепление контейнера',
-  target: () => ContainerKind.INSULATION,
   hint: 'Например: 80 мм.',
-  late: true,
 });
 LISTS.add({
   key: 'st.climates',
   group: 'st',
   label: 'Климатические исполнения',
-  target: () => ContainerKind.CLIMATES,
-  late: true,
   cols: [
     ['code', 'Код', 'text', { req: true, unique: true, ph: 'УХЛ1' }],
     ['desc', 'Описание', 'text', { req: true }],
@@ -388,8 +366,6 @@ LISTS.add({
   key: 'st.systems',
   group: 'st',
   label: 'Системы контейнера',
-  target: () => ContainerKind.SYSTEMS,
-  late: true,
   hint: 'Кнопки «Системы контейнера» в карточке станции; описание — строкой в характеристиках КП.',
   cols: [
     ['id', 'Код', 'text', { req: true, id: true, ph: 'heat' }],
@@ -403,17 +379,13 @@ LISTS.addStrings({
   key: 'kit.presets',
   group: 'st',
   label: 'Быстрые элементы состава',
-  target: () => Kit.PRESETS,
   hint: 'Кнопки «+ …» во вкладке «Состав станции».',
-  late: true,
 });
 
 LISTS.add({
   key: 'deal.countries',
   group: 'deal',
   label: 'Страны поставщиков',
-  target: () => DealTerms.COUNTRIES,
-  late: true,
   hint: 'Подсказки в поле «Где покупаем» и валюта закупки по умолчанию для страны.',
   cols: [
     ['name', 'Страна', 'text', { req: true, unique: true }],
@@ -427,8 +399,6 @@ LISTS.add({
   key: 'ai.sites',
   group: 'misc',
   label: 'Нейросети для автозаполнения',
-  target: () => AiChat.SITES,
-  late: true,
   hint: 'Кнопки быстрого перехода в «Заполнить с ИИ»: запрос копируется, сайт открывается в новой вкладке.',
   cols: [
     ['name', 'Название', 'text', { req: true }],
@@ -441,9 +411,7 @@ LISTS.addStrings({
   key: 'tpl.fonts',
   group: 'misc',
   label: 'Шрифты в редакторе шаблона',
-  target: () => TemplateFields.FONTS,
   hint: 'Подсказки в поле «Шрифт» (шрифт должен быть на компьютерах, где открывают КП).',
-  late: true,
 });
 
 // при запуске — последний вариант из браузера (до ответа сервера), затем свежий с сервера (main.js)

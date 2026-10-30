@@ -16,6 +16,14 @@ export class AuthScreen {
   static FOCUS_DELAY = 30;
   static BRAND = '<div class="auth-logo">ПНЕВМО<span>ТЕХ</span></div>';
 
+  /** Ответ сервера: смена пароля обязательна (kp:password), сессия закончилась при включённом входе (kp:unauthorized). */
+  static listen() {
+    document.addEventListener('kp:password', () => this.change());
+    document.addEventListener('kp:unauthorized', () => {
+      if (Auth.state.enabled) this.show('Сессия закончилась — войдите снова.');
+    });
+  }
+
   /**
    * Показать экран входа.
    * @param {string} [msg] почему (сессия закончилась)

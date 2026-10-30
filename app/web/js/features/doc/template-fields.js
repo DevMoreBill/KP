@@ -9,7 +9,7 @@ import { ObjPath } from '../../core/str.js';
  * «заголовок — текст», фирменный знак, разделы, стили текста, картинки, файлы шаблона.
  */
 export class TemplateFields {
-  static LISTS = ['tpl.fonts'];
+  static LISTS = { 'tpl.fonts': () => TemplateFields.FONTS };
   static FONTS = [
     'Arial',
     'Calibri',

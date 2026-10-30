@@ -4,6 +4,11 @@
  */
 export class DealPresets {
   static WORK = 'work';
+  // варианты «Значений программы» — оплата поставщику и заказчика (DefRegistry.options)
+  static DEF_OPTS = {
+    'deal.supPay': () => DealPresets.options(DealPresets.SUP),
+    'deal.custPay': () => DealPresets.options(DealPresets.CUST),
+  };
 
   static SUP = {
     pre100: ['100 % при заказе', [{ name: 'Предоплата', ev: 'order', off: '0' }], 'Предоплата'],

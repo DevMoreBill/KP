@@ -54,7 +54,8 @@ import { DrawPic } from '../features/kit/draw-pic.js';
 import { StationImages } from '../features/station/station-images.js';
 import { PageImages } from '../features/catalog/page-images.js';
 import { ImageFiles } from '../features/catalog/images.js';
-import { CoverHint, ItemSpec } from '../core/item-spec.js';
+import { ItemSpec } from '../core/item-spec.js';
+import { CoverHint } from '../features/kit/cover-hint.js';
 import { ItemLinks } from '../features/catalog/item-links.js';
 import { $, Uid } from '../core/util.js';
 import { EquipTypes } from '../core/equip-types.js';
@@ -357,7 +358,7 @@ export class ItemActions {
 
   static _preset(item, k) {
     item.options = item.options || [];
-    const preset = EquipTypes.presetsFor(item)[k];
+    const preset = EquipTypes.presetsFor(Attrs.of(item).cat)[k];
     const index = item.options.findIndex(opt => Str.norm(opt.name) === Str.norm(preset.name));
     if (index >= 0) {
       item.options.splice(index, 1);

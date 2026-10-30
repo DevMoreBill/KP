@@ -2,10 +2,6 @@
 // видят новое значение сразу (живая привязка export let). Новое КП берёт «Значения программы» КП — они регистрируются раньше.
 import './defaults-srv.js';
 import './defaults-kp.js';
-import { CoverSync } from '../ui/step-cover.js';
-import { StationAuto, StationName } from '../features/kit/station-auto.js';
-import { Kit } from '../features/kit/kit.js';
-import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { DefRegistry } from './defaults.js';
 import { $, Uid, today } from './util.js';
 import { KpConditions } from './conditions.js';
@@ -150,6 +146,14 @@ export class KpState {
   static SAVE_MS = 400;
   // отложенная запись черновика (persist)
   static saveTimer = null;
+  // пересчёт перед записью черновика — подключают разделы (index.js): позиции, затем всё КП
+  static itemSyncs = [];
+  static syncs = [];
+  /**
+   * Черновик не пишется, пока условие верно (правка позиции каталога) — подключает раздел каталога.
+   * @returns {boolean}
+   */
+  static paused = () => false;
 
   /**
    * Пустая позиция КП.
@@ -313,16 +317,27 @@ export class KpState {
     state.manager = Object.assign(this.defManager(), state.manager || {});
   }
 
+  /**
+   * Пересчёт позиции перед записью черновика (подключает раздел).
+   * @param {function(object): void} sync
+   */
+  static onItem(sync) {
+    this.itemSyncs.push(sync);
+  }
+
+  /**
+   * Пересчёт КП перед записью черновика — после позиций (подключает раздел).
+   * @param {function(): void} sync
+   */
+  static onPersist(sync) {
+    this.syncs.push(sync);
+  }
+
   /** Состав и титул — по позициям; черновик в браузере — с задержкой (правка позиции каталога его не трогает). */
   static persist() {
-    if (CatalogEditor.session) return;
-    // закупка сборки — по текущим курсам; параметры станции — по составу
-    S.items.forEach(item => {
-      Kit.sync(item);
-      StationAuto.fill(item);
-      StationName.apply(item);
-    });
-    CoverSync.run();
+    if (this.paused()) return;
+    S.items.forEach(item => this.itemSyncs.forEach(sync => sync(item)));
+    this.syncs.forEach(sync => sync());
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -331,7 +346,7 @@ export class KpState {
   }
 
   static _saveDraft() {
-    if (CatalogEditor.session) return;
+    if (this.paused()) return;
     const el = $('#saved');
     try {
       LocalDraft.save(S);

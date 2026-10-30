@@ -103,3 +103,4 @@ export const ADMIN_UI = {
 };
 
 SettingsWindow.listen();
+StDirty.listen();

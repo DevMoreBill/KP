@@ -24,6 +24,7 @@ import { Tour } from './tour.js';
 import { BigMode } from './big-mode.js';
 import { PicView } from './pic-view.js';
 import { UiKit } from './ui-kit.js';
+import { KpState } from '../core/state.js';
 
 export const UI_PARTS = {
   AdminGearClicks,
@@ -66,10 +67,13 @@ export const UI_PARTS = {
 
 Steps.restore();
 Mobile.watch();
+// титул КП — по оборудованию, перед записью черновика
+KpState.onPersist(() => CoverSync.run());
 
 // порядок обработчиков — как у прежних обычных скриптов (адрес, меню, быстрый поиск, условия, форма, телефон, даты)
 GeoInput.listen();
 Popups.listen();
+FormView.listen();
 QuickFind.listen();
 CondsStep.listen();
 FieldEvents.listen();

@@ -564,6 +564,11 @@ export class StDirty {
     dialog.querySelector('.st-nav .on')?.classList.toggle('dirty', this.dirty);
   }
 
+  /** Сохранение прошло (kp:saved — любой запрос на изменение) — отметку снять. */
+  static listen() {
+    document.addEventListener('kp:saved', () => this.saved());
+  }
+
   /** Сохранение прошло (любой запрос на изменение) — отметку снять. */
   static saved() {
     if (this.dirty) this.set(false);

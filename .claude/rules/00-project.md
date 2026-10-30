@@ -32,6 +32,10 @@
   `ClientStore.list`/`.total`, менеджеры — `Managers.list`, «Значения программы» — `DefRegistry.value/num`, `DefRegistry.srv`,
   версия — `AppVersion.current`. Модуль, который выполняет код при загрузке, не должен ждать модулей, подключающих его
   (циклы `import`): реестр значений `core/defaults.js` и условия `core/conditions.js` — без тяжёлых зависимостей.
+  (30.10, п. 29 отчёта аудита) `core/` — нижний слой: не подключает `features/` и `ui/` (ESLint `no-restricted-imports`);
+  разделы подписываются на события `kp:features`, `kp:theme`, `kp:saved`, `kp:password`, `kp:unauthorized` и подключаются в
+  своём `index.js`: `LISTS.ready({ключ: () => массив})`, `DefRegistry.options`, `KpState.onItem/onPersist/paused`, `Api.who`;
+  экземпляр, которому нужны другие модули, создаётся при первом обращении (`CatalogWindow.win`), а не при загрузке.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

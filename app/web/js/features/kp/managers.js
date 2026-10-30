@@ -43,6 +43,15 @@ export class Managers {
   }
 
   /**
+   * Подпись запросов (Api.who): кто работает на этом устройстве и его имя.
+   * @returns {{userId: string, name: string}}
+   */
+  static who() {
+    const userId = Managers.meId();
+    return { userId, name: userId ? Managers.meName() : '' };
+  }
+
+  /**
    * Кто работает на этом устройстве: менеджер, которого человек сам выбрал или добавил в разделе «Менеджер» (открытие
    * чужого КП его не меняет). По нему — автор новых КП и доступ к «Экономике сделки».
    * @returns {string}

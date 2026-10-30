@@ -25,6 +25,9 @@ import { StationDefaults } from './station-defaults.js';
 import { StationPurpose, StationSpec } from './station-spec.js';
 import { SupplyDocs } from './supply-docs.js';
 import { LISTS } from '../../core/lists.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { KpState } from '../../core/state.js';
+import { CoverHint } from './cover-hint.js';
 
 export const KIT = {
   AsmActions,
@@ -37,6 +40,7 @@ export const KIT = {
   CatFeatures,
   ContainerKind,
   ContainerPart,
+  CoverHint,
   DrawPic,
   Kit,
   KitActions,
@@ -67,4 +71,11 @@ KitActions.listen();
 AsmBuilder.listen();
 AsmActions.listen();
 // списки контейнеров и состава — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
-LISTS.ready([...ContainerKind.LISTS, ...Kit.LISTS]);
+LISTS.ready({ ...ContainerKind.LISTS, ...Kit.LISTS });
+DefRegistry.options(ContainerKind.DEF_OPTS);
+// закупка сборки — по текущим курсам; параметры станции — по составу (перед записью черновика КП)
+KpState.onItem(item => {
+  Kit.sync(item);
+  StationAuto.fill(item);
+  StationName.apply(item);
+});

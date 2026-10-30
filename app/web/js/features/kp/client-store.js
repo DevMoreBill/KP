@@ -84,6 +84,7 @@ export class OrgName {
  * должны перейти в новое КП (иначе в документе остаются чужие ИНН и «Вниманию»).
  */
 export class ClientFields {
+  static LISTS = { 'obj.purposes': () => ClientFields.PURPOSES };
   // назначения объекта — список «Назначение объекта» в «Настройках → Списки и выборы»
   static PURPOSES = [
     'Резервное электроснабжение',
