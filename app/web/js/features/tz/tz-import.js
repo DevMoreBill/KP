@@ -2,17 +2,14 @@ import { StationGeo } from '../layout/station-geo.js';
 import { TzPick } from './tz-pick.js';
 import { TzQuestions } from './tz-questions.js';
 import { StationAuto, StationName } from '../kit/station-auto.js';
-import { StationSize } from '../station/station-size.js';
 import { StationDefaults } from '../kit/station-defaults.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { StationImages } from '../station/station-images.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { ContainerKind } from '../kit/container-kind.js';
-import { Spoiler } from '../station/spoiler.js';
 import { AiDirect } from '../catalog/ai-chat.js';
 import { AirChain } from '../layout/air-chain.js';
-import { StationUi } from '../station/station-ui.js';
 import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { KpState, S } from '../../core/state.js';
@@ -23,6 +20,9 @@ import { Modal } from '../../core/modal.js';
 import { CopyText } from '../../core/files.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from '../kit/station-size.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -210,7 +210,7 @@ export class TzImport {
     if (!need.cont && container) need.cont = container.ctype;
     for (const [k, value] of Object.entries(StationReq.of(station)))
       if (!['src', 'pick'].includes(k) && this._empty(need[k]) && !this._empty(value)) need[k] = value;
-    if (!need.air && StationUi.opts(station).air) need.air = StationUi.opts(station).air;
+    if (!need.air && StationPlan.opts(station).air) need.air = StationPlan.opts(station).air;
     if (container) this._fromCont(need, container);
   }
 
@@ -675,7 +675,7 @@ export class TzImport {
     if (notes) req.notes = notes.slice(0, this.LIMIT.notes);
     for (const [k, , kinds] of StationReq.OPTS) if (kinds.includes(need.kind)) req[k] = !!need[k];
     req.src = { name: String(container.name || '').slice(0, this.LIMIT.src) };
-    if (need.kind === 'comp' && need.air) station.stLayout = { ...StationUi.opts(station), air: need.air };
+    if (need.kind === 'comp' && need.air) station.stLayout = { ...StationPlan.opts(station), air: need.air };
     return req;
   }
 
@@ -728,7 +728,7 @@ export class TzImport {
     const hours = +this._numStr(need.hours);
     if (need.kind === 'dgu' && hours > 0) StationDefaults.retank(station, hours);
     Kit.sync(station);
-    StationUi.cache.delete(station.id);
+    StationPlan.cache.delete(station.id);
     StationSize.refresh(station);
     StationAuto.fill(station);
     StationName.apply(station);

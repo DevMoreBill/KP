@@ -1,4 +1,4 @@
-import { esc } from '../../core/util.js';
+import { esc } from './util.js';
 /** Раскрывающийся блок <details>: помнит, раскрыт ли он (окно перерисовывается целиком). */
 export class Spoiler {
   /** ключ → раскрыт (true / false), если менеджер менял сам */

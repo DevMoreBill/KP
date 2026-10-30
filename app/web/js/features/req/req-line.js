@@ -1,6 +1,6 @@
 import { ReqNum } from './req-num.js';
 import { StationReq } from './station-req.js';
-import { StationUi } from '../station/station-ui.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /** Короткая строка требований станции для заголовка блока: «12 м³/мин · 8 бар · 2 раб. + 1 рез. · от −40 °C до +35 °C». */
 export class ReqLine {
@@ -14,7 +14,7 @@ export class ReqLine {
   static of(item) {
     const req = StationReq.of(item);
     const kind = StationReq.kind(item);
-    const ctx = { item, req, kind, air: StationUi.opts(item).air };
+    const ctx = { item, req, kind, air: StationPlan.opts(item).air };
     return [
       ...this._main(ctx),
       this._crew(req),

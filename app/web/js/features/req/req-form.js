@@ -5,17 +5,17 @@ import { StationReq } from './station-req.js';
 import { StationQuick } from '../station/station-quick.js';
 import { Toast } from '../../core/toast.js';
 import { Kit } from '../kit/kit.js';
-import { StationSize } from '../station/station-size.js';
-import { StationUi } from '../station/station-ui.js';
-import { StationParams } from '../station/station-params.js';
 import { KpState, S } from '../../core/state.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { Mm } from '../layout/mm.js';
 import { ExpertFix } from '../station/expert-fix.js';
-import { Spoiler } from '../station/spoiler.js';
 import { SupplyDocs } from '../kit/supply-docs.js';
 import { esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationParams } from '../kit/station-params.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /**
  * Форма «Все требования, условия расчёта и проверки» (под раскрывающимся блоком «Подбора станции»): проверки состава,
@@ -238,7 +238,7 @@ export class ReqForm {
   }
 
   static _relayout(item) {
-    StationUi.cache.delete(item.id);
+    StationPlan.cache.delete(item.id);
     StationSize.refresh(item);
   }
 

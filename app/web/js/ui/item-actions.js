@@ -43,7 +43,6 @@ import { IssueSpot } from '../features/station/issue-spot.js';
 import { LazyJs } from '../core/lazy-js.js';
 import { ExpertFix } from '../features/station/expert-fix.js';
 import { StationUi } from '../features/station/station-ui.js';
-import { StationParams } from '../features/station/station-params.js';
 import { PaintView } from '../features/kit/paint-view.js';
 import { KitView } from '../features/kit/kit-view.js';
 import { KitActions } from '../features/kit/kit-actions.js';
@@ -61,6 +60,7 @@ import { KpState, S } from '../core/state.js';
 import { CoverSync } from '../features/kit/cover-sync.js';
 import { Tender } from '../core/tender.js';
 import { PhoneLayout } from '../core/phone-layout.js';
+import { StationParams } from '../features/kit/station-params.js';
 
 // действие изменило КП — форма перерисовывается и черновик сохраняется (что вернули окна и загрузки — не в счёт)
 const RENDER = Symbol('render');

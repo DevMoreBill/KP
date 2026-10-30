@@ -1,10 +1,10 @@
 import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { AirDemand } from './air-demand.js';
-import { StationUi } from '../station/station-ui.js';
 import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { ReqNum } from '../req/req-num.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /** Исходные данные расчёта: требования (числа с проверкой диапазона), элементы состава по видам. */
 export class CalcInput {
@@ -52,7 +52,7 @@ export class CalcInput {
     });
     return {
       kind: StationReq.kind(station),
-      cls: StationUi.opts(station).air || '',
+      cls: StationPlan.opts(station).air || '',
       units,
       parts,
       recvIn: StationReq.recvIn(station),

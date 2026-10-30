@@ -6,7 +6,6 @@ import { StationDefaults } from './station-defaults.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Toast } from '../../core/toast.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { StationSize } from '../station/station-size.js';
 import { KpState, S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { Catalog } from '../catalog/catalog-store.js';
@@ -17,12 +16,13 @@ import { GensetSizing } from '../calc/genset-sizing.js';
 import { PumpPoint } from '../calc/pump-point.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { ReqNum } from '../req/req-num.js';
-import { StationUi } from '../station/station-ui.js';
 import { AirChain } from '../layout/air-chain.js';
 import { DryerDerate } from '../layout/dryer-derate.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from './station-size.js';
+import { StationPlan } from './station-plan.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -54,7 +54,7 @@ export class KitNeed {
       recv: StationReq.recv(item),
       recvOut: StationReq.recvOut(item),
     });
-    return AirChain.check(equipment, StationUi.opts(item).air, StationReq.recvIn(item), StationReq.dryer(item));
+    return AirChain.check(equipment, StationPlan.opts(item).air, StationReq.recvIn(item), StationReq.dryer(item));
   }
 
   /**
@@ -394,7 +394,7 @@ export class KitNeed {
    */
   static can(item, rec) {
     if (rec.act) return true;
-    const input = StationUi.input(item);
+    const input = StationPlan.input(item);
     const key = [
       item.id,
       StationLayout.hash(input),
@@ -505,7 +505,7 @@ export class KitNeed {
    */
   static done(item) {
     Kit.sync(item);
-    StationUi.cache.delete(item.id);
+    StationPlan.cache.delete(item.id);
     StationSize.refresh(item);
     StationAuto.fill(item);
     StationName.apply(item);

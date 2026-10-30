@@ -2,7 +2,6 @@ import { Toast } from '../../core/toast.js';
 import { StationImages } from './station-images.js';
 import { S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
-import { StationSize } from './station-size.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { StationSup } from '../tz/station-sup.js';
@@ -14,7 +13,6 @@ import { AirChain } from '../layout/air-chain.js';
 import { ExpertLog } from '../req/expert-log.js';
 import { KitView } from '../kit/kit-view.js';
 import { StationEquip } from '../layout/station-equip.js';
-import { StationUi } from './station-ui.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 import { KitNeed } from '../kit/kit-need.js';
@@ -24,6 +22,8 @@ import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { Mm } from '../layout/mm.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationPlan } from '../kit/station-plan.js';
 /** Замечания одной станции без повторов; решение раздела — только к замечанию о нехватке. */
 class FixList {
   constructor() {
@@ -338,7 +338,7 @@ export class ExpertFix {
 
   /** замечания компоновки (ошибки и предупреждения) */
   static _layout(item, list) {
-    const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
+    const plan = StationPlan.enabled(item) && Kit.container(item) ? StationPlan.plan(item) : null;
     if (!plan || plan.level === 'none') return;
     for (const issue of plan.issues || []) {
       if (issue.level === 'error' || issue.level === 'warn') {
@@ -468,7 +468,7 @@ export class ExpertFix {
 
   static _container(item) {
     const container = Kit.container(item);
-    const plan = StationUi.plan(item);
+    const plan = StationPlan.plan(item);
     const suggest = plan && plan.suggest;
     if (!suggest || !container) return '';
     ContainerPart.apply(container, {
@@ -607,7 +607,7 @@ export class ExpertFix {
     const text = await this.fix(item, row.fix.id);
     if (text) done.push(text);
     Kit.sync(item);
-    StationUi.cache.delete(item.id);
+    StationPlan.cache.delete(item.id);
     StationSize.refresh(item);
     this.memo = null;
   }

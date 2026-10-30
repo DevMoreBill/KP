@@ -7,7 +7,6 @@ import { StationAuto, StationName } from './station-auto.js';
 import { CbrRates } from '../kp/cbr-rates.js';
 import { Currency } from '../kp/currency.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { StationSize } from '../station/station-size.js';
 import { PaintView } from './paint-view.js';
 import { DealWin } from '../deal/deal-win.js';
 import { InputNum } from '../deal/input-num.js';
@@ -20,6 +19,7 @@ import { KitView } from './kit-view.js';
 import { KitScope } from './kit-scope.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from './station-size.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,

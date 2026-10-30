@@ -6,13 +6,13 @@ import { ItemSpec } from '../../core/item-spec.js';
 import { Api, ImgUpload } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { InputNum } from '../deal/input-num.js';
-import { StationUi } from '../station/station-ui.js';
 import { KpState, S } from '../../core/state.js';
 import { $, esc } from '../../core/util.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { StationPaint } from '../layout/station-paint.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationPlan } from './station-plan.js';
 
 /**
  * Окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и
@@ -142,7 +142,7 @@ export class PaintView {
     else if (target.dataset.kitbook != null) part.paintBook = target.checked;
     else if (!this._artChange(part, k, target)) return;
     ContainerPart.apply(part);
-    StationUi.cache.delete(item.id);
+    StationPlan.cache.delete(item.id);
     KpForm.render();
     KpState.persist();
   }
@@ -183,7 +183,7 @@ export class PaintView {
     if (action === 'paintArtDel') {
       (part.art || []).splice(+button.dataset.k, 1);
       if (part.art && !part.art.length) delete part.art;
-      StationUi.cache.delete(item.id);
+      StationPlan.cache.delete(item.id);
       return true;
     }
     this._choose(item, part, action === 'paintFile' ? this._booklet : this._picture);
@@ -203,7 +203,7 @@ export class PaintView {
         Toast.show(`Загружаю «${file.name}»…`);
         await load.call(this, item, part, file);
         ContainerPart.apply(part);
-        StationUi.cache.delete(item.id);
+        StationPlan.cache.delete(item.id);
         KpForm.render();
         KpState.persist();
       } catch (error) {

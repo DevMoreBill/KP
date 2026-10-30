@@ -103,7 +103,7 @@ check('станционные механизмы позицию не трога�
   StationName.apply(item);
   assert.strictEqual(JSON.stringify(item), before, 'автозаполнение станции — без изменений');
   assert.strictEqual(Kit.station(item), null);
-  assert.strictEqual(StationUi.enabled(item), false, 'нет компоновки');
+  assert.strictEqual(StationPlan.enabled(item), false, 'нет компоновки');
   assert.strictEqual(StationPurpose.feature(item), null);
   assert.deepStrictEqual(StationCalc.docGroups(item), []);
 });

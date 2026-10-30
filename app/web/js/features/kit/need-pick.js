@@ -2,7 +2,6 @@ import { Str } from '../../core/str.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
-import { StationUi } from '../station/station-ui.js';
 import { PickFilter } from './kit-pick.js';
 import { AirChain } from '../layout/air-chain.js';
 import { Kit } from './kit.js';
@@ -11,6 +10,7 @@ import { StationSup } from '../tz/station-sup.js';
 import { StationReq } from '../req/station-req.js';
 import { KitNeed } from './kit-need.js';
 import { ReqNum } from '../req/req-num.js';
+import { StationPlan } from './station-plan.js';
 /**
  * Подбор из каталога по строке «Нужно: …»: рекомендуемая позиция (тот же расчёт, что у автоподбора TzPick), фильтры и
  * подсказка окна каталога; основное оборудование — по требованиям «Подбора станции».
@@ -57,7 +57,7 @@ export class NeedPick {
   static _dryer(item, rec, ctx) {
     if (!(ctx.flow > 0)) return null;
     const ads = rec.cat === 'dryer_ads';
-    const need = { pdp: ctx.req.pdp, air: StationUi.opts(item).air };
+    const need = { pdp: ctx.req.pdp, air: StationPlan.opts(item).air };
     const pdp = ads || !TzPick.adsNeed(need) ? TzPick.dewNeed(need) : null;
     const limits = { temps: ctx.air.dryer.temps, pdp, H: TzPick.hmax(item), W: TzPick.wmax(item) };
     return TzPick.dryer(ads, ctx.flow, ctx.air.dryer.bar, ctx.compBar, limits);
@@ -192,7 +192,7 @@ export class NeedPick {
     const flow = ReqNum.loose(req.flow);
     const bar = ReqNum.loose(req.pressure) || 0;
     if (!(flow > 0)) return null;
-    const waterClass = +(String(StationUi.opts(item).air || '').split('.')[1] || 0);
+    const waterClass = +(String(StationPlan.opts(item).air || '').split('.')[1] || 0);
     const ads = waterClass > 0 && waterClass <= this.ADS_CLASS_MAX;
     const demand = StationReq.need(req, flow);
     const total = ads ? demand.v / (1 - AirChain.PURGE) : demand.v;

@@ -19,13 +19,13 @@ import { KitNeed } from '../kit/kit-need.js';
 import { KitPart } from '../kit/kit-part.js';
 import { Api } from '../../core/net.js';
 import { StationAuto, StationName } from '../kit/station-auto.js';
-import { StationSize } from '../station/station-size.js';
-import { StationUi } from '../station/station-ui.js';
 import { StationReq } from '../req/station-req.js';
 import { Kit } from '../kit/kit.js';
 import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Attrs } from '../../core/item-attrs.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -511,7 +511,7 @@ export class TzPick {
     const added = StationReq.ensureParts(station);
     const note = await this.run(station, need);
     Kit.sync(station);
-    StationUi.cache.delete(station.id);
+    StationPlan.cache.delete(station.id);
     StationSize.refresh(station);
     StationAuto.fill(station);
     StationName.apply(station);
@@ -547,7 +547,7 @@ export class TzPick {
     // фильтры и ресиверы — только если цепочка воздуха их по-прежнему просит
     const need = k => {
       if (k !== 'filter' && k !== 'receiver') return true;
-      air ??= StationLayout.solve(StationUi.input(station)).air || KitNeed.air(station) || { recs: [] };
+      air ??= StationLayout.solve(StationPlan.input(station)).air || KitNeed.air(station) || { recs: [] };
       return (air.recs || []).some(rec => rec.cat === k && !rec.replace);
     };
     for (const k of new Set(before.map(part => StationEquip.kindOf(part)))) {
@@ -640,7 +640,7 @@ export class TzPick {
 
   /** Фильтры и ресиверы — по цепочке воздуха, и когда компоновка не сложилась. */
   static async _chain(job) {
-    const air = StationLayout.solve(StationUi.input(job.x)).air || KitNeed.air(job.x);
+    const air = StationLayout.solve(StationPlan.input(job.x)).air || KitNeed.air(job.x);
     for (const rec of (air?.recs || []).filter(
       entry => (entry.cat === 'filter' || entry.cat === 'receiver') && !entry.replace,
     ))

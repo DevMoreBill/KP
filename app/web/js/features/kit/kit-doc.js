@@ -5,9 +5,9 @@ import { StationCalc } from '../calc/station-calc.js';
 import { KitScope } from './kit-scope.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { S } from '../../core/state.js';
-import { StationDesign } from '../station/station-design.js';
 import { SupplyDocs } from './supply-docs.js';
-import { StationDoc } from '../station/station-doc.js';
+import { StationDesign } from './station-design.js';
+import { StationDoc } from './station-doc.js';
 
 /**
  * Сборка в документе КП, экономике сделки и логистике: шаблон, умеющий сборки, получает состав как есть (`data`), любой

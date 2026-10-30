@@ -2,7 +2,6 @@ import { Kit } from './kit.js';
 import { KitPart } from './kit-part.js';
 import { StationDefaults } from './station-defaults.js';
 import { StationAuto, StationName } from './station-auto.js';
-import { StationUi } from '../station/station-ui.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { KitScope } from './kit-scope.js';
@@ -16,6 +15,7 @@ import { TzPick } from '../tz/tz-pick.js';
 import { Str } from '../../core/str.js';
 import { Attrs, CatAttrs } from '../../core/item-attrs.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationPlan } from './station-plan.js';
 
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций
@@ -486,7 +486,7 @@ export class KitPick {
     Kit.sync(item);
     StationAuto.fill(item);
     StationName.apply(item);
-    StationUi.cache.delete(item.id);
+    StationPlan.cache.delete(item.id);
     this.dialog.close();
     KpForm.render();
     KpState.persist();

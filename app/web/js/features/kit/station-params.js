@@ -1,4 +1,4 @@
-import { StationAuto } from '../kit/station-auto.js';
+import { StationAuto } from './station-auto.js';
 import { KpState, S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { StationReq } from '../req/station-req.js';

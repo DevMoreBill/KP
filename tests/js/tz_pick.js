@@ -26,7 +26,7 @@ ItemSpec.mainLine=()=>''; ItemSpec.groups=()=>[];
 Api.request=async u=>{ const c=Catalog.cache.find(z=>u.endsWith('/'+encodeURIComponent(z.id))); if (!c) throw new Error('нет '+u); return c; };
 const GOLDEN=process.env.KP_GOLDEN ? require('./golden.js') : null;   // слепок для station_golden.js
 if (GOLDEN){ process.on('exit', ()=>GOLDEN.save(process.env.KP_GOLDEN));
-  GOLDEN.wrapAsync(TzPick, ['run'], ([x], note)=>{ const d=GOLDEN.docx(); TzText.write(d, x, StationUi.plan(x), 'ПНЕВМОТЕХ'); return [note, x.kit, x.req, x.stLayout, d.calls]; }); }
+  GOLDEN.wrapAsync(TzPick, ['run'], ([x], note)=>{ const d=GOLDEN.docx(); TzText.write(d, x, StationPlan.plan(x), 'ПНЕВМОТЕХ'); return [note, x.kit, x.req, x.stLayout, d.calls]; }); }
 
 class Cat {
   static n=0;
@@ -164,7 +164,7 @@ class Check {
     const one=k=>Kit.parts(x).filter(p=>StationEquip.kindOf(p)===k), c=one('compressor')[0], d=one('dryer')[0], Qc=13*c.qty;
     assert.ok(c && c.qty>=3 && c.qty<=TzPick.MAX && Qc>=36, 'компрессоров — сколько нужно (до четырёх): '+JSON.stringify(c && c.qty));
     assert.ok(d && d.name==='Осушитель рефрижераторный ОР-20' && d.qty>=2, 'один осушитель мал — несколько одинаковых параллельно: '+note);
-    const plan=StationLayout.solve(StationUi.input(x)), F=one('filter');
+    const plan=StationLayout.solve(StationPlan.input(x)), F=one('filter');
     assert.ok(F.length>=1 && F.every(f=>f.qty>=2), 'фильтры — тоже параллельно: '+JSON.stringify(F.map(f=>[f.name, f.qty])));
     assert.ok(/осушители \d × Осушитель рефрижераторный ОР-20 параллельно/.test(note) && /фильтры \d × Фильтр .* параллельно/.test(note) && !/В каталоге нет/.test(note), note);
     assert.ok(TzPick.many([{ cap:5 }, { cap:9 }], 20).n===3 && TzPick.many([{ cap:5 }, { cap:9 }], 20).o.cap===9, 'наименьшее число одинаковых, затем запас');
@@ -554,7 +554,7 @@ class Check {
     ];
     const x=Cat.station('st_comp', [], { flow:'40', pressure:'8' }); KpState.replace({ items:[x] });
     const note=await TzPick.assemble(x, StationQuick.query(x)), m=Kit.parts(x).find(p=>p.role==='main');
-    const plan=StationLayout.solve(StationUi.input(x));
+    const plan=StationLayout.solve(StationPlan.input(x));
     assert.ok(m && m.qty>=2 && /МК-140 компактный/.test(m.name), 'несколько одинаковых компактных: '+(m && m.qty+' × '+m.name));
     assert.ok(plan.level!=='error' && !plan.issues.some(i=>i.wide) && plan.geo.ext[1]<=StationGeo.ROAD_W, 'в габарите перевозки: '+JSON.stringify(plan.geo && plan.geo.ext));
     assert.ok(/одинаковых/.test(note), note);
@@ -620,7 +620,7 @@ class Check {
     // зима −30 °C: при −40 °C теплопотери с жалюзи по рамке (п. 8 аудита 30.10) требуют конвекторов больше, контейнер для них
     // длиннее на 400 мм — и 7 × 900 л встают внутри (9 900 × 2 550 мм, так и задумано: 900 л внутри — первыми); здесь — ряд 500 л
     const go=async r5=>{ Catalog.cache=cat(r5); const x=Cat.station('st_comp', [], { flow:'40', pressure:'8', tmin:'-30' }); KpState.replace({ items:[x] });
-      const note=await TzPick.assemble(x, StationQuick.query(x)), p=StationLayout.solve(StationUi.input(x)), R=Kit.parts(x).find(q=>StationEquip.kindOf(q)==='receiver');
+      const note=await TzPick.assemble(x, StationQuick.query(x)), p=StationLayout.solve(StationPlan.input(x)), R=Kit.parts(x).find(q=>StationEquip.kindOf(q)==='receiver');
       return { x, note, p, R }; };
     try{
       // без продольного прохода и прочих исключений (так 7 × 900 л внутри не встают): в каталоге есть 500 л — 12 × 500 л внутри

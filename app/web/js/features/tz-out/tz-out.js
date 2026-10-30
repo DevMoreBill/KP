@@ -14,6 +14,7 @@ import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { Kit } from '../kit/kit.js';
 import { S } from '../../core/state.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /** ТЗ на сборку станции для сборщика — документ Word с чертежом, схемой и 3D-видом в приложениях. */
 export class TzOut {
@@ -55,7 +56,7 @@ export class TzOut {
     await EskdFont.load();
     await DrawPic.load(x);
     await PhotoTint.load(x);
-    const plan = StationUi.plan(x);
+    const plan = StationPlan.plan(x);
     const meta = StationUi.meta(x, plan);
     const org = StationUi.org();
     const doc = new DocxWriter({
@@ -101,7 +102,7 @@ export class TzOut {
     const webgl = await StationRender.image(plan, meta);
     const view3d = webgl || (await StationImages.raster(StationView3D.svg(plan, meta), 'image/jpeg'));
     this._add(app, view3d, 'Разрез (3D-вид, стены со стороны зрителя срезаны)', 200, true);
-    for (const [, azimuth, cap] of StationImages.VIEWS)
+    for (const [, azimuth, cap] of StationPlan.VIEWS)
       this._add(
         app,
         await StationRender.image(plan, meta, 'out', azimuth),

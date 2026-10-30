@@ -11,14 +11,14 @@ import { PumpSizing } from './pump-sizing.js';
 import { ReceiverSizing } from './receiver-sizing.js';
 import { VentSizing } from './vent-sizing.js';
 import { ContainerKind } from '../kit/container-kind.js';
-import { Spoiler } from '../station/spoiler.js';
 import { Kit } from '../kit/kit.js';
 import { StationRules } from '../rules/station-rules.js';
 import { StationReq } from '../req/station-req.js';
 import { ReqNum } from '../req/req-num.js';
-import { StationUi } from '../station/station-ui.js';
 import { esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /**
  * Расчёт модульной станции по требованиям заказчика, составу и инженерным правилам: каждый шаг — данные, формула,
@@ -49,7 +49,7 @@ export class StationCalc {
   /** Расчёт станции (с кэшем по отпечатку): разделы, ошибки, предупреждения, допущения, вопросы. */
   static run(station) {
     const input = CalcInput.of(station);
-    const plan = StationUi.plan(station);
+    const plan = StationPlan.plan(station);
     const key = JSON.stringify([
       ReqNum.errors(station),
       input.req,
@@ -93,7 +93,7 @@ export class StationCalc {
 
   /** Блокирующие ошибки: КП не сохраняется, пока их не исправят или не отметят «отклонения согласованы». */
   static errors(station) {
-    if (!StationUi.enabled(station) || !Kit.has(station)) return [];
+    if (!StationPlan.enabled(station) || !Kit.has(station)) return [];
     const result = StationCalc.run(station);
     return result.accept ? result.errors.filter(err => /^Требования: «/.test(err.text)) : result.errors;
   }
@@ -101,7 +101,7 @@ export class StationCalc {
   /** Блок «Расчёт станции» на вкладке «Компоновка»: под раскрытием (открыт при ошибке). */
   static html(station, i) {
     const result = StationCalc.run(station);
-    const opts = StationUi.opts(station);
+    const opts = StationPlan.opts(station);
     const [cls, text] = StationCalc._head(result);
     const iss = result.issues.filter(issue => issue.level !== 'info');
     const accept = result.errors.length
@@ -177,7 +177,7 @@ export class StationCalc {
    * согласованные отклонения — всегда; заказчику — только расчёт и допущения (внутренние списки остаются в программе).
    */
   static docGroups(station) {
-    if (!StationUi.enabled(station) || !Kit.has(station)) return [];
+    if (!StationPlan.enabled(station) || !Kit.has(station)) return [];
     const result = StationCalc.run(station);
     if (!result.sections.length) return [];
     const dev =
@@ -189,7 +189,7 @@ export class StationCalc {
             },
           ]
         : [];
-    if (StationUi.opts(station).calc === false) return dev;
+    if (StationPlan.opts(station).calc === false) return dev;
     const ok = { true: ' — выполняется', false: ' — НЕ выполняется' };
     const marginText = step => {
       if (step.margin == null) return '';

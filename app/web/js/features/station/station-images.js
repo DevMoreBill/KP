@@ -9,11 +9,12 @@ import { StationRender } from '../view/station-render.js';
 import { PhotoTint } from '../view/photo-tint.js';
 import { DrawPic } from '../kit/draw-pic.js';
 import { EskdFont } from '../eskd/eskd-font.js';
-import { StationSize } from './station-size.js';
 import { Kit } from '../kit/kit.js';
 import { StationUi } from './station-ui.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationPlan } from '../kit/station-plan.js';
 /**
  * Картинки станции для КП по расстановке: 3D-вид — главное фото, виды снаружи с четырёх сторон, габаритный чертёж (все
  * листы) и схема — в изображениях после характеристик. Своё фото менеджера не заменяется; убранное менеджером — выключает
@@ -28,12 +29,6 @@ export class StationImages {
   /** позиция → почему изображения станции не попадут в КП */
   static issues = new Map();
   /** ракурсы вида снаружи: ключ, азимут камеры (°: 0 — спереди, 90 — слева, −90 — справа, 180 — сзади), подпись */
-  static VIEWS = [
-    ['front', 18, 'Вид спереди'],
-    ['right', -72, 'Вид справа'],
-    ['back', -162, 'Вид сзади'],
-    ['left', 72, 'Вид слева'],
-  ];
   /** пересборка — после полутора секунд тишины (не на каждое нажатие при наборе) */
   static WAIT = 1500;
   static ERROR_MAX = 120;
@@ -65,10 +60,10 @@ export class StationImages {
    * @returns {Promise<boolean>} что-то изменилось
    */
   static async sync(item) {
-    if (!StationUi.enabled(item) || !Kit.has(item) || this.busy.has(item.id)) return false;
+    if (!StationPlan.enabled(item) || !Kit.has(item) || this.busy.has(item.id)) return false;
     StationSize.apply(item);
-    const plan = StationUi.plan(item);
-    const opts = StationUi.opts(item);
+    const plan = StationPlan.plan(item);
+    const opts = StationPlan.opts(item);
     item.gallery = Array.isArray(item.gallery) ? item.gallery : [];
     const none = this._none(plan);
     this._noteIssue(item, plan, opts, none);
@@ -211,7 +206,7 @@ export class StationImages {
     let changed = false;
     // прежний один вид снаружи — заменяется четырьмя
     item.gallery = item.gallery.filter(pic => !(pic && pic.gen === 'stout' && !pic.view));
-    for (const [view, angle, caption] of this.VIEWS) {
+    for (const [view, angle, caption] of StationPlan.VIEWS) {
       if (!opts.outSkip.includes(view) && (await this._view(item, plan, meta, { view, angle, caption, hash })))
         changed = true;
     }
@@ -260,7 +255,7 @@ export class StationImages {
    */
   static async drawing(item, plan, meta, sheetsKey) {
     const drawn = item.gallery.filter(pic => pic && pic.gen === 'stdraw');
-    const skip = StationUi.opts(item).skip;
+    const skip = StationPlan.opts(item).skip;
     if (this._sheetsFresh(drawn, skip, sheetsKey)) return false;
     const sheets = StationDrawing.sheets(plan, meta);
     const keep = new Map(drawn.map(pic => [pic.sheet || 1, pic]));
@@ -431,7 +426,7 @@ export class StationImages {
    */
   static forget(item, what) {
     if (!item) return;
-    item.stLayout = { ...StationUi.opts(item), [what]: false };
+    item.stLayout = { ...StationPlan.opts(item), [what]: false };
   }
 
   /**
@@ -451,7 +446,7 @@ export class StationImages {
   }
 
   static _skip(item, key, value) {
-    const opts = StationUi.opts(item);
+    const opts = StationPlan.opts(item);
     item.stLayout = { ...opts, [key]: [...new Set([...opts[key], value])] };
   }
 

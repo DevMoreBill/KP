@@ -18,7 +18,6 @@ import { EskdSheet } from '../eskd/eskd-sheet.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { IssueSpot } from './issue-spot.js';
 import { ExpertFix } from './expert-fix.js';
-import { Spoiler } from './spoiler.js';
 import { Mm } from '../layout/mm.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationModsUi } from './station-mods-ui.js';
@@ -29,8 +28,10 @@ import { Kit } from '../kit/kit.js';
 import { esc } from '../../core/util.js';
 import { StationUi } from './station-ui.js';
 import { KpState } from '../../core/state.js';
-import { StationSize } from './station-size.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationPlan } from '../kit/station-plan.js';
 /**
  * Вкладка «Компоновка» карточки станции: помещается ли оборудование, замечания с решениями, разрез и виды снаружи,
  * габаритный чертёж и схема, доступ к оборудованию, подготовка воздуха, системы контейнера, расчёт и как расставляется.
@@ -50,11 +51,11 @@ export class LayoutTab {
    */
   static html(item, index) {
     if (StationSize.apply(item)) KpState.persist();
-    const plan = StationUi.plan(item);
+    const plan = StationPlan.plan(item);
     if (plan.level === 'none')
       return `<div class="ed-sec stl"><p class="stl-none">${esc(plan.text)}</p>${this.how()}</div>`;
     const container = Kit.container(item);
-    const opts = StationUi.opts(item);
+    const opts = StationPlan.opts(item);
     const [cls, title] = this._head(plan);
     const dims = this._dims(plan, ContainerKind.of(container.ctype));
     const issues = this._issues(item, plan);
@@ -209,7 +210,7 @@ export class LayoutTab {
     if (!ready) StationRender.image(plan, meta).then(image => this._swap(image, plan.hash));
     const webgl = StationRender.ok();
     const outs = webgl
-      ? StationImages.VIEWS.map(([, angle, cap]) => ({
+      ? StationPlan.VIEWS.map(([, angle, cap]) => ({
           az: angle,
           cap,
           ready: StationRender.cached(plan, 'out', angle),
@@ -429,7 +430,7 @@ export class LayoutTab {
     return `<details class="stl-air stl-sp"${Spoiler.attr(`air:${item.id}`)}><summary class="stl-air-h"><b>Подготовка воздуха</b>${missing}${air.q ? `<span class="muted">компрессоры — ${flow(air.work > 0 ? air.work : air.q)} м³/мин${air.q - air.work > 0 && air.work > 0 ? ` + ${flow(air.q - air.work)} в резерве` : ''} при ${flow(air.bar)} бар</span>` : ''}</summary>
       <div class="stl-chain">${this._chain(air)}<span class="stl-arr">→</span><span class="stl-node">потребителю</span></div>
       ${air.chain.some(step => step.guess) ? '<p class="muted stl-hint">Пунктиром — фильтр, у которого не указана ступень очистки: место выбрано по виду осушителя. Укажите «Ступень очистки» в характеристиках фильтра (предварительная, тонкая, сверхтонкая, угольный).</p>' : ''}
-      ${this._grade(StationUi.opts(item).air, index)}${recs ? `<p class="stl-rec-h">Не хватает в составе:</p><ul class="stl-recs">${recs}</ul>` : ''}</details>`;
+      ${this._grade(StationPlan.opts(item).air, index)}${recs ? `<p class="stl-rec-h">Не хватает в составе:</p><ul class="stl-recs">${recs}</ul>` : ''}</details>`;
   }
 
   static _chain(air) {

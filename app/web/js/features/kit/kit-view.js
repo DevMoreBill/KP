@@ -10,7 +10,6 @@ import { DimRow } from '../catalog/attr-choices.js';
 import { DrawPic } from './draw-pic.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { Mm } from '../layout/mm.js';
-import { StationUi } from '../station/station-ui.js';
 import { TankSize } from '../layout/tank-size.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { StationSup } from '../tz/station-sup.js';
@@ -21,15 +20,20 @@ import { Attrs } from '../../core/item-attrs.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { DealUi } from '../deal/deal-ui.js';
 import { esc } from '../../core/util.js';
-import { StationQuick } from '../station/station-quick.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
+import { StationPlan } from './station-plan.js';
 
 /**
  * Вкладка «Состав станции»: подбор станции, контейнер одной строкой, оборудование двумя группами по стороне поставки
  * («Наше оборудование» и «Сборщик контейнера»); каждый элемент — строка таблицы, подробности — по раскрытию строки.
  */
 export class KitView {
+  /**
+   * Быстрый подбор станции под составом (HTML) — подключает раздел подбора (station/index.js).
+   * @returns {string}
+   */
+  static stationQuick = () => '';
   static open = new Set(); // раскрытые строки (id элементов)
   static SYS = /отоплен|вентиляц|освещен|электроснабж|сигнализац|пожаротуш|шумо/i; // системы контейнера — не элементы
   static pos = new Map(); // id элемента → номер позиции на чертеже (при отрисовке вкладки)
@@ -74,7 +78,7 @@ export class KitView {
     );
     const ctx = { item, index, station };
     return `<div class="ed-sec kit2">
-      ${station ? StationQuick.html(item, index) : ''}
+      ${station ? KitView.stationQuick(item, index) : ''}
       ${container ? KitContainer.html(item, index, container, parts.indexOf(container)) : KitContainer.pick(index)}
       ${station && !Kit.main(item) ? this._mainTodo(index, station) : ''}
       ${this._group(ctx, 'our', our)}
@@ -219,7 +223,7 @@ export class KitView {
   static tankSize(item, part, kind) {
     if (kind !== 'tank' || StationEquip.dims(part, kind).known) return '';
     const volume = TankSize.vol(part);
-    const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
+    const plan = StationPlan.enabled(item) && Kit.container(item) ? StationPlan.plan(item) : null;
     const placed = plan && (plan.items || []).find(entry => entry.tank && entry.id === part.id);
     const dims = placed
       ? { l: Math.max(placed.lx, placed.ly), w: Math.min(placed.lx, placed.ly), h: placed.h }
@@ -271,7 +275,7 @@ export class KitView {
     if (!parts.length) return '';
     const cost = Kit.cost(item);
     const missing = parts.filter(part => !part.cost && (part.role === 'container' || KitScope.of(part) === 'our'));
-    const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
+    const plan = StationPlan.enabled(item) && Kit.container(item) ? StationPlan.plan(item) : null;
     const layout = this._layoutChip(plan);
     return `<div class="kit-sum"><span>Закупка изделия${parts.some(part => part.costCur && part.costCur !== 'RUB') ? ' (по курсам КП)' : ''}</span><b>${Number.isFinite(cost) ? `${KPGen.money(cost)} ₽` : 'нет курса валюты — укажите в шаге «Цены»'}</b>
       ${layout ? `<button type="button" class="chip sm ${layout[0]}" data-edtab="layout">${layout[1]} → компоновка</button>` : ''}
@@ -328,7 +332,7 @@ export class KitView {
 
   static _resetExpert(item, part, button) {
     ExpertLog.reset(item, String(button.dataset.k || '').split(','));
-    StationUi.cache.delete(item.id);
+    StationPlan.cache.delete(item.id);
     KpState.persist();
     ItemEditor.render();
     return 'async';

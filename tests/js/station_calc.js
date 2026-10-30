@@ -333,8 +333,8 @@ Check.run('лето без температуры в ТЗ — одно прав�
   assert.ok(none.rules.includes('heat.t_summer') && none.weak.some(w=>w.id==='heat.t_summer'), 'правило — в «требует подтверждения»');
   assert.ok(!hot.rules.includes('heat.t_summer'), 'температура в ТЗ — правило не нужно');
   assert.deepStrictEqual(DryerDerate.temps({ tmax:null, tin:null }), DryerDerate.temps({ tmax:35, tin:null }), 'осушитель: было 25 °C');
-  assert.strictEqual(StationUi.plan(mk({})).heat.vent.tmax, 35, 'вентиляция');
-  assert.strictEqual(StationUi.plan(mk({ tmax:'28' })).heat.vent.tmax, 28);
+  assert.strictEqual(StationPlan.plan(mk({})).heat.vent.tmax, 35, 'вентиляция');
+  assert.strictEqual(StationPlan.plan(mk({ tmax:'28' })).heat.vent.tmax, 28);
 });
 
 Check.run('насосная: подача и напор диапазоном — крайние точки паспорта, между ними — «уточните рабочую точку» (было: обе верхние границы — «выполняется»)', ()=>{
@@ -424,7 +424,7 @@ Check.run('отпечаток станции и кэш расчёта — от �
   const comp=part('Компрессор винтовой К-130', { cat:'comp_screw', maker:'Пример', flow:13, pressure:10, kw:75, noise:60 });
   const recv=part('Ресивер РВ-900', { cat:'receiver', maker:'Пример', volume:900, pressure:11 });
   const x=station('st_comp', { flow:'10', pressure:'7', basis:'fad', tmax:'30', margin:'0', reserve:'0', alt:'0' }, [comp, recv]);
-  const hash=()=>StationLayout.hash(StationUi.input(x));
+  const hash=()=>StationLayout.hash(StationPlan.input(x));
   const changed=(what, edit)=>{ const before=hash(); edit(); assert.notStrictEqual(hash(), before, what); };
   changed('шум', ()=>{ comp.attrs.noise=98; });
   changed('строка характеристик', ()=>{ comp.rows=[{ k:'Уровень шума', v:'70 дБА' }]; });

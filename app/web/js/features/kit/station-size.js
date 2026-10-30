@@ -1,12 +1,12 @@
-import { Kit } from '../kit/kit.js';
-import { StationAuto } from '../kit/station-auto.js';
-import { ContainerPart } from '../kit/container-part.js';
+import { Kit } from './kit.js';
+import { StationAuto } from './station-auto.js';
+import { ContainerPart } from './container-part.js';
 import { StationLayout } from '../layout/station-layout.js';
-import { StationUi } from './station-ui.js';
 import { esc } from '../../core/util.js';
 import { Mm } from '../layout/mm.js';
 import { Toast } from '../../core/toast.js';
 import { StationGeo } from '../layout/station-geo.js';
+import { StationPlan } from './station-plan.js';
 /**
  * Размер блок-контейнера «по проекту» по оборудованию: наименьший размер из ряда, при котором всё помещается; длина задана —
  * компоновка пересобирается с нужной плотностью и уведомлением. Размер, вписанный менеджером, не трогается.
@@ -90,7 +90,7 @@ export class StationSize {
     const container = this._flexible(item);
     if (!container) return false;
     // исходные — те же, что у расстановки (где ресивер, ресиверы снаружи, ворота): иначе размер расходился с чертежом
-    const full = StationUi.input(item);
+    const full = StationPlan.input(item);
     const input = { ...full, cont: { ...full.cont, size: '', sizeAuto: true } };
     const hash = StationLayout.hash(input);
     const last = this.last.get(item.id);
@@ -102,14 +102,14 @@ export class StationSize {
     const changed = !(size === String(container.size || '') && container.sizeAuto);
     if (changed) ContainerPart.apply(container, { size, sizeAuto: true });
     // та же расстановка — вкладке «Компоновка» и характеристикам второй раз не считать
-    StationUi.keep(item, plan, `${hash}|${full.air}`);
+    StationPlan.keep(item, plan, `${hash}|${full.air}`);
     if (changed) StationAuto.fill(item);
     return changed;
   }
 
   /** блок-контейнер «по проекту» без своего размера (вписанный менеджером — не трогать) или null */
   static _flexible(item) {
-    if (!StationUi.enabled(item)) return null;
+    if (!StationPlan.enabled(item)) return null;
     const container = Kit.container(item);
     if (!container || !StationGeo.FLEX[container.ctype]) return null;
     return String(container.size || '').trim() && !container.sizeAuto ? null : container;

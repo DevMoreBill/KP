@@ -22,6 +22,7 @@ import { StScene } from './st-scene.js';
 import { StSky } from './st-sky.js';
 import { StV } from './st-v.js';
 import { StationRender } from './station-render.js';
+import { StationEquip } from '../layout/station-equip.js';
 
 export const VIEW = {
   OutfitAir,
@@ -49,3 +50,5 @@ export const VIEW = {
   StV,
   StationRender,
 };
+// оттенок оборудования по фото — для компоновки (компоновка не подключает 3D-вид)
+StationEquip.photoTint = { get: text => PhotoTint.get(text), tones: text => PhotoTint.tones(text) };

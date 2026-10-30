@@ -5,10 +5,10 @@ import { RuleEdit } from './rule-edit.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 import { StationRulesDoc } from './rules-doc.js';
-import { StationUi } from '../station/station-ui.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 const JSON_POST = { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' } };
 
@@ -382,7 +382,7 @@ export class RulesPanel {
       StationRules.use(this.data);
       this.layout.work = null;
       this.ruleEdit.id = '';
-      StationUi.cache.clear();
+      StationPlan.cache.clear();
       StationCalc.cache.clear();
       Toast.show(`${what}: сохранено, версия ${this.info.version || ''}`);
       this.render(false);

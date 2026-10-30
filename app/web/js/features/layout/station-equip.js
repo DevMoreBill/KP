@@ -4,11 +4,12 @@ import { RalColor } from './ral-color.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationNorms } from './station-norms.js';
 import { TankSize } from './tank-size.js';
-import { PhotoTint } from '../view/photo-tint.js';
 import { LgCargo } from '../deal/lg-cargo.js';
 
 /** Оборудование из состава станции: вид, габариты, масса, цвет, форма, подписи. */
 export class StationEquip {
+  // цвет и зоны оттенка по фото — подключает 3D-вид (view/index.js); без него — нет оттенка
+  static photoTint = { get: () => '', tones: () => [] };
   static CABINET = /шкаф|щит|(?:^|[^а-яё])АВР(?![а-яё])|пульт/i;
 
   static CHASSIS = /шасси|прицеп/i;
@@ -372,14 +373,14 @@ export class StationEquip {
   /** Зоны других цветов по фото: [{u0, u1, v0, v1, hex}] или null. */
   static tones(part) {
     const text = this.photo(part);
-    const z = text ? PhotoTint.tones(text) : [];
+    const z = text ? StationEquip.photoTint.tones(text) : [];
     return z.length ? z : null;
   }
 
   /** Цвет корпуса по фото позиции. */
   static tint(part) {
     const text = this.photo(part);
-    return text ? PhotoTint.get(text) || '' : '';
+    return text ? StationEquip.photoTint.get(text) || '' : '';
   }
 
   static _colorRows(part, kind) {

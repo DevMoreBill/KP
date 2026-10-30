@@ -18,6 +18,7 @@ import { StationUi } from '../station/station-ui.js';
 import { AsmTab } from '../kit/asm-tab.js';
 import { KitView } from '../kit/kit-view.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /**
  * Карточка позиции (окно с вкладками): основное, состав и компоновка станции, автозаполнение, описание и фото,
@@ -49,7 +50,7 @@ export class ItemEditor {
   static _shown(item, station) {
     return ([key]) =>
       (key !== 'kit' || Kit.can(item)) &&
-      (key !== 'layout' || StationUi.enabled(item)) &&
+      (key !== 'layout' || StationPlan.enabled(item)) &&
       (key !== 'ai' || (FEAT.on('ai') && !station));
   }
 
@@ -147,7 +148,7 @@ export class ItemEditor {
 
   static _prepare(item) {
     if (!this.tabs(item).some(([key]) => key === ItemEditor.current.tab)) ItemEditor.current.tab = 'main';
-    if (!CatalogEditor.session && ItemEditor.current.tab !== 'layout' && StationUi.enabled(item))
+    if (!CatalogEditor.session && ItemEditor.current.tab !== 'layout' && StationPlan.enabled(item))
       StationImages.soon(item); // 3D и листы — сразу по составу
   }
 

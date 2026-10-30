@@ -43,7 +43,10 @@
   раскладка — `PhoneLayout.active()`, общие виджеты — в `core/` (`UiKit`, `DatePicker`/`WorkCalendar`, данные тендера
   `Tender`, `CondMemory`); раздел, которому нужна форма, просит через `KpForm`, а не импортирует её. (30.10, этап 2) КП
   (`features/kp`) не подключает кабинет (`features/crm`, построен поверх КП): открыть кабинет или сделку, сделки и стадии —
-  `CabinetLink` (`core/cabinet-link.js`, подключает `features/crm/index.js`); `KpDate`, `CrmFmt`, `DateChips` — в `core/`.
+  `CabinetLink` (`core/cabinet-link.js`, подключает `features/crm/index.js`); `KpDate`, `CrmFmt`, `DateChips` — в `core/`. (30.10, этап 3) Состав станции (`features/kit`) не подключает подбор
+  (`features/station`): расчёт компоновки позиции — `StationPlan` (`kit/station-plan.js`), быстрый подбор под составом —
+  `KitView.stationQuick`; компоновка (`features/layout`) не подключает 3D-вид (`features/view`): оттенок по фото —
+  `StationEquip.photoTint` (подключают `station/index.js` и `view/index.js`).
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

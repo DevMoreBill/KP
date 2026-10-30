@@ -1,9 +1,9 @@
 import { StationEquip } from '../layout/station-equip.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { TzPick } from './tz-pick.js';
-import { StationUi } from '../station/station-ui.js';
 import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /** Подбор, при котором станция помещается в контейнер в габарите перевозки: число агрегатов, ресиверы по 500 л, снаружи. */
 export class TzFit {
@@ -62,7 +62,7 @@ export class TzFit {
   /** Как встала станция: bad — ошибка или нет агрегата, wide — негабарит, close — ресиверы вплотную, ok. */
   static _state(station) {
     if (!this._main(station)) return 'bad';
-    const plan = StationLayout.solve(StationUi.input(station));
+    const plan = StationLayout.solve(StationPlan.input(station));
     if (plan.level === 'error') return 'bad';
     const issues = plan.issues || [];
     return ['wide', 'close'].find(key => issues.some(issue => issue[key])) || 'ok';

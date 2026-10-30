@@ -707,7 +707,7 @@ class Scenario(UiRun):
             pg.click('#edlg [data-edtab=layout]')
             self.snap('45q_st_paint_layout', '#edlg', wait=8000)
             # вид слева снаружи (WebGL, программно — долго): рисунок заказчика на левом торце, крыша и двери своим цветом
-            src = pg.evaluate("async()=>{ const x=S.items[S.items.length-1], plan=StationUi.plan(x), meta=StationUi.meta(x, plan);"
+            src = pg.evaluate("async()=>{ const x=S.items[S.items.length-1], plan=StationPlan.plan(x), meta=StationUi.meta(x, plan);"
                               " if (!StationRender.ok()) return 'skip'; const late=new Promise(ok=>setTimeout(()=>ok('late'), 180000));"
                               " const im=await Promise.race([StationRender.image(plan, meta, 'out', 72), late]); if (im==='late') return 'late';"
                               " return im ? im.src : 'ERR '+(StationRender.lastErr||''); }")

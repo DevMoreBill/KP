@@ -175,6 +175,21 @@ export default [{
     { group: ['../crm/**'], message: 'КП не подключает кабинет: CabinetLink (core/cabinet-link.js)' },
   ] }] },
 }, {
+  // состав станции (kit) не подключает подбор станции (station): расчёт компоновки позиции — StationPlan (kit), быстрый
+  // подбор под составом — KitView.stationQuick (подключает station/index.js); компоновка (layout) не подключает 3D-вид
+  // (view): оттенок по фото — StationEquip.photoTint (подключает view/index.js)
+  files: ['app/web/js/features/kit/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+    { group: ['../station/**'], message: 'состав станции не подключает подбор: StationPlan, KitView.stationQuick' },
+  ] }] },
+}, {
+  files: ['app/web/js/features/layout/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+    { group: ['../view/**'], message: 'компоновка не подключает 3D-вид: StationEquip.photoTint' },
+  ] }] },
+}, {
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },

@@ -1,10 +1,10 @@
 import { StationReq } from '../req/station-req.js';
-import { ContainerKind } from '../kit/container-kind.js';
+import { ContainerKind } from './container-kind.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { StationUi } from './station-ui.js';
-import { KitView } from '../kit/kit-view.js';
-import { Kit } from '../kit/kit.js';
+import { KitView } from './kit-view.js';
+import { Kit } from './kit.js';
 import { Mm } from '../layout/mm.js';
+import { StationPlan } from './station-plan.js';
 /**
  * Блок КП «Устройство станции»: контейнер, размещение, сжатый воздух, вентиляция, отопление, освещение, электропитание,
  * пожарная безопасность — из компоновки и систем контейнера, без выдуманных значений.
@@ -47,10 +47,10 @@ export class StationDesign {
 
   /** готовая компоновка станции или null */
   static _plan(item) {
-    if (!StationUi.enabled(item)) return null;
+    if (!StationPlan.enabled(item)) return null;
     let plan;
     try {
-      plan = StationUi.plan(item);
+      plan = StationPlan.plan(item);
     } catch {
       return null;
     }

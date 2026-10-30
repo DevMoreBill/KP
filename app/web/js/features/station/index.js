@@ -1,16 +1,18 @@
 import { ExpertFix } from './expert-fix.js';
 import { IssueSpot } from './issue-spot.js';
 import { LayoutTab } from './layout-tab.js';
-import { Spoiler } from './spoiler.js';
-import { StationDesign } from './station-design.js';
-import { StationBrief, StationDoc } from './station-doc.js';
 import { StationImages } from './station-images.js';
 import { StationModsUi } from './station-mods-ui.js';
-import { StationParams } from './station-params.js';
 import { StationQuick } from './station-quick.js';
-import { StationSize } from './station-size.js';
 import { StationSteps } from './station-steps.js';
 import { StationUi } from './station-ui.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationDesign } from '../kit/station-design.js';
+import { StationBrief } from './station-brief.js';
+import { StationDoc } from '../kit/station-doc.js';
+import { StationParams } from '../kit/station-params.js';
+import { StationSize } from '../kit/station-size.js';
+import { KitView } from '../kit/kit-view.js';
 
 export const STATION = {
   ExpertFix,
@@ -34,3 +36,5 @@ StationQuick.listen();
 StationSteps.listen();
 StationBrief.listen();
 StationUi.listen();
+// быстрый подбор под составом станции — раздел подбора подключает себя (состав не подключает подбор)
+KitView.stationQuick = (item, index) => StationQuick.html(item, index);

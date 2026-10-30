@@ -22,6 +22,7 @@ import { ContainerKind } from '../kit/container-kind.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { StationLibrary } from './station-library.js';
 import { StationWays } from './station-ways.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе
@@ -250,7 +251,7 @@ export class NewStation {
     if (view.busy) return '<p class="muted ns-pv-w">Подбираю станцию…</p>';
     if (view.err || !view.x) return `<p class="msg err">Не получилось подобрать: ${esc(view.err || '')}</p>`;
     const item = view.x;
-    const plan = StationUi.enabled(item) ? StationUi.plan(item) : null;
+    const plan = StationPlan.enabled(item) ? StationPlan.plan(item) : null;
     const container = Kit.container(item);
     const missing = String(StationReq.of(item).pick || '').match(this.MISSING);
     const lines = StationQuick.lines(item)

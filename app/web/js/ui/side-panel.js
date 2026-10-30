@@ -13,12 +13,12 @@ import { $, esc } from '../core/util.js';
 import { KpModels } from '../features/doc/kp-models.js';
 import { Currency, Discount } from '../features/kp/currency.js';
 import { StationCalc } from '../features/calc/station-calc.js';
-import { StationUi } from '../features/station/station-ui.js';
 import { Price } from '../core/str.js';
 import { Inn } from '../features/kp/client-store.js';
 import { KpState, S } from '../core/state.js';
 import { OptionSale } from '../features/kp/option-sale.js';
 import { Tender } from '../core/tender.js';
+import { StationPlan } from '../features/kit/station-plan.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {
@@ -58,7 +58,7 @@ export class Problems {
     if (!item.price || Number.isNaN(Price.parse(item._priceText ?? Price.text(item.price)))) {
       out.push([`${label}: укажите цену`, `prow-${item.id}`]);
     }
-    if (StationUi.blocked(item))
+    if (StationPlan.blocked(item))
       out.push([`${label}: оборудование станции не помещается в контейнер`, `item-${item.id}`]);
     const calc = StationCalc.errors(item); // расчёт станции: станция не пройдёт по требованиям
     if (calc.length) {

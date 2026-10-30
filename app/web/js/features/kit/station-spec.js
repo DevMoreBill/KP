@@ -2,11 +2,11 @@ import { ContainerKind } from './container-kind.js';
 import { Kit } from './kit.js';
 import { StationReq } from '../req/station-req.js';
 import { ItemSpec } from '../../core/item-spec.js';
-import { StationParams } from '../station/station-params.js';
 import { StationPower } from '../layout/station-power.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { StationUi } from '../station/station-ui.js';
+import { StationParams } from './station-params.js';
+import { StationPlan } from './station-plan.js';
 
 /**
  * Таблица характеристик станции: вместо «Производитель / Модель», угаданных по названию станции, — строка основного
@@ -24,7 +24,7 @@ export class StationSpec {
   static power(item) {
     if (!Kit.has(item)) return null;
     try {
-      const plan = StationUi.plan(item);
+      const plan = StationPlan.plan(item);
       return (plan && plan.level !== 'error' && plan.power) || null;
     } catch {
       return null;

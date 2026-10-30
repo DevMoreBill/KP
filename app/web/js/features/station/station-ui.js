@@ -3,7 +3,6 @@ import { ItemEditor } from '../catalog/item-editor.js';
 import { KitNeed } from '../kit/kit-need.js';
 import { Toast } from '../../core/toast.js';
 import { StationAuto, StationName } from '../kit/station-auto.js';
-import { StationSize } from './station-size.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { Uid, esc } from '../../core/util.js';
 import { Mm } from '../layout/mm.js';
@@ -13,68 +12,18 @@ import { StationImages } from './station-images.js';
 import { Templates } from '../doc/templates.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { KpState, S } from '../../core/state.js';
-import { StationLayout } from '../layout/station-layout.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { StationReq } from '../req/station-req.js';
-import { FEAT } from '../../core/features.js';
 import { Kit } from '../kit/kit.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /**
  * Компоновка станции в программе: расстановка (с кэшем), что вставлять в КП, вкладка «Компоновка», метка в разделе
  * «Оборудование», проверка перед сохранением. Расчёт — features/layout/, листы — eskd/ и draw/, 3D-вид — view/.
  */
 export class StationUi {
-  static cache = new Map();
   static FULL_NAME = 3;
-  static GRADE = /^[1-6]\.[1-6]\.[1-4]$/;
-  static SHEETS_MAX = 10;
-
-  /**
-   * Функция включена, позиция — станция в контейнере.
-   * @param {object} item
-   * @returns {boolean}
-   */
-  static enabled(item) {
-    return !!item && !!Kit.station(item) && FEAT.on('stLayout');
-  }
-
-  /**
-   * Исходные расстановки: контейнер, состав, класс воздуха; где ресивер и снаружи ли — из требований станции.
-   * @param {object} item
-   * @returns {object}
-   */
-  static input(item) {
-    const req = StationReq;
-    return {
-      cont: this._cont(Kit.container(item)),
-      parts: Kit.parts(item),
-      air: this.opts(item).air,
-      recv: req ? req.recv(item) : 'after',
-      recvOut: req ? req.recvOut(item) : false,
-      req: req ? req.plan(item) : null,
-    };
-  }
-
-  static _cont(container) {
-    if (!container) return null;
-    return {
-      ctype: container.ctype,
-      size: container.size,
-      sizeAuto: !!container.sizeAuto,
-      lenFix: container.lenFix || null,
-      mods: container.mods || null,
-      ins: container.ins,
-      ral: container.ral,
-      paint: container.paint || null,
-      paintBook: !!container.paintBook,
-      art: container.art || null,
-      sys: container.sys || null,
-      climate: container.climate || '',
-      roof: container.roof || '',
-      floor: StationGeo.floor(container),
-    };
-  }
 
   /**
    * Значок на вкладке «Компоновка»: число замечаний (красный — не помещается), иначе ''.
@@ -82,60 +31,13 @@ export class StationUi {
    * @returns {string}
    */
   static badge(item) {
-    if (!this.enabled(item) || !Kit.container(item)) return '';
-    const plan = this.plan(item);
+    if (!StationPlan.enabled(item) || !Kit.container(item)) return '';
+    const plan = StationPlan.plan(item);
     if (!plan || plan.level === 'none') return '';
     const count = (plan.issues || []).filter(issue => issue.level === 'error' || issue.level === 'warn').length;
     if (!count) return '';
     const error = plan.level === 'error';
     return ` <span class="ed-n ${error ? 'err' : 'warn'}" title="Замечаний по компоновке: ${count}">${error ? '✕' : '⚠'} ${count}</span>`;
-  }
-
-  /**
-   * Расстановка — пересчитывается, только когда изменился состав, контейнер или класс чистоты воздуха.
-   * @param {object} item
-   * @returns {object} план компоновки
-   */
-  static plan(item) {
-    const input = this.input(item);
-    const hash = StationLayout.hash(input);
-    const key = `${hash}|${input.air}`;
-    const cached = this.cache.get(item.id);
-    if (cached && cached.k === key) return cached.plan;
-    const plan = StationLayout.solve(input);
-    plan.hash = hash;
-    this.cache.set(item.id, { k: key, plan });
-    return plan;
-  }
-
-  /**
-   * Расстановка, посчитанная подбором размера по тем же исходным с пустым размером, — в кэш: размер «по оборудованию»
-   * на расстановку не влияет (только на отпечаток).
-   * @param {object} item
-   * @param {object} plan
-   * @param {string} sizeKey отпечаток исходных с пустым размером и класс воздуха
-   */
-  static keep(item, plan, sizeKey) {
-    const input = this.input(item);
-    if (!input.cont || !input.cont.sizeAuto) return;
-    if (
-      `${StationLayout.hash({ ...input, cont: { ...input.cont, size: '', sizeAuto: true } })}|${input.air}` !== sizeKey
-    )
-      return;
-    const hash = StationLayout.hash(input);
-    plan.hash = hash;
-    this.cache.set(item.id, { k: `${hash}|${input.air}`, plan });
-  }
-
-  /**
-   * Оборудование не помещается — КП не сохраняется; по условным габаритам — только предупреждение.
-   * @param {object} item
-   * @returns {boolean}
-   */
-  static blocked(item) {
-    if (!this.enabled(item) || !Kit.has(item)) return false;
-    const plan = this.plan(item);
-    return plan.level === 'error' && !plan.assumed;
   }
 
   /**
@@ -180,30 +82,6 @@ export class StationUi {
   static short(name) {
     const words = name.split(' ').filter(Boolean);
     return words.length >= this.FULL_NAME ? `${words[0]} ${words[1][0]}. ${words[2][0]}.` : name;
-  }
-
-  /**
-   * Что вставлять в КП: 3D-вид главным фото, чертёж и виды снаружи — в изображения (по умолчанию да, кроме убранных
-   * менеджером), схема и расчётная записка — только если включили; класс чистоты воздуха.
-   * @param {object} item
-   * @returns {object}
-   */
-  static opts(item) {
-    const own = item.stLayout || {};
-    return {
-      photo: own.photo !== false,
-      out: own.out !== false,
-      draw: own.draw !== false,
-      scheme: own.scheme === true,
-      calc: own.calc === true,
-      air: this.GRADE.test(String(own.air || '')) ? own.air : '',
-      skip: Array.isArray(own.skip)
-        ? own.skip.filter(sheet => Number.isInteger(sheet) && sheet > 0 && sheet < this.SHEETS_MAX)
-        : [],
-      outSkip: Array.isArray(own.outSkip)
-        ? own.outSkip.filter(view => StationImages.VIEWS.some(row => row[0] === view))
-        : [],
-    };
   }
 
   /**
@@ -258,8 +136,8 @@ export class StationUi {
    * @returns {string}
    */
   static chip(item, index) {
-    if (!this.enabled(item) || !Kit.container(item)) return '';
-    const plan = this.plan(item);
+    if (!StationPlan.enabled(item) || !Kit.container(item)) return '';
+    const plan = StationPlan.plan(item);
     if (plan.level === 'none') return '';
     const [cls, text] = this._chipState(plan);
     return `<button type="button" class="chip sm stl-chip ${cls}" data-a="edit" data-i="${index}" data-tab="layout" title="Расстановка оборудования в контейнере, габаритный чертёж и 3D-вид">${text}</button>`;
@@ -303,7 +181,7 @@ export class StationUi {
       return true;
     }
     if (action === 'stlRec') {
-      const rec = ((this.plan(item).air || {}).recs || [])[+button.dataset.k];
+      const rec = ((StationPlan.plan(item).air || {}).recs || [])[+button.dataset.k];
       if (rec) KitNeed.open(index, rec);
     }
     return false;
@@ -317,7 +195,7 @@ export class StationUi {
     const item = S.items[+input.dataset.i];
     if (!item) return;
     const key = input.dataset.stl;
-    item.stLayout = { ...this.opts(item), [key]: input.type === 'checkbox' ? input.checked : input.value };
+    item.stLayout = { ...StationPlan.opts(item), [key]: input.type === 'checkbox' ? input.checked : input.value };
     if (key === 'draw' && input.checked) item.stLayout.skip = [];
     if (key === 'air' || key === 'calc') {
       KpState.persist();

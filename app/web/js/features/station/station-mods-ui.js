@@ -1,19 +1,19 @@
 import { Toast } from '../../core/toast.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { StationAuto } from '../kit/station-auto.js';
-import { StationSize } from './station-size.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Modal } from '../../core/modal.js';
 import { KpState, S } from '../../core/state.js';
 import { Mm } from '../layout/mm.js';
 import { StationLayout } from '../layout/station-layout.js';
-import { StationUi } from './station-ui.js';
 import { esc } from '../../core/util.js';
 import { StationMods } from '../layout/station-mods.js';
 import { Kit } from '../kit/kit.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationSize } from '../kit/station-size.js';
+import { StationPlan } from '../kit/station-plan.js';
 /**
  * Станция из нескольких модулей: окно раскладки. Всегда кнопкой «Модули…» в «Компоновке» и всегда с вопросом «сделать
  * так?»; раскладка — на сетке (модули перетаскиваются; на телефоне — нажать модуль, затем клетку), варианты a × b — с
@@ -67,7 +67,7 @@ export class StationModsUi {
    * @returns {object}
    */
   static solve(item, cells) {
-    const input = StationUi.input(item);
+    const input = StationPlan.input(item);
     return StationLayout.solve({
       ...input,
       cont: { ...input.cont, mods: cells ? { cells } : null, size: '', sizeAuto: true },

@@ -1,15 +1,15 @@
 import { StationPaint } from '../layout/station-paint.js';
 import { KitView } from './kit-view.js';
 import { DimInput } from '../../core/dim-input.js';
-import { StationSize } from '../station/station-size.js';
 import { PaintView } from './paint-view.js';
-import { Spoiler } from '../station/spoiler.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { StationUi } from '../station/station-ui.js';
 import { DealTerms } from '../deal/deal-terms.js';
 import { esc } from '../../core/util.js';
 import { ContainerKind } from './container-kind.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { StationSize } from './station-size.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationPlan } from './station-plan.js';
 /**
  * Контейнер станции во вкладке «Состав станции»: тип, размер, утепление, климат, сборщик и закупка — одной строкой;
  * крыша, пол и окраска — под раскрытием; системы контейнера — кнопками. Контейнер не выбран — плитки типов.
@@ -72,7 +72,7 @@ export class KitContainer {
         .join('');
       return `<label class="f"><span>${label}</span><select data-kitct="${index}.${j}" data-fld="${attr}">${options}</select></label>`;
     };
-    const auto = StationUi.enabled(item) && StationGeo.FLEX[part.ctype];
+    const auto = StationPlan.enabled(item) && StationGeo.FLEX[part.ctype];
     const size = String(part.size || '').trim();
     return `<div class="kit-cont">
       <div class="kc-g">${select(
@@ -105,7 +105,7 @@ export class KitContainer {
           'Пол',
         )}
 </div>${PaintView.html(part, index, j)}</details>
-      ${auto && part.lenFix ? StationSize.note(part, StationUi.plan(item), index) : ''}
+      ${auto && part.lenFix ? StationSize.note(part, StationPlan.plan(item), index) : ''}
       ${auto && !part.sizeAuto && size ? `<p class="muted kit-szn">Размер задан вручную — <button type="button" class="lnk" data-a="stlAuto" data-i="${index}">подобрать по оборудованию</button></p>` : ''}
       <div class="kit-sys"><span class="muted">Системы:</span>${this._systems(item, index, part, j)}</div></div>`;
   }

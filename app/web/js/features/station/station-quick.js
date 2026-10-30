@@ -1,5 +1,3 @@
-import { Spoiler } from './spoiler.js';
-import { StationParams } from './station-params.js';
 import { StationImages } from './station-images.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { ItemEditor } from '../catalog/item-editor.js';
@@ -23,6 +21,9 @@ import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { StationSteps } from './station-steps.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Spoiler } from '../../core/spoiler.js';
+import { StationParams } from '../kit/station-params.js';
+import { StationPlan } from '../kit/station-plan.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна
@@ -155,7 +156,7 @@ export class StationQuick {
     const req = StationReq.of(item);
     if (kind === 'dgu') return this._select(index, ['mode', 'Назначение', StationReq.MODE, req.mode || 'prime']);
     if (kind !== 'comp') return '';
-    const quality = StationUi.opts(item).air;
+    const quality = StationPlan.opts(item).air;
     const options = AirChain.options(quality)
       .map(
         ([value, text]) => `<option value="${esc(value)}"${quality === value ? ' selected' : ''}>${esc(text)}</option>`,
@@ -225,7 +226,7 @@ export class StationQuick {
 
   /** компоновка, расчёт и чего нет в каталоге — для итога */
   static _state(item) {
-    const plan = StationUi.enabled(item) && Kit.container(item) ? StationUi.plan(item) : null;
+    const plan = StationPlan.enabled(item) && Kit.container(item) ? StationPlan.plan(item) : null;
     const calc = StationRules.ok() ? StationCalc.run(item) : null;
     return {
       plan,
@@ -513,7 +514,7 @@ export class StationQuick {
       ...req,
       kind: StationReq.kind(item),
       oilFree: StationReq.oilFree(item),
-      air: StationUi.opts(item).air,
+      air: StationPlan.opts(item).air,
       flow: num(req.flow),
       pressure: num(req.pressure),
       q: num(req.q),

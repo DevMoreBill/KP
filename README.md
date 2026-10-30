@@ -528,6 +528,21 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.250.0 — что сделано:** (30.10, циклы импортов интерфейса, этап 3 — состав ⇄ подбор станции, компоновка ⇄ 3D)
+- Состав станции (`features/kit`) больше не подключает подбор (`features/station`), компоновка (`features/layout`) — 3D-вид
+  (`features/view`): ESLint `no-restricted-imports` для `features/kit/**` и `features/layout/**`.
+- `features/kit/station-plan.js` — `StationPlan`: расчёт компоновки позиции КП из `StationUi` (`enabled`, `input`, `plan` с
+  кэшем, `keep`, `blocked`, `opts`, виды снаружи `VIEWS` — были `StationImages.VIEWS`); его берут состав, подбор, расчёты,
+  требования, ТЗ, мастер и форма. В `StationUi` осталось окно: значок, чипы, вкладка, надписи листов, действия.
+- В состав перенесены `station-params.js` (`StationParams`), `station-size.js` (`StationSize`), `station-design.js`
+  (`StationDesign`), содержание станции для КП `station-doc.js` (`StationDoc`; блок «Описание станции» — `StationDoc.BRIEF`);
+  описание с ИИ — `StationBrief` (`features/station/station-brief.js`); `Spoiler` — в `core/`.
+- Регистрацией: быстрый подбор под составом — `KitView.stationQuick` (подключает `station/index.js`), оттенок оборудования
+  по фото для компоновки — `StationEquip.photoTint` (подключает `view/index.js`).
+- Граф import: самый большой цикл 278 → 226 модулей (этапы 1–3: 342 → 226), взаимных пар 28 → 25 (39 → 25).
+- Проверено: ESLint (новые правила), слепок станций (компоновка, чертежи, 3D, расчёт — совпал), станции, ТЗ, проверки
+  в Node и кнопок; в проверках `StationUi.plan/input/enabled` → `StationPlan` (утверждения прежние); прогон.
+
 **3.249.0 — что сделано:** (30.10, циклы импортов интерфейса, этап 2 — кабинет ⇄ КП)
 - КП (`features/kp`) больше не подключает кабинет (`features/crm`) — ESLint `no-restricted-imports` для `features/kp/**`;
   кабинет подключает КП, как и раньше.

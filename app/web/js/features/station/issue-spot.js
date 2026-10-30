@@ -3,6 +3,7 @@ import { Modal } from '../../core/modal.js';
 import { StationDrawing } from '../draw/station-drawing.js';
 import { StationUi } from './station-ui.js';
 import { S } from '../../core/state.js';
+import { StationPlan } from '../kit/station-plan.js';
 /**
  * «На чертеже» у замечаний «Компоновки»: что показать на плане по тексту замечания — номера позиций («поз. 3», «поз. 2, 4
  * и 5», «поз. 2–4») и элементы по словам (ворота, двери, жалюзи, проход); окно — лист с планом, найденное — в красной рамке
@@ -85,7 +86,7 @@ export class IssueSpot {
   static open(index, number) {
     const item = S.items[index];
     if (!item) return;
-    const plan = StationUi.plan(item);
+    const plan = StationPlan.plan(item);
     const issue = (plan.issues || [])[number];
     if (!issue || !plan.geo || !plan.geo.ext) return;
     const marks = this.of(issue.text, plan);

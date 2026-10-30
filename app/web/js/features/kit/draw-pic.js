@@ -1,6 +1,5 @@
 import { Kit } from './kit.js';
 import { Toast } from '../../core/toast.js';
-import { StationUi } from '../station/station-ui.js';
 import { KpState, S } from '../../core/state.js';
 import { ImageFiles } from '../catalog/images.js';
 import { ItemSpec } from '../../core/item-spec.js';
@@ -9,6 +8,7 @@ import { StationEquip } from '../layout/station-equip.js';
 import { $, esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
+import { StationPlan } from './station-plan.js';
 
 /**
  * Свой рисунок модели для габаритного чертежа: вид спереди и сверху (PNG или JPEG) вписывается в габарит элемента вместо
@@ -109,7 +109,7 @@ export class DrawPic {
         const target = j >= 0 ? Kit.parts(item)[j] : item;
         if (!target) return;
         target.draw = { ...(target.draw || {}), [view]: image };
-        if (j >= 0) StationUi.cache.delete(item.id);
+        if (j >= 0) StationPlan.cache.delete(item.id);
         KpForm.render();
         KpState.persist();
       } catch {
@@ -131,7 +131,7 @@ export class DrawPic {
     if (!target || !target.draw) return;
     delete target.draw[view];
     if (!Object.keys(target.draw).length) delete target.draw;
-    if (j >= 0) StationUi.cache.delete(item.id);
+    if (j >= 0) StationPlan.cache.delete(item.id);
   }
 
   /**
