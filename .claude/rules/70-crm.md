@@ -1,6 +1,7 @@
 ---
 paths:
   - "app/crm.py"
+  - "app/web_crm.py"
   - "app/web/js/features/cabinet*.js"
   - "app/web/js/features/deal-card.js"
   - "app/web/js/features/kp/my-day.js"

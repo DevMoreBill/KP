@@ -482,7 +482,7 @@ jobs:
           }
           foreach ($case in @(
               @{ ver = '99.0.2'; file = 'kp_server.py'; from = 'STARTED = False'; to = "STARTED = False; raise RuntimeError('ci: broken update')"; why = 'ci: broken update' },
-              @{ ver = '99.0.3'; file = 'web_api.py'; from = "return self.send_json({'version': version.VERSION,"; to = "raise KeyError('ci'); return self.send_json({'version': version.VERSION,"; why = 'Самопроверка' })) {
+              @{ ver = '99.0.3'; file = 'web_settings.py'; from = "return self.send_json({'version': version.VERSION,"; to = "raise KeyError('ci'); return self.send_json({'version': version.VERSION,"; why = 'Самопроверка' })) {
             $phase = "возврат после сбоя $($case.ver)"
             Login
             $zip = Patch $case.ver $case.file $case.from $case.to

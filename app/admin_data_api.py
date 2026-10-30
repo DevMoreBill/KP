@@ -674,7 +674,7 @@ class AdminDataApi(AdminBase):
             res['fmt'] = kind
             if apply and imgs:
                 res['images']['written'] = bundle.write(z, imgs)
-                web = sys.modules.get('web_api')  # учёт одинаковых изображений ведёт веб-часть, если она загружена
+                web = sys.modules.get('web_base')  # учёт одинаковых изображений ведёт веб-часть, если она загружена
                 if web is not None:
                     web.IMAGES.index = None  # новые файлы — в учёт
             return res

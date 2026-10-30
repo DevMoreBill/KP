@@ -21,7 +21,7 @@ paths:
   - "app/settings_history.py"
   - "app/user_prefs.py"
   - "app/connections.py"
-  - "app/web_api.py"
+  - "app/web_*.py"
 ---
 # Требования владельца: клиенты, контрагенты, менеджеры, доступ, админка
 

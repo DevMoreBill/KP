@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Правила проекта, которые проверяются без запуска программы: код сервера компилируется, его модули попадают в EXE
 (kp.spec), версия одна в app/version.py и в интерфейсе, все файлы интерфейса подключены, в репозитории нет баз и ключей."""
+import ast
 import os
 import py_compile
 import re
@@ -39,6 +40,19 @@ class ProjectRules(unittest.TestCase):
         mods = sorted(f[:-3] for f in os.listdir(APP) if f.endswith('.py') and f != 'launcher.py')
         missing = [x for x in mods if x not in hidden]
         self.assertEqual(missing, [], 'добавьте в hiddenimports в kp.spec: %s' % ', '.join(missing))
+
+    def test_controllers_routed(self):
+        """Контроллер раздела (класс от Controller в app/web_*.py) — в web_api.CONTROLLERS ровно один раз: адреса
+        контроллера, которого нет в списке, сервер не найдёт (404)."""
+        declared = []
+        for name in sorted(os.listdir(APP)):
+            if name.startswith('web_') and name.endswith('.py'):
+                tree = ast.parse(self.read('app', name))
+                declared += [node.name for node in tree.body if isinstance(node, ast.ClassDef)
+                             and any(isinstance(base, ast.Name) and base.id == 'Controller' for base in node.bases)]
+        listed = re.search(r'CONTROLLERS = \((.*?)\)', self.read('app', 'web_api.py'), re.S).group(1)
+        self.assertEqual(sorted(re.findall(r'\w+', listed)), sorted(declared))
+        self.assertIn('KpController', declared)
 
     def test_server_modules_checked(self):
         """Новый модуль сервера — во всех трёх списках tests/code_style.json: Ruff и формат («python»), говорящие имена

@@ -901,11 +901,11 @@ class CatalogDesk:
                 return handler.send(405, 'text/plain; charset=utf-8', 'Нужен POST') or True
             if not power(handler, 'export', method):
                 return self._deny('выгружать каталог', 'export_catalog')
-            import web_api
+            import web_base
 
             payload = self._body()
             host = re.sub(r'[^A-Za-z0-9.:\-\[\]]', '', handler.headers.get('Host') or '')
-            exporter = CatalogExport(store, web_api.IMAGES, 'http://' + host if host else '')
+            exporter = CatalogExport(store, web_base.IMAGES, 'http://' + host if host else '')
             name, data, ctype, info = exporter.build(payload.get('ids') or [], payload, is_admin(handler))
             self._log('export_catalog', 'catalog', None, None, info)
             handler.send(200, ctype, data, handler.attachment(name))

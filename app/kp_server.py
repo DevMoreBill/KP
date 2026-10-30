@@ -41,7 +41,8 @@ from images import mark_organized, organize_existing
 from kp_templates import ensure_templates
 from server_log import ServerLog
 from version import VERSION as APP_VERSION
-from web_api import IMAGES, ROUTER, counterparties
+from web_api import ROUTER
+from web_base import IMAGES, counterparties
 
 HTTP_OK = 200
 
@@ -413,7 +414,7 @@ class Handler(BaseHTTPRequestHandler):
             ServerLog.failure(f'{self.command} {urllib.parse.urlsplit(self.path).path[:300]}', exc)
 
     def route(self) -> None:
-        """Маршруты API — контроллеры разделов в web_api.py (Router: первый подходящий по пути и методу)."""
+        """Маршруты API — контроллеры разделов web_*.py в порядке web_api.CONTROLLERS (первый подходящий по пути и методу)."""
         return ROUTER.dispatch(self)
 
 

@@ -73,6 +73,8 @@ class Changed:
                   'admin_system_api', 'admin_records_api', 'admin_data_api'),
         'feeds': ('feed_text', 'feed_pages', 'feed_prices', 'feed_cats'),
         'feed_files': ('feed_xlsx', 'feed_desc', 'feed_match', 'feed_price_file', 'feed_site', 'feed_stock'),
+        'web_api': ('web_base', 'cbr_cache', 'web_static', 'web_catalog', 'web_refs', 'web_crm', 'web_kp', 'web_tools',
+                    'web_settings'),
     }
     SLOW = {'test_fuzz': ('web_api', 'kp_server'), 'test_security': ('web_api', 'admin', 'kp_server', 'storage'),
             'test_update_fallback': ('updater', 'update_sign', 'kp_server', 'launcher')}

@@ -2,6 +2,7 @@
 paths:
   - "app/web/**"
   - "app/kp_templates.py"
+  - "app/web_kp.py"
   - "app/doc_text.py"
   - "app/pdf_convert.py"
   - "templates/**"

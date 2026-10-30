@@ -226,7 +226,8 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   прежнее, определения сверены); 3.234.0 — шаг 2: `AdminApi` по разделам (`admin_base`, `admin_feeds_api`,
   `admin_system_api`, `admin_records_api`, `admin_data_api`); 3.235.0 — шаг 3: `feeds.py` → `feed_text`, `feed_pages`,
   `feed_prices`, `feed_cats`; 3.236.0 — шаг 4: `feed_files.py` → `feed_xlsx`, `feed_desc`, `feed_match`, `feed_price_file`,
-  `feed_site`, `feed_stock`; дальше по плану — `web_api.py`, циклы
+  `feed_site`, `feed_stock`; 3.237.0 — шаг 5: `web_api.py` → `web_base`, `cbr_cache`, `web_static`, `web_catalog`,
+  `web_refs`, `web_crm`, `web_kp`, `web_tools`, `web_settings` (порядок маршрутов — `web_api.CONTROLLERS`); дальше по плану — циклы
   импортов интерфейса, общие помощники сервера, Router, CSS окна]
 - (30.10) На итоговый отчёт по аудиту (выпуски 3.229.0–3.234.0) владелец ответил «Да». Понято как согласие на
   предложенное в конце отчёта: продолжить п. 29 по порядку (`feeds.py`, `feed_files.py`, `web_api.py`, циклы импортов

@@ -314,7 +314,7 @@ class IdentTest(unittest.TestCase):
 class DocxNameTest(unittest.TestCase):
     def test_all_numbers_taken(self):
         """BE-021: занято «… (2)» … «(99)» — файл не перезаписывает чужой, а получает номер своего КП."""
-        from web_api import KpController
+        from web_kp import KpController
         free = KpController.free_name('4567892 КП.docx', 'Иванов', 'k77', lambda rel: '(k77)' not in rel)
         self.assertEqual(free, 'Иванов/4567892 КП (k77).docx')
         self.assertEqual(KpController.free_name('a.docx', '', 'k1', lambda rel: rel == 'a.docx'), 'a (2).docx')

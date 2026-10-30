@@ -128,7 +128,7 @@ class RightsCheck:
         if sess is None:
             return False
         body = self._moved(path, _body_obj(self.handler)) if AdminRights.needs_body(method, path) else None
-        # разбор — как у маршрутов (web_api.dispatch, AdminApi): повторённый параметр — последнее значение и тут
+        # разбор — как у маршрутов (web_base.Router.dispatch, AdminApi): повторённый параметр — последнее значение и тут
         query = dict(
             urllib.parse.parse_qsl(
                 urllib.parse.urlsplit(self.handler.path).query, keep_blank_values=True, encoding='utf-8'
@@ -884,10 +884,10 @@ class AdminApi(AdminFeedsApi, AdminSystemApi, AdminRecordsApi, AdminDataApi):
         if (
             sub == 'logos'
         ):  # логотипы производителей: закрепить за маркой (на всё её оборудование и в будущем) или снять
-            import web_api
+            import web_base
             from maker_logos import MakerLogos
 
-            logos = MakerLogos(store, web_api.IMAGES)
+            logos = MakerLogos(store, web_base.IMAGES)
             if method == 'POST':
                 payload = self.data()
                 res = (

@@ -7,7 +7,7 @@ import unittest
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app'))
-import web_api  # noqa: E402
+import cbr_cache  # noqa: E402
 
 
 class FakeStore:
@@ -25,13 +25,13 @@ class CbrCacheTest(unittest.TestCase):
     def setUp(self):
         self.store = FakeStore()
         self.calls = []
-        self._store = web_api.store
-        web_api.store = lambda: self.store
-        web_api.CbrCache._failed.clear()
+        self._store = cbr_cache.store
+        cbr_cache.store = lambda: self.store
+        cbr_cache.CbrCache._failed.clear()
 
     def tearDown(self):
-        web_api.store = self._store
-        web_api.CbrCache._failed.clear()
+        cbr_cache.store = self._store
+        cbr_cache.CbrCache._failed.clear()
 
     def fetch(self):
         self.calls.append(1)
@@ -41,24 +41,24 @@ class CbrCacheTest(unittest.TestCase):
         return (datetime.now() - timedelta(seconds=seconds_ago)).strftime('%Y-%m-%dT%H:%M:%S')
 
     def test_fresh_without_request(self):
-        first = web_api.CbrCache.get('cbr_last', self.fetch)
-        second = web_api.CbrCache.get('cbr_last', self.fetch)
+        first = cbr_cache.CbrCache.get('cbr_last', self.fetch)
+        second = cbr_cache.CbrCache.get('cbr_last', self.fetch)
         self.assertEqual(len(self.calls), 1)
         self.assertEqual((first['USD'], second['USD']), (81.5, 81.5))
 
     def test_old_is_refetched(self):
-        self.store.kv['cbr_last'] = {'USD': 80.0, 'fetched': self.stamp(web_api.CbrCache.FRESH + 60)}
-        self.assertEqual(web_api.CbrCache.get('cbr_last', self.fetch)['USD'], 81.5)
+        self.store.kv['cbr_last'] = {'USD': 80.0, 'fetched': self.stamp(cbr_cache.CbrCache.FRESH + 60)}
+        self.assertEqual(cbr_cache.CbrCache.get('cbr_last', self.fetch)['USD'], 81.5)
         self.assertEqual(len(self.calls), 1)
 
     def test_old_and_cbr_down_gives_saved(self):
-        self.store.kv['cbr_last'] = {'USD': 80.0, 'fetched': self.stamp(web_api.CbrCache.FRESH + 60)}
-        got = web_api.CbrCache.get('cbr_last', lambda: {'error': 'нет связи'})
+        self.store.kv['cbr_last'] = {'USD': 80.0, 'fetched': self.stamp(cbr_cache.CbrCache.FRESH + 60)}
+        got = cbr_cache.CbrCache.get('cbr_last', lambda: {'error': 'нет связи'})
         self.assertEqual((got['USD'], got['stale']), (80.0, True))
 
     def test_bad_stamp_is_refetched(self):
         self.store.kv['cbr_last'] = {'USD': 80.0, 'fetched': 'вчера'}
-        self.assertEqual(web_api.CbrCache.get('cbr_last', self.fetch)['USD'], 81.5)
+        self.assertEqual(cbr_cache.CbrCache.get('cbr_last', self.fetch)['USD'], 81.5)
 
 
 if __name__ == '__main__':
