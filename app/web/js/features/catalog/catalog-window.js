@@ -19,6 +19,7 @@ import { Api } from '../../core/net.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Modal } from '../../core/modal.js';
 import { $, esc } from '../../core/util.js';
+import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
 
 /**
@@ -556,7 +557,12 @@ export class CatalogWindow {
     AppTabs.show(dialog, 'cat');
     CatalogEvents.bind(this, dialog);
     this.panes.layout();
-    this.docs = Catalog.cache.length ? Catalog.cache : await CatalogStore.list().catch(() => []);
+    this.docs = Catalog.cache.length
+      ? Catalog.cache
+      : await CatalogStore.list().catch(error => {
+          Toast.show(`Каталог не загрузился: ${error.message || error}`);
+          return [];
+        });
     CatalogFilter.dropQueries();
     await Promise.all([this.loadPending(), this.loadSources()]);
     this.warm();

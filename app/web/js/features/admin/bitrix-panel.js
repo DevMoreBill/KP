@@ -112,6 +112,7 @@ export class BitrixPanel {
       main.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
       return;
     }
+    this._again(this.tab);
     this.render(note);
     if (this.NEED_C.includes(this.tab)) this.loadPortal();
   }
@@ -283,8 +284,15 @@ export class BitrixPanel {
 
   static _go(tab) {
     this.tab = tab;
+    this._again(tab);
     this.render();
     if (this.NEED_C.includes(this.tab)) this.loadPortal();
+  }
+
+  // вкладку открыли — то, что у неё не загрузилось, запросить снова (перерисовка сама не повторяет)
+  static _again(tab) {
+    const view = this._views()[tab];
+    if (view && view.again) view.again();
   }
 
   // меню по предметам: группа — заголовок, пункты — кнопки

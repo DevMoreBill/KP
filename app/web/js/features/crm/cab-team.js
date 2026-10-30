@@ -166,6 +166,7 @@ export class TeamTime {
   static _body() {
     const data = this.data;
     if (!data) return '<p class="muted">Считаю…</p>';
+    if (data.error) return `<p class="muted">Не загрузилось: ${esc(data.error)}</p>`;
     if (!data.deals) return '<p class="empty">Сделок за полгода нет — считать нечего.</p>';
     const top = Math.max(...data.stages.map(row => row.median), 1);
     const bars = data.stages
@@ -205,8 +206,8 @@ export class TeamTime {
     this.loading = true;
     try {
       this.data = await Api.request('/api/crm/time');
-    } catch {
-      this.data = this.data || { deals: 0, stages: [], firstKp: {}, lateTasks: {} };
+    } catch (error) {
+      this.data = this.data || { error: String(error.message || error) };
     } finally {
       this.loading = false;
       this.loadedAt = Date.now();

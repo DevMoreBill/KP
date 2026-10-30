@@ -41,7 +41,13 @@ export class SettingsHistoryPanel {
 
   /** Загрузить историю и показать. */
   async open() {
-    const reply = await AdminApi.get('history?limit=500');
+    let reply = null;
+    try {
+      reply = await AdminApi.get('history?limit=500');
+    } catch (error) {
+      this.main.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
+      return;
+    }
     this.items = reply.items || [];
     this.render();
     this.bind();
@@ -91,7 +97,13 @@ export class SettingsHistoryPanel {
    * @param {string} id
    */
   async details(id) {
-    const entry = await AdminApi.get(`history/${id}`);
+    let entry = null;
+    try {
+      entry = await AdminApi.get(`history/${id}`);
+    } catch (error) {
+      Toast.show(error.message || String(error));
+      return;
+    }
     const choice = await Modal.ask(this._details(entry));
     if (choice === 'go') {
       StNav.select(entry.tab);

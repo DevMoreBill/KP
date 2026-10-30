@@ -15,6 +15,8 @@ import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Mobile } from '../../ui/mobile.js';
 import { esc, today } from '../../core/util.js';
+import { DefRegistry } from '../../core/defaults.js';
+import { KpDate } from '../kp/kp-date.js';
 
 /**
  * «Сделки»: доска по стадиям (перетаскивание мышью) или список (на телефоне — по умолчанию, с отбором стадии чипами).
@@ -37,7 +39,9 @@ export class CabDeals {
     month: ['Ожидаются в этом месяце', deal => String(deal.expected || '').slice(0, 7) <= today().slice(0, 7)],
     new: ['Новые из Битрикс24', deal => deal.bxNew],
     exec: ['Исполнение просрочено', deal => deal.execSum && deal.execSum.overdue],
+    idle: ['Без движения', deal => CabDeals.idle(deal)],
   };
+  static IDLE_DAYS = 7;
   static LIMIT = 60;
   static PERCENT = 100;
   static LIST_LIMIT = 100;
@@ -354,15 +358,15 @@ export class CabDeals {
     const stages = CrmData.stages().filter(stage => this.closed || !stage.closed);
     const picked = stages.some(stage => stage.key === this.stage) ? this.stage : '';
     const rows = this._sorted(deals.filter(deal => !picked || deal.stage === picked));
-    const shown = this.more.has('list') ? rows : rows.slice(0, this.LIST_LIMIT);
-    const rest = rows.length - shown.length;
+    const limit = this.more.has('list') ? rows.length : this.LIST_LIMIT;
+    const rest = Math.max(0, rows.length - limit);
     const more = rest
       ? `<button type="button" class="btn ghost kb-more" data-kbmore="list">Показать ещё ${rest}</button>`
       : '';
-    if (!shown.length)
+    if (!rows.length)
       return `${this._stageChips(stages, deals, picked)}<p class="empty">${Cabinet.query || this.filter ? 'Не найдено.' : 'Сделок нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button> <button class="btn sm" type="button" data-cq="deal">🤝 Сделка</button>'}</p>`;
     const row = { expected: deal => this._expected(deal), next: deal => `${this._next(deal)}${this.exec(deal)}` };
-    return `${this._stageChips(stages, deals, picked)}${CabList.html(shown, { more, row })}`;
+    return `${this._stageChips(stages, deals, picked)}${CabList.html(rows, { more, row, limit })}`;
   }
 
   static _stageChips(stages, deals, picked) {
@@ -433,6 +437,23 @@ export class CabDeals {
   static _setView(view) {
     this.view = view;
     this._keep(this.VIEW_KEY, view);
+  }
+
+  /**
+   * Дней без движения (crm.autoIdleDays).
+   * @returns {number}
+   */
+  static idleDays() {
+    return Math.round(DefRegistry.num('crm.autoIdleDays', this.IDLE_DAYS));
+  }
+
+  /**
+   * Сделка без движения: дело есть, но сама сделка не менялась дольше idleDays (дело могли переносить, а сделка стоит).
+   * @param {object} deal
+   * @returns {boolean}
+   */
+  static idle(deal) {
+    return !!deal.next && String(deal.updated || '').slice(0, 10) < KpDate.addDays(today(), -this.idleDays());
   }
 
   static _setFilter(filter) {

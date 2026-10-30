@@ -58,13 +58,15 @@ export class CabList {
   /**
    * Таблица.
    * @param {object[]} rows сделки (уже отобранные)
-   * @param {{more: string, row: Function}} parts more — кнопка «Показать ещё», row — ячейки «Ожидается» и «Следующий шаг»
+   * @param {{more: string, row: Function, limit?: number}} parts more — кнопка «Показать ещё», row — ячейки «Ожидается» и
+   *   «Следующий шаг», limit — сколько строк показать (сортировка и «Всего» — по всем)
    * @returns {string}
    */
   static html(rows, parts) {
     const keys = this.shown();
     const grid = `grid-template-columns:${keys.map(key => this.COLS[key].width).join(' ')}`;
     const body = this.sorted(rows)
+      .slice(0, parts.limit ?? rows.length)
       .map(deal => this._row(deal, keys, grid, parts.row))
       .join('');
     const total = rows.reduce((sum, deal) => sum + (deal.sum || 0), 0);

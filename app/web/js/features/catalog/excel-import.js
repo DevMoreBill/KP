@@ -337,23 +337,28 @@ export class XlsImport {
       return;
     }
     let count = 0;
+    let stopped = '';
     const skipped = [];
     const seen = new Set();
-    for (const row of rows.slice(1)) {
-      const values = this._values(map, row);
-      if (!values.name && !values.model) {
-        skipped.push(row.join(' ').slice(0, this.SKIP_TEXT));
-        continue;
+    try {
+      for (const row of rows.slice(1)) {
+        const values = this._values(map, row);
+        if (!values.name && !values.model) {
+          skipped.push(row.join(' ').slice(0, this.SKIP_TEXT));
+          continue;
+        }
+        const card = this._card(type, values, seen);
+        await this._keep(card);
+        await CatalogStore.putImport(card);
+        count++;
       }
-      const card = this._card(type, values, seen);
-      await this._keep(card);
-      await CatalogStore.putImport(card);
-      count++;
+    } catch (error) {
+      stopped = `. Остановлено: ${error.message || error}`;
     }
     await Catalog.refresh();
     dialog.close();
     Toast.show(
-      `Импортировано позиций: ${count}${skipped.length ? `, пропущено строк без наименования: ${skipped.length}` : ''}`,
+      `Импортировано позиций: ${count}${skipped.length ? `, пропущено строк без наименования: ${skipped.length}` : ''}${stopped}`,
     );
     CatalogWindow.open({ cat: type.id });
   }

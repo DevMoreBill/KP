@@ -155,7 +155,8 @@ export class DealNew {
       const models = DealIntakeView.models(form);
       modal.close();
       if (document.getElementById('cabWin')?.open) await Cabinet.reload();
-      if (models.length) DealKp.newKp(deal, models);
+      if (models.length)
+        DealKp.newKp(deal, models).catch(error => Toast.show(`КП из заявки не создано: ${error.message || error}`));
       else DealCard.open(deal.id);
     } catch (error) {
       Toast.show(`Сделка не создана: ${error.message}`);

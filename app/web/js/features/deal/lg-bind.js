@@ -6,6 +6,7 @@ import { LgCargoIn } from './lg-cargo-in.js';
 import { LgMoney } from './lg-money.js';
 import { LgOffers } from './lg-offers.js';
 import { LgState } from './lg-state.js';
+import { Toast } from '../../core/toast.js';
 
 /** Ввод на вкладке «Логистика»: адреса и подсказки, расстояние, груз, разгрузка, выбор перевозчика, своя сумма. */
 export class LgBind {
@@ -119,7 +120,10 @@ export class LgBind {
     if (action === 'quote') {
       delete LgState.tried[LgOffers.quoteKey(LgState.res[sup.id] || { vehicles: [] })];
       LgOffers.quote(k);
-    } else if (action === 'savecargo') DealLogistics.saveCargo(sup).then(() => DealWin.render());
+    } else if (action === 'savecargo')
+      DealLogistics.saveCargo(sup)
+        .then(() => DealWin.render())
+        .catch(error => Toast.show(`Не сохранено: ${error.message || error}`));
     else if (action === 'mode') LgBind._mode(sup, { button, dlg, done });
     else if (action === 'tokp') {
       DealLogistics.toKp(sup);

@@ -32,6 +32,10 @@ export class FreightSettings {
    */
   static async open(box) {
     await DealLogistics.reload();
+    if (LgState.failed) {
+      box.innerHTML = `<p class="msg err">Тарифы доставки не загрузились: ${esc(LgState.failed)}. Откройте раздел ещё раз — до загрузки правка недоступна, чтобы не заменить сохранённые тарифы встроенными.</p>`;
+      return;
+    }
     let status = null;
     try {
       status = await Api.request('/api/logistics/status');

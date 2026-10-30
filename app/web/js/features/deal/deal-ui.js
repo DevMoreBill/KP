@@ -4,7 +4,7 @@
  */
 export class DealUi {
   static cal = {};
-  static calLoading = {};
+  static calAsked = {};
   static key = null;
   static keyErr = '';
   static sups = null;

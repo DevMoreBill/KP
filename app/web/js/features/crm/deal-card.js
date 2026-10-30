@@ -739,7 +739,10 @@ export class DealCard {
       ['[data-dks]', el => this._stage(el.dataset.dks)],
       ['[data-dknow]', el => this._now(el.dataset.dknow)],
       ['[data-dko]', el => DealKp.openKp(el.dataset.dko)],
-      ['[data-dknew]', () => DealKp.newKp(this.deal)],
+      [
+        '[data-dknew]',
+        () => DealKp.newKp(this.deal).catch(error => Toast.show(`КП не создано: ${error.message || error}`)),
+      ],
       ['[data-dkprint]', () => DealPrint.open(this.deal, item => this.hist(item))],
       ['[data-dkkeys]', () => DealKeys.help()],
       ['[data-dkdel]', () => DealRemove.ask(this.deal, () => this.close())],

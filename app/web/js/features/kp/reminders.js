@@ -12,6 +12,7 @@ import { KpTabs } from './kp-tabs.js';
 
 /** Напоминания: колокольчик в шапке (перезвонить, срок действия КП, отправлено без ответа). */
 export class Reminders {
+  static JOURNAL_ROWS = 50; // строк поиска по номеру КП: номер бывает частью других (2026-100 в 2026-1000…), нужная — по id
   static items = [];
   static ICONS = { follow: '⏰', expire: '⌛' };
   static MINUTE = 60000;
@@ -122,9 +123,9 @@ export class Reminders {
       return;
     }
     if (kind === 'rs') {
-      const found = (await Api.request(`/api/history?limit=1&q=${encodeURIComponent(item.number)}`)).items?.find(
-        row => row.id === item.id,
-      );
+      const found = (
+        await Api.request(`/api/history?limit=${this.JOURNAL_ROWS}&q=${encodeURIComponent(item.number)}`)
+      ).items?.find(row => row.id === item.id);
       modal.close();
       KpTrack.open(found || { id: item.id, number: item.number, client: item.client });
       return;

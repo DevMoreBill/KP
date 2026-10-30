@@ -47,8 +47,10 @@ export class DealLogistics {
   static async reload() {
     try {
       LgState.saved = await Api.request('/api/logistics');
-    } catch {
+      LgState.failed = '';
+    } catch (error) {
       LgState.saved = {};
+      LgState.failed = String(error.message || error);
     }
     LgState.tar = Freight.tariffs(LgState.saved);
     return LgState.tar;

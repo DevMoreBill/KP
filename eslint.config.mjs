@@ -137,6 +137,7 @@ export default [{
     'no-dupe-keys': 'error',
     'no-unreachable': 'error',
     'no-redeclare': 'error',
+    'no-dupe-class-members': 'error',
     // аудит 30.10: исполнение строки как кода и нестрогое сравнение — нигде (null — можно: «== null» — нет значения)
     'no-eval': 'error',
     'no-implied-eval': 'error',

@@ -51,7 +51,12 @@ export class FeedPurgeUi {
     const state = { feedId, main, dialog, current: first };
     this._info(state);
     dialog.$('[data-fp=cat]').onchange = async event => {
-      state.current = await AdminApi.post(`feeds/${feedId}/purge`, { preview: true, cat: event.target.value });
+      try {
+        state.current = await AdminApi.post(`feeds/${feedId}/purge`, { preview: true, cat: event.target.value });
+      } catch (error) {
+        Toast.show(error.message || String(error));
+        return;
+      }
       this._info(state);
     };
     dialog.d.addEventListener('click', event => this._click(state, event));
@@ -208,7 +213,7 @@ export class FeedRulesUi {
   static _planRow(row) {
     const price =
       row.price != null ? `${Fmt.num(Math.round(row.price))} ${esc(Currency.short(row.cur || 'RUB'))}` : '—';
-    return `<tr class="${row.status}"><td class="c">${this._pickable(row) ? `<input type="checkbox" data-rpo="${esc(row.oid)}" checked aria-label="Загрузить">` : ''}</td><td>${esc(row.name)}${row.feedCat ? `<br><small class="muted">${esc(row.feedCat)}</small>` : ''}</td><td>${esc(row.maker || '')}</td><td>${esc(row.cat || '')}</td>
+    return `<tr class="${row.status}"><td class="c">${this._pickable(row) ? `<input type="checkbox" data-rpo="${esc(row.oid)}"${FeedState.roff.has(row.oid) ? '' : ' checked'} aria-label="Загрузить">` : ''}</td><td>${esc(row.name)}${row.feedCat ? `<br><small class="muted">${esc(row.feedCat)}</small>` : ''}</td><td>${esc(row.maker || '')}</td><td>${esc(row.cat || '')}</td>
           <td class="num">${price}</td><td><span class="fr-st ${row.status}">${this.STATUS[row.status]}</span>${row.changes && row.changes.length ? `<br><small class="muted">${esc(row.changes.join(', '))}</small>` : ''}${row.why ? `<br><small class="muted">${esc(row.why)}</small>` : ''}</td></tr>`;
   }
 
@@ -245,12 +250,20 @@ export class FeedRulesUi {
   static only(main) {
     const plan = FeedState.rplan;
     if (!plan) return null;
-    const off = new Set(
-      [...main.querySelectorAll('[data-rpo]')].filter(input => !input.checked).map(input => input.dataset.rpo),
-    );
+    main.querySelectorAll('[data-rpo]').forEach(input => this.pick(input));
+    const off = FeedState.roff;
     const all = plan.rows.filter(row => this._pickable(row)).map(row => row.oid);
     if (!off.size && !plan.cut) return null;
     return all.filter(oid => !off.has(oid));
+  }
+
+  /**
+   * Запомнить галочку строки плана: отбор по виду строки перерисовывает таблицу, снятое должно остаться снятым.
+   * @param {HTMLInputElement} input
+   */
+  static pick(input) {
+    if (input.checked) FeedState.roff.delete(input.dataset.rpo);
+    else FeedState.roff.add(input.dataset.rpo);
   }
 
   /**
@@ -261,8 +274,7 @@ export class FeedRulesUi {
     const plan = FeedState.rplan;
     const button = main.querySelector('#frGo');
     if (!plan || !button) return;
-    const off = [...main.querySelectorAll('[data-rpo]')].filter(input => !input.checked).length;
-    const count = plan.counts.add + plan.counts.update - off;
+    const count = plan.counts.add + plan.counts.update - FeedState.roff.size;
     button.textContent = `Загрузить отмеченное (${Fmt.num(count)})`;
     button.disabled = !count;
   }

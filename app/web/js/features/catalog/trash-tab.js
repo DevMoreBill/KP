@@ -82,11 +82,13 @@ export class TrashTab {
     state.q = field.value;
     if (only) this.state.q = field.value;
     delay.run(() =>
-      this.render(box, only).then(() => {
-        const input = box.querySelector('[data-trq]');
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      }),
+      this.render(box, only)
+        .then(() => {
+          const input = box.querySelector('[data-trq]');
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        })
+        .catch(error => Toast.show(error.message || String(error))),
     );
   }
 
@@ -136,17 +138,13 @@ export class TrashTab {
 
   static async _click(event, ctx) {
     const tab = event.target.closest('[data-trt]');
-    if (tab) {
-      ctx.state.type = tab.dataset.trt;
-      await this.render(ctx.box, ctx.only);
-      return;
-    }
     try {
-      if (!(await this._act(event, ctx))) return;
+      if (tab) ctx.state.type = tab.dataset.trt;
+      else if (!(await this._act(event, ctx))) return;
     } catch (error) {
       Toast.show(error.message || String(error));
     }
-    this.render(ctx.box, ctx.only);
+    this.render(ctx.box, ctx.only).catch(error => Toast.show(error.message || String(error)));
   }
 }
 
@@ -182,7 +180,10 @@ export class GoodsTab {
         <button class="btn" type="button" data-gd="xls">Импорт из Excel…</button><button class="btn" type="button" data-gd="imp">Загрузить файл каталога (.json)…</button><button class="btn" type="button" data-gd="exp">Файл каталога для загрузки (.json)</button></div>
         <p class="muted">«Открыть товары» — окно каталога: поиск, фильтры, сортировка, карточка с фото, «Редактировать». Отметьте позиции галочками — внизу появятся «В корзину», «Выгрузить…» (Excel, JSON, XML, YML — по любому фильтру) и «Перенести в категорию…».</p></div>
       <div class="st-card"><p class="sub">Корзина товаров</p><div id="gdBin"><p class="muted">Загружаю…</p></div></div>`;
-    TrashTab.render(box.querySelector('#gdBin'), 'catalog').catch(() => {});
+    const binBox = box.querySelector('#gdBin');
+    TrashTab.render(binBox, 'catalog').catch(error => {
+      binBox.innerHTML = `<p class="msg err">Корзина не загрузилась: ${esc(error.message || error)}</p>`;
+    });
     box.onclick = event => this._click(event);
     if (auto) this.open();
   }

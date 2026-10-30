@@ -42,7 +42,7 @@ export class CrmFmt {
    * @returns {number}
    */
   static dayNo(iso) {
-    return Math.round(Date.parse(`${String(iso).slice(0, 10)}T12:00:00Z`) / this.DAY_MS);
+    return Math.floor(Date.parse(`${String(iso).slice(0, 10)}T00:00:00Z`) / this.DAY_MS);
   }
 
   /**

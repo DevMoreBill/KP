@@ -15,7 +15,7 @@ export class LayoutEditor {
     this.form = new LayoutForm(this);
   }
 
-  static _label(k) {
+  static _keyLabel(k) {
     return LayoutForm.label(k);
   }
 
@@ -202,7 +202,7 @@ export class LayoutEditor {
     for (const row of work.m.pair.rows)
       if (row.min > Math.max(row.base, 0) && !row.k)
         throw new Error(
-          `Пара ${LayoutEditor._label(row.a)} ↔ ${LayoutEditor._label(row.b)}: «плотно» больше «рекомендуется»`,
+          `Пара ${LayoutEditor._keyLabel(row.a)} ↔ ${LayoutEditor._keyLabel(row.b)}: «плотно» больше «рекомендуется»`,
         );
     return RuleEdit.version(this.panel.data, draft => {
       RuleEdit.set(draft, 'layout.matrix', work.m, {

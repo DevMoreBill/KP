@@ -199,7 +199,12 @@ export class MigrationsCard {
       ))
     )
       return;
-    await AdminApi.post(`migrations/${button.dataset.mdown}/down`);
+    try {
+      await AdminApi.post(`migrations/${button.dataset.mdown}/down`);
+    } catch (error) {
+      Toast.show(`Миграция не откачена: ${error.message || error}`);
+      return;
+    }
     Toast.show('Миграция откачена');
     this.render(box);
   }

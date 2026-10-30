@@ -311,7 +311,7 @@ export class ItemActions {
     docsFolder: () =>
       Api.request(`/api/folder?dir=${encodeURIComponent(KpFile.folder())}`, { method: 'POST' })
         .then(reply => RemoteResult.show(reply))
-        .catch(() => {}),
+        .catch(error => Toast.show(`Папка не открыта: ${error.message || error}`)),
     mailKp: ({ button }) => MailDlg.open(button.dataset.id, S.number),
     openDoc: ({ button }) => ItemActions._fileAction(button.dataset.id, 'open'),
     showDoc: ({ button }) => ItemActions._fileAction(button.dataset.id, 'folder'),
@@ -557,7 +557,9 @@ export class ItemActions {
     }
     const button = event.target.closest('[data-a]');
     const handler = button && Object.hasOwn(this.ACTIONS, button.dataset.a) && this.ACTIONS[button.dataset.a];
-    if (!handler || handler(this._context(button, event)) !== RENDER) return;
+    const result = handler && handler(this._context(button, event));
+    if (result instanceof Promise) result.catch(error => Toast.show(error.message || String(error)));
+    if (result !== RENDER) return;
     FormView.render();
     KpState.persist();
   }

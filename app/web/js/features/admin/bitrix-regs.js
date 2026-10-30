@@ -8,6 +8,12 @@ import { esc } from '../../core/util.js';
  */
 export class BitrixRegs {
   static view = null;
+  static asked = false; // запрос отправлен (идёт или не удался) — перерисовка с ошибкой не повторяет его
+
+  /** Вкладку открыли снова — повторить загрузку, если она не удалась. */
+  static again() {
+    if (!this.view) this.asked = false;
+  }
 
   /**
    * Вкладка.
@@ -41,13 +47,14 @@ export class BitrixRegs {
   static bind() {
     if (!BitrixPanel.state.hasUrl) return;
     if (!this.view) {
-      this._load();
+      if (!this.asked) this._load();
       return;
     }
     BitrixPanel.one('#bxRegsSave').onclick = () => this._save();
   }
 
   static async _load() {
+    this.asked = true;
     try {
       this.view = await AdminApi.get('bitrix/regs');
       BitrixPanel.render();

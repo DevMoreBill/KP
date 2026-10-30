@@ -21,6 +21,7 @@ import { AiDirect } from './features/catalog/ai-chat.js';
 import { AuthMenu, AuthScreen } from './features/kp/auth-screen.js';
 import { Auth } from './features/kp/auth.js';
 import { $, esc } from './core/util.js';
+import { Toast } from './core/toast.js';
 import { MyPrefs } from './features/kp/my-prefs.js';
 import { Theme } from './core/theme.js';
 import { AppSections } from './ui/app-sections.js';
@@ -138,6 +139,6 @@ export class App {
 }
 
 KpTabs.init();
-App.start();
+App.start().catch(error => Toast.show(`Программа запустилась не полностью: ${error.message || error}`));
 FormView.render();
 Theme.listen();

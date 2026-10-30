@@ -21,6 +21,7 @@ import { Api } from '../../core/net.js';
 import { $, esc } from '../../core/util.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
+import { CopyText } from '../../core/files.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -487,12 +488,7 @@ export class TzImport {
     const text = [...(this.cur.r.questions || []), ...(this.cur.r.later || [])]
       .map((question, k) => `${k + 1}. ${question}`)
       .join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      Toast.show('Вопросы скопированы');
-    } catch {
-      Toast.show('Не удалось скопировать — выделите текст вручную');
-    }
+    Toast.show((await CopyText.copy(text)) ? 'Вопросы скопированы' : 'Не удалось скопировать — выделите текст вручную');
   }
 
   static async _ok(ok) {

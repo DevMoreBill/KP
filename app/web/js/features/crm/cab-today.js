@@ -29,7 +29,6 @@ export class CabToday {
   static DRAFTS = 4;
   static FLASH_MS = 1600;
   static DAY_MS = 864e5;
-  static IDLE_DAYS = 7;
 
   /**
    * Новые сделки из Битрикс24, которые ответственный ещё не открывал.
@@ -243,19 +242,12 @@ export class CabToday {
         'late',
         {},
       ],
-      [`Без движения больше ${this._idleDays()} дн. — позвоните или отложите`, this._idle(open), 'idle', {}],
+      [`Без движения больше ${CabDeals.idleDays()} дн. — позвоните или отложите`, this._idle(open), 'idle', {}],
     ];
   }
 
-  static _idleDays() {
-    return Math.round(DefRegistry.num('crm.autoIdleDays', this.IDLE_DAYS));
-  }
-
-  // сделка не менялась N дней (с делом — тоже: дело могли переносить, а сделка стоит)
   static _idle(open) {
-    if (!FEAT.on('idleDeals')) return [];
-    const edge = KpDate.addDays(today(), -this._idleDays());
-    return open.filter(deal => deal.next && String(deal.updated || '').slice(0, 10) < edge);
+    return FEAT.on('idleDeals') ? open.filter(deal => CabDeals.idle(deal)) : [];
   }
 
   static _todo() {

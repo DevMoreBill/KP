@@ -9,6 +9,12 @@ import { esc } from '../../core/util.js';
  */
 export class BitrixEcon {
   static view = null;
+  static asked = false; // запрос отправлен (идёт или не удался) — перерисовка с ошибкой не повторяет его
+
+  /** Вкладку открыли снова — повторить загрузку, если она не удалась. */
+  static again() {
+    if (!this.view) this.asked = false;
+  }
 
   /**
    * Вкладка.
@@ -64,7 +70,7 @@ export class BitrixEcon {
   static bind() {
     if (!FEAT.on('bxEcon') || !BitrixPanel.state.hasUrl) return;
     if (!this.view) {
-      this._load();
+      if (!this.asked) this._load();
       return;
     }
     BitrixPanel.one('#bxEconSave').onclick = () => this._save();
@@ -73,6 +79,7 @@ export class BitrixEcon {
   }
 
   static async _load() {
+    this.asked = true;
     try {
       this.view = await AdminApi.get('bitrix/econ');
       BitrixPanel.render();

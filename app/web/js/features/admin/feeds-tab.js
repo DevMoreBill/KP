@@ -1,4 +1,4 @@
-import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
+import { AdminApi, AdminDialog } from './admin-core.js';
 import { FeedDiscounts } from './feed-disc.js';
 import { FeedForm, FeedPanel } from './feed-panel.js';
 import { FeedPurgeUi, FeedRulesUi } from './feed-rules.js';
@@ -124,12 +124,15 @@ export class FeedsTab {
     if (data.rpall != null) {
       main.querySelectorAll('[data-rpo]').forEach(input => {
         input.checked = target.checked;
+        FeedRulesUi.pick(input);
       });
       FeedRulesUi.count(main);
       return;
     }
-    if (data.rpo != null) FeedRulesUi.count(main);
-    else if (data.fdc != null) this._discCats(main, target);
+    if (data.rpo != null) {
+      FeedRulesUi.pick(target);
+      FeedRulesUi.count(main);
+    } else if (data.fdc != null) this._discCats(main, target);
     else if (data.fdcat != null) {
       FeedState.cats[data.fdcat] = target.value;
       FeedPreview.count(main);
@@ -252,7 +255,7 @@ export class FeedsTab {
   }
 
   static async _tick(feedId, main) {
-    if (AdminState.tab !== 'feeds' || !$('#fdPanel')) return;
+    if (!$('#fdPanel')) return;
     let job = null;
     try {
       job = (await AdminApi.get(`feeds/${feedId}/status`)).job;
@@ -412,6 +415,7 @@ export class FeedsTab {
     });
     FeedState.rplan = { ...plan, id: FeedState.sel };
     FeedState.rpf = '';
+    FeedState.roff = new Set();
     if (box) await AdminApi.post('feeds', { ...feed, ...rules, cats: this._cats(feed) }); // план — по сохранённым правилам
     await this.render(main);
     main.querySelector('#frPlan')?.scrollIntoView({ block: 'nearest' });

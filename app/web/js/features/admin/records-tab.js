@@ -209,7 +209,13 @@ export class RecordsTab {
     const label = (this.TYPES.find(row => row[0] === del.type) || [])[1];
     const text = `Записи будут в корзине ${this._trashDays()} дн. (их можно восстановить), затем удалятся окончательно.`;
     if (!(await AdminDialog.confirm(`Удалить? ${label}: ${count}`, text, 'Удалить'))) return;
-    const reply = await AdminApi.post('delete', { type: del.type, ids: [...del.sel] });
+    let reply = null;
+    try {
+      reply = await AdminApi.post('delete', { type: del.type, ids: [...del.sel] });
+    } catch (error) {
+      Toast.show(`Не удалено: ${error.message || error}`);
+      return;
+    }
     del.sel.clear();
     Toast.show(`Удалено: ${reply.deleted}`);
     if (del.type === 'catalog') Catalog.refresh();

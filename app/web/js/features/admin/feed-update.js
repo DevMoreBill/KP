@@ -301,7 +301,12 @@ export class FeedUpdateUi {
 
   static async _cur(state, select) {
     const slot = select.dataset.fucur;
-    await AdminApi.post(`feeds/${state.feed.id}/update/cur`, { token: state.token, slot, cur: select.value });
+    try {
+      await AdminApi.post(`feeds/${state.feed.id}/update/cur`, { token: state.token, slot, cur: select.value });
+    } catch (error) {
+      Toast.show(`Валюта не сохранена: ${error.message || error}`);
+      return;
+    }
     state.files.forEach(rec => {
       if (rec.slot === slot) rec.meta.curSet = select.value;
     });
@@ -348,6 +353,9 @@ export class FeedUpdateUi {
   static _cancel(state) {
     const token = state.token;
     state.token = null;
-    if (token) AdminApi.post(`feeds/${state.feed.id}/update/cancel`, { token }).catch(() => {});
+    if (!token) return;
+    AdminApi.post(`feeds/${state.feed.id}/update/cancel`, { token }).catch(error =>
+      Toast.show(`Обновление не отменено: ${error.message || error}`),
+    );
   }
 }

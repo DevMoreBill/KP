@@ -69,6 +69,13 @@ export class BitrixManagers {
 
 /** «Воронки и этапы»: основная воронка, дополнительные воронки, соответствие этапов у каждой. */
 export class BitrixStages {
+  static asked = new Set(); // воронки, чьи стадии запрошены (идёт или не удалось), — перерисовка не повторяет запрос
+
+  /** Вкладку открыли снова — запросить стадии, которые не загрузились. */
+  static again() {
+    this.asked.clear();
+  }
+
   static _stageName(stage) {
     if (stage.sem === 'S') return `${stage.name} (успех)`;
     return stage.sem === 'F' ? `${stage.name} (провал)` : stage.name;
@@ -130,6 +137,7 @@ export class BitrixStages {
 
   static async _load(cat) {
     const panel = BitrixPanel;
+    this.asked.add(cat);
     try {
       const reply = await AdminApi.post('bitrix/stages', { category: cat });
       panel.portal.stagesBy = { ...(panel.portal.stagesBy || {}), [cat]: reply.stages };
@@ -155,7 +163,7 @@ export class BitrixStages {
   static bind() {
     const panel = BitrixPanel;
     const need = [...new Set(panel.all('[data-bxcat]').map(block => block.dataset.bxcat))].filter(
-      cat => !(panel.portal.stagesBy || {})[cat],
+      cat => !(panel.portal.stagesBy || {})[cat] && !this.asked.has(cat),
     );
     need.forEach(cat => this._load(cat));
     panel.one('#bxCat').onchange = event =>

@@ -371,10 +371,20 @@ export class CatalogActions {
    * @param {File} file
    */
   static async importFile(win, file) {
+    let data = null;
+    let items = null;
     try {
-      const data = JSON.parse(await file.text());
-      const items = Array.isArray(data) ? data : data.items;
-      if (!Array.isArray(items)) throw new Error('не каталог');
+      data = JSON.parse(await file.text());
+      items = Array.isArray(data) ? data : data.items;
+    } catch {
+      items = null;
+    }
+    if (!Array.isArray(items)) {
+      win.busy = '';
+      win.say('Это не файл каталога КП');
+      return;
+    }
+    try {
       const types = await this._types(win, data.types);
       const { count, pend } = await this._items(win, items);
       const remove = Array.isArray(data.remove) ? data.remove.length : 0;
@@ -382,9 +392,10 @@ export class CatalogActions {
       await win.reload();
       win.note = `Загружено позиций: ${count}${types ? `, новых категорий: ${types}` : ''}${pend ? `, на модерации: ${pend}` : ''}${remove ? `; дубликаты к удалению (${remove}) удаляет администратор в «Настройках»` : ''}`;
       win.redraw();
-    } catch {
+    } catch (error) {
       win.busy = '';
-      win.say('Это не файл каталога КП');
+      await win.reload();
+      win.say(`Загрузка остановлена: ${error.message || error}`);
     }
   }
 
@@ -393,7 +404,13 @@ export class CatalogActions {
    * @param {object} win
    */
   static async exportFile(win) {
-    const all = (await CatalogStore.full()).map(card => CatalogCache.clean(card));
+    let all = null;
+    try {
+      all = (await CatalogStore.full()).map(card => CatalogCache.clean(card));
+    } catch (error) {
+      win.say(`Файл не создан: ${error.message || error}`);
+      return;
+    }
     if (!all.length) {
       win.say('Каталог пуст');
       return;

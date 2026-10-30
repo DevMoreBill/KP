@@ -64,7 +64,9 @@ export class CallResult {
       if (!answer) return;
       saved = true;
       modal.close();
-      this._save(deal, task, answer).then(() => after && after());
+      this._save(deal, task, answer)
+        .then(() => after && after())
+        .catch(error => Toast.show(`Итог звонка не сохранён: ${error.message || error}`));
     };
     modal.d.addEventListener('close', () => {
       if (!saved) CrmTask.put(task.id, { state: 'done' }, after);

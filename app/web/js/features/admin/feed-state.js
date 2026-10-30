@@ -15,6 +15,7 @@ export class FeedState {
   static plan = null; // распределение скидок
   static rplan = null; // «Что загрузится…»
   static rpf = ''; // фильтр плана по виду строки
+  static roff = new Set(); // строки плана со снятой галочкой (отбор по виду их не возвращает)
 
   static DRIVES = [
     ['any', 'любой'],
@@ -56,6 +57,7 @@ export class FeedState {
     this.disc = null;
     this.plan = null;
     this.rplan = null;
+    this.roff = new Set();
   }
 
   /**

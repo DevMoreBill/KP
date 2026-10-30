@@ -40,6 +40,7 @@ export class Presets {
     'check',
     'tender',
     'deal',
+    'dealId',
   ];
   static TITLE_MAX = 120;
   /** кто я — по ответу сервера (свои заготовки можно удалить) */

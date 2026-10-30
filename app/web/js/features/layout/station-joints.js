@@ -21,8 +21,6 @@ export class StationJoints {
 
   static _key = (axis, i, j) => `${axis}:${i},${j}`;
 
-  static MED = StationJoints.MED;
-
   /** [{n, a, b — номера модулей, dir, at, list: [{mark, t}]}] или []. */
   static calc(plan) {
     const geo = plan && plan.geo;

@@ -1,7 +1,7 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { ChinaRateBook } from './china-rates.js';
 import { StDirty } from './settings-tools.js';
-import { FileSave } from '../../core/files.js';
+import { CopyText, FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { UiKit } from '../../ui/ui-kit.js';
@@ -372,13 +372,12 @@ export class ChinaFreightTab {
 
   static async _request(main) {
     const text = ChinaRateBook.request(this.form(main), this.data);
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await CopyText.copy(text)) {
       Toast.show('Запрос скопирован — вставьте в письмо экспедитору');
-    } catch {
-      main.querySelector('#cfRes').innerHTML =
-        `<p class="muted">Скопируйте запрос:</p><textarea class="cf-req" rows="12" readonly>${esc(text)}</textarea>`;
+      return;
     }
+    main.querySelector('#cfRes').innerHTML =
+      `<p class="muted">Скопируйте запрос:</p><textarea class="cf-req" rows="12" readonly>${esc(text)}</textarea>`;
   }
 
   static _dropRow(main, button) {

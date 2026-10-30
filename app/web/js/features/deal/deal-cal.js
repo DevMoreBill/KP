@@ -29,23 +29,22 @@ export class DealCal {
   }
 
   /**
-   * Загрузить недостающие годы календаря; после загрузки окно и правая панель перерисовываются.
+   * Загрузить недостающие годы календаря; после загрузки окно и правая панель перерисовываются. Год запрашивается один раз:
+   * не отдал сервер — расчёт без календаря (как до загрузки), иначе перерисовка запрашивала бы его снова без конца.
    * @param {string} iso
    */
   static load(iso) {
-    const need = DealCal.years(iso).filter(year => !DealUi.cal[year] && !DealUi.calLoading[year]);
+    const need = DealCal.years(iso).filter(year => !DealUi.cal[year] && !DealUi.calAsked[year]);
     for (const year of need) {
-      DealUi.calLoading[year] = true;
+      DealUi.calAsked[year] = true;
       Api.request(`/api/calendar?year=${year}`)
         .then(res => {
-          if (res && res.days) DealUi.cal[year] = res;
-        })
-        .catch(() => {})
-        .finally(() => {
-          delete DealUi.calLoading[year];
+          if (!(res && res.days)) return;
+          DealUi.cal[year] = res;
           DealWin.render();
           SidePanel.render();
-        });
+        })
+        .catch(error => console.warn(`Производственный календарь ${year} не загружен:`, error));
     }
   }
 

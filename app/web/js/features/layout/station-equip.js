@@ -34,13 +34,8 @@ export class StationEquip {
     ['tank', null, /бак|[её]мкост/i],
   ];
 
-  static CABINET = StationEquip.CABINET;
   static CAB_FLOOR = /напольн/i;
   static CAB_WALL = /настенн|навесн|на стене/i;
-  static CHASSIS = StationEquip.CHASSIS;
-  static MUFFLER = StationEquip.MUFFLER;
-  static PIPING = StationEquip.PIPING;
-  static SKIP = StationEquip.SKIP;
 
   /** Виды по названию до общих слов: [образец, вид, только не для основного оборудования]. */
   static NAME_KINDS = [

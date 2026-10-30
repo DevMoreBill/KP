@@ -283,7 +283,7 @@ export class KpSave {
     const kpId = S.kpId;
     DealXlsx.blob()
       .then(xlsx => xlsx && Api.request(`/api/kp/${kpId}/econ`, { method: 'PUT', body: xlsx }))
-      .catch(error => console.warn('Экономика для Битрикс24 не отправлена:', error));
+      .catch(error => Toast.show(`Экономика сделки не отправлена в Битрикс24: ${error.message || error}`));
   }
 
   // PDF рядом с .docx — по галочке «Также сохранить в PDF»

@@ -492,7 +492,7 @@ export class DealClicks {
   }
 
   static _xlsx() {
-    DealXlsx.save();
+    DealXlsx.save().catch(error => Toast.show(`Excel не выгружен: ${error.message || error}`));
   }
 
   static _hsDir() {

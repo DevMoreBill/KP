@@ -20,7 +20,9 @@ export class KpSaved {
    */
   static async row() {
     try {
-      const rows = (await Api.request(`/api/history?limit=5&offset=0&q=${encodeURIComponent(S.number)}`)).items || [];
+      const rows =
+        (await Api.request(`/api/history?limit=${Reminders.JOURNAL_ROWS}&offset=0&q=${encodeURIComponent(S.number)}`))
+          .items || [];
       return rows.find(row => row.id === S.kpId) || null;
     } catch {
       return null;

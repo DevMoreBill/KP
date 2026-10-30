@@ -223,7 +223,12 @@ export class ModerationTab {
     }
     const body = await this._toggleBody(enabled, pending);
     if (!body) return;
-    await AdminApi.post('moderation', body);
+    try {
+      await AdminApi.post('moderation', body);
+    } catch (error) {
+      Toast.show(`Не сохранено: ${error.message || error}`);
+      return;
+    }
     Toast.show(body.enabled ? 'Модерация включена' : 'Модерация выключена');
     this.render(main);
   }
@@ -237,7 +242,12 @@ export class ModerationTab {
       ))
     )
       return;
-    await AdminApi.post('pending/approve-all');
+    try {
+      await AdminApi.post('pending/approve-all');
+    } catch (error) {
+      Toast.show(`Правки не приняты: ${error.message || error}`);
+      return;
+    }
     Toast.show('Правки приняты');
     Catalog.refresh();
     this.render(main);

@@ -6,6 +6,7 @@ export class LgState {
   static routes = {};
   static tar = null;
   static saved = null;
+  static failed = ''; // тарифы не загрузились: правка тарифов недоступна
   static status = null;
   static res = {};
   static fin = {};

@@ -17,6 +17,7 @@ import { AuditTab, ModerationTab, StatsTab } from './review-tabs.js';
 import { ChangedPanel, ConnectionsPanel, SettingsHistoryPanel } from './settings-panels.js';
 import { SettingsSearch, StDirty } from './settings-tools.js';
 import { esc } from '../../core/util.js';
+import { AdminSession } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { ApiKeys } from '../kp/api-keys.js';
 import { FreightSettings } from '../deal/freight-settings.js';
@@ -489,8 +490,21 @@ export class AdminNav {
         this.open(main, tab.key, { click: true, pick: true });
       };
     });
-    await (shown.parts ? this.stack(body, shown.parts) : shown.open(body, panel ? pick : click));
+    const load = () => (shown.parts ? this.stack(body, shown.parts) : shown.open(body, panel ? pick : click));
+    if (!(await this._fill(body, load))) return;
     if (hist) this._history(main, shown.key);
+  }
+
+  // тело вкладки или панели; не загрузилось — ошибка на месте «Загружаю…» (щелчок по панели отказ не ловил)
+  static async _fill(body, load) {
+    try {
+      await load();
+      return true;
+    } catch (error) {
+      if (!AdminSession.on) throw error; // вход истёк — окно входа (SettingsWindow.tab)
+      body.innerHTML = `<p class="msg err">${esc(error.message || error)}</p>`;
+      return false;
+    }
   }
 
   // вкладка только для просмотра: пометка сверху, изменения не сохраняются сами (сервер всё равно откажет)
@@ -519,7 +533,7 @@ export class AdminNav {
       'toggle',
       () => {
         SettingsHistoryPanel.filter = key;
-        new SettingsHistoryPanel(box.querySelector('.st-hist-b')).open().catch(() => {});
+        new SettingsHistoryPanel(box.querySelector('.st-hist-b')).open();
       },
       { once: true },
     );

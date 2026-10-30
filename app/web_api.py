@@ -1737,6 +1737,7 @@ class DraftsController(Controller):
         'check',
         'tender',
         'deal',
+        'dealId',
     )
 
     def _who(self) -> tuple:
