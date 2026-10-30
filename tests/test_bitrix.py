@@ -7,7 +7,7 @@ import json
 import time
 import unittest
 import urllib.request
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from bitrix_fake import FakeBitrix
 from kit import Http, SampleData, Stand, TempStore
@@ -72,6 +72,34 @@ class PullEdgeTest(SyncBase):
         sync.pull()
         self.assertEqual(BitrixConf(self.st).get()['lastPull'], '2026-10-30T11:00:00+03:00', 'воронка дочитана — дальше как обычно')
 
+
+    def _zones(self):
+        """Время включения связи (пояс сервера) и пояса портала западнее и восточнее сервера."""
+        now = datetime.now(timezone.utc).astimezone().replace(microsecond=0)
+        since = now - timedelta(hours=2)
+        return since, timezone(now.utcoffset() - timedelta(hours=4)), timezone(now.utcoffset() + timedelta(hours=6))
+
+    def test_new_deal_by_moment_not_text(self):
+        """Аудит 30.10, CALC-029: «новая ли сделка Битрикса» — по моменту, а не по тексту даты: портал и сервер в разных
+        поясах (было: создана позже включения, но западнее — пропущена; раньше, но восточнее — загружена как новая)."""
+        from bitrix import BitrixConf
+        from crm import DealBook
+        since, west, east = self._zones()
+        BitrixConf(self.st).mark(since=since.isoformat(), lastPull=since.isoformat())
+        self.fake.new_deal(TITLE='Создана после включения', DATE_CREATE=(since + timedelta(minutes=90)).astimezone(west).isoformat())
+        self.fake.new_deal(TITLE='Создана до включения', DATE_CREATE=(since - timedelta(minutes=30)).astimezone(east).isoformat())
+        res = self.sync().pull()
+        self.assertEqual((res['created'], [deal['title'] for deal in DealBook(self.st).deals(None)]), (1, ['Создана после включения']))
+
+    def test_import_preview_by_moment(self):
+        """CALC-029: «Загрузить старые сделки» предлагает созданные до включения связи — тоже по моменту."""
+        from bitrix import BitrixConf, BitrixImport
+        since, west, east = self._zones()
+        BitrixConf(self.st).mark(since=since.isoformat())
+        old = self.fake.new_deal(TITLE='До включения', DATE_CREATE=(since - timedelta(minutes=30)).astimezone(east).isoformat())
+        self.fake.new_deal(TITLE='После включения', DATE_CREATE=(since + timedelta(minutes=90)).astimezone(west).isoformat())
+        pv = BitrixImport(self.st, direct()).preview((since - timedelta(days=1)).date().isoformat())
+        self.assertEqual([row['id'] for row in pv['items']], [old])
 
 class SyncTest(SyncBase):
     def test_push_deal_company_rows_fields_files(self):

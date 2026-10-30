@@ -9,6 +9,7 @@ from bitrix_my import MyCompanies
 from crm_funnels import DealFields, Funnels
 from deal_autofill import DealAutoFill
 from deal_econ import DealEcon
+from defaults import SrvVal
 from kp_track import Val
 
 
@@ -127,9 +128,11 @@ class DealBook:
             raise LookupError('Сделка не найдена')
         return found
 
-    def deals(self, managers=None) -> list:
-        """Сделки менеджеров (None — все): незакрытые и закрытые за последние 120 дней."""
-        since = (date.today() - timedelta(days=120)).isoformat()
+    def deals(self, managers=None, closed_days: int | None = None) -> list:
+        """Сделки менеджеров (None — все): незакрытые и закрытые за последние closed_days дней (по умолчанию —
+        «Значения программы», crm.closedDays)."""
+        days = SrvVal.get(self.store, 'crm.closedDays') if closed_days is None else closed_days
+        since = (date.today() - timedelta(days=days)).isoformat()
         sql = f"SELECT {self.COLS} FROM deals WHERE (stage NOT IN ('won', 'lost') OR updated >= ?)"
         args = [since]
         if managers is not None:

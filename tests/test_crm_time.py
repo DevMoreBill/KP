@@ -52,6 +52,25 @@ class DealTimeTest(unittest.TestCase):
         self.assertEqual(got['reasons'][1], {'text': 'причина не указана', 'lost': 1})
 
 
+    def test_closed_beyond_board_window(self):
+        """Аудит 30.10, CALC-030: сделка, проигранная 150 дней назад, — в отчёте за полгода, хотя на доске закрытые видны
+        120 дней; оба срока — «Значения программы» (crm.timeDays, crm.closedDays)."""
+        from crm import DealBook
+        from crm_time import DealTime
+        from defaults import SrvVal
+        self.addCleanup(SrvVal.forget)
+        now = datetime.now()
+        did = self._deal(now - timedelta(days=160), [('lead', 'lost', now - timedelta(days=150))], {'lostReason': 'Дорого'})
+        self.st.write('UPDATE deals SET updated=? WHERE id=?', ((now - timedelta(days=150)).isoformat(timespec='seconds'), did))
+        self.assertNotIn(did, [deal['id'] for deal in DealBook(self.st).deals()], 'на доске закрытые — за 120 дней')
+        rep = DealTime(self.st).report()
+        self.assertEqual((rep['days'], rep['deals'], rep['losses']['lost']), (180, 1, 1), 'было: 0 — сделки за 121–180 дней терялись')
+        self.st.kv_set('settings', {'defaults': {'crm.timeDays': {'on': True, 'v': '90'}, 'crm.closedDays': {'on': True, 'v': '200'}}})
+        SrvVal.forget()
+        rep = DealTime(self.st).report()
+        self.assertEqual((rep['days'], rep['deals']), (90, 0))
+        self.assertIn(did, [deal['id'] for deal in DealBook(self.st).deals()], 'срок закрытых на доске — crm.closedDays')
+
 class ApiTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

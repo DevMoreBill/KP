@@ -10,12 +10,13 @@ from typing import Any
 
 from crm import DealBook, Stages
 from crm_funnels import Funnels
+from defaults import SrvVal
 
 
 class DealTime:
-    """Сводка за последние DAYS дней (сделки, созданные или изменённые за это время)."""
+    """Сводка за последние crm.timeDays дней («Значения программы»): сделки, созданные (без даты — изменённые) за это
+    время, и закрытые — за весь этот срок, даже если на доске их уже нет (crm.closedDays короче)."""
 
-    DAYS = 180
     DAY_S = 86400
     ROUND = 1
     REASONS = 5
@@ -24,10 +25,12 @@ class DealTime:
         self.store = store
 
     def report(self) -> dict[str, Any]:
-        since = (date.today() - timedelta(days=self.DAYS)).isoformat()
-        deals = [deal for deal in DealBook(self.store).deals() if str(deal.get('created') or deal['updated']) >= since]
+        days = SrvVal.get(self.store, 'crm.timeDays')
+        since = (date.today() - timedelta(days=days)).isoformat()
+        book = DealBook(self.store)
+        deals = [deal for deal in book.deals(closed_days=days) if str(deal.get('created') or deal['updated']) >= since]
         return {
-            'days': self.DAYS,
+            'days': days,
             'deals': len(deals),
             'stages': self._stages(deals),
             'firstKp': self._first_kp(deals),

@@ -16,7 +16,7 @@ from typing import Any
 
 import images
 from defaults import SrvVal
-from genset_sheets import GensetBook, GensetMatch
+from genset_sheets import EtaDate, GensetBook, GensetMatch
 from genset_tide import TideBook
 
 SPEC_PIPES = 2
@@ -2376,7 +2376,7 @@ class StockFile:
         if not eta and not re.search(r'на склад', status):
             eta = self._eta(f'{status} {place}')
         if eta:
-            rec['eta'] = min([rec['eta'], eta], key=lambda text: (text[3:], text[:2])) if rec['eta'] else eta
+            rec['eta'] = EtaDate.earliest(rec['eta'], eta)
         self._promo(rec, row, roles)
 
     @staticmethod
@@ -2464,8 +2464,8 @@ def _merge_stock(rows) -> dict:
             x[k] = x.get(k, 0) + row.get(k, 0)
         for warehouse, qty in (row.get('wh') or {}).items():
             x['wh'][warehouse] = x['wh'].get(warehouse, 0) + qty
-        if row.get('eta') and (not x.get('eta') or (row['eta'][3:], row['eta'][:2]) < (x['eta'][3:], x['eta'][:2])):
-            x['eta'] = row['eta']
+        if row.get('eta'):
+            x['eta'] = EtaDate.earliest(x.get('eta') or '', row['eta'])
         x['promo'] = x.get('promo') or row.get('promo') or ''
     x['parts'] = [part for row in rows for part in StockLeftovers.parts(row)]
     return x

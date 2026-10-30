@@ -161,6 +161,7 @@ export class TeamTime {
   static FRESH_MS = 300000;
   static RETRY_MS = 30000;
   static PERCENT = 100;
+  static PERIODS = { 180: 'полгода' };
   static loading = false;
 
   /**
@@ -173,7 +174,14 @@ export class TeamTime {
   }
 
   static _inner() {
-    return `<div class="md-h"><p class="sub">Где тратится время</p><span class="muted">по отделу, без имён · последние полгода</span></div>${MonthXlsx.html()}${this._body()}`;
+    const days = this.data && this.data.days;
+    const period = days ? ` · последние ${this._period(days)}` : '';
+    return `<div class="md-h"><p class="sub">Где тратится время</p><span class="muted">по отделу, без имён${period}</span></div>${MonthXlsx.html()}${this._body()}`;
+  }
+
+  // срок отчёта — «Значения программы» (crm.timeDays)
+  static _period(days) {
+    return this.PERIODS[days] || `${days} дн.`;
   }
 
   static _body() {
@@ -181,7 +189,7 @@ export class TeamTime {
     if (!data) return '<p class="muted">Считаю…</p>';
     if (data.error)
       return `<p class="muted">Не загрузилось: ${esc(data.error)} <button class="lnk" type="button" data-cabretry="time">Повторить</button></p>`;
-    if (!data.deals) return '<p class="empty">Сделок за полгода нет — считать нечего.</p>';
+    if (!data.deals) return `<p class="empty">Сделок за ${this._period(data.days)} нет — считать нечего.</p>`;
     const top = Math.max(...data.stages.map(row => row.median), 1);
     const bars = data.stages
       .map(

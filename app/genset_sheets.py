@@ -4,6 +4,7 @@
 
 import re
 from collections import Counter
+from datetime import date
 from typing import Any
 
 LAT_CYR = str.maketrans('АВЕКМНОРСТХ', 'ABEKMHOPCTX')
@@ -92,6 +93,41 @@ class Cell:
         return ''
 
 
+class EtaDate:
+    """Срок поставки «ДД.ММ» без года: год — ближайший к сегодняшнему дню, чтобы на стыке лет «20.12» шло раньше «10.01»."""
+
+    TEXT = re.compile(r'^(\d{2})\.(\d{2})$')
+
+    @staticmethod
+    def today() -> date:
+        return date.today()
+
+    @classmethod
+    def when(cls, text: str, today: date | None = None) -> date | None:
+        """«ДД.ММ» → дата прошлого, этого или следующего года — ближайшая к сегодня; не дата — None."""
+        found = cls.TEXT.match(str(text or ''))
+        if not found:
+            return None
+        base = today or cls.today()
+        day, month = int(found.group(1)), int(found.group(2))
+        options = (cls._date(year, month, day) for year in (base.year - 1, base.year, base.year + 1))
+        return min((one for one in options if one), key=lambda one: abs((one - base).days), default=None)
+
+    @classmethod
+    def earliest(cls, first: str, second: str, today: date | None = None) -> str:
+        """Более ранний из двух сроков «ДД.ММ»; пустой или не дата уступает другому, при равенстве — первый."""
+        base = today or cls.today()
+        ranked = [(cls.when(text, base) or date.max, index, text) for index, text in enumerate((first, second)) if text]
+        return min(ranked)[2] if ranked else ''
+
+    @staticmethod
+    def _date(year: int, month: int, day: int) -> date | None:
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+
+
 class Stock:
     """Наличие машины по ячейке «Наличие»: склад в Московской области — в наличии; в производстве; остальное — в пути со сроком."""
 
@@ -112,11 +148,9 @@ class Stock:
             state['wh'][place] = state['wh'].get(place, 0) + 1
             return
         state['prod' if cls.PROD.search(status) else 'transit'] += 1
-        date = cls.DATE.search(status)
-        if date:
-            eta = f'{int(date.group(1)):02d}.{int(date.group(2)):02d}'
-            if not state['eta'] or (eta[3:], eta[:2]) < (state['eta'][3:], state['eta'][:2]):
-                state['eta'] = eta
+        found = cls.DATE.search(status)
+        if found:
+            state['eta'] = EtaDate.earliest(state['eta'], f'{int(found.group(1)):02d}.{int(found.group(2)):02d}')
         elif status:
             key = (
                 'etaText' if cls.WHEN.search(status) else 'etaNote'

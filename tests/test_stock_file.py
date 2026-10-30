@@ -4,6 +4,8 @@
 складам»), «Итого» не удваивает, свободный остаток важнее общего, резерв не считается; «в пути» и дата поступления (текстом
 и числом Excel); прежние виды файлов — как раньше. Вымышленные данные."""
 import unittest
+from datetime import date
+from unittest import mock
 
 from test_feed_genset import Book  # подключает kit — путь к app/
 import feed_files  # noqa: E402
@@ -106,6 +108,29 @@ class StockFileTest(unittest.TestCase):
         feed_files.apply_stock(offers, stock)
         self.assertEqual([offer['qty'] for offer in offers], [1, 0, 1, 1, 2, 0],
                          'IP 54 OMRON — к EXPM 37/10, а у 55/10 — к исполнению IP54; JAD20 по коду; LUY050-7 — обе строки')
+
+    def test_eta_across_new_year(self):
+        """Аудит 30.10, CALC-031: срок поставки «ДД.ММ» — с годом, ближайшим к сегодня (было: по месяцу и дню, «10.01»
+        раньше «20.12»); одно правило для файла остатков, слияния строк модели и прайса ДГУ."""
+        from genset_sheets import EtaDate, Stock
+        autumn, winter = date(2026, 10, 30), date(2027, 1, 5)
+        self.assertEqual(EtaDate.earliest('10.01', '20.12', autumn), '20.12')
+        self.assertEqual(EtaDate.earliest('20.12', '10.01', autumn), '20.12')
+        self.assertEqual(EtaDate.earliest('15.01', '28.12', winter), '28.12', 'в январе декабрьская — прошлого года')
+        self.assertEqual(EtaDate.earliest('15.11', '27.10', autumn), '27.10', 'в пределах года — как раньше')
+        self.assertEqual(EtaDate.earliest('31.02', '01.12', autumn), '01.12', 'не дата уступает дате')
+        self.assertEqual(EtaDate.earliest('', '01.12', autumn), '01.12')
+        self.assertEqual(EtaDate.when('29.02', date(2027, 10, 30)), date(2028, 2, 29))
+        with mock.patch.object(EtaDate, 'today', staticmethod(lambda: autumn)):
+            got = parse([['Артикул', 'Номенклатура', 'В пути', 'Дата поступления'],
+                         ['B-1', 'Компрессор GON 50-8', 2, '10.01.2027'],
+                         ['B-2', 'Компрессор GON 50-8', 1, '20.12.2026']])
+            merged = feed_files._merge_stock([{'name': 'LUY050-7', 'eta': '10.01'}, {'name': 'LUY050-7 (на шасси)', 'eta': '20.12'}])
+            state = Stock.empty()
+            for status in ('прибытие 10.01.2027', 'прибытие 20.12.2026'):
+                Stock.add(state, status)
+        self.assertEqual(got['Компрессор GON 50-8']['eta'], '20.12', 'строки одной модели — ближайшая поставка')
+        self.assertEqual((merged['eta'], state['eta']), ('20.12', '20.12'))
 
     def test_old_kinds(self):
         got = parse([['Артикул', 'Номенклатура', 'Количество', 'Склад'],

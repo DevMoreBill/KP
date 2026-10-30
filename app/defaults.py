@@ -162,6 +162,9 @@ class SrvVal:
         'crm.autoCallDays': (3, 0, 30),
         'crm.autoIdleDays': (7, 0, 90),
         'crm.autoExpireDays': (2, 0, 30),
+        # кабинет: какие сделки показывать (app/crm.py, app/crm_time.py)
+        'crm.closedDays': (120, 30, 730),
+        'crm.timeDays': (180, 30, 730),
     }
     TTL = 5
     _cache: tuple[Any, float, dict] = (None, 0.0, {})

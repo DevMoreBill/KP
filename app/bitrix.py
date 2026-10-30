@@ -1768,7 +1768,7 @@ class BitrixSync:
                     self.links.put('deal', did, bx_deal['ID'], agreed)
                     if upd and rules.can('deal', 'out', deal.get('managerId')):
                         BitrixQueue.touch(self.store, 'deal', did)
-            elif str(bx_deal.get('DATE_CREATE') or '') >= str(conf.get('since') or ''):
+            elif BitrixTime.local(bx_deal.get('DATE_CREATE')) >= BitrixTime.local(conf.get('since')):
                 mid = self._who(bx_deal)
                 if mid is None:
                     res['skipped'] += 1
@@ -2212,7 +2212,8 @@ class BitrixImport:
         rows = [
             bx_deal
             for bx_deal in rows
-            if str(bx_deal.get('DATE_CREATE') or '') < until and not sync.links.local('deal', bx_deal.get('ID'))
+            if BitrixTime.local(bx_deal.get('DATE_CREATE')) < BitrixTime.local(until)
+            and not sync.links.local('deal', bx_deal.get('ID'))
         ][: self.MAX]
         inns = self._inns([bx_deal.get('COMPANY_ID') for bx_deal in rows])
         mgr_names = {mgr['id']: mgr['name'] for mgr in sync._managers()}

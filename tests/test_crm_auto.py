@@ -42,9 +42,10 @@ class AutoTasksTest(unittest.TestCase):
         did = self.kp('26-2', {'status': 'sent', 'at': date.today().isoformat(), 'followUp': {'at': date.today().isoformat()}})
         self.assertEqual(self.auto(did), 0, 'менеджер сам поставил «перезвонить»')
         from defaults import SrvVal
-        self.st.kv_set('defaults', {'crm.autoCallDays': 0})
+        self.st.kv_set('settings', {'defaults': {'crm.autoCallDays': {'on': True, 'v': '0'}}})
         SrvVal.forget()
         other = self.kp('26-3', {'status': 'sent', 'at': date.today().isoformat()})
+        self.assertEqual(self.auto(other), 0, '0 — правило выключено')
         self.assertEqual([row for row in self.tasks(other) if row[0].startswith('auto:sent')], [], '0 — правило выключено')
         SrvVal.forget()
 
