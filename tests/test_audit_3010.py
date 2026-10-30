@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Аудит 30.10: распаковка PDF в пределах бюджета документа, размер карточки клиента, запросы сервера — только http(s);
 отметка «из Битрикс24 — обратно не отправлять» не снимается вложенным вызовом; текст ошибки для пользователя — без путей
-на диске сервера."""
+на диске сервера; у каждого действия журнала, которое пишет сервер, есть подпись в «Журнале действий»."""
+import glob
 import json
 import os
+import re
 import sys
 import unittest
 import zlib
@@ -117,6 +119,25 @@ class NoPaths(unittest.TestCase):
             DocText.extract = original
         self.assertIn('Файл не прочитан', str(caught.exception))
         self.assertNotIn('/tmp/', str(caught.exception))
+
+
+class JournalLabels(unittest.TestCase):
+    APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app')
+    CALLS = (r"\bself\.log\(\s*'(\w+)'", r"\bself\._log\(\s*'(\w+)'", r"\blog\(\s*[\w.]+,\s*[\w.()]+,\s*'(\w+)'",
+             r"_deny\([^)]*,\s*'(\w+)'\)")
+
+    def test_every_logged_action_has_label(self):
+        codes = set()
+        for path in glob.glob(os.path.join(self.APP, '*.py')):
+            with open(path, encoding='utf-8') as fh:
+                text = fh.read()
+            for pattern in self.CALLS:
+                codes.update(re.findall(pattern, text))
+        with open(os.path.join(self.APP, 'web', 'js', 'features', 'admin', 'admin-core.js'), encoding='utf-8') as fh:
+            js = fh.read()
+        labels = set(re.findall(r"^\s+(\w+): '", js[js.index('static ACT = {'):js.index('static ENT = {')], re.M))
+        self.assertGreater(len(codes), 40)
+        self.assertEqual(sorted(code for code in codes - labels if not code.endswith('_')), [], 'код без подписи в AuditLabels.ACT')
 
 if __name__ == '__main__':
     unittest.main()

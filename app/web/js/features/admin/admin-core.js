@@ -228,6 +228,16 @@ export class AuditLabels {
     delete_kp_file: 'Документ КП удалён',
     add_deal_file: 'Документ к сделке прикреплён',
     delete_deal_file: 'Документ сделки удалён',
+    delete_contact: 'Удаление контакта клиента',
+    edit_lists: 'Списки выбора',
+    edit_defaults: 'Значения программы',
+    export_settings: 'Выгрузка файла настроек',
+    import_settings: 'Загрузка файла настроек',
+    db_health: 'Проверка базы',
+    export_clients: 'Выгрузка клиентов',
+    export_catalog: 'Выгрузка каталога',
+    preset_add: 'Новая заготовка КП',
+    preset_delete: 'Удаление заготовки КП',
   };
 
   static ENT = {
@@ -247,6 +257,8 @@ export class AuditLabels {
     db: 'База',
     trash: 'Корзина',
     system: 'Программа',
+    images: 'Изображения',
+    preset: 'Заготовка КП',
   };
 
   static ABSENT = '__absent__';

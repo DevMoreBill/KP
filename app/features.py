@@ -122,6 +122,7 @@ NEEDS.update(
         'presetPrices': 'presets',
         'kpCompare': 'versions',
         'stLayout': 'stations',
+        'stLibrary': 'stations',
         'asmItem': 'stations',
         'asmAi': 'asmItem',
         'asmFiles': 'asmItem',

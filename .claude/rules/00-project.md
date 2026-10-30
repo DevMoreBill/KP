@@ -61,7 +61,8 @@
 - (23.10, решение владельца) Каждая новая функция — свой выключатель: ключ в `app/features.py` (`FEATURES`, адреса — `ROUTES`,
   «только вместе с» — `NEEDS`) и в `app/web/js/core/features.js` (`needs` тот же), подробная инструкция «Где · Как пользоваться ·
   Выключено» — в `app/web/js/core/feature-help.js`; выключенная функция прячется в интерфейсе и закрыта на сервере, данные не
-  удаляются. Проверка — `tests/test_features_help.py`.
+  удаляются. Проверка — `tests/test_features_help.py` (`needs` сверяется в обе стороны с 3.226.6). Новое действие журнала
+  (`admin.log`) — подпись в `AuditLabels.ACT` (`admin-core.js`), проверка `test_audit_3010.JournalLabels`.
 
 ## База данных
 - Схема меняется только миграциями в `app/storage.py` (атомарно, `MIGRATION_FILL`), без ручной правки рабочей базы

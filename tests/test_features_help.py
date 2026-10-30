@@ -31,6 +31,8 @@ class FeaturesHelpTest(unittest.TestCase):
         for key, need in NEEDS.items():
             block = re.search(r"key: '%s'[^}]*" % key, defs).group(0)
             self.assertIn("needs: '%s'" % need, block, '%s работает только с %s — и в интерфейсе' % (key, need))
+        for key, need in re.findall(r"key: '(\w+)'[^}]*?needs: '(\w+)'", defs):
+            self.assertEqual(NEEDS.get(key), need, '%s работает только с %s — и на сервере (features.NEEDS)' % (key, need))
         self.assertEqual(set(found) - set(FEATURES), set(), 'инструкция без функции')
 
     def test_routes_closed(self):

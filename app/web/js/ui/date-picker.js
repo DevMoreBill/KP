@@ -8,6 +8,7 @@ import { Api } from '../core/net.js';
 export class WorkCalendar {
   static years = {};
   static loading = {};
+  static failed = new Set(); // год, который сервер не отдал, — не запрашивать снова (перерисовка запрашивала бы без конца)
   // официальные праздники (ст. 112 ТК РФ) — чтобы отличать праздник от перенесённого выходного
   static HOLIDAYS = {
     '1-1': 'Новогодние каникулы',
@@ -34,12 +35,16 @@ export class WorkCalendar {
    * @returns {object|null}
    */
   static year(year) {
-    if (this.years[year] || this.loading[year]) return this.years[year] || null;
+    if (this.years[year] || this.loading[year] || this.failed.has(year)) return this.years[year] || null;
     this.loading[year] = Api.request(`/api/calendar?year=${year}`)
       .then(result => {
         if (result && result.days) this.years[year] = result;
+        else this.failed.add(year);
       })
-      .catch(() => {})
+      .catch(error => {
+        this.failed.add(year);
+        console.warn(`Производственный календарь ${year} не загружен:`, error);
+      })
       .finally(() => {
         delete this.loading[year];
         if (DatePicker.state.input) DatePicker.draw();
