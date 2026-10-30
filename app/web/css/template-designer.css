@@ -85,7 +85,7 @@ dialog.tdwin:not([open]){display:none}
 .td-pages img.td-on{outline:2px solid var(--sky)}
 .td-pages p.td-on{outline:2px dashed #E67E22;outline-offset:4px}
 .td-sel{position:absolute;pointer-events:none;border:2px solid var(--sky);z-index:4}
-.td-dim{position:absolute;left:0;top:-22px;background:var(--sky);color:#fff;font-size:11px;padding:1px 6px;border-radius:4px;white-space:nowrap}
+.td-dim{position:absolute;left:0;top:-22px;background:var(--sky);color:#0B1A33;font-size:11px;padding:1px 6px;border-radius:4px;white-space:nowrap}
 /* инспектор */
 .td-empty p{font-size:13px}
 .td-ih{margin:0 0 2px;font-size:15px}

@@ -52,7 +52,7 @@ html dialog.tabwin.jrnwin>.dlg-b{flex:1;min-height:0;max-height:none;overflow:au
 .has-tabs .top>.btn,.has-tabs #saved{white-space:nowrap}
 .has-tabs #saved{max-width:150px;overflow:hidden;text-overflow:ellipsis}
 .btn[hidden]{display:none}
-.apt-n{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--navy);color:#fff;font-size:11px;font-weight:700;line-height:1}
+.apt-n{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--navy);color:var(--on-navy);font-size:11px;font-weight:700;line-height:1}
 .apt-n.bad{background:var(--danger)}
 .mob .apt-t{position:relative}
 .mob .apt-n{position:absolute;top:4px;left:calc(50% + 6px);min-width:17px;height:17px;font-size:10px}
@@ -146,3 +146,5 @@ html dialog.tabwin.jrnwin .jr-h:hover{background:none}
   html:not(.mob) dialog.tabwin:not([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn])>*{width:100%;max-width:var(--page-max);margin-inline:auto;box-sizing:border-box;background-color:var(--card)}
   html:not(.mob) dialog.tabwin:not([data-apptab=cab],[data-apptab=cat],[data-apptab=jrn])>:last-child{border-inline:1px solid var(--line)}
 }
+/* сенсорный экран: вкладки и «✕» — под палец */
+@media (pointer:coarse){.top .apt-t{min-height:44px}.apt-x{width:32px;height:32px;margin-right:-8px}}

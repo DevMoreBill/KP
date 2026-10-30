@@ -36,7 +36,7 @@
 .step>.hint{color:var(--muted);margin:0 0 18px;font-size:14px;max-width:62ch}
 .mbar{display:none}
 /* подбор в каталоге */
-dialog.wide{max-width:min(1160px,96vw)}
+dialog.wide{max-width:min(1160px,var(--win-w))}
 .total{background:var(--panel);color:var(--panel-ink);border-radius:18px;position:relative;overflow:hidden;padding:18px 20px 16px}
 .total::before{content:"";position:absolute;left:22px;top:0;width:56px;height:4px;background:var(--sky);border-radius:0 0 4px 4px}
 .total .lab{font-size:13px;opacity:.75;margin-top:6px}
@@ -70,7 +70,7 @@ dialog.wide{max-width:min(1160px,96vw)}
 @media (min-width:1025px){
   aside#side{max-height:calc(100vh - 96px);overflow-y:auto;overscroll-behavior:contain;padding:4px;margin:-4px}
 }
-dialog{border:0;border-radius:18px;padding:0;max-width:min(760px,94vw);width:100%;background:var(--card);color:var(--ink);box-shadow:0 30px 80px rgba(8,25,60,.35)}
+dialog{border:0;border-radius:18px;padding:0;max-width:min(760px,var(--win-w));width:100%;background:var(--card);color:var(--ink);box-shadow:0 30px 80px rgba(8,25,60,.35)}
 dialog::backdrop{background:rgba(10,20,40,.45)}
 .dlg-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .dlg-h h3{margin:0;font-size:17px;flex:1}
@@ -137,6 +137,6 @@ img[data-st3d],img[data-st3do]{cursor:zoom-in}
 .ctxm{position:fixed;inset:auto;margin:0;z-index:2147483000;min-width:220px;max-width:340px;max-height:calc(100vh - 16px);overflow:auto;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);box-shadow:0 14px 40px rgba(8,25,60,.22);font-size:14px}
 .ctxm-h{padding:6px 10px 4px;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctxm-i{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ctxm-i:hover,.ctxm-i:focus-visible{background:var(--soft);outline:none}
+.ctxm-i:hover,.ctxm-i:focus-visible{background:var(--soft)}
 .ctxm-sep{height:1px;margin:5px 4px;background:var(--line)}
 .ctxm-f{padding:6px 10px 2px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);margin-top:5px}

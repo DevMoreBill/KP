@@ -526,6 +526,26 @@ https-сервис с тем же API (OpenRouter и т. п.). Выключен�
   параллельно (наименьшее число, затем запас). У ДГУ шкафы и конвекторы — не на торце у входа (там приток).
   Проверки — `tests/js/station_layout.js` («двери: плотно к стене…», «жалюзи…»), `tests/js/tz_pick.js` («добор количеством…»).
 
+**3.231.0 — что сделано:** (30.10, ответ владельца на отчёт аудита: «остальное тоже да» — пп. 20–26, видимые правки интерфейса)
+- П. 20 (UI-001): текст на заливках `--danger/--ok/--navy/--csup` — `var(--on-navy)` (cabinet.css ×8, items.css ×3, tabs.css);
+  на `--warn` — `#1F1300` (как `.cnt-warn`), на `--sky` (`.td-dim`) — `#0B1A33`.
+- П. 21 (UI-002): `.dl-mvb` — `opacity:.4`, под курсором и `:focus-visible` — 1, `(hover:none)` — 1; `.lay-tools` на
+  `(hover:none)` — нет (перетаскивание и размер — мышью; видимые налезали на кнопки разделов карточки сделки).
+- П. 22 (UI-012): 10 объявлений `font: … inherit` → `font-family/weight/size/line-height`.
+- П. 23: `compact.css` — `.mob input[type=time]` (UI-008); `datepicker.css` — `.dp-d:hover:not(:disabled):not(.sel)` (UI-009).
+- П. 24: `::placeholder` — `opacity:1` (UI-005); `color-scheme` в `:root` и тёмных блоках + `<meta name=color-scheme>` (UI-003);
+  `input/select/textarea:disabled` (UI-004); `.btn.primary:hover`, `.btn.ghost:hover` в `(hover:hover)`, `.btn:active` —
+  общий (UI-006); одно кольцо фокуса `--navy` в base.css для `button, [role=button], summary, a, .btn, .icon, .chip, .sw`,
+  `outline:none` у фокуса убран в 7 местах (UI-010).
+- П. 25: `(pointer:coarse)` — 44 px у `.chip/.rd/.oitem`, `.mtog button`, `.btn.icon-btn/.help-btn`, `.kd-top .seg button`, `.cw-tabs button`, `.cw-grp`,
+  `.srow` (столбцы 44 px), `.dp-nav`, `.dp-f .lnk`, `.geo-box button`, `.jst/.jf/.kt-seg button`, `.top .apt-t`; `.apt-x` 32 px; область нажатия «?» (::after −7 px) — на всех сенсорных (UI-011); `@media (max-width:768px)` →
+  границы `.mob` (UI-007); токен `--win-w` (16 px от края) вместо 92/94/96/98vw и `calc(100vw - 32px)`, высоты окон — dvh
+  (UI-017); `.dk-hd` переносится до 1 100 px; `.uit-pen` — `<button aria-label>`, 44 px на сенсорном (UI-013).
+- П. 26: `.app-offline` вместо встроенных цветов (UI-014); `.fu-list`, `.fu-ch` (UI-021); подсказки — `AdminNav.path('users')`,
+  «Параметры → Функции программы», «Люди и доступ → Менеджеры» (RUL-621).
+- Прогон (`tests/ui/check.js`): область нажатия, расширенная `::after` с отрицательным отступом, — в размер цели и не «текст
+  шире кнопки» (ложная тревога у «?» на телефоне, 22 места).
+
 **3.230.0 — что сделано:** (30.10, ответ владельца на отчёт аудита: «остальное тоже да» — п. 19, серверные находки)
 - CALC-030: `DealBook.deals(managers, closed_days)` — срок закрытых сделок по умолчанию из «Значений программы» `crm.closedDays`
   (120 дн., 30–730); `DealTime.report` — срок `crm.timeDays` (180 дн., 30–730) и закрытые за весь этот срок (`closed_days=days`),

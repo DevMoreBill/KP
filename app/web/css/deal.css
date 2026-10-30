@@ -510,12 +510,13 @@ button.dl-sh{width:calc(100% + 36px);font:inherit;text-align:left;color:inherit;
 .dl-t td.c-day{position:relative}
 .dl-smv{display:inline-grid;grid-template-columns:auto auto;grid-template-rows:auto auto;align-items:center;column-gap:1px;float:left;margin:3px 4px 0 -8px}
 .dl-smv .dl-hdl{grid-row:1/3}
-.dl-smv .dl-mvb{display:block;visibility:hidden;width:18px;height:16px;font-size:10px}
-.dl-t tr:hover .dl-smv .dl-mvb,.dl-smv .dl-mvb:focus-visible{visibility:visible}
+.dl-smv .dl-mvb{display:block;opacity:.4;width:18px;height:16px;font-size:10px}
+.dl-t tr:hover .dl-smv .dl-mvb,.dl-smv .dl-mvb:focus-visible{opacity:1}
+@media (hover:none){.dl-smv .dl-mvb{opacity:1}}
 .dl-t tr.dragging{opacity:.45}
 .dl-t tr.drop-b td{box-shadow:inset 0 3px 0 var(--navy)}
 .dl-t tr.drop-a td{box-shadow:inset 0 -3px 0 var(--navy)}
-.mob .dl-smv .dl-mvb{visibility:visible}
+.mob .dl-smv .dl-mvb{opacity:1}
 
 /* ================= телефон: окно «Экономика сделки» =================
    Шапка — одна строка (название · Excel · ✕), под ней строка «Договор [дата] · прибыль · маржа», вкладки.

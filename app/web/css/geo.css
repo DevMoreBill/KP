@@ -9,3 +9,4 @@
 .geo-ft{margin:4px 10px 4px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}
 .geo-ok{color:var(--ok);font-size:12px;font-weight:600}
 @media (max-width:600px){.geo-box{max-height:45vh}}
+@media (pointer:coarse){.geo-box button{min-height:44px}}

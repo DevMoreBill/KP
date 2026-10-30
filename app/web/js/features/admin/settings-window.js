@@ -223,7 +223,7 @@ export class AdminLogin {
         ${setup ? LoginForm.password('stPw2', 'Повторите пароль', 'new-password') : ''}
         <p class="auth-err" id="stErr" role="alert" aria-live="assertive" hidden></p>
         <button class="btn primary auth-go" type="submit">${setup ? 'Создать и войти' : 'Войти'}</button>
-        <div class="muted st-login-note">Через ${status.idleMinutes || this.IDLE_MIN} мин бездействия вход закрывается.${UiKit.tip('Только в «Настройках»: удаление и правка данных, модерация, резервные копии, шаблоны, ключи API, вход менеджеров и администраторы. Забыли пароль — его меняет другой администратор («Сотрудники и вход → Администраторы»).')}</div>`;
+        <div class="muted st-login-note">Через ${status.idleMinutes || this.IDLE_MIN} мин бездействия вход закрывается.${UiKit.tip(`Только в «Настройках»: удаление и правка данных, модерация, резервные копии, шаблоны, ключи API, вход менеджеров и администраторы. Забыли пароль — его меняет другой администратор («${AdminNav.path('users')}»).`)}</div>`;
   }
 
   static async _send(setup, status) {

@@ -9,6 +9,8 @@
   const path=e=>{ const p=[]; let a=e; for(let k=0;k<3&&a&&a!==document.body;k++){ p.unshift(name(a)); a=a.parentElement; } return p.join('>'); };
   const txt=e=>(e.innerText||e.value||e.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ').slice(0,40);
   const all=[...rootEl.querySelectorAll('*')].filter(e=>!e.closest('svg')||e.tagName==='svg');
+  // область нажатия, расширенная ::after с отрицательным отступом («?», карандаш правки текстов): сколько добавляет по ширине и высоте
+  const hit=e=>{ const a=getComputedStyle(e,'::after'); if(a.content==='none'||a.position!=='absolute') return null; const n=k=>Math.max(0,-parseFloat(a[k])||0); const w=n('left')+n('right'), h=n('top')+n('bottom'); return w||h?{w,h}:null; };
   const out=[], btnTxt=[], small=[], font=[], contrast=[], overlap=[], img=[];
   // 1. выход за границы окна/экрана (не внутри прокручиваемого контейнера)
   for(const e of all){ if(['OPTION','SCRIPT','STYLE','DATALIST','BR'].includes(e.tagName)||!vis(e)) continue; const r=e.getBoundingClientRect(); if(r.width<2||r.height<2) continue;
@@ -16,7 +18,7 @@
     if(sc) continue; const cs=getComputedStyle(e); if(cs.position==='fixed'&&!isBody) continue;
     const lim=isBody?innerWidth:R.right; if(r.right>lim+2||r.left<(isBody?0:R.left)-2) out.push(path(e)+` «${txt(e)}» [${Math.round(r.left)}..${Math.round(r.right)} / ${Math.round(isBody?0:R.left)}..${Math.round(lim)}]`); }
   // 2. текст вылезает из кнопки
-  for(const e of rootEl.querySelectorAll('button,.btn,summary,a.btn,[role=button],.chip,.tab')){ if(!vis(e)) continue; const cs=getComputedStyle(e);
+  for(const e of rootEl.querySelectorAll('button,.btn,summary,a.btn,[role=button],.chip,.tab')){ if(!vis(e)||hit(e)) continue; const cs=getComputedStyle(e);
     // декоративный значок (absolute, без нажатия) под overflow:hidden — не текст: на время замера убрать
     const deco=[...e.querySelectorAll('*')].filter(c=>{ const k=getComputedStyle(c); return k.position==='absolute'&&k.pointerEvents==='none'; }); deco.forEach(c=>{ c.dataset.ckD=c.style.display; c.style.display='none'; });
     try{
@@ -29,7 +31,8 @@
   if(phone){ for(const e of rootEl.querySelectorAll('button,a[href],input,select,textarea,summary,[role=button],[data-a],[tabindex="0"]')){
       if(!vis(e)||e.type==='hidden'||e.disabled) continue; let t=e; if((e.type==='checkbox'||e.type==='radio'||e.type==='file')&&e.closest('label')) t=e.closest('label');
       const r=t.getBoundingClientRect(); if(r.width<1||r.height<1) continue; if(r.bottom<0) continue;
-      if(r.width<44-0.5||r.height<44-0.5) small.push(`${path(t)} «${txt(t)}» ${Math.round(r.width)}×${Math.round(r.height)}`); }
+      const add=hit(t)||{w:0,h:0}, w=r.width+add.w, h=r.height+add.h;
+      if(w<44-0.5||h<44-0.5) small.push(`${path(t)} «${txt(t)}» ${Math.round(w)}×${Math.round(h)}`); }
     for(const e of rootEl.querySelectorAll('input,select,textarea')){ if(!vis(e)||['hidden','checkbox','radio','range','color','file','button','submit'].includes(e.type)) continue; const fs=parseFloat(getComputedStyle(e).fontSize); if(fs<16) font.push(`${path(e)} ${fs}px`); } }
   // 4. контраст текста
   const parse=c=>{ const m=c.match(/rgba?\(([^)]+)\)/); if(!m) return null; const v=m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return [v[0],v[1],v[2],v.length>3?v[3]:1]; };

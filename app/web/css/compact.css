@@ -3,5 +3,5 @@
 input[type=text],input[type=search],input[type=password],input[type=date],input[type=number],input[type=email],input[type=url],input[type=tel],input[type=time],select{padding:7px 10px;font-size:14.5px;border-radius:9px;min-height:36px}
 
 /* телефон: поля и кнопки высотой 40 px */
-.mob input[type=text],.mob input[type=search],.mob input[type=password],.mob input[type=date],.mob input[type=number],.mob input[type=email],.mob input[type=url],.mob input[type=tel],input[type=time],.mob select{min-height:44px;padding:6px 10px}
+.mob input[type=text],.mob input[type=search],.mob input[type=password],.mob input[type=date],.mob input[type=number],.mob input[type=email],.mob input[type=url],.mob input[type=tel],.mob input[type=time],.mob select{min-height:44px;padding:6px 10px}
 .mob .btn{min-height:44px;padding:7px 12px}

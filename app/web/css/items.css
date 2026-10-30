@@ -25,7 +25,7 @@ input.iname{font-weight:600;font-size:15.5px}
 .isum{text-align:right;font-size:13px;color:var(--muted)}
 .isum b{color:var(--ink);font-size:15px}
 .ifoot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
-dialog.editor{max-width:min(1240px,96vw);width:100%;height:min(92vh,980px);display:none;flex-direction:column}
+dialog.editor{max-width:min(1240px,var(--win-w));width:100%;height:min(92vh,980px);display:none;flex-direction:column}
 dialog.editor[open]{display:flex}
 .ed-tabs{display:flex;gap:6px;padding:10px 20px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .ed-tab{border:0;background:none;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;font-weight:600;color:var(--muted);font-size:14.5px}
@@ -46,7 +46,7 @@ dialog.editor[open]{display:flex}
 .mainpick{margin:8px 0 4px;display:flex;flex-direction:column;gap:6px}
 .mainpick-l{display:flex;flex-wrap:wrap;gap:6px}
 .mainpick-i{width:64px;height:64px;padding:2px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
-.mainpick-i:hover,.mainpick-i:focus-visible{border-color:var(--sky);outline:none}
+.mainpick-i:hover,.mainpick-i:focus-visible{border-color:var(--sky)}
 .mainpick-i img{width:100%;height:100%;object-fit:contain}
 .gcard.off{opacity:.45}
 .gctl{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
@@ -60,7 +60,6 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .empty-pick{border:1.5px dashed var(--line);border-radius:14px;padding:26px;text-align:center;margin-bottom:14px;background:var(--soft)}
 .empty-pick p{margin:0 0 8px}
 .empty-pick .btn{margin-top:8px}
-.btn:focus-visible,.icon:focus-visible,.chip:focus-visible,.sw:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 /* позиции */
 .item{border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;background:var(--card)}
 .item-no{width:28px;height:28px;border-radius:8px;background:var(--soft);color:var(--navy);display:grid;place-items:center;font-weight:700;font-size:13px;margin-bottom:8px}
@@ -182,7 +181,7 @@ details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px
 .pf-need.all{border-color:var(--line);background:var(--soft)}
 .kit-pick.best{border:2px solid var(--ok)}
 .pf-best,.pf-low{display:inline-block;margin:0 0 2px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700}
-.pf-best{background:var(--ok);color:#fff}
+.pf-best{background:var(--ok);color:var(--on-navy)}
 .pf-low{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
 .kit-pick .pf-best+b,.kit-pick .pf-low+b{display:block}
 
@@ -398,7 +397,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 .kt-nm .kt-sub{flex:1 1 100%;min-width:0;padding-left:2px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* «Нужно: …» — чего не хватает к компрессорам; «Заменить» — что мало */
 .kt-r.kt-need{grid-template-columns:28px minmax(0,1fr) auto;background:var(--warn-bg);border-top:1px dashed var(--warn-line)}
-.kt-need .kt-n{background:var(--warn);color:#fff}
+.kt-need .kt-n{background:var(--warn);color:#1F1300}
 .kt-need.swap .kt-n{background:var(--danger)}
 .kt-nw{display:grid;gap:1px;min-width:0}
 .kt-nw b{font-size:13.5px;color:var(--ink)}
@@ -437,7 +436,7 @@ li.done>.ai-sh .ai-stc{color:var(--ok);font-weight:600}
 /* ТЗ заказчика: окно разбора и вход в мастере */
 .nw-tz{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:10px}
 .nw-tz .muted{font-size:12.5px}
-dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
+dialog.st-confirm.tzi{width:min(900px,var(--win-w));max-width:none}
 .tzi .tzi-g{margin:6px 0 4px}
 .tzi-sys{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin:6px 0}
 .tzi-c{display:flex;align-items:flex-start;gap:8px;margin:6px 0;font-size:13.5px;line-height:1.35;cursor:pointer}
@@ -533,7 +532,7 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 
 /* «Показать на чертеже» — окно с листом и подсветкой */
 .is-spot{margin-left:6px;font-size:12px;white-space:nowrap}
-.is-dlg{width:min(980px, 96vw)!important;max-width:min(980px, 96vw)!important}
+.is-dlg{width:min(980px, var(--win-w))!important;max-width:min(980px, var(--win-w))!important}
 .is-txt{margin:0 0 8px;font-size:13px}
 .is-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
 .is-sheet{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:72vh}
@@ -562,7 +561,7 @@ dialog.st-confirm.tzi{width:min(900px,calc(100vw - 32px));max-width:none}
 .dim-u{font-style:normal;color:var(--muted);font-size:13px;flex:none}
 @media (max-width:760px){.kc-g>.f:has(.dim3),.attrs>.f:has(.dim3){grid-column:1/-1}.dim3 input[data-dimk]{padding-left:2px;padding-right:2px}}
 /* станция из модулей: окно раскладки (сетка с перетаскиванием) */
-dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
+dialog.st-confirm.md-dlg{width:min(640px,var(--win-w))}
 .md-dlg .dlg-h h3 small{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
 .md-body{display:grid;gap:10px}
 .smd-n{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -598,7 +597,7 @@ dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
 .sq-steps i{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);font-style:normal;font-weight:700;font-size:12.5px}
 .sq-steps span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sq-steps .done button{color:var(--ok)}
-.sq-steps .done i{background:var(--ok);border-color:var(--ok);color:#fff}
+.sq-steps .done i{background:var(--ok);border-color:var(--ok);color:var(--on-navy)}
 .sq-steps .now button{border-color:var(--navy);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--navy) inset}
 .sq-steps .now i{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
 .mob .sq-steps button{flex-direction:column;gap:2px;padding:6px 4px;text-align:center;font-size:12.5px}
@@ -609,14 +608,14 @@ dialog.st-confirm.md-dlg{width:min(640px,calc(100vw - 32px))}
 .ed-gapgo{margin:4px 6px 0 0;padding:4px 10px;border:1px solid var(--danger);border-radius:999px;background:var(--card);color:var(--danger);font:inherit;font-weight:600;cursor:pointer;touch-action:manipulation}
 .ed-gapgo::before{content:"✕ "}
 .ed-gaphint{display:block;margin-top:6px;color:var(--muted);font-size:13px}
-.ed-gapdot{display:inline-block;min-width:16px;height:16px;margin-left:4px;border-radius:50%;background:var(--danger);color:#fff;font-size:11px;line-height:16px;text-align:center}
+.ed-gapdot{display:inline-block;min-width:16px;height:16px;margin-left:4px;border-radius:50%;background:var(--danger);color:var(--on-navy);font-size:11px;line-height:16px;text-align:center}
 label.f.ed-gapf>span{color:var(--danger)}
 label.f.ed-gapf input,label.f.ed-gapf select{border-color:var(--danger);box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 25%,transparent)}
 .ed-gapnote{display:block;margin-top:3px;color:var(--danger);font-size:12.5px;font-style:normal;font-weight:600}
 .ed-gapphoto.bad{padding:6px;border:2px solid var(--danger);border-radius:12px}
 .ed-gapphoto.bad .ed-gapnote{margin:6px 2px 0}
 /* сборное изделие без компоновки (AsmBuilder, AsmTab) */
-#dlg.asm{max-width:min(860px,96vw)}
+#dlg.asm{max-width:min(860px,var(--win-w))}
 html:not(.mob) #dlg.asm[open]{margin-top:min(8vh,80px);margin-bottom:auto;max-height:calc(100dvh - min(8vh,80px) - 24px)}
 #dlg.asm .dlg-h{gap:8px}
 #dlg.asm .dlg-h h3{flex:1}

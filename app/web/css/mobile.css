@@ -20,6 +20,13 @@ html.mob:has(dialog[open]){overflow:hidden}      /* под открытым ок
   .dlg-b{max-height:65dvh}
   dialog.catwin{height:calc(100dvh - 40px)}
   dialog.kpprev{height:94dvh;max-height:96dvh}
+  dialog.catwin{max-height:100dvh}
+  dialog.dealwin{height:calc(100dvh - 40px);max-height:100dvh}
+  dialog.helpwin{height:min(88dvh,900px)}
+  dialog.kpver{max-height:84dvh}
+  dialog.wide.typesed,dialog.typesed{height:min(92dvh,980px)}
+  dialog.tpled{max-height:92dvh}
+  dialog.tdwin{height:100dvh;max-height:100dvh}
 }
 
 /* ---------- сенсорный экран (телефон и планшет) ---------- */
@@ -33,11 +40,14 @@ html.mob:has(dialog[open]){overflow:hidden}      /* под открытым ок
   input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
   .btn,.seg button,.cw-cat,.st-nav button,.stp,.menu-l button,.pickm>summary,.topmenu>summary,.chk-chip{min-height:44px}
   .icon{min-width:44px;min-height:44px}
-  .chip,.rd,.oitem{min-height:36px;padding-top:6px;padding-bottom:6px}
+  .chip,.rd,.oitem{min-height:44px;padding-top:6px;padding-bottom:6px}
   input[type=checkbox],input[type=radio]{width:20px;height:20px;flex-shrink:0}     /* галочки под палец: 13 px были меньше пальца */
-  .mtog button{min-height:34px;padding:4px 10px}
+  .mtog button{min-height:44px;padding:4px 10px}
   .row,.chips,.iopts,.ready{gap:8px}
   .ck{width:44px;height:44px;flex-basis:44px}
+  .btn.icon-btn,.help-btn{min-width:44px}
+  .kd-top .seg button,.cw-tabs button,.cw-grp{min-height:44px}
+  .srow{grid-template-columns:1fr 1fr 44px 44px}
   .tip>summary{width:30px;height:30px}
   .cw-row[draggable]{-webkit-user-drag:none}
 }
@@ -45,7 +55,7 @@ html.mob:has(dialog[open]){overflow:hidden}      /* под открытым ок
 @media (hover:none){
   .btn:hover{border-color:var(--line)} .btn.primary:hover{border-color:var(--navy)} .btn.ghost:hover{border-color:transparent}
   .stp:hover{border-color:var(--line)} .stp.cur:hover{border-color:var(--navy)}
-  .btn:active{filter:brightness(.94)} .stp:active,.tile:active,.mm-i:active,.cw-row:active{background:var(--soft)}
+  .stp:active,.tile:active,.mm-i:active,.cw-row:active{background:var(--soft)}
 }
 
 /* ---------- нижняя панель шагов (телефон и планшет) ---------- */
@@ -169,7 +179,7 @@ span.mb-back{border:0}
 .mob .qty input{min-width:0;padding:10px 0}
 .mob .iside .pricebox{min-height:48px;text-align:center}
 .mob .ifoot{gap:8px;margin-top:10px;padding-top:10px}
-.mob .ifoot .sw{flex:1 1 100%;order:-1;min-height:40px}
+.mob .ifoot .sw{flex:1 1 100%;order:-1;min-height:44px}
 .mob .ifoot>span[style]{display:none}
 .mob .ifoot .btn.primary{flex:1 1 auto}
 .mob .ifoot .btn.ghost{border-color:var(--line);padding-left:14px;padding-right:14px}
@@ -236,7 +246,7 @@ span.mb-back{border:0}
 .mob .ed-tabs::-webkit-scrollbar{display:none}
 .mob .ed-tab{flex:0 0 auto;min-height:48px;padding:12px 12px 10px;font-size:15px}
 .mob .ed-b{padding:16px max(16px,env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
-.mob .srow{grid-template-columns:minmax(0,1fr) 40px 40px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
+.mob .srow{grid-template-columns:minmax(0,1fr) 44px 44px;gap:6px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .mob .fhead .icon{min-width:44px;min-height:44px}
 .mob .opt{grid-template-columns:72px minmax(0,1fr) 44px;gap:8px}
 .mob .opt>:first-child{grid-column:1/-1}
@@ -342,7 +352,7 @@ span.mb-back{border:0}
 @supports (-webkit-touch-callout:none){
   input[type=date]{-webkit-appearance:none;appearance:none;display:block;line-height:1.25;text-align:left;background-color:var(--field)}
   input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.25em}
-  input[type=date].dt-empty::before{content:'дд.мм.гггг';color:var(--muted);opacity:.8}
+  input[type=date].dt-empty::before{content:'дд.мм.гггг';color:var(--muted)}
   input[type=date].dt-empty:focus::before{content:''}
 }
 .mob body.top-hide .top{transform:translateY(-100%)}
@@ -357,7 +367,7 @@ span.mb-back{border:0}
 .mob .kpprev .pv-hd [data-pva=save]{grid-column:4;grid-row:2}
 .mob .kpprev .pv-hd .btn{min-width:0;padding:8px 4px;font-size:14px;white-space:nowrap}
 .mob .pv-l{display:none}
-.mob .kpprev .pv-zoom .icon{width:32px;min-width:32px}
+.mob .kpprev .pv-zoom .icon{width:44px;min-width:44px}
 /* настройки: строка списка — текст сверху, кнопки снизу (не налезают) */
 .mob .st-row{flex-direction:column;align-items:stretch;gap:8px}
 .mob .st-row .acts{justify-content:flex-start}
@@ -380,8 +390,7 @@ span.mb-back{border:0}
 
 /* 3.99: цели нажатия на телефоне — не меньше 44 × 44 px (решение владельца 17.10, правило 02.10).
    «?» остаётся кружком 30 px, но нажимается область 44 px вокруг; ссылки-кнопки и раскрывашки — по высоте строки 44 px */
-.mob .tip>summary{position:relative}
-.mob .tip>summary::after{content:'';position:absolute;inset:-7px}
+@media (pointer:coarse){.tip>summary{position:relative}.tip>summary::after{content:'';position:absolute;inset:-7px}}
 .mob button.lnk{min-height:44px;display:inline-flex;align-items:center}
 .mob details:not(.tip)>summary{min-height:44px}
 .mob .cw-tog,.mob label:has(>input[type=checkbox]),.mob label:has(>input[type=radio]){min-height:44px}

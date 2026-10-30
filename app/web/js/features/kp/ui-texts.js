@@ -134,11 +134,12 @@ export class UiTexts {
     const top = [...document.querySelectorAll('dialog[open]')].pop() || document.body;
     for (const el of document.body.querySelectorAll(this.MARKED)) {
       if (el.querySelector(':scope > .uit-pen') || !this._candidate(el) || !el.getClientRects().length) continue;
-      const pen = document.createElement('span');
+      const pen = document.createElement('button');
+      pen.type = 'button';
       pen.className = 'uit-pen';
       pen.textContent = '✎';
       pen.title = 'Изменить текст';
-      pen.setAttribute('aria-hidden', 'true');
+      pen.setAttribute('aria-label', 'Изменить текст');
       el.appendChild(pen);
     }
     if (top.querySelector(':scope > .uit-bar')) return;

@@ -22,7 +22,7 @@ export class BitrixEcon {
    */
   static html() {
     if (!FEAT.on('bxEcon'))
-      return '<div class="st-card"><p class="muted">Функция «Экономика сделки в Битрикс24» выключена («Настройки → Функции»).</p></div>';
+      return '<div class="st-card"><p class="muted">Функция «Экономика сделки в Битрикс24» выключена («Настройки → Параметры → Функции программы»).</p></div>';
     if (!BitrixPanel.state.hasUrl) return `<div class="st-card"><p class="muted">${BitrixPanel.NO_URL}</p></div>`;
     const view = this.view;
     if (!view) return '<div class="st-card" id="bxEcon"><p class="muted">Загружаю…</p></div>';

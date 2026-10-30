@@ -66,7 +66,7 @@ export class AuthScreen {
       <button class="btn primary auth-go" type="submit">Войти</button>
       <div class="auth-foot"><button type="button" class="auth-lnk" id="authForgot" aria-expanded="false" aria-controls="authHelp">Забыли пароль?</button>
         <button type="button" class="auth-lnk" id="authAdm">Вход администратора</button></div>
-      <div class="auth-help" id="authHelp" hidden>${help}<p>Пароль не восстанавливается автоматически: новый задаёт администратор программы в «Настройках» (раздел «Сотрудники и вход»). Обратитесь к нему — после смены пароля войдите с новым.</p></div></form></div>`;
+      <div class="auth-help" id="authHelp" hidden>${help}<p>Пароль не восстанавливается автоматически: новый задаёт администратор программы в «Настройках» («Люди и доступ → Менеджеры»). Обратитесь к нему — после смены пароля войдите с новым.</p></div></form></div>`;
   }
 
   static async _send() {

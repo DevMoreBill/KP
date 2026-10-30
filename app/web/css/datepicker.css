@@ -9,7 +9,7 @@
 .dp-w span{text-align:center;font-size:11.5px;color:var(--muted);padding:2px 0}
 .dp-w span.we{color:var(--danger)}
 .dp-d{height:34px;border:0;border-radius:8px;background:transparent;color:var(--ink);font:inherit;cursor:pointer;position:relative}
-.dp-d:hover:not(:disabled){background:var(--soft)}
+.dp-d:hover:not(:disabled):not(.sel){background:var(--soft)}
 .dp-d:disabled{opacity:.3;cursor:default}
 .dp-d.off{color:var(--danger)}
 .dp-d.hol{background:#fdecea;font-weight:700}
@@ -32,3 +32,4 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .dp-d.hol{background:#4a2420}:root:not([data-theme="light"]) .dp-d.move{background:#3d2a1e}
   :root:not([data-theme="light"]) .dp-d.off,:root:not([data-theme="light"]) .dp-w span.we{color:#ff8a7a}}
 input[type=date]{cursor:pointer}
+@media (pointer:coarse){.dp-nav{width:44px;height:44px}.dp-f .lnk{min-height:44px;padding:4px 8px}}
