@@ -57,19 +57,11 @@ export class DealPick {
         `/api/crm/pick?inn=${encodeURIComponent(inn)}&name=${encodeURIComponent(S.client || '')}&kp=${encodeURIComponent(offer)}`,
       );
       Object.assign(state, { items: found.items || [], current: found.current || '', stages: found.stages || [] });
-      this._forget();
     } catch {
       Object.assign(state, { items: [], current: '' });
     }
     state.key = key;
     state.busy = false;
     if (Steps.current === 'client' && state.items.length) FormView.render();
-  }
-
-  // сделки нет среди сделок клиента (выбрана для прежнего клиента, закрыта): в списке видно «Новая сделка» — так и будет
-  static _forget() {
-    const { items, current } = this.state;
-    const known = S.dealId === 'new' || S.dealId === current || items.some(item => item.id === S.dealId);
-    if (S.dealId && !known) delete S.dealId;
   }
 }

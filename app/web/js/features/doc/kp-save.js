@@ -12,7 +12,7 @@ import { KpDate } from '../kp/kp-date.js';
 import { DealState } from '../deal/deal-state.js';
 import { KpEconomics } from '../kp/price-calc.js';
 import { Tender } from '../../ui/tender.js';
-import { ClientStore } from '../kp/client-store.js';
+import { ClientFields, ClientStore } from '../kp/client-store.js';
 import { CatalogSync } from '../catalog/catalog-fill.js';
 import { DrawPic } from '../kit/draw-pic.js';
 import { Kit } from '../kit/kit.js';
@@ -133,17 +133,37 @@ export class KpSave {
     const totals = KpState.totals();
     const fileName = KpFile.name();
     if (!S.createdAt) S.createdAt = new Date().toISOString();
+    ClientFields.settleDeal(S); // до записи состояния: в журнале и в сведениях о КП — одна и та же сделка
     const sig = await this._journal();
+    const deal = { saved: S.dealId };
     const saved = await this._putDocx(blob, fileName);
+    deal.sent = S.dealId;
     await this._meta(totals, saved);
-    await Drafts.saved(sig); // КП в журнале — черновик не нужен; правки во время сохранения остаются несохранёнными
-    if (Drafts.sig(Drafts.clean()) !== sig)
-      Toast.show('Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз');
+    deal.edited = this._editedSince(sig, deal);
+    await Drafts.saved(await this._journalDeal(sig, deal)); // черновик не нужен; правки во время сохранения — несохранённые
+    if (deal.edited) Toast.show('Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз');
+    else Drafts.loaded(); // сделку КП назначил сервер (_meta) — это не правка менеджера
     const pdf = await this._pdf(button);
     CondMemory.remember();
     KpState.persist();
     FormView.render();
     this._done(pdf, isNew);
+  }
+
+  // правки во время сохранения: сделку сменили в списке — правка; сделку назначил сервер (_meta) — нет, поэтому
+  // состояние сейчас сверяется с отпечатком журнала со сделкой, которая ушла в журнал
+  static _editedSince(sig, deal) {
+    if (deal.sent !== deal.saved) return true;
+    const probe = Drafts.clean();
+    if (deal.saved === undefined) delete probe.dealId;
+    else probe.dealId = deal.saved;
+    return Drafts.sig(probe) !== sig;
+  }
+
+  // «Отдельная новая сделка»: в журнал — сделка, которую создал сервер, иначе каждое сохранение КП из журнала заводило бы ещё одну
+  static async _journalDeal(sig, deal) {
+    if (deal.edited || deal.saved !== 'new' || S.dealId === 'new') return sig;
+    return this._putState();
   }
 
   static async _pack() {

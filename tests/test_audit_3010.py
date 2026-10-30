@@ -112,6 +112,12 @@ class NoPaths(unittest.TestCase):
             'Нет папки \\\\server\\Копии КП\\2026\\x.zip — проверьте сеть': 'Нет папки … — проверьте сеть',
             'Файл «C:\\Users\\Иван Петров\\прайс.xlsx» занят': 'Файл «…» занят',
             'C:/KP/data/kp.sqlite3 is locked': '… is locked',
+            # текст после пути не съедается: «/»-путь — до пробела, путь Windows — не через «: », «, », « — »
+            'файл /tmp/kp-x/price.xlsx повреждён — загрузите прайс заново (xlsx/csv)':
+                'файл … повреждён — загрузите прайс заново (xlsx/csv)',
+            'Unknown at /home/kp/app/feeds.py, line 12 и/или ещё': 'Unknown at …, line 12 и/или ещё',
+            'C:\\KP\\a.txt: занят; см. C:\\temp\\b.txt': '…: занят; см. …',
+            'C:\\KP\\a b\\c.docx — ошибка, повторите': '… — ошибка, повторите',
         }
         for text, want in cases.items():
             self.assertEqual(ErrorText.of(text), want)

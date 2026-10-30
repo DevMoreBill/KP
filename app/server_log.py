@@ -32,14 +32,17 @@ class LogMask:
 class ErrorText:
     """Текст исключения для пользователя и состояния задач — без путей на диске сервера (C:\\…, /tmp/…)."""
 
-    ROOT = r'(?:(?<!\w)[A-Za-z]:[\\/]|\\\\|(?<![\w/])/(?:tmp|home|root|var|usr|Users|opt|mnt|srv|media)/)'
-    QUOTED = re.compile(rf'([\'"«]){ROOT}[^\'"»\n]*([\'"»])')
-    # папки могут быть с пробелами («C:\KP\Коммерческие предложения\…»): до последней черты — всё, после — до пробела
-    BARE = re.compile(rf'{ROOT}(?:[^\\/\n\'"«»]*[\\/])*[^\s\'"«»;,):]*')
+    WIN = r'(?:(?<!\w)[A-Za-z]:[\\/]|\\\\)'
+    POSIX = r'(?<![\w/])/(?:tmp|home|root|var|usr|Users|opt|mnt|srv|media)/'
+    QUOTED = re.compile(rf'([\'"«])(?:{WIN}|{POSIX})[^\'"»\n]*([\'"»])')
+    # папки Windows бывают с пробелами («C:\KP\Коммерческие предложения\…»): до последней «\», не через «: », «, », « — »
+    WIN_BARE = re.compile(rf'{WIN}(?:(?:(?![:,] | — )[^\\\n\'"«»])*\\)*[^\s\'"«»;,):]*')
+    POSIX_BARE = re.compile(rf'{POSIX}[^\s\'"«»;,):]*')
 
     @classmethod
     def of(cls, exc: object) -> str:
-        return cls.BARE.sub('…', cls.QUOTED.sub(r'\1…\2', str(exc)))
+        text = cls.QUOTED.sub(r'\1…\2', str(exc))
+        return cls.POSIX_BARE.sub('…', cls.WIN_BARE.sub('…', text))
 
 
 class ServerLog:

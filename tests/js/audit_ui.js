@@ -60,30 +60,125 @@ check('«Без движения» → «показать все»: отбор i
   })();
 });
 
-check('заготовка — без сделки (и заготовки прежних версий); «Копия» и «Сменить клиента» — сделка прежнего клиента не остаётся скрыто', async ()=>{
+check('заготовка — без сделки (и заготовки прежних версий); «Копия» и «Сменить клиента» — сделка прежнего клиента не уходит к другому', async ()=>{
   assert.ok(Presets.DROP.includes('dealId'));
   assert.ok(KpRepeat.DROP.includes('dealId'), 'как у «Повторить КП»');
   const stripped=Presets._strip({ dealId:'deal-7', client:'ООО «А»', items:[{ id:'i1' }] });
   assert.ok(!('dealId' in stripped) && !('client' in stripped) && stripped.items.length===1, 'старая заготовка со сделкой — без неё');
-  const state={ client:'ООО «А»', clientInn:'7700000001', dealId:'deal-7' };
-  ClientFields.clear(state);
-  assert.strictEqual(state.dealId, 'deal-7', 'очистка клиента сделку не трогает (как до 3.226.4): её проверяет блок «Сделка»');
-  const { Api }=mod('core/net.js');
-  const { DealPick }=mod('features/crm/deal-pick.js');
-  const pick=async (dealId, answer)=>{
-    S.dealId=dealId; DealPick.state={ key:'', items:[], current:'', stages:[], busy:false };
-    await swap([[Api, 'request', answer], [Steps, 'current', 'deal']], ()=>DealPick._load('7700000002|ооо «б»|')); // без перерисовки формы
-    return S.dealId;
+  const cleared=(dealId, client, inn)=>{
+    const state={ client:'ООО «А»', clientInn:'7700000001', dealId };
+    ClientFields.clear(state);
+    Object.assign(state, { client, clientInn:inn });
+    return state;
   };
-  const items=async ()=>({ items:[{ id:'deal-9', number:'9', stage:'new' }], current:'' });
-  const was=S.dealId;
+  const settled=state=>{ ClientFields.settleDeal(state); return state.dealId; };
+  const state=cleared('deal-7', '', '');
+  assert.strictEqual(state.dealId, 'deal-7', 'очистка клиента сделку не трогает (как до 3.226.4)');
+  assert.strictEqual(settled(state), 'deal-7', 'клиент ещё не выбран — решение откладывается');
+  assert.ok(state._dealFor, '…и отметка остаётся');
+  assert.strictEqual(settled(cleared('deal-7', 'ООО «Б»', '7700000002')), undefined, 'другой клиент — сделка прежнего не остаётся');
+  assert.strictEqual(settled(cleared('deal-7', 'ООО «А»', '7700000001')), 'deal-7', 'тот же клиент (ИНН) — как было, и закрытая сделка');
+  assert.strictEqual(settled(cleared('deal-7', 'ооо а', '')), 'deal-7', 'тот же клиент без ИНН — по названию');
+  const picked=cleared('deal-7', 'ООО «Б»', '7700000002');
+  picked.dealId='deal-9';
+  assert.strictEqual(settled(picked), 'deal-9', 'сделку выбрали в списке — остаётся');
+  assert.strictEqual(settled(cleared('new', 'ООО «Б»', '7700000002')), 'new', '«Отдельная новая сделка» — остаётся');
+  const twice=cleared('deal-7', 'ООО «Б»', '7700000002');
+  ClientFields.clear(twice);
+  Object.assign(twice, { client:'ООО «А»', clientInn:'7700000001' });
+  assert.strictEqual(settled(twice), 'deal-7', '«Сменить клиента» дважды и снова прежний — сделка его');
+  const fromCard={ client:'ООО «А»', clientInn:'7700000001', dealId:'deal-won' };
+  assert.strictEqual(settled(fromCard), 'deal-won', '«＋ Новое КП» из карточки сделки (и закрытой) — без «Копии» не трогается');
+  // сохранение КП: решение — до записи состояния КП на сервер (иначе в журнале осталась бы сделка прежнего клиента и
+  // следующее сохранение КП из журнала перенесло бы его туда)
+  const { KpSave }=mod('features/doc/kp-save.js');
+  const { PriceGuard }=mod('features/kp/price-guard.js');
+  const { StationImages }=mod('features/station/station-images.js');
+  const { MgrLock, Managers }=mod('features/kp/managers.js');
+  const { KpDocx }=mod('features/doc/kp-docx.js');
+  const { KpFile }=mod('features/doc/kp-file.js');
+  const { Drafts }=mod('features/kp/drafts.js');
+  let journaled='не дошло';
+  const was={ dealId:S.dealId, client:S.client, clientInn:S.clientInn, kpId:S.kpId, managerId:S.managerId, paused:Drafts.paused };
   try {
-    assert.strictEqual(await pick('deal-7', items), undefined, 'сделка прежнего клиента, которой нет в списке нового, — сбрасывается');
-    assert.strictEqual(await pick('deal-9', items), 'deal-9', 'сделка этого клиента — остаётся');
-    assert.strictEqual(await pick('new', items), 'new', '«Отдельная новая сделка» — остаётся');
-    assert.strictEqual(await pick('deal-3', async ()=>({ items:[], current:'deal-3' })), 'deal-3', 'текущая сделка КП — остаётся');
-    assert.strictEqual(await pick('deal-7', async ()=>{ throw new Error('нет связи'); }), 'deal-7', 'список не загрузился — не трогаем');
-  } finally { S.dealId=was; }
+    Object.assign(S, { dealId:'deal-7', client:'ООО «А»', clientInn:'7700000001', kpId:'k1', managerId:'m1' });
+    ClientFields.clear(S);
+    Object.assign(S, { client:'ООО «Б»', clientInn:'7700000002' });
+    await swap([
+      [PriceGuard, 'confirm', async ()=>true], [StationImages, 'syncAll', async ()=>{}], [StationImages, 'confirmSave', ()=>true],
+      [MgrLock, 'apply', ()=>{}], [MgrLock, 'locked', ()=>false], [KpDocx, 'state', ()=>({})], [KpDocx, 'render', async ()=>null],
+      [KpSave, '_pack', async ()=>({ settings:{} })], [KpSave, '_number', async ()=>{}], [KpSave, '_uploadImages', async ()=>{}],
+      [Managers, 'meId', ()=>'m1'], [KpState, 'totals', ()=>({})], [KpFile, 'name', ()=>'КП.docx'],
+      [KpSave, '_journal', async ()=>{ journaled=Drafts.clean().dealId; throw new Error('стоп после записи состояния'); }],
+    ], ()=>assert.rejects(KpSave._save({ textContent:'' }), { message:'стоп после записи состояния' }));
+    assert.strictEqual(journaled, undefined, 'в состоянии КП, которое уходит в журнал, нет сделки прежнего клиента');
+  } finally {
+    Object.assign(S, { dealId:was.dealId, client:was.client, clientInn:was.clientInn, kpId:was.kpId, managerId:was.managerId });
+    Drafts.paused=was.paused;
+    delete S._dealFor;
+  }
+});
+
+check('сохранение КП: сделка, которую назначил сервер, — не правка менеджера (было: ложное «Изменения … не вошли» и КП «не сохранено»)', async ()=>{
+  const { KpSave }=mod('features/doc/kp-save.js');
+  const { Api }=mod('core/net.js');
+  const { Toast }=mod('core/toast.js');
+  const { Drafts }=mod('features/kp/drafts.js');
+  const said=[];
+  const states=[];
+  const run=async ({ deal, edit, dealEdit })=>{
+    said.length=0;
+    states.length=0;
+    await swap([
+      [mod('features/kp/price-guard.js').PriceGuard, 'confirm', async ()=>true],
+      [mod('features/station/station-images.js').StationImages, 'syncAll', async ()=>{}],
+      [mod('features/station/station-images.js').StationImages, 'confirmSave', ()=>true],
+      [mod('features/kp/managers.js').MgrLock, 'apply', ()=>{}], [mod('features/kp/managers.js').MgrLock, 'locked', ()=>false],
+      [mod('features/kp/managers.js').Managers, 'meId', ()=>'m1'],
+      [mod('features/doc/kp-docx.js').KpDocx, 'state', ()=>({})], [mod('features/doc/kp-docx.js').KpDocx, 'render', async ()=>null],
+      [mod('features/doc/kp-file.js').KpFile, 'name', ()=>'КП.docx'],
+      [mod('features/catalog/catalog-fill.js').CatalogSync, 'run', async ()=>{}], [ClientStore, 'saveUsed', async ()=>{}],
+      [KpSave, '_pack', async ()=>({ settings:{} })], [KpSave, '_number', async ()=>{}], [KpSave, '_uploadImages', async ()=>{}],
+      [KpSave, '_putDocx', async ()=>{ if (edit) S.client='ООО «Правка во время сохранения»'; if (dealEdit) S.dealId=dealEdit; return {}; }],
+      [KpSave, '_metaBody', ()=>({})], [KpSave, '_pdf', async ()=>null], [KpSave, '_done', ()=>{}],
+      [mod('ui/step-conds.js').CondMemory, 'remember', ()=>{}], [KpState, 'persist', ()=>{}], [KpState, 'totals', ()=>({})],
+      [FormView, 'render', ()=>{}], [Toast, 'show', text=>said.push(text)],
+      [Api, 'request', async (url, opts)=>{ if (url.includes('/state')) states.push(JSON.parse(opts.body)); return url.includes('/meta') ? { ok:true, deal } : { rev:1 }; }],
+    ], ()=>KpSave._save({ textContent:'' }));
+  };
+  const was={ dealId:S.dealId, client:S.client, kpId:S.kpId, number:S.number, managerId:S.managerId, paused:Drafts.paused };
+  try {
+    Object.assign(S, { kpId:'k1', number:'2026-001', client:'ООО «Новый»', managerId:'m1' });
+    delete S.dealId;
+    await run({ deal:'d-new' });
+    assert.deepStrictEqual(said, [], 'новое КП: сервер создал сделку — ложного сообщения нет');
+    assert.strictEqual(S.dealId, 'd-new');
+    assert.strictEqual(Drafts.base, Drafts.sig(Drafts.clean()), '…и КП не числится несохранённым');
+    await run({ deal:'d-new' });
+    assert.deepStrictEqual(said, [], 'та же сделка — как было');
+    await run({ deal:'d-new', edit:true });
+    assert.deepStrictEqual(said, ['Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз'], 'правка во время сохранения — сообщение, как было');
+    assert.notStrictEqual(Drafts.base, Drafts.sig(Drafts.clean()), '…и правка остаётся несохранённой');
+    Object.assign(S, { client:'ООО «Новый»', dealId:'d-new' });
+    await run({ deal:'d2', dealEdit:'d2' });
+    assert.deepStrictEqual(said, ['Изменения, сделанные во время сохранения, в КП не вошли — сохраните КП ещё раз'], 'другую сделку выбрали в списке во время сохранения — правка (в журнале прежняя)');
+    assert.notStrictEqual(Drafts.base, Drafts.sig(Drafts.clean()), '…и КП числится несохранённым до следующего сохранения');
+    S.dealId='new';
+    await run({ deal:'d1' });
+    assert.deepStrictEqual(states.map(state=>state.dealId), ['new', 'd1'], '«Отдельная новая сделка»: в журнал ещё раз — уже с созданной сделкой');
+    assert.deepStrictEqual(said, []);
+    assert.strictEqual(Drafts.base, Drafts.sig(Drafts.clean()));
+    S.dealId='new';
+    await run({ deal:'d3', edit:true });
+    assert.strictEqual(states.length, 1, 'с правкой во время сохранения — без повторной записи, сообщение');
+    assert.strictEqual(said.length, 1);
+    states.length=0;
+    await run({ deal:'d-new' });
+    assert.strictEqual(states.length, 1, 'обычное сохранение — одна запись в журнал, как было');
+  } finally {
+    Object.assign(S, { dealId:was.dealId, client:was.client, kpId:was.kpId, number:was.number, managerId:was.managerId });
+    Drafts.paused=was.paused;
+  }
 });
 
 check('строка журнала по номеру — седьмой среди похожих номеров («КП сохранено», «Ход сделки» из напоминаний; было: первые 5 и 1)', async ()=>{

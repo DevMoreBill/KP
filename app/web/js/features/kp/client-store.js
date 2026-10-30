@@ -4,6 +4,7 @@ import { FormView } from '../../ui/form-view.js';
 import { KpState, S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Api } from '../../core/net.js';
+import { Str } from '../../core/str.js';
 /** ИНН: контрольные суммы (10 цифр — организация, 12 — ИП). */
 export class Inn {
   static W10 = [2, 4, 10, 3, 5, 9, 4, 6, 8];
@@ -95,10 +96,12 @@ export class ClientFields {
   ];
 
   /**
-   * Очистить получателя.
+   * Очистить получателя. Сделку не трогает, но помнит, для какого клиента она выбрана (ClientFields.settleDeal).
    * @param {object} state КП
    */
   static clear(state) {
+    if (state.dealId && state.dealId !== 'new' && !state._dealFor)
+      state._dealFor = { id: state.dealId, ...this._who(state) };
     Object.assign(state, {
       client: '',
       clientId: '',
@@ -118,6 +121,24 @@ export class ClientFields {
     });
     state.contact = { name: '', post: '', phone: '', email: '' };
     state.object = { purpose: '', address: '' };
+  }
+
+  /**
+   * Перед сохранением КП: после «Копии» или «Сменить клиента» сделка прежнего клиента у другого клиента не остаётся
+   * (тот же ИНН или то же название — остаётся; клиент ещё не выбран — решение откладывается).
+   * @param {object} state КП
+   */
+  static settleDeal(state) {
+    const was = state._dealFor;
+    const who = this._who(state);
+    if (!was || !(who.inn || who.name)) return;
+    delete state._dealFor;
+    const same = (was.inn && was.inn === who.inn) || (was.name && was.name === who.name);
+    if (state.dealId === was.id && !same) delete state.dealId;
+  }
+
+  static _who(state) {
+    return { inn: String(state.clientInn || '').replace(/\D/g, ''), name: Str.norm(state.client) };
   }
 }
 
