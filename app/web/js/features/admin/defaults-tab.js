@@ -97,7 +97,7 @@ export class DefaultsTab {
   }
 
   static _switch(enabled, opts) {
-    return `<label class="sw df-sw" title="${opts.req ? 'Обязательное значение — всегда действует' : 'Включить / выключить'}"><input type="checkbox" data-don${enabled ? ' checked' : ''}${opts.req ? ' disabled' : ''}><span></span></label>`;
+    return `<label class="sw df-sw" title="${opts.req ? 'Обязательное значение — всегда действует' : 'Включить / выключить'}"><input type="checkbox" data-don${enabled ? ' checked' : ''}${opts.req ? ' disabled' : ''}><i></i></label>`;
   }
 
   static _caption(label, { type, opts, program, own }) {

@@ -32,7 +32,7 @@ export class CarrierApis {
       )
       .join('');
     return `<div class="ca-row" data-ca="${esc(carrier.id)}">
-        <div class="ca-h"><label class="sw df-sw" title="Включить / выключить"><input type="checkbox" data-caon${carrier.on ? ' checked' : ''}><span></span></label>
+        <div class="ca-h"><label class="sw df-sw" title="Включить / выключить"><input type="checkbox" data-caon${carrier.on ? ' checked' : ''}><i></i></label>
           <b>${esc(carrier.name)}</b>${carrier.docs ? `<a class="lnk" href="${esc(carrier.docs)}" target="_blank" rel="noopener noreferrer">документация API ↗</a>` : ''}
           <span class="sp"></span><button class="btn ghost sm" type="button" data-catest>Проверить</button></div>
         ${fields}

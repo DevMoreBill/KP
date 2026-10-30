@@ -33,9 +33,6 @@ dialog.setwin.login .st-maxb{display:none}
 .st-cols .st-card{margin-bottom:0}
 .st-cols+.st-cols{margin-top:14px}
 .st-ch-h{margin-bottom:8px}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-wrap:wrap}
-.seg button{border:0;background:var(--card);padding:8px 12px;font-size:13.5px;cursor:pointer;color:var(--ink);min-height:40px}
-.seg button.on{background:var(--navy);color:var(--on-navy)}
 .st-chart{width:100%;height:auto;display:block;--bar:#2F6FD0}
 :root[data-theme="dark"] .st-chart{--bar:#4A8AE8}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .st-chart{--bar:#4A8AE8} }
@@ -68,8 +65,6 @@ dialog.setwin.login .st-maxb{display:none}
 .st-diff td:first-child{width:22%}
 .st-diff pre{margin:0;white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;max-height:220px;overflow:auto}
 .st-pg{justify-content:center;margin-top:12px}
-.chk-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13.5px;cursor:pointer;min-height:40px}
-.chk-chip input{width:18px;height:18px;accent-color:var(--navy)}
 .sr-file{position:absolute;width:1px;height:1px;opacity:0}
 .modb{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:600;color:#8a5a00;background:#fff3d6;border:1px solid #f0d9a0;border-radius:999px;padding:1px 8px;vertical-align:2px}
 :root[data-theme="dark"] .modb{color:#ffd58a;background:#3a2d10;border-color:#6b5420}
@@ -264,7 +259,6 @@ select.st-inl{display:inline-block;width:auto;min-height:0;padding:2px 26px 2px 
 .ac-t td small{display:block}
 .ac-t tr.off td{opacity:.6}
 .ac-t td.acts{white-space:nowrap;text-align:right}
-.sw input{width:auto}
 .ac-t th:first-child,.ac-t td:first-child{text-align:left;min-width:150px}   /* на телефоне имя и должность не рвутся по буквам */
 .ac-t td:nth-child(2){white-space:nowrap;min-width:110px}
 .ac-t td:nth-child(2) small{display:block;white-space:normal}
@@ -312,14 +306,6 @@ dialog.st-confirm.ac-tmp-dlg{width:min(460px,var(--win-w))}
 .df-in input{min-width:0}
 .df-in i{font-style:normal;font-size:12.5px;color:var(--muted);white-space:nowrap}
 .df-v select{width:100%;min-width:0}
-.df-sw{position:relative;display:inline-flex}
-.df-sw input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
-.df-sw span{display:block;width:38px;height:22px;border-radius:22px;background:var(--line);position:relative;transition:background .2s}
-.df-sw span::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
-.df-sw input:checked+span{background:var(--navy)}
-.df-sw input:checked+span::after{transform:translateX(16px)}
-.df-sw input:focus-visible+span{outline:2px solid var(--sky);outline-offset:2px}
-.df-sw input:disabled+span{opacity:.55;cursor:default}
 .df-rs:disabled{visibility:hidden}
 .df-row[data-type=bool] .df-v{display:none}
 .df-row[data-type=bool]{grid-template-columns:44px minmax(0,1fr) 32px}

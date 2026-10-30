@@ -380,9 +380,32 @@ addEventListener('DOMContentLoaded', async () => {
                     f.write(self.ev("document.body.outerHTML"))
             except Exception:
                 pass
+        if os.environ.get('KP_PROGON_GEOM'):   # место, размер и вид каждого элемента — сверка вёрстки до и после правки стилей
+            try:
+                with open(fn[:-4] + '.geom.json', 'w', encoding='utf-8') as f:
+                    json.dump({'els': self.ev(self.GEOM), 'dialogs': self.ev(self.DLG)}, f, ensure_ascii=False)
+            except Exception:
+                pass
         self.res[name] = r
         self.log.append('snap ' + name)
         return r
+
+    # [тег#id.классы, x, y, ширина, высота, кегль, цвет, фон, display] видимых элементов — по порядку в документе
+    GEOM = """() => [...document.querySelectorAll('body *')].filter(e => !e.closest('svg') || e.tagName === 'svg').map(e => {
+        const r = e.getBoundingClientRect(); if (!r.width && !r.height) return null; const cs = getComputedStyle(e);
+        const cls = typeof e.className === 'string' ? e.className.trim().split(/\\s+/).filter(Boolean).join('.') : '';
+        const half = v => Math.round(v * 2) / 2;
+        return [e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (cls ? '.' + cls : ''), half(r.x), half(r.y), half(r.width),
+          half(r.height), cs.fontSize, cs.color, cs.backgroundColor, cs.display];
+      }).filter(Boolean)"""
+    # открытые окна: вычисленные размер, пределы, место, отступы, скругление — правила окна перебивают друг друга
+    DLG = """() => [...document.querySelectorAll('dialog[open]')].map(d => {
+        const cs = getComputedStyle(d);
+        return [d.id + '.' + d.className.trim().split(/\\s+/).join('.'), ...['position', 'top', 'right', 'bottom', 'left', 'width',
+          'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+          'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius', 'resize', 'display',
+          'overflowY', 'zIndex'].map(k => cs[k])];
+      })"""
 
     def _phone_full(self, fn):
         # на телефоне full_page сбрасывает эмуляцию касаний (pointer:coarse) — снимаем экранами с прокруткой

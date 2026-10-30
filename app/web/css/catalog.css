@@ -101,8 +101,6 @@ dialog.catwin.max{width:100vw!important;height:100vh!important;max-height:100vh;
 .cw-row.act{background:var(--soft);box-shadow:inset 3px 0 0 var(--navy)}
 .cw-row img,.cw-row .ph{width:64px;height:46px;object-fit:contain;border-radius:6px;background:#fff;display:block}
 .cw-row .ph{background:var(--soft)}
-.ck{display:grid;place-items:center;cursor:pointer;width:28px;height:28px;flex:0 0 28px}
-.ck input{width:17px;height:17px;margin:0;cursor:pointer;accent-color:var(--navy)}
 .cw-mn b{display:-webkit-box;font-weight:600;font-size:14.5px;line-height:1.3;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cw-mn .tag{white-space:nowrap;flex:0 0 auto}
 .cw-pr{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;white-space:nowrap}
@@ -292,8 +290,6 @@ html:not(.mob) #dlg.nw[open]{margin-top:min(8vh,80px);margin-bottom:auto;max-hei
 .cw-chip i{font-style:normal;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;font-size:10px}
 .cw-chip:hover i{background:var(--navy);color:var(--on-navy)}
 .cw-chip:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
-.cw-clr{border:0;background:none;color:var(--muted);font-family:inherit;font-weight:600;font-size:12.5px;line-height:1;cursor:pointer;padding:4px 6px;text-decoration:underline}
-.cw-clr:hover{color:var(--navy)}
 #cwCnt b{color:var(--ink)}
 /* вкладки слева: «Фильтры» — параметры категории сразу сверху, «Категории» — дерево и перенос */
 .cw-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;margin:0 2px 12px;border-radius:10px;background:var(--soft);position:sticky;top:-12px;z-index:1}
@@ -303,7 +299,7 @@ html:not(.mob) #dlg.nw[open]{margin-top:min(8vh,80px);margin-bottom:auto;max-hei
 .cw-tabs button:focus-visible{outline:2px solid var(--sky);outline-offset:1px}
 .cw-qcat{display:flex;flex-wrap:wrap;gap:6px}
 .cw-qcat .chip i{font-style:normal;opacity:.7}
-.cw-tset2{border:0;background:none;padding:0;color:var(--navy);font-family:inherit;font-weight:600;font-size:12.5px;line-height:1.3;cursor:pointer;text-align:left}
+.cw-tset2{text-align:left}
 .catwin.narrow .cw-sel{flex-basis:190px}
 .catwin.narrow .cw-sel.cw-selcat{flex-basis:230px}
 .catwin.tiny .cw-fb{padding:8px;gap:6px}

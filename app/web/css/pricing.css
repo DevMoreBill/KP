@@ -9,10 +9,6 @@
 .rt.need b{color:var(--navy)}
 details.psettings{margin:8px 0 16px;font-size:14px}
 details.psettings>summary{cursor:pointer;color:var(--navy);font-weight:600;padding:4px 0}
-.mtog{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;vertical-align:middle;flex:0 0 auto}
-.mtog button{border:0;background:var(--card);padding:2px 8px;font-size:12px;cursor:pointer;color:var(--muted);min-width:30px}
-.mtog button+button{border-left:1px solid var(--line)}
-.mtog button.on{background:var(--navy);color:var(--on-navy)}
 /* строка позиции: № | позиция | кол-во | цена | скидка | сумма */
 .ptable{display:grid;gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
 .phead,.prow{display:grid;grid-template-columns:26px minmax(150px,1fr) 176px 156px 118px;gap:10px;align-items:center;padding:10px 12px}

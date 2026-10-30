@@ -1,5 +1,4 @@
 /* Раздел «Клиент». */
-.lnk{border:0;background:none;padding:0;color:var(--navy);cursor:pointer;text-decoration:underline;font:inherit}
 .cl-card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--soft)}
 .cl-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
 .cl-head b{font-size:18px;color:var(--navy)}
