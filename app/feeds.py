@@ -47,8 +47,9 @@ from feed_prices import (
     discount_rules,
     drive_of,
 )
-from feed_text import _html_text, parse_number
+from feed_text import _html_text
 from maker_logos import MakerLogos
+from num import Num
 from server_log import ErrorText
 from storage import Conflict, WriteBatch
 
@@ -118,7 +119,7 @@ def feed_save(store, feed) -> dict:
     old = next((x for x in items if x.get('id') == fid), None) or {}
     if not feed.get('id') and any(x.get('id') == fid for x in items):
         fid = f'{fid}-{len(items) + 1}'
-    disc = parse_number(feed.get('discount'))
+    disc = Num.parse(feed.get('discount'))
     rec = dict(
         old,
         id=fid,
@@ -435,7 +436,7 @@ def parse(data) -> dict:
                 or (param_name.lower() == 'спецификация' and param_val.isdigit())
             ):
                 continue
-            num = parse_number(param_val)
+            num = Num.parse(param_val)
             if STOCK_PARAM.match(param_name) and num is not None:
                 qty = num
                 continue
@@ -460,13 +461,11 @@ def parse(data) -> dict:
         if warehouses and qty is None:
             qty = sum(warehouses.values())
         for tag in STOCK_TAGS:
-            v = parse_number(_txt(el, tag))
+            v = Num.parse(_txt(el, tag))
             if v is not None:
                 qty = v
                 break
-        outs = [
-            parse_number(outlet.get('instock')) for outlet in el.iter('outlet') if outlet.get('instock') is not None
-        ]
+        outs = [Num.parse(outlet.get('instock')) for outlet in el.iter('outlet') if outlet.get('instock') is not None]
         if outs and any(x is not None for x in outs):
             qty = sum(x for x in outs if x is not None)
         avail_attr = (el.get('available') or '').strip().lower()
@@ -482,8 +481,8 @@ def parse(data) -> dict:
                 'cat': cat,
                 'path': (cats.get(cat) or {}).get('path', ''),
                 'url': _clean_url(_txt(el, 'url')),
-                'price': parse_number(_txt(el, 'price')),
-                'oldprice': parse_number(_txt(el, 'oldprice')),
+                'price': Num.parse(_txt(el, 'price')),
+                'oldprice': Num.parse(_txt(el, 'oldprice')),
                 'cur': 'RUB' if cur in ('RUR', 'RUB') else cur,
                 'vendor': vendor,
                 'model': model,
@@ -503,7 +502,7 @@ def parse(data) -> dict:
                 }
                 if warehouses
                 else None,
-                'weight': parse_number(_txt(el, 'weight')),
+                'weight': Num.parse(_txt(el, 'weight')),
                 'dims': _txt(el, 'dimensions'),
                 'notes': _txt(el, 'sales_notes'),
             }
@@ -646,12 +645,12 @@ def _sum_txt(k, v, u) -> str | None:
     num_rx = r'(\d+(?:[.,]\d+)?)'
     match = re.match(r'^' + num_rx + r'(?:\s*\+\s*' + num_rx + r')+', v)
     if match and '+' in match.group(0):
-        tot: Any = sum(parse_number(x) for x in re.findall(num_rx, match.group(0)))
+        tot: Any = sum(Num.parse(x) for x in re.findall(num_rx, match.group(0)))
     else:
         match = re.match(r'^' + num_rx + r'\s*[хx×*]\s*(\d)\b', v)
         if not match:
             return None
-        tot = (parse_number(match.group(1)) or 0) * int(match.group(2))
+        tot = (Num.parse(match.group(1)) or 0) * int(match.group(2))
     return '{} {} ({})'.format(
         _fmt(round(tot, 3)), u, re.sub(r'\s*\(.*$', '', v).replace('х', ' × ').replace('x', ' × ')
     )
@@ -736,7 +735,7 @@ def _pressures(doc) -> set:
                     num = float(x.replace(',', '.'))
                     if PRESSURE_MIN <= num <= PRESSURE_MAX:
                         out.add(feed_files.PRESSURE_ALIAS.get(num, num))
-    pressure = parse_number((doc.get('attrs') or {}).get('pressure'))
+    pressure = Num.parse((doc.get('attrs') or {}).get('pressure'))
     if not out and pressure:
         out.add(feed_files.PRESSURE_ALIAS.get(pressure, pressure))
     return out
@@ -919,7 +918,7 @@ class FeedRules:
         data = data if isinstance(data, dict) else {}
 
         def num(v) -> float | None:
-            x = parse_number(v)
+            x = Num.parse(v)
             return x if x is not None and x >= 0 else None
 
         return {
@@ -1159,7 +1158,7 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
             offer_pressure = feed_files.PRESSURE_ALIAS.get(offer_cfg['p'], offer_cfg['p'])
             if pressures and offer_pressure and offer_pressure not in pressures:
                 continue
-            own = parse_number((doc.get('attrs') or {}).get('pressure'))
+            own = Num.parse((doc.get('attrs') or {}).get('pressure'))
             rank = (
                 0
                 if own and offer_pressure == feed_files.PRESSURE_ALIAS.get(own, own)

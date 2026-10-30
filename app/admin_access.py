@@ -6,6 +6,7 @@ import urllib.parse
 from typing import Any
 
 from admin_accounts import AdminSessions
+from num import Num
 
 
 def actor(handler, admin=None) -> tuple:
@@ -179,16 +180,8 @@ def _jround(x) -> int:
 def econ_rub(rec) -> tuple:
     """Сумма КП в рублях и прибыль в рублях (копейки) для итогов журнала — как jEcon() в интерфейсе."""
 
-    def num(v) -> float:
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
-            try:
-                v = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
-            except (TypeError, ValueError):
-                return 0
-        return v if math.isfinite(v) else 0
-
     rub, profit = _econ_rub(rec)
-    return (None if rub is None else num(rub)), (None if profit is None else num(profit))
+    return (None if rub is None else Num.parse(rub) or 0), (None if profit is None else Num.parse(profit) or 0)
 
 
 def _econ_rub(rec) -> tuple:

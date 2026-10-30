@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from datetime import datetime
 
 from clock import Clock
+from num import Num
 
 PREFIX_MIN = 4
 
@@ -52,10 +53,6 @@ CONVERT = {
 }
 
 
-def _num(text) -> float:
-    return float(re.sub(r'[  ]', '', text).replace(',', '.'))
-
-
 def _clean(v) -> float:
     return int(v) if float(v).is_integer() else round(v, 3)
 
@@ -68,13 +65,13 @@ def parse_num(text, unit) -> float | None:
         if regex:
             match = re.search(NUM + r'\s*' + regex, low)
             if match:
-                return _clean(_num(match.group(1)))
+                return _clean(Num.of(match.group(1)))
         for src, k in CONVERT.get(unit, ()):  # другая единица той же величины: л/мин ↔ м³/мин ↔ м³/ч
             match = re.search(NUM + r'\s*' + UNIT_RX[src], low)
             if match:
-                return _clean(round(_num(match.group(1)) * k, 3))
+                return _clean(round(Num.of(match.group(1)) * k, 3))
     match = re.search(NUM, low)
-    return _clean(_num(match.group(1))) if match else None
+    return _clean(Num.of(match.group(1))) if match else None
 
 
 def _canon(v) -> str:
@@ -187,7 +184,7 @@ def fill_from_name(doc, cat, attrs) -> None:
 
     if cat == 'receiver':
         match = re.search(NUM + r'\s*л(?![а-я])', low)
-        put('volume', _clean(_num(match.group(1))) if match else None)
+        put('volume', _clean(Num.of(match.group(1))) if match else None)
         match = re.search(r'/\s*(\d{1,2})\b', name)
         put('pressure', int(match.group(1)) if match else None)
         put('orient', 'Горизонтальный' if 'горизонт' in low else 'Вертикальный' if 'вертикал' in low else None)

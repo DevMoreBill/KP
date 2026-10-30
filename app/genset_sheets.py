@@ -7,6 +7,8 @@ from collections import Counter
 from datetime import date
 from typing import Any
 
+from num import Num
+
 LAT_CYR = str.maketrans('АВЕКМНОРСТХ', 'ABEKMHOPCTX')
 PERCENT = 100
 SHARE_MAX = 1
@@ -69,14 +71,6 @@ class Columns:
 
 
 class Cell:
-    @staticmethod
-    def num(value: Any) -> float | None:
-        text = re.sub(r'[\s\xa0]', '', str(value if value is not None else '')).replace(',', '.')
-        try:
-            return float(text)
-        except ValueError:
-            return None
-
     @staticmethod
     def text(row: dict, col: int | None) -> str:
         return re.sub(r'\s+', ' ', str(row.get(col, '') if col is not None else '')).strip()
@@ -209,10 +203,10 @@ class Units:
         out = []
         for row in rows[head + 1 :]:
             model = Cell.text(row, pick['model'])
-            rrc = Cell.num(row.get(pick['rrc'])) if pick['rrc'] is not None else None
+            rrc = Num.parse(row.get(pick['rrc'])) if pick['rrc'] is not None else None
             if not model or not rrc or not re.search(r'\d', model):
                 continue
-            disc = Cell.num(row.get(pick['disc'])) if pick['disc'] is not None else None
+            disc = Num.parse(row.get(pick['disc'])) if pick['disc'] is not None else None
             if disc is not None and 0 < disc <= SHARE_MAX:
                 disc *= PERCENT
             note = Cell.text(row, pick['note'])
@@ -222,10 +216,10 @@ class Units:
                     'exec': Exec.of(Cell.text(row, pick['exec'])),
                     'alt': Model.alt(Cell.text(row, pick['motor'])),
                     'motor': Cell.text(row, pick['motor']),
-                    'kw': Cell.num(row.get(pick['kw'])) if pick['kw'] is not None else None,
+                    'kw': Num.parse(row.get(pick['kw'])) if pick['kw'] is not None else None,
                     'status': Cell.text(row, pick['status']),
                     'price': rrc,
-                    'dealer': Cell.num(row.get(pick['dealer'])) if pick['dealer'] is not None else None,
+                    'dealer': Num.parse(row.get(pick['dealer'])) if pick['dealer'] is not None else None,
                     'disc': disc if disc and 0 < disc < PERCENT else None,
                     'cur': cur or 'EUR',
                     'sale': bool(re.search(r'распродаж|уценк', note, re.I)),
@@ -272,7 +266,7 @@ class Models:
             if not re.search(r'[A-Za-z]{2}\s*\d', name):
                 continue
             cur = Cell.text(row, cur_col).upper() if cur_col is not None else ''
-            avr = Cell.num(row.get(prices['avr'])) if prices.get('avr') is not None else None
+            avr = Num.parse(row.get(prices['avr'])) if prices.get('avr') is not None else None
             for kind in (Exec.OPEN, Exec.CAN):
                 if prices.get(kind) is None:
                     continue
@@ -282,14 +276,14 @@ class Models:
                         'exec': kind,
                         'alt': Model.alt(Cell.text(row, alt)),
                         'motor': ' / '.join(x for x in (Cell.text(row, engine), Cell.text(row, alt)) if x),
-                        'price': Cell.num(row.get(prices[kind])),
-                        'dealer': Cell.num(row.get(prices['dealer'])) if prices.get('dealer') is not None else None,
+                        'price': Num.parse(row.get(prices[kind])),
+                        'dealer': Num.parse(row.get(prices['dealer'])) if prices.get('dealer') is not None else None,
                         'disc': None,
                         'cur': cur if re.fullmatch(r'[A-Z]{3}', cur) else prices['cur'] or 'EUR',
                         'sale': False,
                         'sheet': sheet,
                         'avr': avr,
-                        'kw': Cell.num(row.get(power)) if power is not None else None,
+                        'kw': Num.parse(row.get(power)) if power is not None else None,
                     }
                 )
         return out

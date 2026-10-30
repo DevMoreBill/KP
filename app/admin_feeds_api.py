@@ -5,6 +5,7 @@ from typing import Any
 
 from admin_access import actor
 from admin_base import AdminBase
+from num import Num
 from server_log import ErrorText
 
 
@@ -125,7 +126,7 @@ class AdminFeedsApi(AdminBase):
             if isinstance(data.get('driveHints'), dict):
                 feed_copy['driveHints'] = {k: str(data['driveHints'].get(k) or '')[:400] for k in ('belt', 'direct')}
             if 'discount' in data:
-                x: Any = feeds.parse_number(data.get('discount'))
+                x: Any = Num.parse(data.get('discount'))
                 feed_copy['discount'] = x if x and 0 < x < self.PERCENT_MAX else None
             return self.ok(feeds.discount_plan(store, feed_copy))
         if method != 'POST':

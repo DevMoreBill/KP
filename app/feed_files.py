@@ -8,11 +8,12 @@ import images
 from clock import Clock
 from defaults import SrvVal
 from feed_desc import clean_desc, merge_specs, spec_class
-from feed_match import PRESSURE_ALIAS, _num_attr, match_prices, model_cfg, page_cfg, unique_names
+from feed_match import PRESSURE_ALIAS, match_prices, model_cfg, page_cfg, unique_names
 from feed_price_file import parse_price
 from feed_site import parse_extra, parse_pages
 from feed_stock import apply_stock, parse_stock
 from genset_sheets import GensetMatch
+from num import Num
 
 STD_PRESSURE_MAX = 13
 SLUG_MAX = 40
@@ -130,7 +131,7 @@ def _price_specs_ok(page, price) -> list:
     out = []
     for k, v in price['specs']:
         if pressure and spec_class(k) == 'pressure':
-            num = _num_attr(re.sub(r'[^\d,.]', '', str(v)).replace(',', '.') or None)
+            num = Num.parse(re.sub(r'[^\d,.]', '', str(v)).replace(',', '.') or None)
             if num and PRESSURE_ALIAS.get(num, num) != PRESSURE_ALIAS.get(pressure, pressure):
                 continue
         out.append((k, v))
@@ -248,7 +249,7 @@ def card_attrs(cfg, attrs) -> dict:
         cfg['vsd'] = True
     if str(attr_map.get('dryer') or '').lower() == 'да':
         cfg['dry'] = True
-    rec = _num_attr(re.sub(r'[\s\xa0]', '', str(attr_map.get('receiver'))))  # «1 000» л
+    rec = Num.parse(attr_map.get('receiver'))  # «1 000» л
     if rec and cfg['rec'] in (None, -1):
         cfg['rec'] = int(rec)
     return cfg
@@ -284,7 +285,7 @@ def match_card(name, model, attrs, prices) -> tuple:
         cand.append((price, price_col))
     if not cand:
         return [], 'нет в прайсе'
-    pressure_val = cfg.get('p') or _num_attr(attr_map.get('pressure'))
+    pressure_val = cfg.get('p') or Num.parse(attr_map.get('pressure'))
     std = [(price, price_col) for price, price_col in cand if not price_col['p'] or price_col['p'] <= STD_PRESSURE_MAX]
     if std and not (pressure_val and pressure_val > STD_PRESSURE_MAX):
         cand = std

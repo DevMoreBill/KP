@@ -1,7 +1,6 @@
 """Цены перевозчиков для доставки по России (ATI.SU, ПЭК, Деловые Линии, КИТ, СДЭК, Энергия, ЖДЭ) и автообновление ставок."""
 
 import json
-import math
 import re
 import socket
 import threading
@@ -16,6 +15,7 @@ import workcal
 from clock import Clock
 from counterparty import http_json
 from money import Money
+from num import Num
 from server_log import ErrorText, LogMask
 
 FIND_DEPTH = 6
@@ -296,15 +296,6 @@ def keys(store) -> dict:
     return store.kv_get('integrations') or {}
 
 
-def number(v) -> float | None:
-    """Число из ответа сервиса («1 234,5», 1234.5) или None."""
-    try:
-        x = float(str(v).replace(' ', '').replace('\xa0', '').replace(',', '.'))
-        return x if math.isfinite(x) else None
-    except (TypeError, ValueError):
-        return None
-
-
 def _find(obj, pred, depth=0) -> Any:
     """Первый вложенный объект, для которого pred(obj) истинно (обход словарей и списков вглубь до 6 уровней)."""
     if depth > FIND_DEPTH:
@@ -465,7 +456,7 @@ class Carrier:
     def _insurance(items) -> float:
         """Сумма строк страхования (по названию «страхов…») в детализации перевозчика."""
         return sum(
-            number(x.get('price')) or 0
+            Num.parse(x.get('price')) or 0
             for x in (items or [])
             if isinstance(x, dict) and re.search(r'страхов', str(x.get('name') or ''), re.I)
         )
@@ -474,7 +465,9 @@ class Carrier:
     def _last_number(values) -> float | None:
         """Последнее число из значения или списка значений ответа (ПЭК отдаёт [подпись, …, сумма])."""
         found = [
-            name for name in (number(v) for v in (values if isinstance(values, list) else [values])) if name is not None
+            name
+            for name in (Num.parse(v) for v in (values if isinstance(values, list) else [values]))
+            if name is not None
         ]
         return found[-1] if found else None
 
@@ -564,11 +557,11 @@ class Ati(Carrier):
             else (_find(rec, lambda node: isinstance(node, dict) and 'UpperPrice' in node and node is not rub) or {})
         )
         out = {
-            'upperRub': number(rub.get('UpperPrice')),
-            'avgRub': number(rub.get('AveragePrice')),
-            'lowRub': number(rub.get('BottomPrice')),
-            'upperKm': number(per_km.get('UpperPrice')),
-            'avgKm': number(per_km.get('AveragePrice')),
+            'upperRub': Num.parse(rub.get('UpperPrice')),
+            'avgRub': Num.parse(rub.get('AveragePrice')),
+            'lowRub': Num.parse(rub.get('BottomPrice')),
+            'upperKm': Num.parse(per_km.get('UpperPrice')),
+            'avgKm': Num.parse(per_km.get('AveragePrice')),
             'count': None,
         }
         cnt = _find(
@@ -576,7 +569,7 @@ class Ati(Carrier):
             lambda entry: isinstance(entry, dict) and any(k in entry for k in ('LoadsCount', 'CargoCount', 'Count')),
         )
         if cnt:
-            out['count'] = number(next(cnt[k] for k in ('LoadsCount', 'CargoCount', 'Count') if k in cnt))
+            out['count'] = Num.parse(next(cnt[k] for k in ('LoadsCount', 'CargoCount', 'Count') if k in cnt))
         if out['upperRub'] is None and out['upperKm'] is None:
             raise ValueError(
                 'в ответе ATI.SU нет ставок по направлению ({} → {}, {} {} т)'.format(
@@ -755,14 +748,14 @@ class Dellin(Carrier):
         if msg:
             raise ValueError('Деловые Линии: ' + msg)
         data = (j or {}).get('data') or {}
-        price = number(data.get('price'))
+        price = Num.parse(data.get('price'))
         if price is None:
-            parts = [number((data.get(k) or {}).get('price')) for k in ('derival', 'intercity', 'arrival')]
+            parts = [Num.parse((data.get(k) or {}).get('price')) for k in ('derival', 'intercity', 'arrival')]
             price = sum(x for x in parts if x) or None
         if not price:
             raise ValueError('Деловые Линии: в ответе нет стоимости')
         insurance = data.get('insurance')
-        ins = number(insurance.get('price') if isinstance(insurance, dict) else insurance) or 0
+        ins = Num.parse(insurance.get('price') if isinstance(insurance, dict) else insurance) or 0
         return {
             'price': round(price),
             'ins': round(ins),
@@ -959,7 +952,7 @@ class Kit(Carrier):
         for el in j if isinstance(j, list) else [j]:
             if isinstance(el, dict):
                 for k, v in el.items():
-                    if isinstance(v, dict) and number(v.get('cost')) is not None:
+                    if isinstance(v, dict) and Num.parse(v.get('cost')) is not None:
                         found[str(k)] = v
         if not found:
             msg = ''
@@ -970,7 +963,7 @@ class Kit(Carrier):
         tariff = found[code]
         days = re.findall(r'\d+', str(tariff.get('time') or ''))
         return {
-            'price': round(number(tariff['cost']) or 0),
+            'price': round(Num.parse(tariff['cost']) or 0),
             'ins': round(cls._insurance(tariff.get('detail'))),
             'days': int(days[-1]) if days else None,
             'door': True,
@@ -1062,7 +1055,7 @@ class Cdek(Carrier):
         rows = [
             tariff
             for tariff in (j.get('tariff_codes') if isinstance(j, dict) else []) or []
-            if number(tariff.get('delivery_sum'))
+            if Num.parse(tariff.get('delivery_sum'))
         ]
         door = [tariff for tariff in rows if tariff.get('delivery_mode') == 1]  # 1 — дверь-дверь
         if not door:
@@ -1070,10 +1063,10 @@ class Cdek(Carrier):
                 'СДЭК: нет тарифов «дверь — дверь» для такого груза'
                 + (' (есть только до пункта выдачи)' if rows else '')
             )
-        tariff = min(door, key=lambda x: number(x['delivery_sum']) or 0)
+        tariff = min(door, key=lambda x: Num.parse(x['delivery_sum']) or 0)
         ins = cls._insurance_of(store, headers, tariff.get('tariff_code'), route, declared) if declared else 0
         return {
-            'price': round((number(tariff['delivery_sum']) or 0) + ins),
+            'price': round((Num.parse(tariff['delivery_sum']) or 0) + ins),
             'ins': round(ins),
             'days': tariff.get('period_max') or tariff.get('period_min'),
             'door': True,
@@ -1103,9 +1096,11 @@ class Cdek(Carrier):
             if not isinstance(ins_resp, dict):
                 return 0
             svc = [x for x in (ins_resp.get('services') or []) if isinstance(x, dict) and x.get('code') == 'INSURANCE']
-            ins = sum(number(x.get('total_sum') if x.get('total_sum') is not None else x.get('sum')) or 0 for x in svc)
-            if not ins and number(ins_resp.get('total_sum')) and number(ins_resp.get('delivery_sum')):
-                ins = max(0, (number(ins_resp['total_sum']) or 0) - (number(ins_resp['delivery_sum']) or 0))
+            ins = sum(
+                Num.parse(x.get('total_sum') if x.get('total_sum') is not None else x.get('sum')) or 0 for x in svc
+            )
+            if not ins and Num.parse(ins_resp.get('total_sum')) and Num.parse(ins_resp.get('delivery_sum')):
+                ins = max(0, (Num.parse(ins_resp['total_sum']) or 0) - (Num.parse(ins_resp['delivery_sum']) or 0))
             return ins
         except Exception:
             return 0
@@ -1161,7 +1156,7 @@ class Vozovoz(Carrier):
                 'Возовоз: ' + Http.hide(str((err or {}).get('message') if isinstance(err, dict) else err)[:300])
             )
         resp = (j or {}).get('response') or {}
-        price = number(resp.get('price'))
+        price = Num.parse(resp.get('price'))
         if not price:
             raise ValueError('Возовоз: в ответе нет стоимости')
         door = cls._has_street(frm.get('addr')) and cls._has_street(dst.get('addr'))
@@ -1294,23 +1289,23 @@ class Nrg(Carrier):
         transfers = [
             transfer
             for transfer in ((j or {}).get('transfer') or [])
-            if isinstance(transfer, dict) and number(transfer.get('price'))
+            if isinstance(transfer, dict) and Num.parse(transfer.get('price'))
         ]
         if not transfers:
             raise ValueError('Энергия: в ответе нет стоимости перевозки')
         transfer = next(
             (x for x in transfers if str(x.get('typeId')) == '1' or re.search(r'авто', str(x.get('type') or ''), re.I)),
             None,
-        ) or min(transfers, key=lambda x: number(x['price']) or 0)
-        price, door = number(transfer['price']) or 0, 0
+        ) or min(transfers, key=lambda x: Num.parse(x['price']) or 0)
+        price, door = Num.parse(transfer['price']) or 0, 0
         parts = ['перевозка ' + Nrg.rub(price)]  # раскладка цены — в строку предложения (сверить с сайтом Энергии)
         over = picked if isinstance(picked := transfer.get('oversize'), dict) else {}
-        if oversize := number(over.get('price')):  # надбавка за негабарит (v4)
+        if oversize := Num.parse(over.get('price')):  # надбавка за негабарит (v4)
             price += oversize
             parts.append('негабарит ' + Nrg.rub(oversize))
         for k, name in (('request', 'забор'), ('delivery', 'доставка')):  # забор у отправителя и доставка получателю
             v = (j or {}).get(k)
-            cost = number(v.get('price')) if isinstance(v, dict) else None
+            cost = Num.parse(v.get('price')) if isinstance(v, dict) else None
             if cost:
                 price += cost
                 door += 1
@@ -1318,9 +1313,9 @@ class Nrg(Carrier):
         ins = 0.0
         for k, v in (j or {}).items() if isinstance(j, dict) else []:  # страхование Энергии по объявленной стоимости
             if re.search(r'insur', str(k), re.I):
-                ins += (number(v.get('price')) if isinstance(v, dict) else number(v)) or 0
+                ins += (Num.parse(v.get('price')) if isinstance(v, dict) else Num.parse(v)) or 0
         price += ins
-        days = number(transfer.get('maxTransferTimeDays'))
+        days = Num.parse(transfer.get('maxTransferTimeDays'))
         if not days:
             interval = re.findall(r'\d+', str(transfer.get('interval') or ''))
             days = int(interval[-1]) if interval else None
@@ -1354,7 +1349,7 @@ class Jde(Carrier):
                 name = cnorm((row or {}).get('city'))
                 if not name or not row.get('code'):
                     continue
-                length = number(str(row.get('max_l_gm') or '0').replace(',', '.')) or 99  # 0 — ограничений нет
+                length = Num.parse(str(row.get('max_l_gm') or '0').replace(',', '.')) or 99  # 0 — ограничений нет
                 score = (1 if str(row.get('mst_pr_aex')) == '1' else 0, length)
                 if name not in best or score > best[name][0]:
                     best[name] = (score, str(row['code']))
@@ -1397,15 +1392,15 @@ class Jde(Carrier):
                 str(x.get('error')) for x in ((j or {}).get('services') or []) if isinstance(x, dict) and x.get('error')
             ) or str((j or {}).get('error') or '')
             raise ValueError('ЖелДорЭкспедиция: ' + (err or 'расчёт не выполнен')[:300])
-        price = number(j.get('price'))
+        price = Num.parse(j.get('price'))
         if not price:
             raise ValueError('ЖелДорЭкспедиция: в ответе нет стоимости')
-        ins = number(j.get('price_cargins')) or 0  # страхование, оформление и маркировка — сверх price
-        extra = sum(number(j.get(k)) or 0 for k in ('price_doc', 'price_mark'))
+        ins = Num.parse(j.get('price_cargins')) or 0  # страхование, оформление и маркировка — сверх price
+        extra = sum(Num.parse(j.get(k)) or 0 for k in ('price_doc', 'price_mark'))
         items = {x.get('item') for x in (j.get('services') or []) if isinstance(x, dict)}
         door = {'pickup', 'delivery'} <= items
         ok, _why = LtlLimits.fits(places, store)
-        days = number(j.get('maxdays')) or number(j.get('mindays'))
+        days = Num.parse(j.get('maxdays')) or Num.parse(j.get('mindays'))
         return {
             'price': round(price + ins + extra),
             'ins': round(ins),
@@ -1438,7 +1433,7 @@ class DeliveryQuote:
         self.store, self.req = store, req
         self.frm, self.dst = req.get('from') or {}, req.get('to') or {}
         self.places = self.cargo(req.get('places'))
-        self.unload = number(req.get('unload')) or 0
+        self.unload = Num.parse(req.get('unload')) or 0
         self.providers = providers(store)
         self.offers: list = []
         self.errors: list = []
@@ -1458,10 +1453,10 @@ class DeliveryQuote:
         for place in places:
             if not isinstance(place, dict):
                 raise ValueError('Груз: неверная строка')
-            v = {k: number(place.get(k)) or 0 for k in ('l', 'w', 'h', 'm')}
+            v = {k: Num.parse(place.get(k)) or 0 for k in ('l', 'w', 'h', 'm')}
             if not all(v.values()):
                 continue
-            qty = number(place.get('qty') or 1)
+            qty = Num.parse(place.get('qty') or 1)
             if not all(0 < x <= (cls.MAX_T if k == 'm' else cls.MAX_M) for k, x in v.items()):
                 raise ValueError(f'Груз: размеры места — до {cls.MAX_M} м, масса — до {cls.MAX_T} т')
             if qty is None or qty != int(qty) or not 1 <= qty <= cls.MAX_UNITS:
@@ -1472,7 +1467,7 @@ class DeliveryQuote:
         return out
 
     def run(self) -> dict:
-        model = number(self.req.get('model'))
+        model = Num.parse(self.req.get('model'))
         if model:
             self.offers.append(
                 {
@@ -1520,13 +1515,13 @@ class DeliveryQuote:
     def _ftl(self, vehicles) -> dict:
         """Отдельные машины: по каждой — верхняя граница средних ставок за рейс или за км × расстояние, плюс надбавки."""
         direction, nearby = self._ati_direction()
-        distance = number(self.req.get('km')) or 0
+        distance = Num.parse(self.req.get('km')) or 0
         total, parts = 0.0, []
         for v in vehicles:
             car, ton = Ati.CAR_CLASSES.get(v.get('id'), ('tent', 20))
             price = Ati.price(self.store, direction, car, ton)
             trip = max(price['upperRub'] or 0, (price['upperKm'] or 0) * distance)
-            total += trip + (number(v.get('extras')) or 0)
+            total += trip + (Num.parse(v.get('extras')) or 0)
             per_km = ', {} ₽/км'.format(Money.whole(price['upperKm'])) if price['upperKm'] else ''
             parts.append(
                 '{}: {} ₽ (верх средних ставок ATI.SU, {} {} т{})'.format(
@@ -1542,7 +1537,7 @@ class DeliveryQuote:
             note = 'ставка по направлению {} → {} (ближайшие крупные города): {}'.format(
                 direction['from'], direction['to'], note
             )
-        if self.unload or any(number(v.get('extras')) for v in vehicles):
+        if self.unload or any(Num.parse(v.get('extras')) for v in vehicles):
             note += '; разгрузка и разрешения — по тарифам программы'
         return {
             'src': 'ATI.SU «Средние ставки»',
@@ -1571,7 +1566,7 @@ class DeliveryQuote:
             )
             if not big_ok:
                 return
-        declared = number(self.req.get('declared')) or 0  # объявленная стоимость груза — для страхования перевозчика
+        declared = Num.parse(self.req.get('declared')) or 0  # объявленная стоимость груза — для страхования перевозчика
         carriers = [
             cls_carrier
             for cls_carrier in LTL_CARRIERS
@@ -1641,7 +1636,7 @@ class TariffInput:
         for fact in facts:
             if not isinstance(fact, dict):
                 raise ValueError('Неверный формат счёта для сверки тарифов')
-            distance, total = number(fact.get('km')), number(fact.get('sum'))
+            distance, total = Num.parse(fact.get('km')), Num.parse(fact.get('sum'))
             if not (distance and 0 < distance <= cls.KM_MAX) or not (total and 0 < total <= cls.RUB_MAX):
                 raise ValueError('Счёт для сверки тарифов: расстояние от 1 до 20 000 км и сумма больше нуля')
             stamp = str(fact.get('at') or '')[:10]
@@ -1665,7 +1660,7 @@ def auto_settings(store) -> dict:
     auto = picked if isinstance(picked := logistics.get('auto'), dict) else {}
 
     def whole(v, default, high) -> int:
-        return min(high, max(1, int(number(v) or default)))  # «x», 0, NaN — значение по умолчанию
+        return min(high, max(1, int(Num.parse(v) or default)))  # «x», 0, NaN — значение по умолчанию
 
     routes = picked if isinstance(picked := auto.get('routes'), list) and auto.get('routes') else REF_ROUTES
     return {

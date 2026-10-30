@@ -5,9 +5,10 @@ from typing import Any
 
 from feed_desc import UNIT_LABEL, _spec_split, _spec_val
 from feed_match import LAT_CYR
-from feed_xlsx import CUR_WORDS, _is_unit, _num, read_xlsx
+from feed_xlsx import CUR_WORDS, _is_unit, read_xlsx
 from genset_sheets import GensetBook
 from genset_tide import TideBook
+from num import Num
 
 PRESSURE_COLS_MIN = 2
 TITLE_MIN = 6
@@ -178,7 +179,7 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
         }  # название листа и завода — объединены
         for col, v in vals.items():
             if i < head_row and (
-                _num(v) is not None or re.match(r'^\(?лист\b', v, re.I)
+                Num.parse(v) is not None or re.match(r'^\(?лист\b', v, re.I)
             ):  # номер листа и дата над шапкой
                 continue
             # объединённые ячейки повторяют текст в каждой строке и столбце — название листа и повторы шапки не нужны
@@ -236,7 +237,7 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
             continue  # таблица поправочных коэффициентов и примечания под прайсом
         opts = []
         for col, label in cols['opts']:
-            v = _num(row.get(col))
+            v = Num.parse(row.get(col))
             if v:
                 opts.append((_opt_name(label), round(v, 2)))
         specs = []
@@ -257,18 +258,18 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
         if sku in ('-', '—'):
             sku = ''
         short = re.sub(r'\s+', ' ', str(row.get(cols['short'], ''))).strip()[:120] if cols['short'] is not None else ''
-        dealer = _num(row.get(cols['dealer'])) if cols['dealer'] is not None else None
-        disc = _num(row.get(cols['disc'])) if cols['disc'] is not None else None
+        dealer = Num.parse(row.get(cols['dealer'])) if cols['dealer'] is not None else None
+        disc = Num.parse(row.get(cols['disc'])) if cols['disc'] is not None else None
         disc = disc * 100 if disc is not None and 0 < disc < 1 else disc  # «0.25» в ячейке с форматом «%»
         variants, names = [], _expand_names(name)
         for col, qual in cols['prices'] or [(None, '')]:
-            price = _num(row.get(col)) if col is not None else None
+            price = Num.parse(row.get(col)) if col is not None else None
             if (
                 price is None and col is not None and len(cols['prices']) == 1
             ):  # цена группы в соседней строке без названия
                 for j in (i - 1, i + 1, i + 2):
                     if 0 <= j < len(rows) and not str(rows[j].get(cols['name'], '')).strip():
-                        price = _num(rows[j].get(col))
+                        price = Num.parse(rows[j].get(col))
                         if price is not None:
                             break
             if price is None and len(cols['prices']) > 1:
@@ -292,7 +293,7 @@ def _price_block(rows, head_row, end, low, sname, title, prev=None) -> tuple:
                     {
                         'sku': sku[:40],
                         'name': vname2[:300],
-                        'short': '' if _num(short) is not None else short,
+                        'short': '' if Num.parse(short) is not None else short,
                         'pbar': pair,
                         'price': round(price, 2) if price else None,
                         'cur': cur,

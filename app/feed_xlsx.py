@@ -147,15 +147,6 @@ def read_xlsx(data) -> list:
     return out
 
 
-def _num(v) -> float | None:
-    if v is None:
-        return None
-    text = str(v).strip().replace('\xa0', '').replace(' ', '').replace(',', '.')
-    if not re.match(r'^-?\d+(\.\d+)?$', text):
-        return None
-    return float(text)
-
-
 def _unit_parts(v) -> list | None:
     """«кВт / В» → ['квт', 'в'], «см / кг  /   r (ü)» → ['см', 'кг', 'r (ü)']; не единица — None."""
     orig = re.sub(r'\s+', ' ', str(v).strip())

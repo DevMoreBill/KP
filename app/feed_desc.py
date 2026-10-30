@@ -4,7 +4,8 @@ import html as html_mod
 import re
 from typing import Any
 
-from feed_xlsx import _num, _unit_parts
+from feed_xlsx import _unit_parts
+from num import Num
 
 LIST_ITEMS_MIN = 3
 SENT_KEY_MIN = 8
@@ -59,7 +60,7 @@ def _spec_split(label, v, u) -> list:
 def _spec_val(v, u) -> str:
     u = SPEC_UNITS.get(str(u).strip(), str(u).strip())
     v = str(v).strip()
-    num = _num(v)
+    num = Num.parse(v)
     if num is not None:
         v = (f'{num}') if float(num).is_integer() else (f'{num:.3f}').rstrip('0').rstrip('.').replace('.', ',')
     v = v.replace('x', '×').replace('х', '×') if re.match(r'^\d+\s*[xх×]\s*\d+', v) else v

@@ -172,10 +172,10 @@ class UnitTest(unittest.TestCase):
         self.assertFalse(KpFiles._zip_bad(z({'passport.pdf': b'%PDF', 'docs.zip': z({'a.pdf': b'%PDF'})})))
 
     def test_feed_numbers_finite(self):
-        import feeds
-        self.assertIsNone(feeds.parse_number('nan'))
-        self.assertIsNone(feeds.parse_number('inf'))
-        self.assertEqual(feeds.parse_number('1 234,5'), 1234.5)
+        from num import Num  # с 3.247.0 разбор числа фидов — общий Num.parse (был feeds.parse_number)
+        self.assertIsNone(Num.parse('nan'))
+        self.assertIsNone(Num.parse('inf'))
+        self.assertEqual(Num.parse('1 234,5'), 1234.5)
 
     def test_gzip_build_once(self):
         import threading

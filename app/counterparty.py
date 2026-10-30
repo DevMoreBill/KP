@@ -18,6 +18,7 @@ from defaults import SrvVal
 from inn import Inn
 from money import Money
 from net import Net
+from num import Num
 from storage import DocLimits
 
 INN_COMPANY = 10
@@ -105,13 +106,6 @@ def dig(data, *path, default=None) -> Any:
         if cur is None:
             return default
     return cur
-
-
-def _num(v) -> float | None:
-    try:
-        return float(str(v).replace(' ', '').replace(',', '.'))
-    except (TypeError, ValueError):
-        return None
 
 
 class CheckoApi:
@@ -385,16 +379,16 @@ class GirBo:
         return max(
             valid,
             key=lambda corr: (
-                _num(corr.get('correctionVersion')) or 0,
+                Num.parse(corr.get('correctionVersion')) or 0,
                 1 if corr.get('lastCorrection') else 0,
-                _num(corr.get('id')) or 0,
+                Num.parse(corr.get('id')) or 0,
             ),
         )
 
     @classmethod
     def _rub(cls, *vals) -> float | None:
         for v in vals:
-            num = _num(v) if v is not None else None
+            num = Num.parse(v) if v is not None else None
             if num is not None:
                 return num * cls.THOUSAND
         return None
@@ -1112,7 +1106,7 @@ class Counterparties:
             add('yellow', 'Массовый руководитель')
         if any(boss.get('Недост') for boss in bosses):
             add('red', 'Недостоверные сведения о руководителе')
-        debt = _num(dig(company, 'Налоги', 'СумНедоим'))
+        debt = Num.parse(dig(company, 'Налоги', 'СумНедоим'))
         if debt:
             add('yellow', f'Налоговая недоимка: {Money.whole(debt)} руб.')
         # бухотчётность: последние 3 года — из ответа сервиса (суммы в рублях) или из ГИР БО / прежней проверки
@@ -1123,9 +1117,9 @@ class Counterparties:
             fin.append(
                 {
                     'year': y,
-                    'revenue': _num(row.get('2110')),
-                    'profit': _num(row.get('2400')),
-                    'assets': _num(row.get('1600')),
+                    'revenue': Num.parse(row.get('2110')),
+                    'profit': Num.parse(row.get('2400')),
+                    'assets': Num.parse(row.get('1600')),
                 }
             )
         if fin:
@@ -1134,8 +1128,8 @@ class Counterparties:
             fin, fin_src, fin_url = list(fin_in['finances']), fin_in.get('src', ''), fin_in.get('url', '')
         self._fin_flags(fin, add)
         courts = raw.get('courts')
-        c_cnt = _num((courts or {}).get('ЗапВсего')) or 0
-        c_sum = _num((courts or {}).get('ОбщСуммИск')) or 0
+        c_cnt = Num.parse((courts or {}).get('ЗапВсего')) or 0
+        c_sum = Num.parse((courts or {}).get('ОбщСуммИск')) or 0
         if c_cnt:
             rev = fin[0]['revenue'] if fin and fin[0]['revenue'] else None
             add(
@@ -1143,12 +1137,12 @@ class Counterparties:
                 f'Арбитражные дела в роли ответчика: {c_cnt} на {Money.whole(c_sum)} руб.',
             )
         fssp = raw.get('fssp')
-        f_cnt = _num((fssp or {}).get('ЗапВсего')) or 0
-        f_sum = _num((fssp or {}).get('ОбщСумДолг') or (fssp or {}).get('ОбщСум'))
+        f_cnt = Num.parse((fssp or {}).get('ЗапВсего')) or 0
+        f_sum = Num.parse((fssp or {}).get('ОбщСумДолг') or (fssp or {}).get('ОбщСум'))
         if f_sum is None:  # общей суммы нет — сумма по записям (остаток долга, иначе сумма долга)
             recs = picked if isinstance(picked := (fssp or {}).get('Записи'), list) else []
             vals = [
-                _num(rec.get('ОстЗадолж') if rec.get('ОстЗадолж') is not None else rec.get('СумДолг'))
+                Num.parse(rec.get('ОстЗадолж') if rec.get('ОстЗадолж') is not None else rec.get('СумДолг'))
                 for rec in recs
                 if isinstance(rec, dict)
             ]
@@ -1168,8 +1162,8 @@ class Counterparties:
             'active': active,
             'regDate': reg,
             'ageYears': round(age, 1) if age is not None else None,
-            'capital': _num(dig(company, 'УстКап', 'Сумма')),
-            'employees': _num(company.get('СЧР')),
+            'capital': Num.parse(dig(company, 'УстКап', 'Сумма')),
+            'employees': Num.parse(company.get('СЧР')),
             'okved': self._okved(company),
             'msp': dig(company, 'РМСП', 'Кат', default=''),
             'taxDebt': debt,

@@ -9,6 +9,7 @@ import defaults
 import logistics_api
 from clock import Clock
 from config import APP_DIR
+from num import Num
 
 
 class ChinaFreight:
@@ -83,13 +84,6 @@ class ChinaFreight:
         return text
 
     @staticmethod
-    def _num(v) -> float | None:
-        try:
-            return float(str(v if v is not None else '').replace(',', '.').replace(' ', '').replace(' ', ''))
-        except ValueError:
-            return None
-
-    @staticmethod
     def _date(v, i: int) -> str:
         text = str(v or '').strip()
         if not text:
@@ -120,7 +114,7 @@ class ChinaFreight:
         for i, row in enumerate(rows, 1):
             if not isinstance(row, dict):
                 raise ValueError(f'Ставки экспедиторов: строка {i} — неверный формат')
-            price = self._num(row.get('price'))
+            price = Num.parse(row.get('price'))
             if price is None or not 0 < price <= self.MONEY_MAX:
                 raise ValueError(f'Строка {i}: ставка — число больше нуля')
             kind, unit, cur, scope = (
@@ -131,7 +125,7 @@ class ChinaFreight:
             )
             if kind not in self.KINDS or unit not in self.UNITS or cur not in self.CURS or scope not in self.SCOPES:
                 raise ValueError(f'Строка {i}: выберите вид перевозки, участок, единицу и валюту из списка')
-            minimum = self._num(row.get('min')) if str(row.get('min') or '').strip() else 0
+            minimum = Num.parse(row.get('min')) if str(row.get('min') or '').strip() else 0
             if minimum is None or not 0 <= minimum <= self.MONEY_MAX:
                 raise ValueError(f'Строка {i}: минимальная сумма — число не меньше нуля')
             days = str(row.get('days') or '').strip()
@@ -203,13 +197,13 @@ class ChinaFreight:
 
     def _money(self, offer, rates: dict, what: str) -> float:
         """{v, cur} → рубли по курсу ЦБ; пусто — 0; нет курса — ValueError."""
-        v = self._num((offer or {}).get('v')) if str((offer or {}).get('v') or '').strip() else 0
+        v = Num.parse((offer or {}).get('v')) if str((offer or {}).get('v') or '').strip() else 0
         if v is None or v < 0:
             raise ValueError(f'{what} — число не меньше нуля')
         cur = (offer or {}).get('cur') or 'CNY'
         if cur not in self.CURS:
             raise ValueError(f'{what} — выберите валюту из списка')
-        rate = 1.0 if cur == 'RUB' else logistics_api.number((rates or {}).get(cur))
+        rate = 1.0 if cur == 'RUB' else Num.parse((rates or {}).get(cur))
         if v and not rate:
             raise ValueError(f'{what}: нет курса ЦБ для {cur} — повторите позже')
         return v * (rate or 0)
@@ -256,7 +250,7 @@ class ChinaFreight:
         if terms not in self.TERMS:
             raise ValueError('Выберите условия поставки из списка')
         t_name, add_freight, add_extra, add_ins = self.TERMS[terms]
-        qty = {'kg': logistics_api.number(req.get('kg')) or 0, 'm3': logistics_api.number(req.get('m3')) or 0}
+        qty = {'kg': Num.parse(req.get('kg')) or 0, 'm3': Num.parse(req.get('m3')) or 0}
         extra = self._money(req.get('extra'), rates, 'Расходы в Китае') if add_extra else 0
         ins = self._money(req.get('ins'), rates, 'Страхование') if add_ins else 0
         today = today or date.today().isoformat()
@@ -288,7 +282,7 @@ class ChinaFreight:
                     }
                 )
                 continue
-            rate = 1.0 if row['cur'] == 'RUB' else logistics_api.number((rates or {}).get(row['cur']))
+            rate = 1.0 if row['cur'] == 'RUB' else Num.parse((rates or {}).get(row['cur']))
             if not rate:
                 errors.append({'src': who, 'msg': 'нет курса ЦБ для {} — повторите позже'.format(row['cur'])})
                 continue

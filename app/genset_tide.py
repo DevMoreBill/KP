@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from genset_sheets import Cell, Columns, Exec, Model, Stock
+from num import Num
 
 HEAD_SCAN = 15
 HEAD_DEPTH = 3
@@ -190,9 +191,9 @@ class TideBook:
             dealer = sheet.find(rf'{regex}.*нов\w* дилерск')
             for row in sheet.data():
                 code = Cell.text(row, model)
-                price = Cell.num(row.get(rrc)) if rrc is not None else None
+                price = Num.parse(row.get(rrc)) if rrc is not None else None
                 if code and price:
-                    deal = Cell.num(row.get(dealer)) if dealer is not None else None
+                    deal = Num.parse(row.get(dealer)) if dealer is not None else None
                     out[(Model.key(code), cls._alt_model(sheet, row), kind)] = (
                         round(price, 2),
                         round(deal, 2) if deal else None,
@@ -212,7 +213,7 @@ class TideBook:
                 continue
             total = 0
             for col in counts:
-                qty = Cell.num(row.get(col)) or 0
+                qty = Num.parse(row.get(col)) or 0
                 until = cls._date(row.get(col + 3))
                 if qty > 0 and (until is None or until >= today):
                     total += int(qty)
@@ -223,7 +224,7 @@ class TideBook:
 
     @staticmethod
     def _date(value: Any) -> date | None:
-        num = Cell.num(value)
+        num = Num.parse(value)
         if num is not None and SERIAL_MIN <= num <= SERIAL_MAX:
             return EXCEL_DAY0 + timedelta(days=int(num))
         found = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', str(value or ''))
@@ -293,8 +294,8 @@ class TideBook:
 
     @classmethod
     def _item(cls, sheet: TideSheet, row: dict, code: str, kind: str, block: dict, new: tuple | None) -> dict | None:
-        rrc = Cell.num(row.get(block['rrc'])) if block['rrc'] is not None else None
-        dealer = Cell.num(row.get(block['dealer'])) if block['dealer'] is not None else None
+        rrc = Num.parse(row.get(block['rrc'])) if block['rrc'] is not None else None
+        dealer = Num.parse(row.get(block['dealer'])) if block['dealer'] is not None else None
         if new:
             rrc, dealer = new[0], new[1] or dealer
         if not rrc:
@@ -318,7 +319,7 @@ class TideBook:
 
     @staticmethod
     def _count(row: dict, col: int | None) -> int:
-        num = Cell.num(row.get(col)) if col is not None else None
+        num = Num.parse(row.get(col)) if col is not None else None
         return max(0, int(num)) if num else 0
 
     @classmethod
@@ -348,7 +349,7 @@ class TideBook:
             out.append(('Двигатель', engine))
         if alt:
             out.append(('Альтернатор', alt))
-        kw = Cell.num(row.get(spec['kw'])) if spec['kw'] is not None else None
+        kw = Num.parse(row.get(spec['kw'])) if spec['kw'] is not None else None
         if kw:
             out.append(('Номинальная мощность', f'{round(kw, 1):g} кВт'))
         return out

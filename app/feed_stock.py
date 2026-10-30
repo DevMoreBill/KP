@@ -6,8 +6,9 @@ from typing import Any
 
 from feed_match import LAT_CYR, SIG_MIN, _by_code, _code, _sig, model_cfg
 from feed_price_file import NOTE_ROW
-from feed_xlsx import _num, read_xlsx
+from feed_xlsx import read_xlsx
 from genset_sheets import EtaDate
+from num import Num
 
 
 def parse_stock(data) -> list:
@@ -82,7 +83,9 @@ class StockFile:
             col for col, title in head.items() if self.NAME.match(title.lower()) or self.SKU.match(title.lower())
         ]
         texts = {
-            col: self._clean(v) for col, v in sub.items() if self._clean(v) and _num(v) is None and col not in key_cols
+            col: self._clean(v)
+            for col, v in sub.items()
+            if self._clean(v) and Num.parse(v) is None and col not in key_cols
         }
         if len(texts) >= self.SUB_MIN and not any(self._clean(sub.get(col)) for col in key_cols):
             group = ''
@@ -95,7 +98,7 @@ class StockFile:
 
     def _amount(self, v) -> float | None:
         """Количество: число или «10+», «>5», «более 10» (столько есть точно)."""
-        num = _num(v)
+        num = Num.parse(v)
         if num is not None:
             return num
         found = self.AMOUNT.match(self._clean(v))
@@ -284,7 +287,7 @@ class StockFile:
 
     def _eta(self, value) -> str:
         """Дата поступления → «ДД.ММ»: текст «15.11.2026», «прибытие 27.10» или число-дата Excel."""
-        num = _num(value)
+        num = Num.parse(value)
         if num is not None and self.SERIAL_MIN <= num <= self.SERIAL_MAX:
             day = self.EXCEL_DAY0 + timedelta(days=int(num))
             return f'{day.day:02d}.{day.month:02d}'
@@ -295,7 +298,7 @@ class StockFile:
         promo = self._clean(row.get(roles['promo'])) if roles['promo'] is not None else ''
         if not promo or promo == '0' or rec['promo']:
             return
-        share = _num(promo)
+        share = Num.parse(promo)
         rec['promo'] = f'Скидка {share * 100:g} %' if share is not None and 0 < share < 1 else promo[:80]
 
     @staticmethod

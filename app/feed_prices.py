@@ -4,7 +4,7 @@ import functools
 import re
 from typing import Any
 
-from feed_text import parse_number
+from num import Num
 
 PERCENT_MAX = 100
 CUR_AT = 3
@@ -18,11 +18,11 @@ def discount_rules(raw) -> list:
     for rule in raw[:30]:
         if not isinstance(rule, dict):
             continue
-        pct = parse_number(rule.get('pct'))
+        pct = Num.parse(rule.get('pct'))
         if pct is None or not 0 < pct < PERCENT_MAX:
             continue
         cats = [str(cat)[:40] for cat in (rule.get('cats') or []) if re.match(r'^[a-z0-9_-]{1,40}$', str(cat))][:40]
-        lim = {k: parse_number(rule.get(k)) for k in ('kwMin', 'kwMax')}
+        lim = {k: Num.parse(rule.get(k)) for k in ('kwMin', 'kwMax')}
         out.append(
             {
                 'label': re.sub(r'\s+', ' ', str(rule.get('label') or '')).strip()[:80],
@@ -98,7 +98,7 @@ def drive_of(doc, feed) -> str:
 
 
 def _kw_of(doc) -> float | None:
-    kw = parse_number((doc.get('attrs') or {}).get('kw'))
+    kw = Num.parse((doc.get('attrs') or {}).get('kw'))
     if kw:
         return kw
     for group in doc.get('groups') or []:
@@ -110,7 +110,7 @@ def _kw_of(doc) -> float | None:
                     r'(\d+(?:[.,]\d+)?)\s*(квт|kw)', str(row.get('v') or '') + ' ' + str(row.get('k') or ''), re.I
                 )
                 if match:
-                    return parse_number(match.group(1))
+                    return Num.parse(match.group(1))
     return None
 
 

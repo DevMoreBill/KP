@@ -1,16 +1,6 @@
-"""Текст и числа из фидов и страниц поставщиков: текст из HTML, разбор числа."""
+"""Текст из фидов и страниц поставщиков: текст из HTML (число — `num.Num`)."""
 
-import math
 import re
-
-
-def parse_number(v) -> float | None:
-    """Число из фида; «nan», «inf» и прочее не число — None (иначе в карточку попало бы Infinity, а NaN ронял проверку фида)."""
-    try:
-        num = float(re.sub(r'[\s\xa0]', '', str(v)).replace(',', '.'))
-    except (TypeError, ValueError):
-        return None
-    return num if math.isfinite(num) else None
 
 
 def _html_text(text) -> str:

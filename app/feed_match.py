@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from feed_xlsx import _num
+from num import Num
 
 SIG_MIN = 2
 RECEIVER_MIN = 50
@@ -75,12 +75,12 @@ def _char(page, regex) -> str:
 def page_cfg(page) -> dict:
     """Исполнение позиции парса: по названию и характеристикам (давление, ресивер, осушитель) — как model_cfg у прайса."""
     cfg = model_cfg(page['name'], page['name'])
-    pressure = _num_attr(re.sub(r'[^\d,.]', '', _char(page, r'^давление')).replace(',', '.') or None)
+    pressure = Num.parse(re.sub(r'[^\d,.]', '', _char(page, r'^давление')).replace(',', '.') or None)
     if pressure:
         cfg['p'] = pressure
     recv = _char(page, r'объ[её]м ресивера')
     match2 = re.match(r'^\s*(\d+)\s*[xх×]\s*(\d+)', recv, re.I)  # «2 × 270» — два ресивера
-    rec = int(match2.group(1)) * int(match2.group(2)) if match2 else _num_attr(re.sub(r'[^\d,.]', '', recv) or None)
+    rec = int(match2.group(1)) * int(match2.group(2)) if match2 else Num.parse(re.sub(r'[^\d,.]', '', recv) or None)
     if rec and rec >= RECEIVER_MIN:
         cfg['rec'] = int(rec)
     if _char(page, r'модель осушителя') or re.search(r'\d+d$', (page.get('url') or '').rstrip('/'), re.I):
@@ -347,7 +347,7 @@ def _by_sig(page, by_sig, one) -> dict | None:
         cands = [
             (opt_n, price)
             for opt_n, price in pairs
-            if opt_n <= opt and nums and _num(price.get('pbar')) == _num(nums[-1])
+            if opt_n <= opt and nums and Num.parse(price.get('pbar')) == Num.parse(nums[-1])
         ] or [(opt_n, price) for opt_n, price in pairs if opt_n <= opt]
     if not cands:
         return None
@@ -467,10 +467,3 @@ def model_cfg(model, text='') -> dict:
     elif re.search(r'(с|на) ресивер', low_text) and not cfg['rec']:
         cfg['rec'] = -1  # с ресивером, объём не указан
     return cfg
-
-
-def _num_attr(v) -> float | None:
-    try:
-        return float(str(v).replace(',', '.'))
-    except (TypeError, ValueError):
-        return None

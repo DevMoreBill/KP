@@ -2,6 +2,8 @@
 
 import re
 
+from num import Num
+
 NUM = r'(\d+(?:[.,]\d+)?)'
 MINUS = '−–-'
 MINUS_RX = r'−–\-'  # те же знаки — внутри [ ] регулярного выражения
@@ -60,10 +62,6 @@ class TzParse:
         }
 
     # ---- помощники
-    @staticmethod
-    def num(text) -> float:
-        return float(str(text).replace(',', '.').replace(' ', ''))
-
     def src(self, match) -> str:
         start, end = max(0, match.start() - 60), min(len(self.text), match.end() + 60)
         text = re.sub(r'\s+', ' ', self.text[start:end].replace('\f', ' ')).strip()
@@ -185,7 +183,7 @@ class TzParse:
         ) or self.first(NUM + r'\s*' + u)
 
         def m3min(hit) -> float:
-            v, unit = self.num(hit.group(1)), hit.group(2).lower()
+            v, unit = Num.of(hit.group(1)), hit.group(2).lower()
             return round(
                 v / 60 if '/ч' in unit else v / 1000 if 'л/мин' in unit else v * 0.06 if 'л/с' in unit else v, 2
             )
@@ -215,7 +213,7 @@ class TzParse:
         )
 
         def to_bar(bar_hit) -> float:
-            v, unit = self.num(bar_hit.group(1)), bar_hit.group(2).lower()
+            v, unit = Num.of(bar_hit.group(1)), bar_hit.group(2).lower()
             # ати — техническая атмосфера избыточная = 1 кгс/см² = 0,980665 бар; атм — физическая атмосфера = 1,01325 бар
             return round(
                 v * 10
@@ -307,8 +305,8 @@ class TzParse:
         match = self.first(
             r'запас\w*\s+(?:по\s+)?производительност\w*[^\n]{0,30}?(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%'
         ) or self.first(r'производительн\w*[^\n]{0,60}?с\s+запасом\s+(?:не\s+менее\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%')
-        if match and 0 <= self.num(match.group(1)) <= self.PERCENT_MAX:
-            self.put('margin', self.num(match.group(1)), match, 'Запас производительности, %')
+        if match and 0 <= Num.of(match.group(1)) <= self.PERCENT_MAX:
+            self.put('margin', Num.of(match.group(1)), match, 'Запас производительности, %')
 
     def dgu_more(self) -> None:
         """режим ДЭС, средняя нагрузка, наибольший двигатель и его пуск, категория надёжности"""
@@ -338,7 +336,7 @@ class TzParse:
             + END_LETTER
         )
         if match:
-            self.put('motor', self.num(match.group(1)), match, 'Наибольший двигатель нагрузки, кВт')
+            self.put('motor', Num.of(match.group(1)), match, 'Наибольший двигатель нагрузки, кВт')
         for key, regex, label in (
             ('stardelta', r'звезд\w*\s*[-–—]?\s*треугольн', 'звезда — треугольник'),
             ('soft', r'плавн\w*\s+пуск|устройств\w*\s+плавного\s+пуска', 'плавный пуск'),
@@ -421,14 +419,14 @@ class TzParse:
             + r'\s*(м3/ч|м³/ч|м3/час|м³/час|л/с|л/мин|м3/сут|м³/сут)'
         )
         if match:
-            v, unit = self.num(match.group(1)), match.group(2).lower()
+            v, unit = Num.of(match.group(1)), match.group(2).lower()
             flow = v * 3.6 if unit == 'л/с' else v * 0.06 if unit == 'л/мин' else v / 24 if 'сут' in unit else v
             self.put('q', round(flow, 1), match, 'Подача, м³/ч')
         match = self.first(
             r'напор\w*[^\n]{0,50}?' + NUM + r'\s*(м\.?\s*вод\.?\s*ст\.?|мвс|м|бар|мпа|кгс/см2|кгс/см²|атм)' + END_LETTER
         )
         if match:
-            v, unit = self.num(match.group(1)), match.group(2).lower()
+            v, unit = Num.of(match.group(1)), match.group(2).lower()
             head = (
                 v * 10.2
                 if unit == 'бар'
@@ -447,7 +445,7 @@ class TzParse:
         if not match:
             match = self.first(NUM + r'\s*(квт|ква|kw|kva)' + END_LETTER)
         if match:
-            v, unit = self.num(match.group(1)), match.group(2).lower()
+            v, unit = Num.of(match.group(1)), match.group(2).lower()
             self.put(
                 'kw',
                 round(v * 0.8 if unit in ('ква', 'kva') else v, 1),
@@ -458,7 +456,7 @@ class TzParse:
                 'kw',
                 'Мощность, кВт',
                 [
-                    (round(self.num(x.group(1)) * (0.8 if x.group(2).lower() in ('ква', 'kva') else 1), 1), x)
+                    (round(Num.of(x.group(1)) * (0.8 if x.group(2).lower() in ('ква', 'kva') else 1), 1), x)
                     for x in self.all(
                         r'(?:мощност\w*\s+(?:ДГУ|ДЭС|электростанци\w*|нагрузк\w*|станци\w*)|потребляем\w*\s+мощност\w*)[^\n]{0,40}?'
                         + NUM
@@ -575,7 +573,7 @@ class TzParse:
     def receiver(self) -> None:
         match = self.first(r'ресивер\w*[^\n]{0,50}?' + NUM + r'\s*(л|литр\w*|м3|м³)' + END_LETTER)
         if match:
-            v = self.num(match.group(1))
+            v = Num.of(match.group(1))
             self.put(
                 'recvVol',
                 round(v * 1000 if match.group(2).lower() in ('м3', 'м³') and v < self.RECEIVER_M3_MAX else v),
