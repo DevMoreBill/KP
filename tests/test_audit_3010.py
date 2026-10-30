@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Аудит 30.10: распаковка PDF в пределах бюджета документа, размер карточки клиента, запросы сервера — только http(s);
-отметка «из Битрикс24 — обратно не отправлять» не снимается вложенным вызовом."""
+отметка «из Битрикс24 — обратно не отправлять» не снимается вложенным вызовом; текст ошибки для пользователя — без путей
+на диске сервера."""
 import json
 import os
 import sys
@@ -12,9 +13,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import pdf_text  # noqa: E402
 from bitrix import BitrixQueue  # noqa: E402
 from counterparty import Counterparties  # noqa: E402
+from deal_intake import DealIntake  # noqa: E402
+from doc_text import DocText  # noqa: E402
 from kit import TempStore  # noqa: E402
 from net import Net  # noqa: E402
 from pdf_text import Doc, PdfText  # noqa: E402
+from server_log import ErrorText  # noqa: E402
 
 
 def pdf(content_refs, streams):
@@ -90,6 +94,29 @@ class BitrixQuiet(unittest.TestCase):
             self.assertTrue(BitrixQueue.quiet(), 'вложенный вызов не снимает отметку внешнего')
         self.assertFalse(BitrixQueue.quiet())
 
+
+
+class NoPaths(unittest.TestCase):
+    def test_error_text_hides_paths(self):
+        text = ErrorText.of(OSError(2, 'No such file or directory', '/home/kp/app/data/kp.sqlite3'))
+        self.assertNotIn('/home/', text)
+        self.assertIn('No such file', text)
+        self.assertNotIn('KP', ErrorText.of(r"[WinError 5] Отказано в доступе: 'C:\\KP\\data\\backup\\x.zip'"))
+        self.assertEqual(ErrorText.of(ValueError('нет цены у позиции')), 'нет цены у позиции')
+
+    def test_intake_file_error_without_path(self):
+        def broken(name, data):
+            raise OSError(13, 'Permission denied', '/tmp/kp-x/z.docx')
+
+        original = DocText.extract
+        DocText.extract = staticmethod(broken)
+        try:
+            with self.assertRaises(ValueError) as caught:
+                DealIntake(None).read('заявка.docx', b'PK')
+        finally:
+            DocText.extract = original
+        self.assertIn('Файл не прочитан', str(caught.exception))
+        self.assertNotIn('/tmp/', str(caught.exception))
 
 if __name__ == '__main__':
     unittest.main()

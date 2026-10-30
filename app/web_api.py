@@ -80,7 +80,7 @@ from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
 from net import Net
 from onec import OneCApi, OneCConf, OneCSync
 from our_docs import DocTemplates, OurRequisites
-from server_log import ServerLog
+from server_log import ErrorText, ServerLog
 from storage import Conflict, with_rev
 
 _COUNTERPARTIES = None
@@ -253,8 +253,8 @@ class Controller(metaclass=ControllerMeta):
 
     @staticmethod
     def no_paths(exc) -> str:
-        """Текст ошибки для ответа — без путей на диске сервера (C:\\…, /tmp/…)."""
-        return re.sub(r'(?:[A-Za-z]:\\|\\\\|/(?:tmp|home|root|var|usr|Users)/)[^\s"\'«»;,)]*', '…', str(exc))
+        """Текст ошибки для ответа — без путей на диске сервера."""
+        return ErrorText.of(exc)
 
     def text(self, code, msg) -> None:
         return self.send(code, 'text/plain; charset=utf-8', msg)
@@ -1327,7 +1327,7 @@ class SettingsController(Controller):
         try:
             return self.send_json(logistics_api.DeliveryQuote(store(), req).run())
         except (ValueError, TypeError, KeyError) as exc:
-            return self.text(400, f'Неверный запрос: {exc}')
+            return self.text(400, f'Неверный запрос: {self.no_paths(exc)}')
 
     @route(r'/api/logistics/status', 'GET')
     def logistics_status(self) -> Any:

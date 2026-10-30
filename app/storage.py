@@ -15,6 +15,7 @@ from typing import Any, Literal
 from client_match import ClientMatch, ContactKey
 from defaults import SrvVal
 from phone import Phone
+from server_log import ErrorText
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS catalog (id TEXT PRIMARY KEY, doc TEXT NOT NULL, light TEXT NOT NULL, name TEXT, cat TEXT, maker TEXT, updated TEXT);
@@ -504,7 +505,7 @@ class DbZip:
                     raise ValueError('в архиве нет файла базы')
                 bad = z.testzip()
         except (zipfile.BadZipFile, OSError) as exc:
-            raise ValueError(f'архив копии не читается: {exc}') from exc
+            raise ValueError(f'архив копии не читается: {ErrorText.of(exc)}') from exc
         if bad:
             raise ValueError(f'архив копии повреждён: {bad}')
 
@@ -2138,7 +2139,7 @@ class Store:
                 Store(tmp).conn().close()  # схема и миграции до текущей версии программы
             except Exception as exc:
                 raise ValueError(
-                    f'Файл базы от несовместимой версии программы — база не заменена ({str(exc)[:200]})'
+                    f'Файл базы от несовместимой версии программы — база не заменена ({ErrorText.of(exc)[:200]})'
                 ) from exc
             page = self.scalar('PRAGMA page_size')
             tmp_conn = sqlite3.connect(tmp)

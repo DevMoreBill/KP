@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 
 import imgfetch
+from server_log import ErrorText
 
 SAMPLE_INN = '7707083893'  # ПАО Сбербанк — для проверки сервисов реквизитов
 SAMPLE_BO_INN = '7713140469'  # АО «Лаборатория Касперского» — для ГИР БО (банков там нет: они отчитываются в ЦБ)
@@ -77,7 +78,7 @@ class ConnectionCheck:
 
     @staticmethod
     def _err(exc: BaseException) -> str:
-        text = str(exc) or type(exc).__name__
+        text = ErrorText.of(exc) or type(exc).__name__
         if hasattr(exc, 'code') and hasattr(exc, 'reason'):
             text = f'HTTP {exc.code} {exc.reason}'
         return text[:240]

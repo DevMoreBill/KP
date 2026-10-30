@@ -414,7 +414,7 @@ export class CabToday {
       ['[data-dro]', el => this._leave(() => Drafts.open(el.dataset.dro))],
       ['[data-didle]', el => this._callToday(el.dataset.didle)],
       ['[data-ctago]', () => this._goTodo()],
-      ['[data-ntfon]', () => BrowserNotify.ask().then(() => Cabinet.render())],
+      ['[data-ntfon]', () => BrowserNotify.ask().then(Cabinet.render.bind(Cabinet), Cabinet.render.bind(Cabinet))],
       ['[data-dweek]', el => DealPause.week({ id: el.dataset.dweek }, () => Cabinet.reload())],
     ];
     for (const [selector, run] of actions) {

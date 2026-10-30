@@ -11,6 +11,7 @@ from enum import Enum
 
 import feed_files
 import feeds
+from server_log import ErrorText
 
 
 class Scope(Enum):
@@ -361,7 +362,7 @@ class FeedUpdate:
             res = self._run(cfg, sink)
             self.draft.commit(self.store, self.feed)
         except Exception as exc:
-            job.update(state='error', msg=str(exc)[:300])
+            job.update(state='error', msg=ErrorText.of(exc)[:300])
             raise
         res.update(written=sink.written, conflicts=sink.conflicts, skipped=len(skip or []))
         self._log(res, author)

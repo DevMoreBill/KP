@@ -29,6 +29,16 @@ class LogMask:
         return cls.FIELD.sub(r'\1***', out)
 
 
+class ErrorText:
+    """Текст исключения для пользователя и состояния задач — без путей на диске сервера (C:\\…, /tmp/…)."""
+
+    PATH = re.compile(r'(?:[A-Za-z]:\\|\\\\|/(?:tmp|home|root|var|usr|Users)/)[^\s"\'«»;,)]*')
+
+    @classmethod
+    def of(cls, exc: object) -> str:
+        return cls.PATH.sub('…', str(exc))
+
+
 class ServerLog:
     NAME = 'kp.log'
     MAX = 1 << 20  # байт в файле до перехода на новый

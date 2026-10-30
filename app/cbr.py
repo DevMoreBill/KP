@@ -8,6 +8,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from net import Net
+from server_log import ErrorText
 
 CURRENCIES = ('USD', 'EUR', 'CNY')
 
@@ -31,7 +32,7 @@ def cbr_rates() -> dict:
                 )
         return res
     except Exception as exc:
-        err.append(str(exc))
+        err.append(ErrorText.of(exc))
     # 2) зеркало данных ЦБ
     try:
         j = json.loads(http_get('https://www.cbr-xml-daily.ru/daily_json.js').decode('utf-8-sig'))
@@ -42,7 +43,7 @@ def cbr_rates() -> dict:
                 res[cur] = float(v['Value']) / float(v['Nominal'])
         return res
     except Exception as exc:
-        err.append(str(exc))
+        err.append(ErrorText.of(exc))
     return {'error': '; '.join(err)}
 
 

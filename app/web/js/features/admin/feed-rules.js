@@ -210,10 +210,16 @@ export class FeedRulesUi {
     return row.status === 'add' || row.status === 'update';
   }
 
+  static _box(row) {
+    if (!this._pickable(row)) return '';
+    const checked = FeedState.roff.has(row.oid) ? '' : ' checked';
+    return `<input type="checkbox" data-rpo="${esc(row.oid)}"${checked} aria-label="Загрузить">`;
+  }
+
   static _planRow(row) {
     const price =
       row.price != null ? `${Fmt.num(Math.round(row.price))} ${esc(Currency.short(row.cur || 'RUB'))}` : '—';
-    return `<tr class="${row.status}"><td class="c">${this._pickable(row) ? `<input type="checkbox" data-rpo="${esc(row.oid)}"${FeedState.roff.has(row.oid) ? '' : ' checked'} aria-label="Загрузить">` : ''}</td><td>${esc(row.name)}${row.feedCat ? `<br><small class="muted">${esc(row.feedCat)}</small>` : ''}</td><td>${esc(row.maker || '')}</td><td>${esc(row.cat || '')}</td>
+    return `<tr class="${row.status}"><td class="c">${this._box(row)}</td><td>${esc(row.name)}${row.feedCat ? `<br><small class="muted">${esc(row.feedCat)}</small>` : ''}</td><td>${esc(row.maker || '')}</td><td>${esc(row.cat || '')}</td>
           <td class="num">${price}</td><td><span class="fr-st ${row.status}">${this.STATUS[row.status]}</span>${row.changes && row.changes.length ? `<br><small class="muted">${esc(row.changes.join(', '))}</small>` : ''}${row.why ? `<br><small class="muted">${esc(row.why)}</small>` : ''}</td></tr>`;
   }
 

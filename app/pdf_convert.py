@@ -11,6 +11,8 @@ import tempfile
 import threading
 import zipfile
 
+from server_log import ErrorText
+
 PDF_MIN_BYTES = 100
 
 LOCK = threading.Lock()
@@ -221,7 +223,7 @@ def convert_file(src: str, dst: str, cloud_key: str | None = None) -> str:
             except subprocess.TimeoutExpired:
                 tried.append(f'{name} не успел за отведённое время')
             except Exception as exc:
-                tried.append(str(exc) or name)
+                tried.append(ErrorText.of(exc) or name)
     if not tried:
         raise RuntimeError(
             'на компьютере-сервере нет Microsoft Word или LibreOffice и не задан ключ ConvertAPI — сохраните PDF через печать из предпросмотра'

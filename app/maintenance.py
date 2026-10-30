@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from defaults import SrvVal
-from server_log import ServerLog
+from server_log import ErrorText, ServerLog
 from storage import DbZip
 
 NIGHT_END = 6
@@ -127,7 +127,7 @@ class DbCopy:
                         os.remove(name)
             rec.update(ok=True, bytes=os.path.getsize(dst), db=db_size(store), zip=True)
         except Exception as exc:
-            rec.update(ok=False, error=str(exc)[:300])
+            rec.update(ok=False, error=ErrorText.of(exc)[:300])
         cls.rotate(folder, store=store)
         _save(store, backup=rec)
         return rec

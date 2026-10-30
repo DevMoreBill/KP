@@ -28,6 +28,7 @@ from config import DATA_DIR
 from defaults import SrvVal
 from feed_photo import FeedPhotoFrom
 from maker_logos import MakerLogos
+from server_log import ErrorText
 from storage import Conflict, WriteBatch
 
 PERCENT_MAX = 100
@@ -2972,7 +2973,7 @@ def import_feed(
                         if len(pend) >= WriteBatch.SIZE:
                             flush()
                 except Exception as exc:
-                    errors.append('{}: {}'.format(offer['name'][:60], exc))
+                    errors.append('{}: {}'.format(offer['name'][:60], ErrorText.of(exc)))
                 j['done'] += 1
         flush()
         save()
@@ -3038,7 +3039,7 @@ def import_feed(
         j.update(state='done', result=res, msg=f'Добавлено {added}, обновлено {updated}')
         return res
     except Exception as exc:
-        j.update(state='error', msg=str(exc)[:300])
+        j.update(state='error', msg=ErrorText.of(exc)[:300])
         _log_add(store, feed_cfg['id'], {'at': _now(), 'kind': 'import', 'by': author, 'error': str(exc)[:300]})
         log('Фид {}: {}'.format(feed_cfg['id'], exc))
         raise
@@ -3331,7 +3332,7 @@ def check_feed(store, feed_cfg, author: str = '', log=print, types=None) -> dict
         j.update(state='done', result=res, msg=msg)
         return res
     except Exception as exc:
-        j.update(state='error', msg=str(exc)[:300])
+        j.update(state='error', msg=ErrorText.of(exc)[:300])
         _log_add(store, feed_cfg['id'], {'at': _now(), 'kind': 'check', 'by': author, 'error': str(exc)[:300]})
         log('Фид {}: {}'.format(feed_cfg['id'], exc))
         raise

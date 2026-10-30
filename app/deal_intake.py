@@ -21,6 +21,7 @@ from deal_autofill import FieldKind, ListMatch, Words
 from deal_rules import DealRegs
 from doc_text import DocText
 from kp_track import Val
+from server_log import ErrorText
 
 
 class MailText:
@@ -206,7 +207,7 @@ class DealIntake:
                 return MailText.read(data)
             doc = DocText.extract(str(name or '')[:200], data)
         except Exception as exc:  # повреждённый или чужой файл — понятным текстом, без трассировки
-            raise ValueError(f'Файл не прочитан: {str(exc)[:200]}') from None
+            raise ValueError(f'Файл не прочитан: {ErrorText.of(exc)[:200]}') from None
         return {'text': str(doc.get('text') or ''), 'subject': '', 'name': '', 'email': ''}
 
     def parse(self, mail: dict) -> dict:

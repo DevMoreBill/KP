@@ -8,6 +8,8 @@ import threading
 from datetime import datetime
 from typing import Any
 
+from server_log import ErrorText
+
 
 class ServerTask:
     PRIORITY_MAX = 6
@@ -122,7 +124,7 @@ class ServerTask:
                     else:
                         rec['fixed'] = rec['at']
         except Exception as exc:  # нет PowerShell 3+ или прав — только показать
-            rec['error'] = str(exc)[:300]
+            rec['error'] = ErrorText.of(exc)[:300]
         prev = self.store.kv_get(self.KV_KEY) or {}
         if prev.get('fixed') and not rec.get('fixed'):
             rec['fixedBefore'] = prev['fixed']

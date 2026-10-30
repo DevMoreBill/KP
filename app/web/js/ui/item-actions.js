@@ -494,7 +494,7 @@ export class ItemActions {
   static _fileAction(id, what) {
     return Api.request(`/api/kp/${id}/${what}`, { method: 'POST' })
       .then(reply => RemoteResult.show(reply))
-      .catch(() => Toast.show('Файл не найден'));
+      .catch(error => Toast.show(error.message || 'Файл не найден'));
   }
 
   static _go(link) {

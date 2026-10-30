@@ -12,6 +12,7 @@ from deal_files import DealFiles
 from defaults import SrvVal
 from kp_files import KpFiles
 from net import Net
+from server_log import ErrorText
 from storage import DbZip
 
 
@@ -275,7 +276,7 @@ class MirrorBackup:
             rec['kpFiles'] = self._kp_files(os.path.join(conf['path'], KpFiles.FOLDER))
             rec['dealFiles'] = self._files(DealFiles.FOLDER, os.path.join(conf['path'], DealFiles.FOLDER))
         except Exception as exc:
-            rec.update(ok=False, error=str(exc)[:300])
+            rec.update(ok=False, error=ErrorText.of(exc)[:300])
         maintenance._save(self.store, backup2=rec)
         return rec
 

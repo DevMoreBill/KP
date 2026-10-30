@@ -13,7 +13,7 @@ from crm import DealBook, TaskBook
 from crm_funnels import DealFields, Funnels, UfValue
 from deal_rules import DealRegs
 from kp_track import Val
-from server_log import ServerLog
+from server_log import ErrorText, ServerLog
 
 
 class MirrorStructure:
@@ -256,7 +256,7 @@ class MirrorImport:
             self.run()
         except Exception as exc:
             ServerLog.failure('загрузка сделок Битрикс24', exc)
-            self._mark(state='error', error=re.sub(r'https?://\S+', '***', str(exc))[:300])
+            self._mark(state='error', error=re.sub(r'https?://\S+', '***', ErrorText.of(exc))[:300])
         finally:
             self.LOCK.release()
 

@@ -12,6 +12,7 @@ from typing import Any
 
 from config import BUNDLE, FROZEN, ROOT, SAFE_ID, UPDATE_DIR, read_text, write_bytes
 from defaults import SrvVal
+from server_log import ErrorText
 
 SHARED_DIRS = 2
 
@@ -142,7 +143,7 @@ def list_templates() -> list[dict]:
         try:
             j = json.loads(read_text(os.path.join(folder, 'template.json')))
         except Exception as exc:
-            res.append({'id': tid, 'name': tid, 'error': f'Ошибка в template.json: {exc}'})
+            res.append({'id': tid, 'name': tid, 'error': f'Ошибка в template.json: {ErrorText.of(exc)}'})
             continue
         res.append(
             {

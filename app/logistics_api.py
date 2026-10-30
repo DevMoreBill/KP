@@ -14,7 +14,7 @@ from typing import Any
 import defaults
 import workcal
 from counterparty import http_json
-from server_log import LogMask
+from server_log import ErrorText, LogMask
 
 FIND_DEPTH = 6
 
@@ -362,7 +362,7 @@ class Http:
             return 'сервис не ответил вовремя — повторите позже'
         if isinstance(exc, urllib.error.URLError):
             return f'нет связи с сервисом: {str(exc.reason)[:120] if exc.reason else "проверьте интернет"}'
-        return str(exc)[:300] or exc.__class__.__name__
+        return ErrorText.of(exc)[:300] or exc.__class__.__name__
 
     @staticmethod
     def _body_text(body) -> str:

@@ -22,7 +22,7 @@ from catalog_quality import CardRules, DupFinder
 from config import BadRequest
 from data_file import Load
 from defaults import SrvVal
-from server_log import ServerLog
+from server_log import ErrorText, ServerLog
 from storage import Conflict
 
 ENTITY_SLASHES = 2
@@ -1660,7 +1660,7 @@ class AdminApi:
             try:
                 return self.ok(feeds.FeedRules.plan(store, feed_copy, types))
             except Exception as exc:
-                return self.err(422, f'Фид не загрузился: {exc}')
+                return self.err(422, f'Фид не загрузился: {ErrorText.of(exc)}')
         if act == 'upload':  # файл фида из файлов: ?kind=pages|price&name=имя, тело — сам файл
             if feeds.busy(fid):
                 return self.err(409, 'Фид уже обрабатывается — дождитесь окончания')
@@ -1721,7 +1721,7 @@ class AdminApi:
             try:
                 return self.ok(feeds.plan_summary(store, feed))
             except Exception as exc:
-                return self.err(422, f'Фид не загрузился: {exc}')
+                return self.err(422, f'Фид не загрузился: {ErrorText.of(exc)}')
         if act == 'rebuild':  # разрешить сборку каталога заново (парс снова перестроит позиции производителя)
             feeds.feed_unbuild(store, fid)
             self.log('edit_settings', 'settings', 'feed:' + fid, {'built': True}, {'built': False})
@@ -1730,7 +1730,7 @@ class AdminApi:
             try:
                 return self.ok(feeds.preview(store, feed, types))
             except Exception as exc:
-                return self.err(422, f'Фид не загрузился: {exc}')
+                return self.err(422, f'Фид не загрузился: {ErrorText.of(exc)}')
         who = actor_login or 'администратор'
         if act == 'import':
             data = self.data()

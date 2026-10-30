@@ -6,6 +6,7 @@ from typing import Any
 from counterparty import Counterparties, valid_inn
 from doc_text import DocText
 from phone import Phone
+from server_log import ErrorText
 
 
 class CompanyCard:
@@ -44,7 +45,7 @@ class CompanyCard:
         try:
             doc = DocText.extract(str(name or '')[:200], data)
         except Exception as exc:  # повреждённый или чужой файл — без трассировки
-            raise ValueError(f'Файл не прочитан: {str(exc)[:200]}') from None
+            raise ValueError(f'Файл не прочитан: {ErrorText.of(exc)[:200]}') from None
         text = str(doc.get('text') or '')
         if not text.strip():
             raise ValueError('В файле нет текста (скан без распознавания) — вставьте текст карточки вручную')

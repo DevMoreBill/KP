@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from server_log import ErrorText
+
 
 class CrossHostRedirect(urllib.request.HTTPRedirectHandler):
     """Перенаправление на другой сайт — без заголовков с ключами (urllib переносит их туда по умолчанию)."""
@@ -105,5 +107,5 @@ class Net:
             return 'сервис отказал в соединении'
         if isinstance(exc, ValueError):
             return str(exc)[:160]
-        hidden = re.sub(r'\w+://\S+', 'адрес скрыт', str(reason))[:120]
+        hidden = re.sub(r'\w+://\S+', 'адрес скрыт', ErrorText.of(reason))[:120]
         return f'нет связи с сервисом ({hidden})'

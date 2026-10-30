@@ -22,6 +22,7 @@ import { $, esc } from '../../core/util.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { CopyText } from '../../core/files.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -152,8 +153,9 @@ export class TzImport {
       const file = picker.files[0];
       picker.accept = '';
       if (!file) return;
-      if (file.size > this.LIMIT.fileMb * 1024 * 1024) {
-        Toast.show(`Файл больше ${this.LIMIT.fileMb} МБ`);
+      const maxMb = DefRegistry.num('cat.docMaxMB', this.LIMIT.fileMb);
+      if (file.size > maxMb * 1024 * 1024) {
+        Toast.show(`Файл больше ${maxMb} МБ`);
         return;
       }
       Toast.show(/\.(png|jpe?g|tiff?|bmp)$/i.test(file.name) ? 'Распознаю скан ТЗ…' : 'Читаю ТЗ…');

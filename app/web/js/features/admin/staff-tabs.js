@@ -260,7 +260,7 @@ export class AccessPanel {
       } catch (error) {
         Toast.show(error.message || String(error));
       }
-      this.open(main);
+      this.open(main).catch(error => Toast.show(error.message || String(error)));
     };
     main.onchange = event => this._perms(main, event);
     main.onclick = event => this._click(main, event, reply);
