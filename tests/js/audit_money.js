@@ -20,6 +20,7 @@ const { KpEconomics }=mod('features/kp/price-calc.js');
 const { KpState }=mod('core/state.js');
 const { today }=mod('core/util.js');
 const { SellerTax }=mod('core/seller-tax.js');
+const { IncomeTax }=mod('core/income-tax.js');
 const swap=async (pairs, fn)=>{
   const saved=pairs.map(([owner, name])=>[owner, name, owner[name]]);
   for (const [owner, name, value] of pairs) owner[name]=value;
@@ -157,6 +158,72 @@ check('продавец сделки (п. 13): основное юрлицо, р
     assert.strictEqual(DealSeller.vatOf(deal), '', 'выключено — как при ОСНО');
     assert.strictEqual(DealMoney._seller(), '', 'строки «Продавец» нет');
   }));
+});
+
+check('налог при УСН (3.246.0): объект и ставка — у юрлица; «доходы» — с выручки без НДС, «доходы минус расходы» — с прибыли; поле сделки — только для ОСНО; Excel — та же формула', ()=>{
+  const own={ main:'a', items:[{ id:'a', name:'ИП Доход', vat:'5', usn:'income', usnRate:'' }, { id:'b', name:'ООО Расход', vat:'22', usn:'profit', usnRate:'10' },
+    { id:'c', name:'ООО Старое', vat:'7' }] };
+  const deal={};
+  const D=()=>{ const d=DealTerms.blank({});
+    d.sup=[{ ...DealTerms.newSupplier('s1', { country:'Россия' }), country:'Россия', cusMode:'none', vatIn:true, prod:'40', ship:'40',
+      pay:[{ name:'Оплата', ev:'ready', off:'0' }] }];
+    d.cust={ tr:[{ pct:'', ev:'delivery', off:'30' }] }; d.tax='25'; return d; };
+  const K=o=>({ sumRub:1050000, vat:5, rates:{}, moneyAuto:2, date:'2026-10-19', items:[{ id:'a', name:'Компрессор', qty:1, cost:610000, cur:'RUB' }], ...o });
+  const near=(a, b, msg)=>assert.ok(Math.abs(a-b)<0.01, `${msg}: ${a} ≠ ${b}`);
+  return swap([[DealSeller, 'own', own], [DealSeller, 'failed', false], [FEAT, 'on', ()=>true]], ()=>{
+    DealSeller.sync(deal);
+    assert.deepStrictEqual([deal.seller, deal.sellerVat, deal.sellerUsn, deal.sellerUsnRate], ['a', '5', 'income', '']);
+    assert.strictEqual(DealSeller.label(deal), 'УСН с НДС 5 % — без вычета · УСН «доходы» 6 %');
+    const inc=DealCalculator.calc(K({ sellerVat:'5', sellerUsn:'income' }), D());
+    const res=inc.base;
+    assert.deepStrictEqual([inc.usn, inc.taxBase, inc.taxP], ['income', 'income', 6], 'ставка по закону, поле сделки 25 % не действует');
+    near(res.tax, inc.R*0.06, 'налог — 6 % выручки без НДС');
+    near(res.net, res.Pa-res.tax-res.K, 'чистая прибыль');
+    // убыточная сделка: налог с выручки всё равно платится
+    const loss=DealCalculator.calc(K({ sumRub:500000, sellerVat:'5', sellerUsn:'income' }), D()).base;
+    assert.ok(loss.Pa<0 && loss.tax>0, 'при убытке налог УСН «доходы» есть');
+    DealSeller.choose(deal, 'b');
+    assert.deepStrictEqual([deal.sellerUsn, deal.sellerUsnRate], ['profit', '10']);
+    const pro=DealCalculator.calc(K({ vat:22, sumRub:1220000, sellerVat:'22', sellerUsn:'profit', sellerUsnRate:'10' }), D());
+    assert.deepStrictEqual([pro.taxBase, pro.taxP], ['profit', 10], 'своя ставка региона');
+    near(pro.base.tax, Math.max(0, pro.base.Pa)*0.1, 'налог — с прибыли');
+    assert.strictEqual(IncomeTax.rate('profit', '16'), 15, 'выше закона — по закону');
+    assert.strictEqual(IncomeTax.rate('income', '1,5'), 1.5);
+    assert.strictEqual(IncomeTax.rate('', '6'), null, 'ОСНО — ставка сделки');
+    // ОСНО: прежний расчёт — ставка поля сделки
+    const osno=DealCalculator.calc(K({ vat:22, sumRub:1220000 }), { ...D(), tax:'20' });
+    assert.deepStrictEqual([osno.usn, osno.taxBase, osno.taxP], ['', 'profit', 20]);
+    near(osno.base.tax, Math.max(0, osno.base.Pa)*0.2, 'налог на прибыль');
+    // УСН с НДС 7 % без объекта УСН (юрлицо до 3.246.0) — налог на прибыль и предупреждение
+    DealSeller.choose(deal, 'c');
+    assert.deepStrictEqual([deal.sellerVat, deal.sellerUsn], ['7', '']);
+    const old=DealCalculator.calc(K({ vat:7, sellerVat:'7' }), D());
+    assert.ok(old.warn.some(w=>/налог считается как налог на прибыль 25 %/.test(w.t)), JSON.stringify(old.warn));
+    assert.ok(!inc.warn.some(w=>/налог считается как налог на прибыль/.test(w.t)), 'при УСН предупреждения нет');
+    // окно: поле сделки при УСН не правится
+    const prevDeal=S.deal; KpState.replace({ ...S, deal:D() });
+    try {
+      const html=DealMoney._tax(inc);
+      assert.ok(/Налог УСН «доходы»/.test(html) && /<b>6 %<\/b>/.test(html) && !/data-dl="tax"/.test(html), html);
+      assert.ok(/data-dl="tax"/.test(DealMoney._tax(osno)), 'ОСНО — поле ставки');
+    } finally { KpState.replace({ ...S, deal:prevDeal }); }
+    // Excel: формула налога — с выручки без НДС, подписи — по режиму
+    const sheet=new DealXlsxCalc({ calc:inc, deal:D(), kpData:K({ sellerVat:'5', sellerUsn:'income' }), res, unknown:false, kpTitle:'КП' }); sheet.build();
+    const graph=new DealXlsxGraph(sheet, DealXlsx.NAMES); graph.head();
+    new DealXlsxResult(sheet, graph).build();
+    const head=r=>r && r[0] && typeof r[0]==='object' ? r[0].v : r && r[0];
+    const row=label=>sheet.rows.find(r=>head(r)===label);
+    assert.ok(row('Налог УСН «доходы»') && row('Налог УСН «доходы»')[1].v===6, 'ячейка ставки');
+    const taxRow=sheet.rows.filter(r=>r && r[0]==='Налог УСН «доходы»').pop();
+    assert.ok(taxRow[1].f && taxRow[1].f.includes(sheet.ref('Rv')) && taxRow[1].f.includes(sheet.ref('TAX')), JSON.stringify(taxRow));
+    near(taxRow[1].v, res.tax, 'значение в Excel');
+    assert.ok(row('Прибыль до налога УСН'), 'подпись прибыли');
+    // выключено — как при ОСНО
+    return swap([[FEAT, 'on', key=>key!=='sellerTax']], ()=>{
+      assert.strictEqual(DealSeller.usnOf(deal), '');
+      assert.strictEqual(DealState.kpInputs({ ...S, deal:{ ...deal, sellerUsn:'income' } }).sellerUsn, '');
+    });
+  });
 });
 
 (async ()=>{

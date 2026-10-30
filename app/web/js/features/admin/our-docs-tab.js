@@ -1,4 +1,5 @@
 import { Api } from '../../core/net.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 import { Toast } from '../../core/toast.js';
 import { Uid, esc } from '../../core/util.js';
@@ -64,17 +65,46 @@ export class OurDocsTab {
       ([key, label, hint]) =>
         `<label class="f"><span>${esc(label)}</span><input type="text" data-of="${key}" data-oi="${index}" value="${esc(item[key] || '')}" placeholder="${esc(hint)}" autocomplete="off"></label>`,
     ).join('');
-    const vats = SellerTax.OPTIONS.map(
-      ([vat, label]) =>
-        `<option value="${esc(vat)}"${(item.vat || '') === vat ? ' selected' : ''}>${esc(label)}</option>`,
-    ).join('');
-    const taxTip = UiKit.tip(
-      '<p>Ставка НДС в счёте и спецификации этого юрлица и вычет НДС в экономике сделки, где оно продавец.</p><p>ОСНО и экспорт 0 % — НДС поставщиков, ввоза и услуг к вычету. УСН с НДС 5 или 7 % и «без НДС» — вычета нет (НК РФ, ст. 170, п. 2): этот НДС остаётся в себестоимости сделки.</p>',
-    );
     const main = item.id === this.data.main;
     return `<details class="od-item"${index === 0 || !item.name ? ' open' : ''}><summary><b>${esc(item.name || 'Новое юрлицо')}</b>${main ? ' <span class="badge">основное</span>' : ''}</summary>
-      <div class="od-grid">${fields}<label class="f"><span>Налогообложение (НДС продавца)${taxTip}</span><select data-of="vat" data-oi="${index}">${vats}</select></label></div>
+      <div class="od-grid">${fields}${this._vat(item, index)}${this._usn(item, index)}</div>
       <div class="row">${main ? '' : `<button class="btn" type="button" data-od="main" data-oi="${index}">Сделать основным</button>`}<button class="btn ghost" type="button" data-od="drop" data-oi="${index}">Убрать</button></div></details>`;
+  }
+
+  static _options(list, value) {
+    return list
+      .map(([key, label]) => `<option value="${esc(key)}"${value === key ? ' selected' : ''}>${esc(label)}</option>`)
+      .join('');
+  }
+
+  static _vat(item, index) {
+    const tip = UiKit.tip(
+      '<p>Ставка НДС в счёте и спецификации этого юрлица и вычет НДС в экономике сделки, где оно продавец.</p><p>Общие ставки (на ОСНО и, по выбору, на УСН) и экспорт 0 % — НДС поставщиков, ввоза и услуг к вычету. УСН с НДС 5 или 7 % и «без НДС» — вычета нет (НК РФ, ст. 170, п. 2): этот НДС остаётся в себестоимости сделки.</p>',
+    );
+    return `<label class="f"><span>НДС продавца${tip}</span><select data-of="vat" data-oi="${index}">${this._options(SellerTax.OPTIONS, item.vat || '')}</select></label>`;
+  }
+
+  // налог с результата сделки: ОСНО — налог на прибыль, УСН — объект и своя ставка региона
+  static _usn(item, index) {
+    const mode = IncomeTax.mode(item.usn);
+    const tip = UiKit.tip(
+      '<p>Каким налогом облагается результат сделки в экономике сделки, где это юрлицо продавец.</p><p>ОСНО — налог на прибыль с прибыли после всех расходов; ставка — в «Деньгах и налоге» сделки (по умолчанию 25 %). УСН «доходы» — с выручки без НДС, по закону 6 %; УСН «доходы минус расходы» — с прибыли, 15 % (НК РФ, ст. 346.20). Регион снизил ставку — впишите её в «Ставку УСН».</p><p>НДС 5 или 7 % — только при УСН.</p>',
+    );
+    const rate = IncomeTax.of(mode).rate;
+    return `<label class="f"><span>Налог на прибыль или УСН${tip}</span><select data-of="usn" data-oi="${index}">${this._options(IncomeTax.options(), mode)}</select></label>
+      <label class="f"><span>Ставка УСН, %</span><input type="text" inputmode="decimal" data-of="usnRate" data-oi="${index}" value="${esc(mode ? item.usnRate || '' : '')}" placeholder="${rate == null ? '—' : rate}" autocomplete="off"${mode ? '' : ' disabled'}></label>`;
+  }
+
+  // объект УСН сменили — ставка по закону для него, при ОСНО поле не нужно
+  static _usnRate(select) {
+    const input = select.closest('.od-grid').querySelector('[data-of="usnRate"]');
+    const rate = IncomeTax.of(select.value).rate;
+    input.placeholder = rate == null ? '—' : String(rate);
+    input.disabled = rate == null;
+    if (rate == null) {
+      input.value = '';
+      this.data.items[+select.dataset.oi].usnRate = '';
+    }
   }
 
   static _tpl([kind, label, empty]) {
@@ -88,6 +118,7 @@ export class OurDocsTab {
   static _change(main, target) {
     if (target.dataset.of) {
       this.data.items[+target.dataset.oi][target.dataset.of] = target.value;
+      if (target.dataset.of === 'usn') this._usnRate(target);
       return;
     }
     if (target.dataset.otpl && target.files[0]) this._upload(main, target.dataset.otpl, target.files[0]);

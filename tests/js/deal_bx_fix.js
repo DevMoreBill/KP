@@ -24,7 +24,7 @@ class FixCases {
     return {...head, full:{price:c(calc.S), revenue:c(calc.R), cost:c((calc.base||calc.lo).Ctot), fin:c(calc.F),
       parts:calc.parts.map(([n, v])=>[n, c(v)]),
       fix:Object.fromEntries((calc.bxFix||[]).filter(l=>l.active).map(l=>[l.key, c(l.delta)])),
-      calc:{lo:side(calc.lo), hi:side(calc.hi), taxP:calc.taxP, xMode:calc.xMode, xV:calc.xV, xG:calc.xG, R:calc.R, S:calc.S, sv:calc.sv, vatShare:calc.bxShare}}};
+      calc:{lo:side(calc.lo), hi:side(calc.hi), taxP:calc.taxP, taxBase:calc.taxBase, xMode:calc.xMode, xV:calc.xV, xG:calc.xG, R:calc.R, S:calc.S, sv:calc.sv, vatShare:calc.bxShare}}};
   }
 
   static run(){
@@ -41,6 +41,12 @@ class FixCases {
         this.deal({sup:{country:'Германия', cusMode:'calc', vatIn:false, log:{v:'2500', cur:'EUR'}, brk:{v:'35000'}, logRu:{v:'60000'}}}), 'customs', 220000],
       ['Логистика с перевозкой до границы и страхованием +100 000', this.KP({items:[{id:'a', name:'Компрессор', qty:1, cost:6000, cur:'EUR', duty:5, code:'8414805900'}]}),
         this.deal({sup:{country:'Германия', cusMode:'calc', vatIn:false, log:{v:'2500', cur:'EUR'}, ins:'0,5', brk:{v:'35000'}, logRu:{v:'60000'}}}), 'logistics', 100000],
+      // 3.246.0: УСН «доходы» — налог с выручки без НДС, поправка расхода его не меняет; «доходы минус расходы» — с прибыли
+      ['УСН «доходы» с НДС 5 %, логистика +100 000', this.KP({sumRub:1050000, vat:5, sellerVat:'5', sellerUsn:'income'}), this.deal(), 'logistics', 100000],
+      ['УСН «доходы», наличные от прибыли, монтаж −20 000', this.KP({vat:0, sellerVat:'без НДС', sellerUsn:'income', sellerUsnRate:'4'}),
+        this.deal({mnt:'80000', xc:{mode:'net', v:'10', cost:'12'}}), 'mount', -20000],
+      ['УСН «доходы минус расходы» 10 %, прочие +30 000', this.KP({vat:22, sellerVat:'22', sellerUsn:'profit', sellerUsnRate:'10'}),
+        this.deal({oth:'20000'}), 'other', 30000],
     ];
     return cases.map(([name, kp, d, key, delta])=>{
       const plain=DealCalculator.calc(kp, JSON.parse(JSON.stringify(d)));

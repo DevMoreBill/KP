@@ -48,6 +48,30 @@ class RequisitesTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.own.save({'items': 'x'})
 
+    def test_usn(self):
+        """Налог на прибыль или УСН (3.246.0): объект УСН и своя ставка не выше закона; НДС 5 и 7 % — только при УСН;
+        при ОСНО своя ставка УСН не хранится."""
+        got = self.own.save({'items': [{**FIRM, 'vat': '5', 'usn': 'income', 'usnRate': '4,5'}]})['items'][0]
+        self.assertEqual((got['usn'], got['usnRate']), ('income', '4,5'))
+        got = self.own.save({'items': [{**FIRM, 'usn': 'profit', 'usnRate': '15'}]})['items'][0]
+        self.assertEqual((got['vat'], got['usn'], got['usnRate']), ('22', 'profit', '15'))
+        got = self.own.save({'items': [{**FIRM, 'usnRate': '6'}]})['items'][0]
+        self.assertEqual((got['usn'], got['usnRate']), ('', ''))
+        bad_cases = (
+            {'usn': 'patent'},
+            {'usn': 'income', 'usnRate': '7'},
+            {'usn': 'profit', 'usnRate': '15,5'},
+            {'usn': 'income', 'usnRate': '-1'},
+            {'usn': 'income', 'usnRate': '6%'},
+            {'vat': '7'},
+            {'vat': '5', 'usn': ''},
+        )
+        for bad in bad_cases:
+            with self.assertRaises(ValueError, msg=bad):
+                self.own.save({'items': [{**FIRM, **bad}]})
+        for vat in ('без НДС', '0', '22'):
+            self.assertEqual(self.own.save({'items': [{**FIRM, 'vat': vat}]})['items'][0]['vat'], vat)
+
 
 class NodeTest(unittest.TestCase):
     def test_docs_in_node(self):

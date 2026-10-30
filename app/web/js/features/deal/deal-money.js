@@ -6,11 +6,12 @@ import { DealSteps } from './deal-steps.js';
 import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
 import { FEAT } from '../../core/features.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
 
-/** Вкладка «Деньги и налог»: стоимость денег (ключевая ставка ЦБ + надбавка), НДС продажи, налог на прибыль, НДС к уплате. */
+/** Вкладка «Деньги и налог»: стоимость денег (ключевая ставка ЦБ + надбавка), НДС продажи, налог на прибыль или УСН, НДС к уплате. */
 export class DealMoney {
   static MONEY_FB = 2;
 
@@ -28,10 +29,11 @@ export class DealMoney {
     const vatHelp = DealFmt.help(
       'НДС с продажи минус весь НДС к вычету по сделке. Ставка НДС продажи — из КП. Ввозной НДС платится на таможне и целиком идёт к вычету, поэтому на прибыль не влияет — только на деньги в обороте. Продавец на УСН с НДС 5–7 % или «без НДС» — вычета нет: входной НДС в себестоимости.',
     );
+    const tax = IncomeTax.of(calc.usn);
     return DealSteps.html({
       n: 0,
       title: 'Деньги и налог',
-      sub: 'Обычно менять не нужно: стоимость денег — по ключевой ставке ЦБ, НДС продажи — как в КП, налог на прибыль — 25 %.',
+      sub: `Обычно менять не нужно: стоимость денег — по ключевой ставке ЦБ, НДС продажи — как в КП, ${calc.usn ? `налог — ${tax.short} ${DealFmt.inp(calc.taxP)} % (как у продавца)` : 'налог на прибыль — 25 %'}.`,
       body: `<div class="dl-card"><div class="dl-g dl-money">
         ${DealMoney._money(calc, kpData)}
         ${DealMoney._seller()}
@@ -41,7 +43,7 @@ export class DealMoney {
       tot: [
         'Итого финансирование и налог',
         calc.F + res.tax,
-        `финансирование ${Fmt.rub(calc.F)} + налог на прибыль ${Fmt.rub(res.tax)} · НДС к уплате ${payable}`,
+        `финансирование ${Fmt.rub(calc.F)} + ${tax.lower} ${Fmt.rub(res.tax)} · НДС к уплате ${payable}`,
       ],
       id: 'money',
     });
@@ -100,11 +102,18 @@ export class DealMoney {
   }
 
   static _tax(calc) {
+    if (calc.usn) return DealMoney._usnTax(calc);
     return DealFmt.field('Налог на прибыль', 'tax', {
       calc,
       unit: '%',
       hint: 'С 2025 года — 25 % (ст. 284 НК РФ)',
       q: 'Считается с прибыли после всех расходов, включая финансирование. Проценты по кредиту уменьшают налог; если «стоимость денег» — упущенный доход на свои деньги, налоговая её не учитывает, и налог будет немного больше.',
     });
+  }
+
+  // УСН: ставка — юрлица продавца («Наши реквизиты»), в сделке не правится
+  static _usnTax(calc) {
+    const tax = IncomeTax.of(calc.usn);
+    return `<div class="f dl-f"><span>${esc(tax.name)}${DealFmt.help(tax.help)}</span><span class="dl-in"><b>${DealFmt.inp(calc.taxP)} %</b></span><small class="muted">${esc(tax.from)} · ставка юрлица — «Наши реквизиты»</small></div>`;
   }
 }

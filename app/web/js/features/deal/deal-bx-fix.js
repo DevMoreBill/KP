@@ -65,7 +65,7 @@ export class DealBxFix {
 
   /**
    * Доля НДС к вычету в каждой статье по расчёту (для поправки на сервере — deal_econ.EconShift); статья 0 — доля
-   * ставки поставщика у статей с НДС, иначе 0.
+   * ставки поставщика у статей с НДС, иначе 0; продавец без вычета (УСН 5–7 %, «без НДС») — 0 у всех.
    * @param {object} calc
    * @param {{equipSum: number, asmCost: number}} ctx
    * @returns {Object<string, number>}
@@ -74,7 +74,7 @@ export class DealBxFix {
     const rate = calc.inSupVat(1);
     return Object.fromEntries(
       Object.entries(this.KEYS).map(([key, spec]) => {
-        if (!spec.vat) return [key, 0];
+        if (!spec.vat || calc.deduct === false) return [key, 0];
         const raw = spec.raw(calc, ctx) || 0;
         if (raw > this.EPS) return [key, Math.min(1, Math.max(0, spec.vat(calc, ctx) / raw))];
         return [key, spec.empty ?? rate];

@@ -2,6 +2,7 @@ import { DealTerms } from './deal-terms.js';
 import { DealValues } from './deal-values.js';
 import { InputNum } from './input-num.js';
 import { SupplierCalc } from './supplier-calc.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 import { KpEconomics } from '../kp/price-calc.js';
 
@@ -136,7 +137,7 @@ export class DealCalcBase {
     return (sum * vat) / (DealCalcBase.PCT + vat);
   }
 
-  /** Цена с НДС и ставка НДС: своя в расчёте или из КП; вычет входного НДС — по налогообложению продавца. */
+  /** Цена с НДС и ставка НДС: своя в расчёте или из КП; вычет входного НДС и налог с результата — по налогообложению продавца. */
   price() {
     const over = this.d.over;
     this.S =
@@ -146,6 +147,8 @@ export class DealCalcBase {
     this.vatK = 1 + this.v / DealCalcBase.PCT;
     this.sellerVat = String(this.kp.sellerVat ?? '');
     this.deduct = SellerTax.deducts(this.sellerVat);
+    this.usn = IncomeTax.mode(this.kp.sellerUsn);
+    this.taxBase = IncomeTax.of(this.usn).base;
   }
 
   /** Поставщики сделки; позиция без своего поставщика — к первому. */
@@ -235,7 +238,9 @@ export class DealCalcBase {
     this.Vo = this.num('vo', deal.vo, { def: 0 });
     this.warrP = this.num('warr', deal.warr, pct);
     this.bonusP = this.num('bonus', deal.bonus, pct);
-    this.taxP = this.num('tax', deal.tax, { def: DealValues.num('deal.tax', DealCalcBase.TAX), max: DealCalcBase.PCT });
+    this.taxP = this.usn
+      ? IncomeTax.rate(this.usn, this.kp.sellerUsnRate)
+      : this.num('tax', deal.tax, { def: DealValues.num('deal.tax', DealCalcBase.TAX), max: DealCalcBase.PCT });
     this._cashOut(deal.xc || {});
     const moneyOwn = this.num('money', deal.money);
     this.moneyAuto = moneyOwn == null;

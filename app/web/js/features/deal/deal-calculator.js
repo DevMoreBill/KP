@@ -1,6 +1,7 @@
 import { DealCalcBase } from './deal-calc-base.js';
 import { DealSchedule } from './deal-schedule.js';
 import { DealBxFix } from './deal-bx-fix.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { Money } from '../../core/money.js';
 import { SellerTax } from '../../core/seller-tax.js';
 
@@ -31,7 +32,7 @@ export class DealCalculator extends DealSchedule {
     const ctot = cnet + this.F;
     const before = revenue - ctot;
     const vatBal = this.VATs - vatIn;
-    const tax = before > 0 ? (before * this.taxP) / DealCalcBase.PCT : 0;
+    const tax = IncomeTax.amount(this.taxBase, { revenue, profit: before }, this.taxP);
     const cashOut = this._cashSum(before, tax);
     const cost = cashOut * this.xG;
     const profit = before - cost;
@@ -153,6 +154,16 @@ export class DealCalculator extends DealSchedule {
       warn.push({ t: 'Расходы не указаны: укажите цены закупки в шаге «Закупка»', go: 'price' });
     }
     this._sellerWarn();
+    this._usnWarn();
+  }
+
+  // НДС 5 и 7 % — только при УСН (НК РФ, ст. 164, п. 8): объект УСН у юрлица не выбран — налог считается как налог на прибыль
+  _usnWarn() {
+    if (this.usn || !SellerTax.USN_ONLY.has(this.sellerVat)) return;
+    this.warn.push({
+      t: `Продавец — «${SellerTax.label(this.sellerVat)}», а налог считается как налог на прибыль ${this.taxP} %: выберите «УСН «доходы»» или «УСН «доходы минус расходы»» у юрлица в «Настройки → Документы → Наши реквизиты»`,
+      go: 'money',
+    });
   }
 
   // ставка НДС продажи не та, что у продавца («Наши реквизиты»)
@@ -194,6 +205,8 @@ export class DealCalculator extends DealSchedule {
     'vatFromKp',
     'deduct',
     'sellerVat',
+    'usn',
+    'taxBase',
     'rateSrc',
     'M',
     'E',

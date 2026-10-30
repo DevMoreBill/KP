@@ -192,12 +192,13 @@ class UiStand:
             f.write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + ch(b'IDAT', zlib.compress(rows)) + ch(b'IEND', b''))
         return path
 
-    # «Наши реквизиты» стенда (вымышленные): основное — ОСНО, второе — УСН с НДС 5 % (продавец в экономике сделки, документы)
+    # «Наши реквизиты» стенда (вымышленные): основное — ОСНО, второе — УСН «доходы» с НДС 5 % (продавец в экономике сделки,
+    # документы)
     REQUISITES = {
         'main': 'pr1',
         'items': [
             {'id': 'pr1', 'name': 'ООО «Пример-Пневмо»', 'inn': '7700000001', 'vat': ''},
-            {'id': 'pr2', 'name': 'ИП Примеров Пётр Петрович', 'inn': '770000000002', 'vat': '5'},
+            {'id': 'pr2', 'name': 'ИП Примеров Пётр Петрович', 'inn': '770000000002', 'vat': '5', 'usn': 'income'},
         ],
     }
 
@@ -850,6 +851,8 @@ class Scenario(UiRun):
         self.wait(1200)
         if not self.ev("/Вычета нет/.test((document.querySelector('dialog[open] .dl-vat') || {}).textContent || '')"):
             self.errs.append(('deal', 'SCRIPT', 'продавец на УСН 5 %: нет строки «Вычета нет» в «НДС к уплате»'))
+        if not self.ev("/Налог УСН «доходы»/.test((document.querySelector('dialog[open] .dl-money') || {}).textContent || '')"):
+            self.errs.append(('deal', 'SCRIPT', 'продавец на УСН «доходы»: нет строки «Налог УСН «доходы»» в «Деньгах и налоге»'))
         self.snap('60_deal_money_usn', root, wait=300)
         pg.select_option(pick, 'pr1')
         self.wait(800)
@@ -871,6 +874,13 @@ class Scenario(UiRun):
         k = field.first.get_attribute('data-k') or ''
         tokp = 'dialog[open] [data-lgx="tokp"][data-k="%s"]' % k
         field.first.fill(addr)
+        # через 0,3 с открываются подсказки адреса («Казань» из встроенных городов); у нижнего края окна — над полем, поверх
+        # «→ В КП»: щелчок выбрал бы город. Менеджер закрывает список — Escape (список открыт — окно не закрывается)
+        try:
+            pg.wait_for_selector('.geo-box', timeout=2000)
+            field.first.press('Escape')
+        except Exception:
+            pass
         self.wait(600)
         pg.locator(tokp).first.click()
         self.wait(400)

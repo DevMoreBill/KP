@@ -1,10 +1,11 @@
 import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 
 /**
- * Продавец сделки — наше юрлицо из «Наших реквизитов» (по умолчанию основное): его налогообложение («НДС продавца»)
- * определяет, есть ли вычет входного НДС в расчёте.
+ * Продавец сделки — наше юрлицо из «Наших реквизитов» (по умолчанию основное): его налогообложение определяет, есть ли
+ * вычет входного НДС («НДС продавца») и каким налогом облагается результат сделки (налог на прибыль или УСН).
  */
 export class DealSeller {
   static EMPTY = { items: [], main: '' };
@@ -23,15 +24,17 @@ export class DealSeller {
   }
 
   /**
-   * Продавец сделки: свой выбор, иначе основное юрлицо; режим — по его «НДС продавца» на сейчас.
+   * Продавец сделки: свой выбор, иначе основное юрлицо; режим — по его «НДС продавца» и «Налогу на прибыль или УСН» на сейчас.
    * @param {object} deal
    */
   static sync(deal) {
     if (this.failed || !FEAT.on('sellerTax')) return;
     const items = this.own.items || [];
-    const entity = items.find(item => item.id === deal.seller) || items.find(item => item.id === this.own.main);
-    deal.seller = entity ? entity.id : '';
-    deal.sellerVat = entity ? String(entity.vat || '') : '';
+    const entity = items.find(item => item.id === deal.seller) || items.find(item => item.id === this.own.main) || {};
+    deal.seller = String(entity.id || '');
+    deal.sellerVat = String(entity.vat || '');
+    deal.sellerUsn = IncomeTax.mode(entity.usn);
+    deal.sellerUsnRate = deal.sellerUsn ? String(entity.usnRate || '') : '';
   }
 
   /**
@@ -54,6 +57,24 @@ export class DealSeller {
   }
 
   /**
+   * Налог продавца с результата сделки: «income», «profit» (УСН) или '' — налог на прибыль; выключено — как при ОСНО.
+   * @param {object|null} deal
+   * @returns {string}
+   */
+  static usnOf(deal) {
+    return FEAT.on('sellerTax') && deal ? IncomeTax.mode(deal.sellerUsn) : '';
+  }
+
+  /**
+   * Своя ставка УСН продавца (текст поля юрлица; пусто — по закону).
+   * @param {object|null} deal
+   * @returns {string}
+   */
+  static usnRateOf(deal) {
+    return this.usnOf(deal) ? String(deal.sellerUsnRate || '') : '';
+  }
+
+  /**
    * Юрлицо продавца сделки или null.
    * @param {object} deal
    * @returns {object|null}
@@ -63,11 +84,13 @@ export class DealSeller {
   }
 
   /**
-   * Подпись режима продавца.
+   * Подпись режима продавца: НДС и налог с результата (при УСН — объект и ставка).
    * @param {object} deal
    * @returns {string}
    */
   static label(deal) {
-    return SellerTax.label(this.vatOf(deal));
+    const usn = this.usnOf(deal);
+    const tax = IncomeTax.of(usn).short;
+    return `${SellerTax.label(this.vatOf(deal))} · ${usn ? `${tax} ${IncomeTax.rate(usn, this.usnRateOf(deal))} %` : tax}`;
   }
 }

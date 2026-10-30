@@ -2,6 +2,7 @@ import { DealFmt } from './deal-fmt.js';
 import { DealTerms } from './deal-terms.js';
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { XlsxBook } from '../../core/xlsx.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { Currency } from '../kp/currency.js';
 import { S } from '../../core/state.js';
 
@@ -284,13 +285,14 @@ export class DealXlsxSummaryTables {
 
   _moneyRows() {
     const { sheet, calc, res } = this;
+    const tax = IncomeTax.of(calc.usn);
     const cash = sheet.xOn
       ? [
           ['Прочие расходы (наличные) — расход компании', res.K],
           ...(res.K !== res.X
             ? [[`  в т. ч. на руки (стоимость наличных ${DealFmt.inp(calc.xc.cost)} %)`, res.X]]
             : []),
-          ['  налог на прибыль они не уменьшают', '', 'td'],
+          [`  ${tax.lower} они не уменьшают`, '', 'td'],
         ]
       : [];
     return [
@@ -300,11 +302,18 @@ export class DealXlsxSummaryTables {
       ['НДС с продажи', calc.VATs],
       ['НДС к вычету', res.VATin],
       ['НДС к уплате', res.payable],
-      [`Налог на прибыль ${DealFmt.inp(calc.taxP)} %${sheet.xOn ? ' (с прибыли до прочих расходов)' : ''}`, res.tax],
+      [`${tax.name} ${DealFmt.inp(calc.taxP)} %${this._taxFrom()}`, res.tax],
       ...(calc.BG > 0 ? [['Банковская гарантия — комиссия банка', calc.BG]] : []),
       ...cash,
-      ['Деньги на счёте после сделки (после НДС, до налога на прибыль)', res.cashAfter],
+      [`Деньги на счёте после сделки (после НДС, до ${tax.gen})`, res.cashAfter],
     ];
+  }
+
+  // база налога в подписи: УСН «доходы» — всегда, с прибыли — когда есть прочие расходы наличными
+  _taxFrom() {
+    const { sheet, calc } = this;
+    if (calc.taxBase === IncomeTax.INCOME) return ` (${IncomeTax.of(calc.usn).from})`;
+    return sheet.xOn ? ' (с прибыли до прочих расходов)' : '';
   }
 
   /** Деньги и налоги. */

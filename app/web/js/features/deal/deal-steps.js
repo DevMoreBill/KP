@@ -8,6 +8,7 @@ import { S } from '../../core/state.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { IncomeTax } from '../../core/income-tax.js';
 
 /**
  * Шаги окна «Экономика сделки» — вкладки: карточка шага с итогом и переходом к соседним; состояние и краткий итог каждого
@@ -58,7 +59,7 @@ export class DealSteps {
       },
       money: {
         st: 'opt',
-        sum: `Деньги ${DealFmt.inp(calc.i)} % в месяц · НДС ${DealFmt.inp(calc.v)} % · налог на прибыль ${DealFmt.inp(calc.taxP)} %`,
+        sum: `Деньги ${DealFmt.inp(calc.i)} % в месяц · НДС ${DealFmt.inp(calc.v)} % · ${IncomeTax.of(calc.usn).short} ${DealFmt.inp(calc.taxP)} %`,
       },
       sched: DealSteps._schedule(calc),
     };

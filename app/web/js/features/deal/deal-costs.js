@@ -5,6 +5,7 @@ import { DealTerms } from './deal-terms.js';
 import { DealValues } from './deal-values.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
+import { IncomeTax } from '../../core/income-tax.js';
 
 /**
  * Вкладка «Расходы»: монтаж и ПНР, документация, прочее, резерв и бонусы; банковские гарантии; прочие расходы наличными
@@ -215,7 +216,7 @@ export class DealCosts {
   static _how(calc, cash, res) {
     const value = DealFmt.inp(cash.v);
     if (cash.mode === 'net') {
-      return `${value} % от чистой прибыли сделки ${Fmt.rub(Math.max(0, res.Pa - res.tax))} (после налога на прибыль, до этих расходов)`;
+      return `${value} % от чистой прибыли сделки ${Fmt.rub(Math.max(0, res.Pa - res.tax))} (после ${IncomeTax.of(calc.usn).gen}, до этих расходов)`;
     }
     if (cash.mode === 'sale') return `${value} % от выручки без НДС ${Fmt.rub(calc.R)}`;
     return cash.mode === 'salevat' ? `${value} % от суммы продажи с НДС ${Fmt.rub(calc.S)}` : 'сумма на руки';
@@ -233,7 +234,7 @@ export class DealCosts {
     const open = !!(deal.xc && Object.values(deal.xc).some(value => value != null && value !== ''));
     const head = DealCosts._head(
       'Прочие расходы (наличные)',
-      'Не уменьшают налог на прибыль — вычитаются из чистой прибыли; в КП не выводятся.',
+      `Не уменьшают ${IncomeTax.of(calc.usn).lower} — вычитаются из чистой прибыли; в КП не выводятся.`,
       res.K,
     );
     const when = cash.on || (open && cash.when === 'pay') ? DealCosts._when(calc, cash) : '';

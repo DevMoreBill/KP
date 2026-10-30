@@ -6,6 +6,7 @@ import { DealState } from './deal-state.js';
 import { InputNum } from './input-num.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 
 /**
@@ -120,7 +121,7 @@ export class DealResult {
   static _big(calc, res, profit) {
     const unknown = profit == null;
     const cls = `${profit != null && profit < 0 ? ' neg' : ''}${unknown ? ' rng' : ''}`;
-    const label = res.K > 0 ? 'Прибыль до налога, за вычетом наличных' : 'Прибыль до налога на прибыль';
+    const label = res.K > 0 ? 'Прибыль до налога, за вычетом наличных' : `Прибыль до ${IncomeTax.of(calc.usn).gen}`;
     const value = unknown ? DealResult._range(calc, row => row.P, Fmt.rub) : Fmt.rub(profit);
     const net = unknown
       ? ''
@@ -150,8 +151,16 @@ export class DealResult {
           <dt>в т. ч. финансирование</dt><dd>${Fmt.rub(calc.F)}</dd>
           <dt>НДС к уплате в бюджет${DealFmt.help('НДС с продажи минус НДС к вычету: в цене российских поставщиков, ввозной на таможне, в доставке и услугах в России, прочий. Разбивка — ниже и в шаге «Деньги и налог».')}</dt><dd>${payable}</dd>
           ${cash}
-          <dt>Налог на прибыль${res.K > 0 ? ' <small class="muted">— без учёта наличных</small>' : ''}</dt><dd>${Fmt.rub(res.tax)}</dd>
+          <dt>${DealResult._taxLabel(calc, res)}</dt><dd>${Fmt.rub(res.tax)}</dd>
           <dt>Деньги на счёте после сделки</dt><dd>${Fmt.rub(res.cashAfter)}</dd></dl>`;
+  }
+
+  // налог на прибыль или УСН; с прибыли — прочие расходы наличными его не уменьшают
+  static _taxLabel(calc, res) {
+    const tax = IncomeTax.of(calc.usn);
+    const cash = res.K > 0 && tax.base === IncomeTax.PROFIT ? ' <small class="muted">— без учёта наличных</small>' : '';
+    const from = calc.usn ? ` <small class="muted">${esc(tax.from)}</small>` : '';
+    return `${esc(tax.name)}${from}${cash}`;
   }
 
   /**

@@ -183,6 +183,7 @@ class EconShift:
     PAIR = 2
     PCT = 100.0
     CENTS = 100
+    TAX_INCOME = 'income'  # УСН «доходы»: налог с выручки без НДС, поправка расхода его не меняет
 
     @classmethod
     def vat_of(cls, item: EconValue, delta: float, calc: dict) -> float:
@@ -199,7 +200,8 @@ class EconShift:
     def _side(cls, side: dict, calc: dict, delta: float, vat: float) -> dict:
         before = float(side.get('Pa') or 0) - (delta - vat)
         ctot = float(side.get('Ctot') or 0) + (delta - vat)
-        tax = before * float(calc.get('taxP') or 0) / cls.PCT if before > 0 else 0.0
+        base = float(calc.get('R') or 0) if calc.get('taxBase') == cls.TAX_INCOME else before
+        tax = base * float(calc.get('taxP') or 0) / cls.PCT if base > 0 else 0.0
         cash = cls._cash(calc, before, tax)
         cost = cash * float(calc.get('xG') or 1)
         profit = before - cost

@@ -6,6 +6,7 @@ import { DealValues } from './deal-values.js';
 import { DealXlsxCustoms } from './deal-xlsx-customs.js';
 import { DealBxFix } from './deal-bx-fix.js';
 import { InputNum } from './input-num.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { Money } from '../../core/money.js';
 import { XlsxBook } from '../../core/xlsx.js';
 import { Fmt } from '../../core/str.js';
@@ -292,7 +293,7 @@ export class DealXlsxCalc {
         sum ? '₽' : '%',
         '',
         note(
-          `Не уменьшают налог на прибыль; платятся ${calc.xc.when === 'pay' ? 'с оплат заказчика (долей от каждой)' : 'после последней оплаты заказчика'}`,
+          `Не уменьшают ${IncomeTax.of(calc.usn).lower}; платятся ${calc.xc.when === 'pay' ? 'с оплат заказчика (долей от каждой)' : 'после последней оплаты заказчика'}`,
         ),
       ],
       'XV',
@@ -376,7 +377,16 @@ export class DealXlsxCalc {
           )
         : '';
     this.row(['Стоимость денег', { v: calc.i, s: 'inp' }, '% в месяц', '', auto], 'i');
-    this.row(['Налог на прибыль', { v: calc.taxP, s: 'inp' }, '%'], 'TAX');
+    const tax = IncomeTax.of(calc.usn);
+    this.row(
+      [
+        tax.name,
+        { v: calc.taxP, s: 'inp' },
+        '%',
+        ...(calc.usn ? ['', note(`${tax.from}; ставка юрлица продавца`)] : []),
+      ],
+      'TAX',
+    );
     this.row(
       [
         'Дата отсчёта — подписание договора (день 0)',

@@ -1,5 +1,6 @@
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { XlsxBook } from '../../core/xlsx.js';
+import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 
 /** Лист Excel «График платежей»: деньги по дням — день, дата, событие, платёж (формулой от листа «Расчёт»), остаток, финансирование. */
@@ -308,13 +309,20 @@ export class DealXlsxResult {
     return value == null ? undefined : value / DealXlsxCalc.PCT;
   }
 
+  // налог: с выручки без НДС (УСН «доходы») или с прибыли — ячейка profitKey
+  _taxFormula(profitKey) {
+    const base = this.calc.taxBase === IncomeTax.INCOME ? this._ref('Rv') : this._ref(profitKey);
+    return `IF(${base}>0,${base}*${this._ref('TAX')}/100,0)`;
+  }
+
   _plain() {
     const { sheet, res } = this;
     const note = DealXlsxResult.note;
     const ref = key => this._ref(key);
+    const tax = IncomeTax.of(this.calc.usn);
     sheet.row(
       [
-        { v: 'Прибыль до налога на прибыль', s: 'bold' },
+        { v: `Прибыль до ${tax.gen}`, s: 'bold' },
         { f: `${ref('Rv')}-${ref('CT')}`, v: res.P, s: 'moneyB' },
         '',
         '',
@@ -323,7 +331,11 @@ export class DealXlsxResult {
       'P',
     );
     sheet.row(
-      ['Налог на прибыль', { f: `IF(${ref('P')}>0,${ref('P')}*${ref('TAX')}/100,0)`, v: res.tax, s: 'money' }],
+      [
+        tax.name,
+        { f: this._taxFormula('P'), v: res.tax, s: 'money' },
+        ...(this.calc.usn ? ['', '', note(tax.from)] : []),
+      ],
       'PT',
     );
     sheet.row([
@@ -361,16 +373,22 @@ export class DealXlsxResult {
     const { sheet, res } = this;
     const note = DealXlsxResult.note;
     const ref = key => this._ref(key);
+    const tax = IncomeTax.of(this.calc.usn);
+    const fromIncome = this.calc.taxBase === IncomeTax.INCOME;
     this._line(
-      'Прибыль до прочих расходов (база налога)',
+      fromIncome ? 'Прибыль до прочих расходов' : 'Прибыль до прочих расходов (база налога)',
       { f: `${ref('Rv')}-${ref('CT')}`, v: res.Pa, s: 'money' },
       this._profitNote(),
       'PA',
     );
     this._line(
-      'Налог на прибыль',
-      { f: `IF(${ref('PA')}>0,${ref('PA')}*${ref('TAX')}/100,0)`, v: res.tax, s: 'money' },
-      note('Прочие расходы наличными налог не уменьшают'),
+      tax.name,
+      { f: this._taxFormula('PA'), v: res.tax, s: 'money' },
+      note(
+        fromIncome
+          ? 'С выручки без НДС; прочие расходы наличными его не уменьшают'
+          : 'Прочие расходы наличными налог не уменьшают',
+      ),
       'PT',
     );
     this._line(
@@ -404,7 +422,7 @@ export class DealXlsxResult {
       { f: `${ref('PA')}-${ref('PT')}-${ref('XK')}`, v: res.net, s: 'moneyB' },
       '',
       '',
-      note('После налога на прибыль и прочих расходов'),
+      note(`После ${IncomeTax.of(this.calc.usn).gen} и прочих расходов`),
     ]);
     sheet.row([
       'Наценка',
@@ -452,9 +470,7 @@ export class DealXlsxResult {
       { f: `${ref('CB')}-${ref('PAY')}${sheet.xOn ? `-${ref('XK')}` : ''}`, v: res.cashAfter, s: 'money' },
       '',
       '',
-      note(
-        sheet.xOn ? 'После доплаты НДС и наличных, до налога на прибыль' : 'После доплаты НДС, до налога на прибыль',
-      ),
+      note(`${sheet.xOn ? 'После доплаты НДС и наличных' : 'После доплаты НДС'}, до ${IncomeTax.of(calc.usn).gen}`),
     ]);
   }
 }

@@ -77,6 +77,8 @@ export class DealState {
       rates: { ...(pricing.rates || {}) },
       costNoVat: !!pricing.costNoVat,
       sellerVat: DealSeller.vatOf(state.deal),
+      sellerUsn: DealSeller.usnOf(state.deal),
+      sellerUsnRate: DealSeller.usnRateOf(state.deal),
       moneyAuto: DealDefaults.moneyAuto(),
       items: KitDoc.lines(state).map(line => DealState._line(line, state)),
     };
@@ -381,6 +383,7 @@ export class DealState {
       lo: side(calc.lo),
       hi: side(calc.hi),
       taxP: calc.taxP,
+      taxBase: calc.taxBase,
       xMode: calc.xMode,
       xV: calc.xV,
       xG: calc.xG,

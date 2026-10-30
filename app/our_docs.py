@@ -30,7 +30,12 @@ class OurRequisites:
         'directorPost': ('Должность руководителя', None),
         'accountant': ('Главный бухгалтер (ФИО)', None),
         'vat': ('НДС', re.compile(r'^(0|5|7|10|20|22|без НДС)$')),
+        'usn': ('Налог на прибыль или УСН', re.compile(r'^(income|profit)$')),
+        'usnRate': ('Ставка УСН', re.compile(r'^\d{1,2}([.,]\d{1,2})?$')),
     }
+    # ставка УСН по закону — верхняя граница своей ставки юрлица (НК РФ, ст. 346.20); НДС 5 и 7 % — только при УСН (ст. 164, п. 8)
+    USN_MAX: ClassVar[dict[str, float]] = {'income': 6.0, 'profit': 15.0}
+    USN_VAT = ('5', '7')
 
     def __init__(self, store) -> None:
         self.store = store
@@ -71,7 +76,21 @@ class OurRequisites:
             out[key] = value.replace(' ', '') if value and pattern and key != 'vat' else value
         if not out['name']:
             raise ValueError(f'Юрлицо {place}: укажите наименование')
+        self._usn(out, place)
         return out
+
+    def _usn(self, out: dict, place: int) -> None:
+        mode = out['usn']
+        if not mode:
+            out['usnRate'] = ''
+            if out['vat'] in self.USN_VAT:
+                raise ValueError(
+                    f'Юрлицо {place}: НДС {out["vat"]} % — только при УСН: выберите «Налог на прибыль или УСН»'
+                )
+            return
+        rate = out['usnRate'].replace(',', '.')
+        if rate and float(rate) > self.USN_MAX[mode]:
+            raise ValueError(f'Юрлицо {place}: ставка УСН — не больше {self.USN_MAX[mode]:g} %')
 
 
 class DocTemplates:
