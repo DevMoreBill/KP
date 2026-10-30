@@ -17,9 +17,9 @@ import { KpState, S } from '../../core/state.js';
 import { $, esc } from '../../core/util.js';
 
 /**
- * Окно «Сборное изделие» (в окне «Добавить оборудование», `#dlg`): вид станции, контейнер и оборудование из каталога,
- * название, главное фото, цена и работы по сборке → одна позиция КП без компоновки. Тем же окном правится состав изделия
- * из карточки позиции («Состав изделия» → «Изменить состав…»).
+ * Окно «Сборное изделие» (в окне «Добавить оборудование», `#dlg`, та же ширина и шапка, что у подбора станции):
+ * контейнер и оборудование из каталога, название, главное фото, цена и работы по сборке → одна позиция КП без компоновки.
+ * Тем же окном правится состав изделия из карточки позиции («Состав изделия» → «Изменить состав…», там и вид изделия).
  */
 export class AsmBuilder {
   static state = null;
@@ -123,24 +123,34 @@ export class AsmBuilder {
     dialog.innerHTML = this.state.pick ? this._pickHtml() : this._mainHtml();
   }
 
-  static _head(title, back) {
-    const left = back ? '<button class="btn ghost" type="button" data-asm="asmBack">← Назад</button>' : '';
-    return `<div class="dlg-h">${left}<h3>${title}</h3><button class="icon" type="button" data-asm="asmClose" aria-label="Закрыть">✕</button></div>`;
+  // шапка как у окна подбора станции: «← Назад» — к выбору станции (новое изделие) или из выбора в каталоге
+  static _head(title) {
+    const { pick, index } = this.state;
+    const back =
+      pick || index == null ? '<button class="btn ghost" type="button" data-asm="asmBack">← Назад</button>' : '';
+    return `<div class="dlg-h"><h3>${title}</h3>${back}<button class="icon" type="button" data-asm="asmClose" aria-label="Закрыть">✕</button></div>`;
+  }
+
+  static _title() {
+    const { cat, index } = this.state;
+    return index == null
+      ? `Добавить оборудование <small class="muted">· ${esc(EquipTypes.byId(cat).item)}</small>`
+      : 'Сборное изделие <small class="muted">· без компоновки</small>';
   }
 
   static _mainHtml() {
     const { cat, index } = this.state;
-    const title = `Сборное изделие <small class="muted">· без компоновки</small>`;
-    return `${this._head(title, false)}<div class="dlg-b asm-b">
-      ${index == null ? StationWays.html(cat, 'asm') : ''}
-      <p class="muted asm-lead">Части могут быть от разных поставщиков: описание, характеристики, фото и цена изделия соберутся из их карточек.</p>
-      <div class="asm-kind" role="radiogroup" aria-label="Вид изделия">${this._kinds(cat)}</div>
+    const top =
+      index == null
+        ? StationWays.html(cat, 'asm')
+        : `<div class="asm-kind" role="radiogroup" aria-label="Вид изделия">${this._kinds(cat)}</div>`;
+    return `${this._head(this._title())}<div class="dlg-b asm-b">
+      ${top}
       ${this._filesBox()}
       ${this.state.busy ? `<p class="asm-busy" role="status">${esc(this.state.busy)}</p>` : ''}
-      ${this._containerSec()}
-      ${this._equipSec()}
-      ${this._itemSec()}
-      <div class="row asm-go"><button class="btn primary" type="button" data-asm="asmGo">${index == null ? 'Добавить в КП' : 'Сохранить изделие'}</button></div></div>`;
+      <div class="asm-cols"><div class="asm-col">${this._containerSec()}${this._equipSec()}</div>
+      <div class="asm-col">${this._itemSec()}
+      <div class="row asm-go"><button class="btn primary" type="button" data-asm="asmGo">${index == null ? 'Добавить в КП' : 'Сохранить изделие'}</button></div></div></div></div>`;
   }
 
   static _kinds(cat) {
@@ -180,7 +190,7 @@ export class AsmBuilder {
   /** «Из техничек — ИИ»: ТЗ, КП поставщика, паспорта — части изделия сами */
   static _filesBox() {
     if (!AsmAi.filesEnabled() || this.state.index != null) return '';
-    return `<div class="asm-files"><label class="btn"><input type="file" data-asmfiles multiple accept=".pdf,.docx,.xlsx,.txt" hidden>📄 Из техничек — ИИ</label><span class="muted">ТЗ, КП поставщика, паспорта контейнера и оборудования (PDF, Word, Excel) — части с характеристиками, описанием и фото станут карточками каталога и соберутся в изделие</span></div>`;
+    return `<div class="asm-files"><label class="btn"><input type="file" data-asmfiles multiple accept=".pdf,.docx,.xlsx,.txt" hidden>📄 Из техничек — ИИ</label><span class="muted">ТЗ, КП поставщика, паспорта (PDF, Word, Excel) — части станут карточками каталога и соберутся в изделие</span></div>`;
   }
 
   /** «Описание и сводные — ИИ»: состояние ответа для текущего состава */
@@ -202,7 +212,7 @@ export class AsmBuilder {
     const body =
       j >= 0
         ? `${this._row(parts[j], j)}<div class="asm-add"><button class="chip sm ghost" type="button" data-asmpick="container">Заменить из каталога</button><button class="chip sm ghost" type="button" data-asmcard="container">Новый контейнер…</button></div>`
-        : '<div class="asm-add"><button class="btn" type="button" data-asmpick="container">Выбрать в каталоге</button><button class="btn ghost" type="button" data-asmcard="container" title="Нет в каталоге: по ссылке, с ИИ из файла, таблицей или вручную — карточка сохранится в каталог">Новый — нет в каталоге…</button></div>';
+        : '<div class="asm-add"><button class="btn" type="button" data-asmpick="container">Выбрать в каталоге</button><button class="btn ghost" type="button" data-asmcard="container" title="Нет в каталоге: с ИИ (по ссылке, файлу или тексту), таблицей или вручную — карточка сохранится в каталог">Новый — нет в каталоге…</button></div>';
     return `<section class="asm-sec"><h4>1. Контейнер</h4>${body}</section>`;
   }
 
@@ -219,13 +229,14 @@ export class AsmBuilder {
         ? ''
         : '<button class="chip sm ghost" type="button" data-asmpick="power">+ ДГУ для автономности</button>';
     const empty = rows ? '' : `<p class="muted asm-empty">Добавьте ${esc(label)} и прочее оборудование.</p>`;
-    return `<section class="asm-sec"><h4>2. Оборудование</h4>${rows}${empty}<div class="asm-add"><button class="chip sm" type="button" data-asmpick="equip">+ Из каталога</button><button class="chip sm" type="button" data-asmcard="equip" title="Нет в каталоге: по ссылке, с ИИ из файла, таблицей или вручную — карточка сохранится в каталог">+ Новое — нет в каталоге…</button>${power}</div></section>`;
+    return `<section class="asm-sec"><h4>2. Оборудование</h4>${rows}${empty}<div class="asm-add"><button class="chip sm" type="button" data-asmpick="equip">+ Из каталога</button><button class="chip sm" type="button" data-asmcard="equip" title="Нет в каталоге: с ИИ (по ссылке, файлу или тексту), таблицей или вручную — карточка сохранится в каталог">+ Новое — нет в каталоге…</button>${power}</div></section>`;
   }
 
   static _itemSec() {
     const { name, cat, parts, work } = this.state;
     const auto = AsmItem.name(cat, parts);
     return `<section class="asm-sec"><h4>3. Изделие</h4>
+      <p class="muted asm-lead">Части — от разных поставщиков: описание, характеристики, фото и цена изделия соберутся из их карточек.</p>
       <label class="f"><span>Название</span><input type="text" id="asmName" value="${esc(this.state.nameAuto ? auto : name)}" placeholder="${esc(auto)}" autocomplete="off"></label>
       ${this._aiBox()}
       ${this._photos()}
@@ -270,7 +281,7 @@ export class AsmBuilder {
 
   static _pickHtml() {
     const { pick } = this.state;
-    return `${this._head(esc(this.PICKS[pick.kind].title), true)}<div class="dlg-b asm-b"><div id="asmPF">${PickFilter.html(pick.filter, null)}</div><div class="kit-pl" id="asmPL">${this._pickList()}</div></div>`;
+    return `${this._head(esc(this.PICKS[pick.kind].title))}<div class="dlg-b asm-b"><div id="asmPF">${PickFilter.html(pick.filter, null)}</div><div class="kit-pl" id="asmPL">${this._pickList()}</div></div>`;
   }
 
   static _pickList() {
@@ -359,8 +370,12 @@ export class AsmBuilder {
   }
 
   static _back() {
-    this.state.pick = null;
-    this.draw();
+    if (this.state.pick) {
+      this.state.pick = null;
+      this.draw();
+      return;
+    }
+    this._leave('station');
   }
 
   static _readPrice(text) {
@@ -439,11 +454,16 @@ export class AsmBuilder {
     }
   }
 
-  /** «Подобрать и скомпоновать»: окно подбора станции того же вида; начатая сборка ждёт и вернётся по «Собрать из готовых» */
+  /** «Подобрать и скомпоновать»: окно подбора станции того же вида */
   static _layout(cat) {
+    this._leave(cat);
+  }
+
+  // в окно «Добавить оборудование» (pre — его шаг); начатая сборка ждёт и вернётся по «Собрать из готовых позиций»
+  static _leave(pre) {
     this.held = this.state.parts.length ? this.state : null;
     this.state = null;
-    EquipWizard.open('kp', cat);
+    EquipWizard.open('kp', pre);
   }
 
   /** другой вид изделия — основное оборудование заново по основным категориям этого вида */

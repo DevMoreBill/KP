@@ -106,7 +106,7 @@ aside{position:sticky;top:84px;align-self:start}
 .btn.icon-btn{width:40px;justify-content:center;padding-left:0;padding-right:0;font-size:17px;line-height:1}
 
 /* правка текстов интерфейса администратором (js/features/uitexts.js) */
-.uit-pen{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;padding:0;border:0;border-radius:50%;background:var(--warn);color:#1F1300;font-family:inherit;font-size:11px;font-style:normal;font-weight:700;line-height:1;vertical-align:middle;cursor:pointer;text-transform:none;letter-spacing:0;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.uit-pen{position:relative;z-index:2;display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;padding:0;border:0;border-radius:50%;background:var(--warn);color:#1F1300;font-family:inherit;font-size:11px;font-style:normal;font-weight:700;line-height:1;vertical-align:middle;cursor:pointer;text-transform:none;letter-spacing:0;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .uit-pen:hover{background:#b8661a;transform:scale(1.12)}
 body.uit-edit .uit-pen{pointer-events:auto}
 @media (pointer:coarse){.uit-pen::after{content:"";position:absolute;inset:-13px}}

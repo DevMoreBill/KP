@@ -14,6 +14,8 @@ export class UiTexts {
   // позиции, журнал, списки — данные, не тексты интерфейса
   static DATA_PLACES =
     '.brand b,.brand i,#side .words,#form .it-name,#form .iname,.dl-it td.c-nm,.dl-t td.c-ev,.cw-row,.jr,.st-list,.dl-cbl';
+  // всплывающее сообщение гаснет раньше, чем успеешь нажать карандаш
+  static FLEETING = '.toast';
   static MARKED = 'h1,h2,h3,h4,h5,h6,label,legend,th,summary,button,a,span,p,small,b,em,div,li,dt,i';
   static ATTR_LABEL = {
     title: 'Всплывающая подсказка',
@@ -116,7 +118,7 @@ export class UiTexts {
 
   static _candidate(el) {
     if (this._skip(el) || el.closest('input,option')) return false;
-    if (el.closest(this.DATA_PLACES)) return false;
+    if (el.closest(this.DATA_PLACES) || el.closest(this.FLEETING)) return false;
     const node = this._ownText(el);
     if (node && !this._isData(this.norm(node.nodeValue))) return true;
     return this.ATTRS.some(
@@ -127,11 +129,18 @@ export class UiTexts {
     );
   }
 
+  // окно сверху: последнее видимое модальное, иначе открытая вкладка-раздел, иначе страница (последним по порядку на
+  // странице бывает скрытая вкладка — окно правки и «Готово» в ней не видны)
+  static _top() {
+    const shown = [...document.querySelectorAll('dialog[open]')].filter(dialog => dialog.getClientRects().length);
+    return shown.filter(dialog => dialog.matches(':modal')).pop() || shown.pop() || document.body;
+  }
+
   // режим правки: карандаш у каждого «жёсткого» текста и полоса «Готово» в верхнем окне
   static _mark() {
     this.state.raf = 0;
     if (!this.state.edit) return;
-    const top = [...document.querySelectorAll('dialog[open]')].pop() || document.body;
+    const top = this._top();
     for (const el of document.body.querySelectorAll(this.MARKED)) {
       if (el.querySelector(':scope > .uit-pen') || !this._candidate(el) || !el.getClientRects().length) continue;
       const pen = document.createElement('button');
@@ -228,7 +237,7 @@ export class UiTexts {
     const dialog = document.createElement('dialog');
     dialog.className = 'uit-dlg';
     dialog.innerHTML = this._dialogHtml(fields);
-    ([...document.querySelectorAll('dialog[open]')].pop() || document.body).appendChild(dialog);
+    document.body.appendChild(dialog); // поверх всех окон; в окне раздела его стёрла бы перерисовка раздела
     const done = () => {
       dialog.close();
       dialog.remove();
@@ -280,6 +289,33 @@ export class UiTexts {
     this._schedule();
   }
 
+  // нажатие на карандаш не начинает действие элемента (разделитель панелей перехватывал указатель — щелчка не было);
+  // у недоступной кнопки браузер щелчок не присылает — правка открывается сразу при нажатии
+  static _press(event) {
+    const pen = this.state.edit && event.target.closest && event.target.closest('.uit-pen');
+    if (!pen) return;
+    event.stopPropagation();
+    if (event.type !== 'pointerdown' || !pen.parentElement.closest(':disabled')) return;
+    event.preventDefault();
+    this._open(this._aimed(event).parentElement);
+  }
+
+  // карандаш, в который целились: области нажатия соседних карандашей (44 px на сенсорном экране) перекрываются —
+  // из карандашей под точкой нажатия берётся ближайший значок
+  static _aimed(event) {
+    const pen = event.target.closest('.uit-pen');
+    if (!event.clientX && !event.clientY) return pen; // с клавиатуры
+    return document
+      .elementsFromPoint(event.clientX, event.clientY)
+      .filter(el => el.classList.contains('uit-pen'))
+      .reduce((best, one) => (this._gap(one, event) < this._gap(best, event) ? one : best), pen);
+  }
+
+  static _gap(pen, event) {
+    const box = pen.getBoundingClientRect();
+    return Math.hypot(box.left + box.width / 2 - event.clientX, box.top + box.height / 2 - event.clientY);
+  }
+
   static _observe(records) {
     // замен нет (обычный случай) — записи об изменениях страницы не перебираются: каждая перерисовка даёт их сотни
     if (Object.keys(this.state.map).length) records.forEach(record => this._changed(record));
@@ -312,15 +348,14 @@ export class UiTexts {
           this.stopEdit();
           return;
         }
-        if (!this.state.edit) return;
-        const pen = event.target.closest('.uit-pen');
-        if (!pen) return;
+        if (!this.state.edit || !event.target.closest('.uit-pen')) return;
         event.preventDefault();
         event.stopPropagation();
-        this._open(pen.parentElement);
+        this._open(this._aimed(event).parentElement);
       },
       true,
     );
+    for (const type of ['pointerdown', 'mousedown']) document.addEventListener(type, event => this._press(event), true);
     new MutationObserver(records => this._observe(records)).observe(document.documentElement, {
       childList: true,
       subtree: true,

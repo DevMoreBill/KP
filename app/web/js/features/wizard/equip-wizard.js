@@ -1,7 +1,6 @@
 import { PageImages } from '../catalog/page-images.js';
 import { NewStation } from './new-station.js';
 import { TzImport } from '../tz/tz-import.js';
-import { Toast } from '../../core/toast.js';
 import { SpecPaste } from '../catalog/ai-parse.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
@@ -10,7 +9,7 @@ import { FormView } from '../../ui/form-view.js';
 import { Steps } from '../../ui/steps.js';
 import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
-import { AiDirect, AiSource } from '../catalog/ai-chat.js';
+import { AiDirect } from '../catalog/ai-chat.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { QuickFind } from '../../ui/step-equipment.js';
 import { Catalog } from '../catalog/catalog-store.js';
@@ -22,16 +21,16 @@ import { CatPicker } from './cat-picker.js';
 
 /**
  * Окно «Добавить оборудование» — один порядок для КП и для каталога: что добавляем (найти в каталоге — только в КП,
- * станция в контейнере, единица оборудования) → как заполнить карточку (по ссылке, с ИИ, таблицей, вручную) или
- * требования станции → карточка открывается сразу на нужной вкладке (в каталоге — карточка каталога).
+ * станция в контейнере, единица оборудования) → как заполнить карточку (с ИИ — по ссылке, файлу или тексту; таблицей;
+ * вручную) или требования станции → карточка открывается сразу на нужной вкладке (в каталоге — карточка каталога).
+ * Открыто из окна сборного изделия — «← Назад» с первого шага возвращает в него.
  */
 export class EquipWizard {
-  static state = { where: 'kp', cat: '', q: '', url: '', name: '', busy: false, onSaved: null };
+  static state = { where: 'kp', cat: '', entry: '', q: '', name: '', onSaved: null, onBack: null };
   static ICONS = { st_pump: '💧', st_comp: '💨', st_dgu: '⚡' };
   static FOCUS_DELAY = 40;
   static CAT_FOCUS_DELAY = 30;
   static MAIN_LINE = 3;
-  static URL_RE = /^https?:\/\/./;
   static BUTTONS = {
     back: '_back',
     newtype: '_newType',
@@ -46,24 +45,27 @@ export class EquipWizard {
    * Открыть окно.
    * @param {string} where kp | catalog
    * @param {string} [pre] station или id категории — сразу на её шаге
-   * @param {function(object): *} [onSaved] новая карточка каталога сохранена (сборное изделие берёт её частью)
+   * @param {{onSaved?: function(object): *, onBack?: function(): *}} [from] открыто из окна сборного изделия:
+   *   новая карточка каталога сохранена — onSaved (изделие берёт её частью), «← Назад» с первого шага — onBack
    */
-  static open(where, pre, onSaved) {
+  static open(where, pre, from = {}) {
     if (where === 'catalog' && !Auth.can('catAdd')) {
       Auth.cannot('catAdd');
       return;
     }
-    Object.assign(this.state, { where: where || 'kp', cat: '', q: '', url: '', name: '', busy: false });
-    this.state.onSaved = onSaved || null;
+    Object.assign(this.state, { where: where || 'kp', cat: '', q: '', name: '' });
+    this.state.onSaved = from.onSaved || null;
+    this.state.onBack = from.onBack || null;
     NewStation.reset();
     CatPicker.reset();
     if (pre === 'station') this.state.cat = 'station';
     else if (pre && EquipTypes.list.some(type => type.id === pre)) this.state.cat = pre;
+    this.state.entry = this.state.cat;
     const dialog = $('#dlg');
     dialog.className = 'wide nw';
     this.draw();
     if (!dialog.open) dialog.showModal();
-    setTimeout(() => ($('#nwQ') || $('#nwName') || $('#nwUrl') || $('[data-nsr]'))?.focus(), this.FOCUS_DELAY);
+    setTimeout(() => ($('#nwQ') || $('#nwName') || $('[data-nsr]'))?.focus(), this.FOCUS_DELAY);
   }
 
   static _stations() {
@@ -72,9 +74,9 @@ export class EquipWizard {
 
   /** Перерисовать окно по состоянию. */
   static draw() {
-    const { where, cat } = this.state;
+    const { where, cat, onBack } = this.state;
     const type = cat && cat !== 'station' ? EquipTypes.byId(cat) : null;
-    const back = cat ? `<button class="btn ghost" type="button" data-nw="back">← Назад</button>` : '';
+    const back = cat || onBack ? `<button class="btn ghost" type="button" data-nw="back">← Назад</button>` : '';
     const title = `${where === 'catalog' ? 'Новая позиция каталога' : 'Добавить оборудование'}${type ? ` <small class="muted">· ${esc(type.station ? type.item : type.name)}</small>` : ''}`;
     $('#dlg').innerHTML =
       `<div class="dlg-h"><h3>${title}</h3>${back}<button class="icon" type="button" data-close aria-label="Закрыть">✕</button></div>
@@ -145,25 +147,37 @@ export class EquipWizard {
       .join('');
   }
 
-  // единица оборудования: как заполнить карточку
+  // единица оборудования: как заполнить карточку (ссылка на страницу товара — на вкладке ИИ, шаг 1)
   static _unit(type) {
-    const { url, busy, name } = this.state;
-    const aiText = AiDirect.state.enabled
-      ? `${esc(AiDirect.state.provider)} прямо в программе: вставьте текст паспорта, загрузите ТЗ или укажите модель — описание и характеристики разложатся по полям одной кнопкой.`
-      : 'ChatGPT, Claude, Алиса, GigaChat, DeepSeek — любой. Вставьте текст паспорта или только модель: ИИ разложит описание и характеристики по полям.';
-    const urlBox = `<div class="nw-url"><input type="url" id="nwUrl" value="${esc(url)}" placeholder="https://… страница товара" autocomplete="off"><button class="btn primary" type="button" data-nwgo="url"${busy ? ' disabled' : ''}>${busy ? 'Загружаю…' : 'Загрузить'}</button></div>`;
-    return `<label class="f nw-name"><span>Наименование или модель <small class="muted">— можно заполнить позже</small></span><input type="text" id="nwName" value="${esc(name)}" placeholder="${esc(type.item)} …, например «Grundfos CR 32-4»" autocomplete="off"></label>
+    const options = [
+      FEAT.on('ai') ? { key: 'ai', icon: '✨', title: 'С помощью ИИ — рекомендуем', text: this._aiText() } : null,
+      {
+        key: 'paste',
+        icon: '📋',
+        title: 'Таблицей из паспорта или Excel',
+        text: 'Скопируйте два столбца «параметр — значение» — строки станут таблицей характеристик.',
+      },
+      {
+        key: 'manual',
+        icon: '✎',
+        title: 'Вручную',
+        text: 'Пустая карточка: параметры категории, описание, фото и характеристики.',
+      },
+    ].filter(Boolean);
+    return `<label class="f nw-name"><span>Наименование или модель <small class="muted">— можно заполнить позже</small></span><input type="text" id="nwName" value="${esc(this.state.name)}" placeholder="${esc(type.item)} …" autocomplete="off"></label>
     <p class="nw-h">Как заполнить карточку?</p>
-    <div class="nw-opts">
-      ${this._option({ key: 'url', icon: '🔗', title: 'По ссылке на сайт', text: 'Программа скачает со страницы текст и характеристики, дальше — ИИ или сразу в таблицу.', extra: urlBox })}
-      ${this._option({ key: 'ai', icon: '✨', title: 'С помощью ИИ — рекомендуем', text: aiText })}
-      ${this._option({ key: 'paste', icon: '📋', title: 'Таблицей из паспорта или Excel', text: 'Скопируйте два столбца «параметр — значение» — строки станут таблицей характеристик.' })}
-      ${this._option({ key: 'manual', icon: '✎', title: 'Вручную', text: 'Пустая карточка: параметры категории, описание, фото и характеристики.' })}
-    </div>`;
+    <div class="nw-opts">${options.map(option => this._option(option)).join('')}</div>`;
   }
 
-  static _option({ key, icon, title, text, extra }) {
-    return `<div class="nw-opt${key === 'ai' ? ' rec' : ''}"><button type="button" class="nw-optb" data-nwgo="${key}"><i>${icon}</i><span><b>${title}</b><small>${text}</small></span></button>${extra || ''}</div>`;
+  static _aiText() {
+    const what = 'ссылка на страницу товара, файл или текст паспорта — или только модель';
+    return AiDirect.state.enabled
+      ? `${esc(AiDirect.state.provider)} прямо в программе: ${what}; описание и характеристики разложатся по полям одной кнопкой.`
+      : `ChatGPT, Claude, Алиса, GigaChat, DeepSeek — любой: ${what}; ИИ разложит описание и характеристики по полям.`;
+  }
+
+  static _option({ key, icon, title, text }) {
+    return `<button type="button" class="nw-opt${key === 'ai' ? ' rec' : ''}" data-nwgo="${key}"><i aria-hidden="true">${icon}</i><span><b>${title}</b><small>${text}</small></span></button>`;
   }
 
   static _close() {
@@ -207,17 +221,13 @@ export class EquipWizard {
     if (after) after(0);
   }
 
-  static async _makeUnit(how) {
+  static _makeUnit(how) {
     const type = EquipTypes.byId(this.state.cat);
     const item = KpState.newItem();
     item.attrs = { cat: type.id };
     item.page = true;
     item.name = this.state.name.trim();
     item.features = [];
-    if (how === 'url') {
-      await this._fromUrl(item);
-      return;
-    }
     if (how === 'ai') {
       item._aiStep = 1;
       this.finish(item, 'ai');
@@ -229,26 +239,6 @@ export class EquipWizard {
     }
     item.features = [{ id: Uid.next(), label: '', text: '' }];
     this.finish(item, 'main');
-  }
-
-  static async _fromUrl(item) {
-    const url = String(($('#nwUrl') || {}).value || this.state.url).trim();
-    this.state.url = url;
-    if (!this.URL_RE.test(url)) {
-      Toast.show('Вставьте ссылку на страницу товара (начинается с http)');
-      return;
-    }
-    this.state.busy = true;
-    this.draw();
-    item._srcUrl = url;
-    const ok = await AiSource.fetchInto(item);
-    this.state.busy = false;
-    if (!ok) {
-      this.draw();
-      Toast.show(item._aiMsg || 'Страница не прочитана');
-      return;
-    }
-    this.finish(item, 'ai');
   }
 
   static _readName() {
@@ -321,7 +311,12 @@ export class EquipWizard {
   }
 
   static _back(type) {
-    this.state.cat = this.state.cat !== 'station' && type.station ? 'station' : '';
+    const { cat, entry, onBack } = this.state;
+    if (onBack && cat === entry) {
+      onBack();
+      return;
+    }
+    this.state.cat = cat !== 'station' && type.station ? 'station' : '';
     this.draw();
   }
 
@@ -361,7 +356,6 @@ export class EquipWizard {
     if (target.id === 'nwCatQ') $('#nwGroups').innerHTML = CatPicker.filter(target.value, this._units());
     if (target.dataset.nsr) NewStation.input(target);
     if (target.id === 'nwName') this.state.name = target.value;
-    if (target.id === 'nwUrl') this.state.url = target.value;
   }
 
   static _enter(event) {
@@ -378,11 +372,6 @@ export class EquipWizard {
       event.preventDefault();
       const cat = CatPicker.first(this._units());
       if (cat) this._pickCat(cat);
-    }
-    if (target.id === 'nwUrl') {
-      event.preventDefault();
-      this._readName();
-      this._makeUnit('url');
     }
     if (target.dataset.nsr) {
       event.preventDefault();

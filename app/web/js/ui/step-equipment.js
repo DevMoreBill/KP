@@ -41,18 +41,18 @@ export class EquipStep {
           `<button type="button" class="tile st" data-a="addStation" data-cat="${esc(type.id)}">${CatSections.svg('box')}<b>${esc(type.item)}</b><span>собрать →</span></button>`,
       )
       .join('');
-    return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${UiKit.tip('Найдите модель в строке поиска или выберите вид оборудования — фото, характеристики и титул подставятся из каталога. Станцию в контейнере (насосную, компрессорную, ДГУ) собирают из контейнера, основного оборудования и систем. Чего нет в каталоге — «+ Новое оборудование»: по ссылке на сайт, с помощью любого ИИ, таблицей или вручную.')}</h2>
+    return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${UiKit.tip('Найдите модель в строке поиска или выберите вид оборудования — фото, характеристики и титул подставятся из каталога. Станцию в контейнере (насосную, компрессорную, ДГУ) собирают из контейнера, основного оборудования и систем. Чего нет в каталоге — «+ Новое оборудование»: с помощью любого ИИ (по ссылке на сайт, файлу или тексту), таблицей или вручную.')}</h2>
     ${this._quick()}
     <p class="sub tiles-h">Станции в контейнере</p><div class="tiles sts">${stations}</div>
     <p class="sub tiles-h">Оборудование из каталога</p>
-    <div class="tiles secs">${CatSections.tiles()}<button type="button" class="tile add" data-a="addItem"><b>+ Новое оборудование</b><span>нет в каталоге — заполнить по ссылке, с ИИ или вручную</span></button></div></section>`;
+    <div class="tiles secs">${CatSections.tiles()}<button type="button" class="tile add" data-a="addItem"><b>+ Новое оборудование</b><span>нет в каталоге — заполнить с ИИ, таблицей или вручную</span></button></div></section>`;
   }
 
   static _items() {
     const count = S.items.length;
     const units = S.items.reduce((sum, item) => sum + (+item.qty || 0), 0);
     return `<section class="step" id="st-items"><h2><span class="n">2</span>Оборудование${UiKit.tip('<p>«Изменить» — описание, фото, характеристики и опции позиции.</p><p>«Страница оборудования» — отдельный лист в КП с фото и характеристиками.</p><p>Цены, закупка и скидка — в разделе «Цены и валюта».</p>')}</h2>
-  <div class="eq-bar"><button class="btn primary" type="button" data-a="openCatalog">+ Из каталога</button><button class="btn" type="button" data-a="addItem" title="Нет в каталоге: по ссылке на сайт, с помощью ИИ, таблицей или вручную">+ Новое оборудование</button>${FEAT.on('stations') ? '<button class="btn" type="button" data-a="addStation">+ Станция в контейнере</button>' : ''}
+  <div class="eq-bar"><button class="btn primary" type="button" data-a="openCatalog">+ Из каталога</button><button class="btn" type="button" data-a="addItem" title="Нет в каталоге: с помощью ИИ (по ссылке, файлу или тексту), таблицей или вручную">+ Новое оборудование</button>${FEAT.on('stations') ? '<button class="btn" type="button" data-a="addStation">+ Станция в контейнере</button>' : ''}
     <span class="muted">${count} ${KPGen.plural(count, 'позиция', 'позиции', 'позиций')} · ${units} ед.</span></div>
   ${this._quick()}
   ${S.items.map((item, i) => this.card(item, i)).join('')}</section>`;

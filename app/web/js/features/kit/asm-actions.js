@@ -8,7 +8,7 @@ import { Toast } from '../../core/toast.js';
 /**
  * Действия окна «Сборное изделие» сверх каталога: новая карточка каталога окном «Добавить оборудование», дозаполнение
  * карточки части из файла, ИИ — описание и сводные характеристики, части из техничек. Пока открыта карточка каталога, окно
- * изделия ждёт (`AsmBuilder.held`) и возвращается с новой частью.
+ * изделия ждёт (`AsmBuilder.held`) и возвращается с новой частью (или без неё — «← Назад» в окне новой карточки).
  */
 export class AsmActions {
   static ROUTES = [
@@ -26,16 +26,23 @@ export class AsmActions {
     const main = ((EquipTypes.byId(state.cat).station || {}).main || [])[0] || '';
     const cat = { container: 'container', equip: main, power: 'dgu' }[kind] ?? '';
     AsmBuilder.held = state;
-    AsmCatalog.newCard(cat, saved =>
-      this._back(() => AsmBuilder.add(AsmItem.part(saved, AsmBuilder.roleOf(kind, saved))), saved.name),
-    );
+    AsmCatalog.newCard(cat, {
+      onSaved: saved =>
+        this._take(() => AsmBuilder.add(AsmItem.part(saved, AsmBuilder.roleOf(kind, saved))), saved.name),
+      onBack: () => this._resume(),
+    });
   }
 
-  static _back(apply, name) {
+  // окно изделия — снова с начатой сборкой
+  static _resume() {
     const state = AsmBuilder.held;
     AsmBuilder.held = null;
-    if (!state) return;
-    AsmBuilder.reopen(state);
+    if (state) AsmBuilder.reopen(state);
+  }
+
+  static _take(apply, name) {
+    if (!AsmBuilder.held) return;
+    this._resume();
     apply();
     Toast.show(`В изделие: ${name}`);
   }
@@ -48,7 +55,7 @@ export class AsmActions {
     if (!part || !part._doc) return;
     AsmBuilder.held = state;
     AsmCatalog.fill(part, saved =>
-      this._back(() => {
+      this._take(() => {
         const fixed = AsmItem.part(saved, part.role);
         fixed.qty = part.qty;
         state.parts.splice(j, 1, fixed);

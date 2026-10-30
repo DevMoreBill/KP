@@ -84,7 +84,7 @@ export class NewStation {
    * @returns {string}
    */
   static html(type) {
-    const { where, busy } = EquipWizard.state;
+    const { where } = EquipWizard.state;
     const kind = this.kind(type);
     const need = (StationQuick.NEED[kind] || [])[0];
     const fields = (StationQuick.KEYS[kind] || []).map(row => this._field(row, need)).join('');
@@ -94,7 +94,7 @@ export class NewStation {
       <div class="ns-c"><span class="muted">Контейнер:</span> <span>${esc(this.cont())}</span> <button class="link" type="button" data-nw="nsCont">${this.state.cont ? 'скрыть' : 'другой'}</button></div>
       ${this.state.cont ? this._contFields() : ''}
       <div class="ns-pv" id="nsPv">${this.pvHtml(type)}</div>
-      <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick"${busy ? ' disabled' : ''}>${busy ? 'Подбираю…' : pickLabel}</button>
+      <div class="row nw-go"><button class="btn primary" type="button" data-nw="nsPick">${pickLabel}</button>
         ${where === 'kp' ? '<button class="btn" type="button" data-nw="tz">📄 По ТЗ заказчика</button>' : ''}</div>
       <p class="muted ns-alt"><button class="link" type="button" data-nw="nsMain">Выбрать ${esc((type.station.mainLabel || 'оборудование').toLowerCase())} вручную</button> · <button class="link" type="button" data-nw="mkStation">пустая станция</button> — состав и требования в карточке</p>`;
   }
@@ -236,7 +236,7 @@ export class NewStation {
     if (!box) return;
     box.innerHTML = this.pvHtml(type);
     const button = document.querySelector('#dlg.nw [data-nw="nsPick"]');
-    if (button && !EquipWizard.state.busy) button.textContent = this.ready() ? 'Взять в КП' : 'Подобрать станцию';
+    if (button) button.textContent = this.ready() ? 'Взять в КП' : 'Подобрать станцию';
   }
 
   /**
