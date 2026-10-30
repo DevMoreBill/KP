@@ -6,8 +6,8 @@ import json
 import re
 from typing import Any
 
+from clock import Clock
 from deal_econ import DealEcon, EconKind, EconValues
-from kp_track import Val
 
 
 def _obj(raw: Any) -> dict:
@@ -93,7 +93,7 @@ class EconList:
                 if found and (found['score'], found['named']) > best[:2]:
                     best = (found['score'], found['named'], found)
         found = best[2]
-        conf = dict(self.conf(), found=Val.now(), error='' if found else error)
+        conf = dict(self.conf(), found=Clock.now(), error='' if found else error)
         if found and found['score'] >= self.SCORE_MIN and all(key in found['fields'] for key in ListKeys.NEED):
             found['dealField'] = self._deal_field(api, found['list']['id'])
             conf.update({key: found[key] for key in ('list', 'fields', 'types', 'enums', 'names', 'crm', 'dealField')})

@@ -1,7 +1,8 @@
 """Личные настройки менеджера (kv «userPrefs»): тема, кабинет, шаблон, свои умолчания КП, подпись, расположение разделов."""
 
 import re
-from datetime import datetime
+
+from clock import Clock
 
 
 class CabLayout:
@@ -92,7 +93,7 @@ class UserPrefs:
         prefs['limits'] = self._limits(data.get('limits'))
         prefs['cabLayout'] = CabLayout.clean(data.get('cabLayout'))
         prefs['defaults'] = self._defaults(data.get('defaults'))
-        prefs['updatedAt'] = datetime.now().isoformat(timespec='seconds')
+        prefs['updatedAt'] = Clock.now()
         everyone = self._all()
         everyone[str(uid)[:64]] = prefs
         self.store.kv_set(self.KV_KEY, everyone)

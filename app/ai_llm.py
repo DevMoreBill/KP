@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+from clock import Clock
 from defaults import SrvVal
 from net import Net
 
@@ -31,7 +32,7 @@ _RECENT: list[float] = []
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def settings(store) -> dict:

@@ -1099,13 +1099,7 @@ class AdminApi(AdminFeedsApi, AdminSystemApi, AdminRecordsApi, AdminDataApi):
                     400,
                     f'Откатить можно только последнюю миграцию ({store.migration_last()}): поздние миграции меняют таблицы ранних',
                 )
-            store.backup(
-                os.path.join(
-                    os.path.dirname(store.path),
-                    'backup',
-                    'kp-{}-before-migration-down.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S')),
-                )
-            )
+            store.backup_before('migration-down')
             store.migration_down(acc.group(1))
             return self.ok()
         return self.err(404, 'not found')

@@ -2,8 +2,8 @@
 
 import json
 import threading
-from datetime import datetime
 
+from clock import Clock
 from defaults import SrvVal
 
 
@@ -104,7 +104,7 @@ class SettingsHistory:
         self.store.write(
             'INSERT INTO settings_history (ts, key, by, paths, before, after) VALUES (?,?,?,?,?,?)',
             (
-                datetime.now().isoformat(timespec='seconds'),
+                Clock.now(),
                 key,
                 str(name)[:120],
                 json.dumps(changes[:200], ensure_ascii=False),
@@ -240,7 +240,7 @@ class SettingsHistory:
         self.store.kv_set(key, new)
         self.store.write(
             'UPDATE settings_history SET rolled = ? WHERE id = ?',
-            (datetime.now().isoformat(timespec='seconds'), int(hid)),
+            (Clock.now(), int(hid)),
         )
         self.store.touch_data('types', 'settings')
         return self.get(hid)

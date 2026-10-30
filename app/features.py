@@ -2,8 +2,9 @@
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import ClassVar
+
+from clock import Clock
 
 # ключ: (встроенное значение, название)
 FEATURES = {
@@ -239,7 +240,7 @@ class FeatureAccess:
             else:
                 cur[k] = self._value(cur.get(k), v)
         settings['features'] = cur
-        settings['featuresAt'], settings['featuresBy'] = datetime.now().isoformat(timespec='seconds'), author
+        settings['featuresAt'], settings['featuresBy'] = Clock.now(), author
         self.store.kv_set('settings', settings)
         return self.config()
 

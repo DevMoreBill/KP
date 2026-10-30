@@ -12,6 +12,7 @@ import defaults
 import logistics_api
 from cbr import cbr_rates
 from cbr_cache import CbrCache
+from clock import Clock
 from config import DATA_DIR, DOCS_DIR, DOCS_SHARE, ROOT, SERVER_MODE, UPDATE_DIR, BadRequest, store
 from net import Net
 from onec import OneCApi, OneCConf, OneCSync
@@ -142,7 +143,7 @@ class SettingsController(Controller):
                 raise BadRequest('Неверный формат тарифов') from None
             with self.user_input():
                 data = logistics_api.TariffInput.check(body)
-            data['updatedAt'] = datetime.now().isoformat(timespec='seconds')
+            data['updatedAt'] = Clock.now()
             data['updatedBy'] = admin.actor(self.handler)[1]
             store().kv_set('logistics', data)
             return self.send_json({'ok': True})

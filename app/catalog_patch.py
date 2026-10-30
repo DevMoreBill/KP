@@ -5,6 +5,7 @@ import json
 import re
 from typing import Any
 
+from clock import Clock
 from data_file import Load
 
 
@@ -328,12 +329,11 @@ class CatalogSheet:
             raise ValueError(
                 'Это не книга правок каталога: нужен файл «…_для_правки.xlsx», выгруженный из «Копий и базы»'
             )
-        from datetime import datetime
 
         return {
             'format': CatalogPatch.FORMAT,
             'version': 1,
-            'createdAt': datetime.now().isoformat(timespec='seconds'),
+            'createdAt': Clock.now(),
             'title': (f'Правки из Excel «{title[:120]}»') if title else 'Правки из Excel',
             'items': items,
         }

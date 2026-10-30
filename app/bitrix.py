@@ -25,10 +25,12 @@ from bitrix_docs import BitrixDealDocs
 from bitrix_mirror import BitrixMirror
 from bitrix_my import MyCompanies
 from bitrix_rules import BitrixRules
+from clock import Clock
 from crm import DealBook, Stages, TaskBook
 from crm_funnels import DealFields, Funnels
 from deal_rules import DealRegs
-from kp_track import Val
+from inn import Inn
+from money import Money
 from server_log import ServerLog
 
 
@@ -264,7 +266,7 @@ class BitrixConf:
             if enabled and not cur.get('on'):
                 new['since'] = new.get('since') or BitrixTime.now()  # новые сделки Битрикса — созданные после включения
             new['on'] = enabled
-        new.update(at=Val.now(), by=str(author or '')[:120])
+        new.update(at=Clock.now(), by=str(author or '')[:120])
         self.store.kv_set(self.KEY, new)
         return new
 
@@ -325,7 +327,7 @@ class BitrixLinks:
     def put(self, kind, local, bx_id, sent=None) -> None:
         self.store.write(
             'INSERT OR REPLACE INTO bx_link (kind, local_id, bx_id, sent, at) VALUES (?,?,?,?,?)',
-            (kind, str(local), str(bx_id), json.dumps(sent or {}, ensure_ascii=False), Val.now()),
+            (kind, str(local), str(bx_id), json.dumps(sent or {}, ensure_ascii=False), Clock.now()),
         )
 
     def count(self, kind) -> int:
@@ -370,7 +372,7 @@ class BitrixQueue:
             store.write(
                 'INSERT INTO bx_queue (kind, local_id, added, tries, next_at) VALUES (?,?,?,0,?) '
                 'ON CONFLICT(kind, local_id) DO UPDATE SET added=excluded.added, tries=0, error=NULL, next_at=excluded.next_at',
-                (kind, str(local), Val.now(), Val.now()),
+                (kind, str(local), Clock.now(), Clock.now()),
             )
         except Exception as exc:  # программа работает дальше, но несработавшая отметка видна в журнале сервера
             ServerLog.failure(f'очередь Битрикс24: {kind} {local} не поставлено', exc)
@@ -379,7 +381,7 @@ class BitrixQueue:
         return self.store.all(
             'SELECT kind, local_id, tries FROM bx_queue WHERE tries < ? AND (next_at IS NULL OR next_at <= ?) '
             "ORDER BY CASE kind WHEN 'deal' THEN 0 ELSE 1 END, added LIMIT ?",
-            (tries or self.MAX_TRIES, Val.now(), limit),
+            (tries or self.MAX_TRIES, Clock.now(), limit),
         )
 
     def done(self, kind, local) -> None:
@@ -449,7 +451,7 @@ class BitrixLog:
         """Запись журнала; mid — менеджер сделки или дела (отбор журнала по менеджеру в «Настройках»)."""
         self.store.write(
             'INSERT INTO bx_log (at, level, text, mid) VALUES (?,?,?,?)',
-            (Val.now(), level, str(text)[:600], str(mid or '') or None),
+            (Clock.now(), level, str(text)[:600], str(mid or '') or None),
         )
         self.store.write(
             'DELETE FROM bx_log WHERE id NOT IN (SELECT id FROM bx_log ORDER BY id DESC LIMIT ?)', (self.KEEP,)
@@ -536,7 +538,7 @@ class KpNote:
             number = float(value)
         except (TypeError, ValueError):
             return '—'
-        return f'{number:,.0f} ₽'.replace(',', '\u00a0')
+        return Money.rub_unbroken(number)
 
     @staticmethod
     def _day(value: Any) -> str:
@@ -879,7 +881,7 @@ class BitrixSync:
     def company(self, deal) -> str | None:
         """Компания сделки в Битриксе: по ИНН в реквизитах, по телефону и почте клиента (как контроль дублей портала),
         по названию без формы и кавычек; нет — создаётся (если правила разрешают)."""
-        inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
+        inn = Inn.digits(deal.get('clientInn'))
         name = str(deal.get('client') or '').strip()
         key = inn or name.lower()
         if not key:
@@ -1048,7 +1050,7 @@ class BitrixSync:
 
         lines = ['Экономика по КП № {}'.format(k['number'])]
         for name, sum_val in (full.get('parts') or [])[:30]:
-            lines.append('{}: {} ₽'.format(name, f'{float(sum_val or 0):,.0f}'.replace(',', ' ')))
+            lines.append(f'{name}: {Money.whole(float(sum_val or 0))} ₽')
         if full.get('pays'):
             lines.append('')
             lines.append('График платежей:')
@@ -1057,7 +1059,7 @@ class BitrixSync:
                     '{} — {}: {} ₽'.format(
                         pay.get('d') or 'день {}'.format(pay.get('day')),
                         pay.get('t') or '',
-                        '{:,.0f}'.format(float(pay.get('a') or 0)).replace(',', ' '),
+                        Money.whole(float(pay.get('a') or 0)),
                     )
                 )
         if not econ.get('confirmed'):
@@ -1734,7 +1736,7 @@ class BitrixSync:
         res = {'pulled': 0, 'created': 0, 'tasks': 0, 'skipped': 0}
         last = since
         if not rules.can('deal', 'in') and not rules.can('deal', 'out'):
-            self.conf.mark(lastPull=last, lastRun=Val.now())
+            self.conf.mark(lastPull=last, lastRun=Clock.now())
             return res
         deals, edges = [], []
         for cat in self._pull_cats():  # воронки обмена: основная, отмеченные, менеджеров и повторённые в программе
@@ -1779,7 +1781,7 @@ class BitrixSync:
         edge = min((one for one in edges if one), default='')
         if edge > since:  # следующий опрос продолжит недочитанную воронку, а не перескочит её по времени других
             last = min(last, edge)
-        self.conf.mark(lastPull=last, lastRun=Val.now())
+        self.conf.mark(lastPull=last, lastRun=Clock.now())
         return res
 
     def _who(self, bx_deal) -> str | None:
@@ -1904,7 +1906,7 @@ class BitrixSync:
             return 0
         if not known and not self._task_wanted(activity, kind, task_rules):
             return 0
-        due = BitrixTime.local(activity.get('DEADLINE')) or Val.now()
+        due = BitrixTime.local(activity.get('DEADLINE')) or Clock.now()
         time_text = due[11:16] if due[11:16] not in ('', '00:00', '18:00') else ''
         state = 'cancel' if cancel else ('done' if activity.get('COMPLETED') == 'Y' else 'open')
         body = {
@@ -2264,7 +2266,7 @@ class BitrixImport:
                 {'filter': {'ENTITY_TYPE_ID': 4, 'ENTITY_ID': ids[i : i + 50]}, 'select': ['ENTITY_ID', 'RQ_INN']},
                 limit=200,
             ):
-                inn = re.sub(r'\D', '', str(row.get('RQ_INN') or ''))
+                inn = Inn.digits(row.get('RQ_INN'))
                 if inn:
                     out.setdefault(str(row.get('ENTITY_ID')), inn)
         return out
@@ -2273,7 +2275,7 @@ class BitrixImport:
         out = []
         for (did,) in self.store.all("SELECT id FROM deals WHERE stage NOT IN ('won', 'lost')"):
             deal = DealBook(self.store).get(did) or {}
-            if re.sub(r'\D', '', str(deal.get('clientInn') or '')) == inn and not self.sync.links.get('deal', did):
+            if Inn.digits(deal.get('clientInn')) == inn and not self.sync.links.get('deal', did):
                 out.append(deal)
         return out
 

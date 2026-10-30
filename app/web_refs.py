@@ -1,8 +1,6 @@
 """Адреса справочников: адреса и расстояния, контрагенты и клиенты, карточка клиента и предприятия, менеджеры, поставщики и ТН ВЭД, наши реквизиты и шаблоны договора."""
 
 import json
-import re
-from datetime import datetime
 from typing import Any
 
 import admin
@@ -10,7 +8,9 @@ import admin_access
 import admin_journal
 import catalog_admin
 from client_contacts import ClientContacts
+from clock import Clock
 from config import BadRequest, safe_id, store
+from inn import Inn
 from our_docs import DocTemplates, OurRequisites
 from web_base import Controller, counterparties, route
 
@@ -71,7 +71,7 @@ class PartiesController(Controller):
             {
                 'kind': 'kp-keys',
                 'v': 1,
-                'at': datetime.now().isoformat(timespec='seconds'),
+                'at': Clock.now(),
                 'keys': counterparties().keys(),
             }
         )
@@ -185,17 +185,17 @@ class ClientCardController(Controller):
 
     @route(r'/api/clientcard', 'GET')
     def card(self) -> Any:
-        inn = re.sub(r'\D', '', self.query.get('inn') or '')[:12]
+        inn = Inn.key(self.query.get('inn'))
         name = (self.query.get('name') or '').strip()[:300]
         client = self._client(self.query.get('id') or '', inn)
         if client:
-            inn = inn or re.sub(r'\D', '', str(client.get('inn') or ''))
+            inn = inn or Inn.digits(client.get('inn'))
             name = name or str(client.get('name') or '')
         if not inn and not name:
             raise BadRequest('Нужен ИНН или название клиента')
         res = admin_journal.KpJournal.page(self.handler, store(), {'q': inn or name, 'limit': 500})
         key = (
-            (lambda rec: re.sub(r'\D', '', str(rec.get('clientInn') or '')) == inn)
+            (lambda rec: Inn.digits(rec.get('clientInn')) == inn)
             if inn
             else (lambda item: str(item.get('client') or '').strip().lower() == name.lower())
         )
@@ -247,7 +247,7 @@ class ClientCardController(Controller):
             text = str(data.get('text') or '').strip()[:2000]
             if not text:
                 raise BadRequest('Пустая заметка')
-            notes.insert(0, {'at': datetime.now().isoformat(timespec='seconds'), 'by': name, 'uid': uid, 'text': text})
+            notes.insert(0, {'at': Clock.now(), 'by': name, 'uid': uid, 'text': text})
             notes = notes[: self.MAX_NOTES]
         doc = {k: v for k, v in client.items() if k != '_rev'}
         doc['notes'] = notes

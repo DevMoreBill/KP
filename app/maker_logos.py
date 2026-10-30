@@ -3,9 +3,9 @@
 import base64
 import json
 import struct
-from datetime import datetime
 
 import images
+from clock import Clock
 
 
 class MakerLogos:
@@ -138,7 +138,7 @@ class MakerLogos:
             'src': '/img/' + rel,
             'w': width,
             'h': height,
-            'at': datetime.now().isoformat(timespec='seconds'),
+            'at': Clock.now(),
             'by': str(author or '')[:120],
         }
         pins = self.pins()

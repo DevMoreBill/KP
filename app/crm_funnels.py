@@ -4,6 +4,7 @@ import re
 from datetime import date
 from typing import Any
 
+from clock import Clock
 from kp_track import Val
 
 
@@ -146,7 +147,7 @@ class Funnels:
             dict(row, hidden=bool(old.get(row['id'], {}).get('hidden')), track=self._track(row, old.get(row['id'], {})))
             for row in funnels
         ]
-        conf['at'] = Val.now()
+        conf['at'] = Clock.now()
         self.store.kv_set(self.KEY, conf)
 
     def _track(self, row, old) -> dict:
@@ -402,7 +403,7 @@ class DealFields:
     def _put(self, rows: list[dict], **extra: Any) -> None:
         conf = self.store.kv_get(self.KEY) or {}
         conf = conf if isinstance(conf, dict) else {}
-        conf.update(extra, list=rows, at=Val.now())
+        conf.update(extra, list=rows, at=Clock.now())
         self.store.kv_set(self.KEY, conf)
 
     def save_defs(self, defs: list[dict], users: dict) -> None:

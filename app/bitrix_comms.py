@@ -6,7 +6,7 @@ from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 
-from kp_track import Val
+from clock import Clock
 
 
 class MailText(HTMLParser):
@@ -85,7 +85,7 @@ class DealComms:
                 str(row.get('peer') or '')[: self.SUBJECT_MAX],
                 row.get('record'),
                 row.get('mid') or '',
-                Val.now(),
+                Clock.now(),
             ),
         )
 
@@ -237,7 +237,7 @@ class BitrixComms:
             'deal': did,
             'kind': kind,
             'dir': self.DIRS.get(str(activity.get('DIRECTION') or ''), ''),
-            'at': (start or Val.now())[:19],
+            'at': (start or Clock.now())[:19],
             'subject': str(activity.get('SUBJECT') or '').strip(),
             'mid': self.sync._mid_of(activity.get('RESPONSIBLE_ID')) or '',
         }

@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
+from clock import Clock
 from defaults import SrvVal
 from storage import DbZip
 
@@ -32,7 +33,7 @@ class DbHealth:
     def run(self) -> dict:
         started = time.time()
         res: dict[str, Any] = {
-            'at': datetime.now().isoformat(timespec='seconds'),
+            'at': Clock.now(),
             'integrity': DbZip.quick_check(self.store.path),
         }
         res['noCat'] = self._no_category()
@@ -158,7 +159,7 @@ class NightCheck:
         today = datetime.now().date().isoformat()
         prev = next((row['bytes'] for row in history if str(row.get('at') or '')[:10] < today), 0)
         res = {
-            'at': datetime.now().isoformat(timespec='seconds'),
+            'at': Clock.now(),
             'bytes': size,
             'growth': round((size - prev) / prev, 3) if prev else 0,
             'integrity': DbZip.quick_check(self.store.path),

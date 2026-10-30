@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from kp_track import Val
+from clock import Clock
 
 
 class MyCompanies:
@@ -32,7 +32,7 @@ class MyCompanies:
             for row in rows
             if self.ID_RE.match(str(row.get('ID') or ''))
         ]
-        self.store.kv_set(self.KEY, {'list': found, 'at': Val.now()})
+        self.store.kv_set(self.KEY, {'list': found, 'at': Clock.now()})
         return found
 
     def default(self, chosen: str) -> str:

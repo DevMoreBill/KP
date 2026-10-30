@@ -8,6 +8,8 @@ import shutil
 import threading
 from datetime import datetime
 
+from clock import Clock
+
 EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.pdf')  # .pdf — буклет цветовых решений заказчика (станция в контейнере)
 LOGOS = 'logos'
 OTHER = 'other'
@@ -206,7 +208,7 @@ def organize_existing(store, types: list, img_dir: str, backup_dir: str, backup=
     if not any(not _conforms(rel_name) for rel_name in files):
         store.kv_set(
             'migrations',
-            [*done, {'id': ORGANIZE_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}}],
+            [*done, {'id': ORGANIZE_ID, 'at': Clock.now(), 'report': {'empty': True}}],
         )
         return None
     if not backup:
@@ -297,7 +299,7 @@ def organize_existing(store, types: list, img_dir: str, backup_dir: str, backup=
         'migrations',
         [
             *done,
-            {'id': ORGANIZE_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'backup': backup, 'report': report},
+            {'id': ORGANIZE_ID, 'at': Clock.now(), 'backup': backup, 'report': report},
         ],
     )
     log(
@@ -312,5 +314,5 @@ def mark_organized(store) -> None:
     if not any(isinstance(move, dict) and move.get('id') == ORGANIZE_ID for move in done):
         store.kv_set(
             'migrations',
-            [*done, {'id': ORGANIZE_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}}],
+            [*done, {'id': ORGANIZE_ID, 'at': Clock.now(), 'report': {'empty': True}}],
         )

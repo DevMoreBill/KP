@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any
 
 from client_match import ContactKey
+from inn import Inn
 
 
 class BitrixCompanyFind:
@@ -116,7 +117,7 @@ class BitrixCompanyFind:
             {'filter': {'ENTITY_ID': cid, 'ENTITY_TYPE_ID': self.COMPANY}, 'select': ['ID', 'RQ_INN']},
             limit=5,
         )
-        return {re.sub(r'\D', '', str(row.get('RQ_INN') or '')) for row in rows} - {''}
+        return {Inn.digits(row.get('RQ_INN')) for row in rows} - {''}
 
     @classmethod
     def core(cls, name: Any) -> str:
@@ -187,5 +188,5 @@ class BitrixCompanyCheck:
     @staticmethod
     def key(deal: dict) -> str:
         """Ключ компании сделки в связях обмена: ИНН, иначе название строчными."""
-        inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
+        inn = Inn.digits(deal.get('clientInn'))
         return inn or str(deal.get('client') or '').strip().lower()

@@ -13,7 +13,9 @@ from typing import Any
 
 import defaults
 import workcal
+from clock import Clock
 from counterparty import http_json
+from money import Money
 from server_log import ErrorText, LogMask
 
 FIND_DEPTH = 6
@@ -269,9 +271,7 @@ class CarrierApi:
             res = carrier.quote(store, frm, dst, cls.SAMPLE, 0)
             return {
                 'ok': True,
-                'msg': 'отвечает: Москва → Санкт-Петербург, 300 кг — {} ₽'.format(
-                    '{:,.0f}'.format(res['price']).replace(',', ' ')
-                ),
+                'msg': 'отвечает: Москва → Санкт-Петербург, 300 кг — {} ₽'.format(Money.whole(res['price'])),
             }
         except Exception as exc:
             return {'ok': False, 'msg': Http.error(exc)}
@@ -281,7 +281,7 @@ _lock = threading.Lock()
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def cnorm(raw) -> str:
@@ -1191,7 +1191,7 @@ class Nrg(Carrier):
 
     @staticmethod
     def rub(v) -> str:
-        return f'{v or 0:,.0f} ₽'.replace(',', ' ')
+        return Money.rub(v or 0)
 
     @classmethod
     def _call(cls, store, path, data=None) -> Any:
@@ -1527,13 +1527,11 @@ class DeliveryQuote:
             price = Ati.price(self.store, direction, car, ton)
             trip = max(price['upperRub'] or 0, (price['upperKm'] or 0) * distance)
             total += trip + (number(v.get('extras')) or 0)
-            per_km = (
-                ', {} ₽/км'.format('{:,.0f}'.format(price['upperKm']).replace(',', ' ')) if price['upperKm'] else ''
-            )
+            per_km = ', {} ₽/км'.format(Money.whole(price['upperKm'])) if price['upperKm'] else ''
             parts.append(
                 '{}: {} ₽ (верх средних ставок ATI.SU, {} {} т{})'.format(
                     v.get('name') or v.get('id'),
-                    f'{trip:,.0f}'.replace(',', ' '),
+                    Money.whole(trip),
                     Ati.BODY.get(car, car),
                     str(ton).replace('.', ','),
                     per_km,

@@ -7,6 +7,8 @@ import re
 from collections.abc import Iterator
 from datetime import datetime
 
+from clock import Clock
+
 PREFIX_MIN = 4
 
 MIGRATION_ID = 'catalog-structure-2026-10'
@@ -301,7 +303,7 @@ def mark_done(store) -> None:
             'migrations',
             [
                 *done,
-                {'id': MIGRATION_ID, 'at': datetime.now().isoformat(timespec='seconds'), 'report': {'empty': True}},
+                {'id': MIGRATION_ID, 'at': Clock.now(), 'report': {'empty': True}},
             ],
         )
 
@@ -471,7 +473,7 @@ def run(store, types_builtin, types_user, img_dir: str, backup_dir: str, log=pri
             *done,
             {
                 'id': MIGRATION_ID,
-                'at': datetime.now().isoformat(timespec='seconds'),
+                'at': Clock.now(),
                 'backup': backup,
                 'report': report,
             },

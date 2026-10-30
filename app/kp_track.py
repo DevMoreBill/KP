@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
+from clock import Clock
 from defaults import SrvVal
 
 
@@ -18,10 +19,6 @@ class Val:
 
     CTRL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
     EMAIL = re.compile(r'^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$')
-
-    @staticmethod
-    def now() -> str:
-        return datetime.now().isoformat(timespec='seconds')
 
     @staticmethod
     def day(text) -> date | None:
@@ -72,7 +69,7 @@ class DealTrack:
             if 'followUp' in data:
                 changed.update(self._follow(track, data.get('followUp'), author))
             if changed:
-                self._log(track, dict(changed, at=Val.now(), by=author))
+                self._log(track, dict(changed, at=Clock.now(), by=author))
                 self.store.kp_track_set(kid, track)
         return track, changed
 
@@ -88,7 +85,7 @@ class DealTrack:
             and note == (track.get('note') or '')
         ):
             return {}
-        track.update(status=status, reason=reason, note=note, at=Val.now(), by=author)
+        track.update(status=status, reason=reason, note=note, at=Clock.now(), by=author)
         if status in ('won', 'lost') and isinstance(track.get('followUp'), dict):
             track['followUp']['done'] = True  # сделка закрыта — напоминание больше не нужно
         return {'status': status, 'reason': reason, 'note': note}
@@ -110,7 +107,7 @@ class DealTrack:
             'date': day.isoformat(),
             'note': Val.text(follow.get('note'), 300),
             'by': author,
-            'at': Val.now(),
+            'at': Clock.now(),
         }
         return {'followUp': track['followUp']}
 
@@ -122,12 +119,12 @@ class DealTrack:
     def _mark_sent(self, kid: str, recipients, files, author: str) -> dict:
         track = self.store.kp_track_get(kid)
         text = picked if isinstance(picked := track.get('sent'), list) else []
-        text.append({'at': Val.now(), 'by': author, 'to': recipients, 'files': files})
+        text.append({'at': Clock.now(), 'by': author, 'to': recipients, 'files': files})
         track['sent'] = text[-self.SENT_MAX :]
         if (track.get('status') or 'new') == 'new':
-            track.update(status='sent', at=Val.now(), by=author)
+            track.update(status='sent', at=Clock.now(), by=author)
             self._log(
-                track, {'status': 'sent', 'note': 'письмо: ' + ', '.join(recipients), 'at': Val.now(), 'by': author}
+                track, {'status': 'sent', 'note': 'письмо: ' + ', '.join(recipients), 'at': Clock.now(), 'by': author}
             )
         self.store.kp_track_set(kid, track)
         return track
@@ -371,7 +368,7 @@ class Mailer:
             mail['password'] = str(data['password'])[:300]
         if data.get('clearPassword'):
             mail.pop('password', None)
-        mail['updatedAt'], mail['updatedBy'] = Val.now(), author
+        mail['updatedAt'], mail['updatedBy'] = Clock.now(), author
         self.store.kv_set('mail', mail)
         return self.public()
 

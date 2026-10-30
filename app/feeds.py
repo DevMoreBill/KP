@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import re
 import threading
 import urllib.parse
@@ -21,6 +20,7 @@ import feed_site
 import feed_stock
 import images
 import imgfetch
+from clock import Clock
 from config import DATA_DIR
 from defaults import SrvVal
 from feed_cats import _brand_key, crumb_attrs, desc_attrs, item_cat, maker_of, makers, model_of, row_attrs, spare_info
@@ -86,7 +86,7 @@ class FeedSupplier:
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def _txt(el, tag) -> str:
@@ -1622,13 +1622,7 @@ def import_feed(
             else:
                 mode = 'build'
                 try:  # сборка перестраивает много позиций — сначала копия базы в data/backup
-                    store.backup(
-                        os.path.join(
-                            os.path.dirname(store.path),
-                            'backup',
-                            'kp-{}-before-feed-build.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S')),
-                        )
-                    )
+                    store.backup_before('feed-build')
                 except Exception as exc:
                     log(f'Копия базы перед сборкой каталога не создана: {exc}')
                 links = {

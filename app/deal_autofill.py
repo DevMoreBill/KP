@@ -10,6 +10,8 @@ from typing import Any
 from crm_funnels import DealFields, Funnels
 from deal_rules import DealRegs
 from equipment_types import load_types_builtin
+from inn import Inn
+from money import Money
 
 
 def _obj(raw: Any) -> dict:
@@ -281,7 +283,7 @@ class ContextFill:
         return self._learned(row, lambda other: (other.get('uf') or {}).get(source) == value)
 
     def _source_more(self, row: dict) -> Any:
-        inn = re.sub(r'\D', '', str(self.deal.get('clientInn') or ''))
+        inn = Inn.digits(self.deal.get('clientInn'))
         return self.history.by_client(row['code'], inn, self.deal.get('id', '')) or None
 
     def _note_day(self, row: dict) -> Any:
@@ -368,13 +370,13 @@ class DealAutoFill:
         return key not in RegFill.KINDS and not ContextFill.kind(row) and not FieldKind.of(row)
 
     def facts(self, deal: dict, kp_ids: list[str]) -> KpFacts:
-        facts = KpFacts(inn=re.sub(r'\D', '', str(deal.get('clientInn') or '')), sum_rub=self._rub(deal))
+        facts = KpFacts(inn=Inn.digits(deal.get('clientInn')), sum_rub=self._rub(deal))
         for kid in kp_ids:
             for item in self._items(kid):
                 self._add(facts, item)
         client = self._client(deal)
         facts.address = str(client.get('address') or '')
-        facts.inn = facts.inn or re.sub(r'\D', '', str(client.get('inn') or ''))
+        facts.inn = facts.inn or Inn.digits(client.get('inn'))
         return facts
 
     def value(self, row: dict, facts: KpFacts, deal: dict) -> Any:
@@ -545,12 +547,8 @@ class RegFill:
         if kind in ('date', 'datetime'):
             return str(raw)[: self.DAY_LEN] if re.match(r'^\d{4}-\d{2}-\d{2}', str(raw)) else None
         if kind in FieldKind.TEXTS:
-            return self._money_text(raw) if isinstance(raw, (int, float)) else str(raw)[: self.TEXT_MAX]
+            return Money.whole(raw) if isinstance(raw, (int, float)) else str(raw)[: self.TEXT_MAX]
         return None
-
-    @staticmethod
-    def _money_text(rub: float) -> str:
-        return f'{rub:,.0f}'.replace(',', ' ')
 
     def first(self) -> KpFacts:
         """Что было в первом КП сделки — то, что клиент запрашивал."""

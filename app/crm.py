@@ -6,10 +6,12 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from bitrix_my import MyCompanies
+from clock import Clock
 from crm_funnels import DealFields, Funnels
 from deal_autofill import DealAutoFill
 from deal_econ import DealEcon
 from defaults import SrvVal
+from inn import Inn
 from kp_track import Val
 
 
@@ -79,7 +81,7 @@ class ClientPick:
                 {
                     'id': re.sub(r'[^A-Za-z0-9_-]', '', str(row['id']))[:64],
                     'name': str(row.get('name') or '')[: cls.TEXT],
-                    'inn': re.sub(r'\D', '', str(row.get('inn') or ''))[:12],
+                    'inn': Inn.key(row.get('inn')),
                     'by': str(row.get('by') or '')[:20],
                     'contact': {key: str(contact.get(key) or '')[: cls.SHORT] for key in cls.CONTACT},
                 }
@@ -195,7 +197,7 @@ class DealBook:
 
     def _log(self, deal, author: str, **what) -> None:
         hist = picked if isinstance(picked := deal.get('history'), list) else []
-        hist.append(dict(what, at=Val.now(), by=author))
+        hist.append(dict(what, at=Clock.now(), by=author))
         deal['history'] = hist[-self.HISTORY_MAX :]
 
     def _save(self, conn, did, deal, author: str, base_rev=None, when=None) -> int:
@@ -215,8 +217,8 @@ class DealBook:
                 deal.get('managerId') or '',
                 deal.get('stage') or 'lead',
                 str(deal.get('client') or '')[:300],
-                re.sub(r'\D', '', str(deal.get('clientInn') or ''))[:12],
-                when or Val.now(),
+                Inn.key(deal.get('clientInn')),
+                when or Clock.now(),
                 rev,
                 str(author or '')[:120],
                 deal.get('funnel') or Funnels.MAIN,
@@ -227,7 +229,7 @@ class DealBook:
     def _new(self, conn, data, author: str, when=None) -> str:
         num = self._next_number(conn)
         did = f'd{num}'
-        data = dict(data, number=num, created=when or Val.now(), createdBy=author)
+        data = dict(data, number=num, created=when or Clock.now(), createdBy=author)
         data.setdefault('stageAt', data['created'])
         self._save(conn, did, data, author, when=when)
         return did
@@ -280,7 +282,7 @@ class DealBook:
             if k in data:
                 out[k] = Val.text(data.get(k), field)
         if 'clientInn' in data:
-            out['clientInn'] = re.sub(r'\D', '', str(data.get('clientInn') or ''))[:12]
+            out['clientInn'] = Inn.key(data.get('clientInn'))
         if 'clientId' in data:
             out['clientId'] = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('clientId') or ''))[:64]
         if 'myCompany' in data:
@@ -405,7 +407,7 @@ class DealBook:
                 raise LookupError('Сделка не найдена')
             comments = [row for row in cur.get('comments') or [] if isinstance(row, dict)]
             number = max([int(row.get('id') or 0) for row in comments] + [0]) + 1
-            row = {'id': number, 'at': Val.now(), 'by': str(author or '')[:120], 'text': body}
+            row = {'id': number, 'at': Clock.now(), 'by': str(author or '')[:120], 'text': body}
             cur['comments'] = [*comments, row][-self.COMMENTS_KEPT :]
             conn = self.store.conn()
             self._save(conn, did, cur, author)
@@ -428,7 +430,7 @@ class DealBook:
         exact = x.get('fstage') or x.get('stage')
         if not x.get('stage') or (x['stage'], exact) == (cur['stage'], cur.get('fstage') or cur['stage']):
             return
-        new.update(stageAt=Val.now(), lostAuto=False)
+        new.update(stageAt=Clock.now(), lostAuto=False)
         if x['stage'] != Funnels.LOST:
             new.pop('lostReason', None)
         self._log(new, author, what='stage', **{'from': cur.get('fstage') or cur['stage'], 'to': exact})
@@ -472,7 +474,9 @@ class DealBook:
             old = (conn.execute('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,)).fetchone() or [None])[0]
             if old == did:
                 return None
-            conn.execute('INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, Val.now()))
+            conn.execute(
+                'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, Clock.now())
+            )
             deal = self.get(did)
             self._log(deal, author, what='kp', kp=kid)
             self._sync(conn, deal, author)
@@ -522,7 +526,7 @@ class DealBook:
                 if not deal.get('client') and meta_obj.get('client'):
                     deal.update(
                         client=str(meta_obj['client'])[:300],
-                        clientInn=re.sub(r'\D', '', str(meta_obj.get('clientInn') or ''))[:12],
+                        clientInn=Inn.key(meta_obj.get('clientInn')),
                     )
                 self._sync(conn, deal, author)
             conn.commit()
@@ -544,7 +548,7 @@ class DealBook:
         deal = {
             'title': title[:200],
             'client': str(meta.get('client') or '')[:300],
-            'clientInn': re.sub(r'\D', '', str(meta.get('clientInn') or ''))[:12],
+            'clientInn': Inn.key(meta.get('clientInn')),
             'managerId': mid[:64],
             'manager': mname[:120],
             'expected': exp.isoformat(),
@@ -555,7 +559,7 @@ class DealBook:
         self._log(deal, author, what='create', kp=kid)
         did = self._new(conn, deal, author, when=when)
         conn.execute(
-            'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, when or Val.now())
+            'INSERT OR REPLACE INTO deal_kp (kp_id, deal_id, added) VALUES (?,?,?)', (kid, did, when or Clock.now())
         )
         return did
 
@@ -632,7 +636,7 @@ class DealBook:
         if target and target != stage:
             found = funnels.resolve(funnel, target)
             if found:
-                deal.update(stage=found[0], stageAt=when or Val.now())
+                deal.update(stage=found[0], stageAt=when or Clock.now())
                 if funnel != Funnels.MAIN:
                     deal['fstage'] = found[1]
                 if found[0] != Funnels.LOST:
@@ -766,10 +770,7 @@ class DealBook:
                 or ''
             )
             who = mid or str(meta_obj.get('manager') or '').strip().lower()
-            client = (
-                re.sub(r'\D', '', str(meta_obj.get('clientInn') or ''))
-                or str(meta_obj.get('client') or '').strip().lower()
-            )
+            client = Inn.digits(meta_obj.get('clientInn')) or str(meta_obj.get('client') or '').strip().lower()
             rows.append((who, client, day, kid, meta_obj, track_obj, mid))
         rows.sort(key=lambda rec: (rec[0], rec[1], rec[2], rec[3]))
         groups: list = []
@@ -894,7 +895,7 @@ class TaskBook:
     def client_calls(self, deal: dict, managers: list[str] | None = None) -> list[dict]:
         """Сделанные звонки по всем сделкам этого клиента (по ИНН, иначе по названию) — последние сверху; managers — только
         звонки этих менеджеров (кому не открыты КП коллег), None — всех."""
-        inn = re.sub(r'\D', '', str(deal.get('clientInn') or ''))
+        inn = Inn.digits(deal.get('clientInn'))
         client = str(deal.get('client') or '').strip()
         if not inn and not client:
             return []
@@ -1004,7 +1005,7 @@ class TaskBook:
                     x.get('time') or '',
                     title,
                     x.get('note') or '',
-                    Val.now(),
+                    Clock.now(),
                     str(author or '')[:120],
                     str(step or '')[:80] or None,
                 ),
@@ -1020,7 +1021,7 @@ class TaskBook:
         x = self._clean(data, cur)
         new = dict(cur, **x)
         if 'state' in x and x['state'] != cur['state']:
-            new['doneAt'] = Val.now() if x['state'] != 'open' else None
+            new['doneAt'] = Clock.now() if x['state'] != 'open' else None
         if not new.get('title'):
             new['title'] = dict(self.KINDS)[new['kind']]
         self.store.write(

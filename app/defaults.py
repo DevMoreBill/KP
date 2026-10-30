@@ -4,8 +4,9 @@ import math
 import re
 import threading
 import time
-from datetime import datetime
 from typing import Any
+
+from clock import Clock
 
 KEY_RX = re.compile(r'^[\w.\- ёЁ]{1,80}$')
 MAX_KEYS = 3000
@@ -48,7 +49,7 @@ def save(store, values: object, author: str = '') -> dict:
     for k in values:
         SrvVal.check(k, cur.get(k))
     settings['defaults'] = cur
-    settings['defaultsAt'], settings['defaultsBy'] = datetime.now().isoformat(timespec='seconds'), author
+    settings['defaultsAt'], settings['defaultsBy'] = Clock.now(), author
     store.kv_set('settings', settings)
     SrvVal.forget()
     return cur

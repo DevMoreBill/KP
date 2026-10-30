@@ -14,6 +14,7 @@ from admin_accounts import AdminSessions, is_admin, session
 from admin_journal import log
 from catalog_quality import DupFinder
 from catalog_save import AUTO_KEYS, LABELS, diff
+from clock import Clock
 
 
 def power(handler, key, method='GET') -> bool:
@@ -570,7 +571,7 @@ class CatalogExport:
         body = {
             'format': 'kp-catalog-export',
             'version': 1,
-            'createdAt': datetime.now().isoformat(timespec='seconds'),
+            'createdAt': Clock.now(),
             'items': out,
         }
         return (
@@ -591,7 +592,7 @@ class CatalogExport:
         lab, tag = dict(self.COLS), self._tag
         out = [
             '<?xml version="1.0" encoding="UTF-8"?>',
-            '<catalog date={}>'.format(quoteattr(datetime.now().isoformat(timespec='seconds'))),
+            f'<catalog date={quoteattr(Clock.now())}>',
         ]
         for rec in items:
             out.append(
@@ -779,7 +780,7 @@ class ClientsExport:
             body = {
                 'format': 'kp-clients-export',
                 'version': 1,
-                'createdAt': datetime.now().isoformat(timespec='seconds'),
+                'createdAt': Clock.now(),
                 'items': [{k: v for k, v in row.items() if v not in (None, '')} for row in rows],
             }
             return (

@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from clock import Clock
 from crm_funnels import DealFields, UfValue
-from kp_track import Val
+from money import Money
 from server_log import ServerLog
 
 
@@ -308,7 +309,7 @@ class DealEcon:
                     code = str((element or {}).get('name') or '') if isinstance(element, dict) else ''
                     if code.startswith('UF_') and code not in codes:
                         codes.append(code)
-        conf = dict(self.conf(), codes=codes, section=titles[0] if titles else '', found=Val.now())
+        conf = dict(self.conf(), codes=codes, section=titles[0] if titles else '', found=Clock.now())
         self.store.kv_set(self.KEY, conf)
         self.mark()
         return conf
@@ -470,7 +471,7 @@ class DealEcon:
         if kind == 'string':
             if percent:
                 return f'{number:.1f} %'.replace('.', ',')
-            return f'{number:,.0f} ₽'.replace(',', ' ')
+            return Money.rub(number)
         return None
 
     @staticmethod
@@ -521,10 +522,10 @@ class DealEcon:
                 was = ours[item.key]
                 summary = self._fix(kid, summary, item, theirs, author)
                 ours = EconValues.of_summary(summary)
-                said.append(f'{item.label.split(",")[0]}: {self._rub(was)} → {self._rub(theirs)}')
+                said.append(f'{item.label.split(",")[0]}: {Money.rub(was)} → {Money.rub(theirs)}')
                 notes.pop(code, None)
             else:
-                notes[code] = {'label': item.label, 'ours': ours[item.key], 'theirs': theirs, 'at': Val.now()}
+                notes[code] = {'label': item.label, 'ours': ours[item.key], 'theirs': theirs, 'at': Clock.now()}
         book.put_econ(did, notes, author, said)
         if said:
             book.autofill(did, author)  # итоги после поправки — в поля раздела и в Битрикс
@@ -540,11 +541,7 @@ class DealEcon:
             return ''
         ours = EconValues.of_summary(summary).get(key, 0.0)
         self._fix(kid, summary, item, ours + delta, author)
-        return f'{item.label.split(",")[0]}: {self._rub(ours)} → {self._rub(ours + delta)}'
-
-    @staticmethod
-    def _rub(value: float) -> str:
-        return f'{value:,.0f} ₽'.replace(',', ' ')
+        return f'{item.label.split(",")[0]}: {Money.rub(ours)} → {Money.rub(ours + delta)}'
 
     def _fix(self, kid: str, summary: dict, item: EconValue, theirs: float, author: str) -> dict:
         """Поправка статьи в КП до суммы theirs: состояние (bxFix — для расчёта в программе: действует, пока статья по
@@ -558,7 +555,7 @@ class DealEcon:
         fixes[item.key] = {
             'to': round(theirs, 2),
             'base': round(ours - fix_was, 2),
-            'at': Val.now(),
+            'at': Clock.now(),
             'by': str(author or '')[: self.LABEL_MAX],
         }
         deal_state['bxFix'] = fixes

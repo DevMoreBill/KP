@@ -3,6 +3,7 @@
 import re
 from typing import Any
 
+from clock import Clock
 from kp_track import Val
 
 
@@ -33,7 +34,7 @@ class Feedback:
         rows = self.all()
         entry = {
             'id': max((int(row.get('id') or 0) for row in rows), default=0) + 1,
-            'at': Val.now(),
+            'at': Clock.now(),
             'by': str(author or '')[:120],
             'text': text,
             'ctx': self._ctx(data.get('ctx')),

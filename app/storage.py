@@ -13,7 +13,9 @@ from datetime import datetime
 from typing import Any, Literal
 
 from client_match import ClientMatch, ContactKey
+from clock import Clock
 from defaults import SrvVal
+from inn import Inn
 from phone import Phone
 from server_log import ErrorText
 
@@ -414,7 +416,7 @@ LIGHT_KEYS = (
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def norm(text) -> str:
@@ -569,7 +571,7 @@ def client_cols(doc) -> tuple:
     data = doc if isinstance(doc, dict) else {}
     return (
         str(data.get('name') or '')[:300],
-        re.sub(r'\D', '', str(data.get('inn') or ''))[:12],
+        Inn.key(data.get('inn')),
         str(data.get('usedAt') or data.get('updatedAt') or '')[:40],
         norm(
             ' '.join(
@@ -589,7 +591,7 @@ def kp_cols(meta) -> tuple:
     )  # поиск по номеру закупки и слову «тендер»
     return (
         str(data.get('client') or '')[:300],
-        re.sub(r'\D', '', str(data.get('clientInn') or ''))[:12],
+        Inn.key(data.get('clientInn')),
         str(data.get('manager') or '')[:200],
         str(data.get('date') or '')[:20],
         str(data.get('savedAt') or '')[:40],
@@ -1096,13 +1098,7 @@ class Store:
         done = self.migrations_applied()
         todo = [x for x in MIGRATIONS if x[0] not in done]
         if todo and done:  # база с данными: перед изменением структуры — копия в data/backup
-            self.backup(
-                os.path.join(
-                    os.path.dirname(self.path),
-                    'backup',
-                    'kp-{}-before-{}.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S'), todo[0][0]),
-                )
-            )
+            self.backup_before(todo[0][0])
         for mid, step, _down in todo:
             done = [*done, mid]
             self._atomic_script(step, MIGRATION_FILL.get(mid), done)
@@ -2074,6 +2070,15 @@ class Store:
         """Согласованная копия базы «на ходу» (встроенный механизм SQLite backup)."""
         return self._backup(dst, lambda tmp: None)
 
+    def backup_path(self, reason: str) -> str:
+        """Имя копии перед опасной операцией: data/backup/kp-<дата-время>-before-<reason>.zip."""
+        stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        return os.path.join(os.path.dirname(self.path), 'backup', f'kp-{stamp}-before-{reason}.zip')
+
+    def backup_before(self, reason: str) -> str:
+        """Копия базы перед опасной операцией (миграция и её откат, загрузка базы, сборка каталога фида)."""
+        return self.backup(self.backup_path(reason))
+
     def backup_checked(self, dst) -> str:
         """Копия базы; архив .zip перед упаковкой проходит полную проверку SQLite."""
         return self._backup(dst, self._verify_copy)
@@ -2148,11 +2153,7 @@ class Store:
                 if tmp_conn.execute('PRAGMA page_size').fetchone()[0] != page:
                     tmp_conn.execute(f'PRAGMA page_size={int(page)}')
                     tmp_conn.execute('VACUUM')
-                bak = os.path.join(
-                    os.path.dirname(self.path),
-                    'backup',
-                    'kp-{}-before-restore.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S')),
-                )
+                bak = self.backup_path('restore')
                 with self.lock:
                     self.backup(bak)
                     conn = self.conn()

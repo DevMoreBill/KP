@@ -8,6 +8,7 @@ from datetime import date, datetime
 
 import maintenance
 from backup_webdav import DiskFull, WebDavStore
+from clock import Clock
 from deal_files import DealFiles
 from defaults import SrvVal
 from kp_files import KpFiles
@@ -94,7 +95,7 @@ class MirrorBackup:
             entry = {'on': enabled, 'kind': self.FOLDER, 'path': path, 'keep': keep, 'images': bool(dst.get('images'))}
         settings = self.store.kv_get('settings') or {}
         settings['backup2'] = entry
-        settings['backup2At'], settings['backup2By'] = datetime.now().isoformat(timespec='seconds'), author
+        settings['backup2At'], settings['backup2By'] = Clock.now(), author
         self.store.kv_set('settings', settings)
         return self.status()
 
@@ -207,7 +208,7 @@ class MirrorBackup:
         """Копия на Яндекс Диск: архив проверяется здесь, загружается, размер на диске сверяется; лишние старые удаляются."""
         today = date.today().isoformat()
         rec = {
-            'at': datetime.now().isoformat(timespec='seconds'),
+            'at': Clock.now(),
             'path': 'Яндекс Диск: ' + conf['dav'].get('folder', ''),
         }
         try:
@@ -237,7 +238,7 @@ class MirrorBackup:
         if conf['kind'] == self.DAV:
             return self._run_dav(conf, source)
         today = date.today().isoformat()
-        rec = {'at': datetime.now().isoformat(timespec='seconds'), 'path': conf['path']}
+        rec = {'at': Clock.now(), 'path': conf['path']}
         try:
             self.check(conf['path'])
             auto = maintenance.auto_dir(self.data_dir)

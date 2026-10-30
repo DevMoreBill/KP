@@ -3,10 +3,11 @@
 import json
 import os
 import re
-from datetime import date, datetime
+from datetime import date
 
 import defaults
 import logistics_api
+from clock import Clock
 from config import APP_DIR
 
 
@@ -157,7 +158,7 @@ class ChinaFreight:
                     'note': self._optional(row.get('note'), 'Примечание', 200),
                 }
             )
-        data = {'rows': out, 'at': datetime.now().isoformat(timespec='seconds'), 'by': str(author or '')[:80]}
+        data = {'rows': out, 'at': Clock.now(), 'by': str(author or '')[:80]}
         self.store.kv_set(self.KV_KEY, data)
         return data
 

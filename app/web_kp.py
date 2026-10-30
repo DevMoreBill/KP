@@ -5,7 +5,6 @@ import math
 import os
 import urllib.parse
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any
 
 import admin
@@ -13,6 +12,7 @@ import admin_access
 import admin_journal
 import pdf_convert
 from bitrix import BitrixConf
+from clock import Clock
 from config import DOCS_DIR, DOCS_SHARE, MIME, BadRequest, docs_path, safe_dir, safe_file, safe_id, store, write_bytes
 from crm import DealBook, DealLinks
 from desktop import open_file, open_folder, show_in_folder
@@ -563,7 +563,7 @@ class DraftsController(Controller):
             'positions': len(items),
             'sum': total,
             'cur': str(payload.get('cur') or 'RUB')[:3],
-            'updated': datetime.now().isoformat(timespec='seconds'),
+            'updated': Clock.now(),
         }
         if k == 'preset' and not row['title']:
             raise BadRequest('Укажите название заготовки')

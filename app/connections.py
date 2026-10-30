@@ -7,10 +7,11 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
 from typing import Any
 
 import imgfetch
+from clock import Clock
+from money import Money
 from server_log import ErrorText
 
 SAMPLE_INN = '7707083893'  # ПАО Сбербанк — для проверки сервисов реквизитов
@@ -69,7 +70,7 @@ class ConnectionCheck:
             out.append(
                 {'id': jid, 'group': group, 'name': name, 'status': state, 'msg': msg, 'ms': took_ms, 'tab': tab}
             )
-        rec = {'at': datetime.now().isoformat(timespec='seconds'), 'items': out}
+        rec = {'at': Clock.now(), 'items': out}
         self.store.kv_set('connCheck', rec)
         return rec
 
@@ -200,7 +201,7 @@ class ConnectionCheck:
             return 'warn', 'отвечает, но отчётности пробной организации нет — бухотчётность возьмётся из Checko'
         return 'ok', 'отвечает: выручка пробной организации за {} — {} млн ₽'.format(
             fin['year'],
-            '{:,.0f}'.format(fin['revenue'] / 1e6).replace(',', ' '),
+            Money.whole(fin['revenue'] / 1e6),
         )
 
     def _carriers(self):
@@ -210,7 +211,7 @@ class ConnectionCheck:
             self.store, {'from': {'name': 'Москва'}, 'to': {'name': 'Санкт-Петербург'}, 'places': [SAMPLE_PLACE]}
         ).run()
         ok = [
-            '{} {} ₽'.format(offer['src'], '{:,.0f}'.format(offer['price']).replace(',', ' '))
+            '{} {} ₽'.format(offer['src'], Money.whole(offer['price']))
             for offer in res['offers']
             if offer.get('kind') == 'ltl'
         ]

@@ -1,8 +1,9 @@
 """Списки выбора администратора: kv «settings».lists = {ключ: [строки]}; нет записи — встроенный список."""
 
 import re
-from datetime import datetime
 from typing import Any
+
+from clock import Clock
 
 KEY_RX = re.compile(r'^[\w.\-ёЁ ]{1,80}$')
 FIELD_RX = re.compile(r'^[A-Za-z0-9_]{1,30}$')
@@ -59,6 +60,6 @@ class ListStore:
         if len(cur) > MAX_LISTS:
             raise ValueError('Слишком много списков')
         settings['lists'] = cur
-        settings['listsAt'], settings['listsBy'] = datetime.now().isoformat(timespec='seconds'), author
+        settings['listsAt'], settings['listsBy'] = Clock.now(), author
         self.store.kv_set('settings', settings)
         return cur

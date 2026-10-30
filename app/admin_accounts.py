@@ -7,15 +7,15 @@ import re
 import secrets
 import threading
 import time
-from datetime import datetime
 from typing import Any
 
 from admin_rights import AdminRights
+from clock import Clock
 from defaults import SrvVal
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def hash_password(password) -> dict:

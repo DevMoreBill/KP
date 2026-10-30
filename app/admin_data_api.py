@@ -709,10 +709,4 @@ class AdminDataApi(AdminBase):
             z.close()
 
     def import_backup(self) -> str:
-        return self.store.backup(
-            os.path.join(
-                os.path.dirname(self.store.path),
-                'backup',
-                'kp-{}-before-import.zip'.format(datetime.now().strftime('%Y%m%d-%H%M%S')),
-            )
-        )
+        return self.store.backup_before('import')

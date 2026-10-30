@@ -10,6 +10,7 @@ from typing import Any
 from bitrix_companies import BitrixCompanyFind
 from client_contacts import ClientContacts
 from client_match import ClientMatch, ContactKey
+from inn import Inn
 
 
 class BitrixClients:
@@ -136,7 +137,7 @@ class BitrixClients:
             },
             limit=len(part) * 3,
         ):
-            if re.sub(r'\D', '', str(row.get('RQ_INN') or '')):
+            if Inn.digits(row.get('RQ_INN')):
                 out.setdefault(str(row.get('ENTITY_ID')), row)
         return out
 
@@ -161,7 +162,7 @@ class BitrixClients:
         return {
             'company': cid,
             'name': comp.get('TITLE') or '',
-            'inn': re.sub(r'\D', '', str(req.get('RQ_INN') or '')),
+            'inn': Inn.digits(req.get('RQ_INN')),
             'kpp': req.get('RQ_KPP') or '',
             'ogrn': req.get('RQ_OGRN') or '',
             'people': [row for row in rows if row.get('phone') or row.get('email') or row.get('name')],

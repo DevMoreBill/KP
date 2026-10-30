@@ -3,6 +3,7 @@
 import socket
 from datetime import datetime, timedelta
 
+from clock import Clock
 from defaults import SrvVal
 from server_log import ErrorText, ServerLog
 
@@ -18,7 +19,7 @@ class AdminAlerts:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now().isoformat(timespec='seconds')
+        return Clock.now()
 
     def settings(self) -> dict:
         conf = self.store.kv_get(self.KV_KEY) or {}

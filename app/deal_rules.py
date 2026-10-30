@@ -8,6 +8,7 @@ from typing import Any
 
 from client_match import ContactKey
 from crm_funnels import DealFields, Funnels
+from inn import Inn
 from kp_track import Val
 from phone import Phone
 
@@ -305,7 +306,7 @@ class DealRegs:
             'companyPhone': bool(ContactKey.phone(client.get('phone'))),
             'companyEmail': Val.email(str(client.get('email') or '')),
             'inn': bool(client.get('noInn'))
-            or len(re.sub(r'\D', '', str(client.get('inn') or deal.get('clientInn') or ''))) in self.INN_LENGTHS,
+            or len(Inn.digits(client.get('inn') or deal.get('clientInn'))) in self.INN_LENGTHS,
             'person': len(str(person.get('name') or '').split()) >= self.FIO_WORDS,
             'personPhone': bool(ContactKey.phone(person.get('phone'))),
             'personEmail': Val.email(str(person.get('email') or '')),
@@ -322,7 +323,7 @@ class DealRegs:
         if not isinstance(data, dict) or not data:
             return deal
         client = self.client_of(deal)
-        inn = re.sub(r'\D', '', str(data.get('inn') or ''))
+        inn = Inn.digits(data.get('inn'))
         if 'inn' in data and inn and len(inn) not in self.INN_LENGTHS:
             raise ValueError('ИНН — 10 цифр (организация) или 12 (ИП)')
         if not client:
@@ -530,7 +531,7 @@ class ClientByInn:
 
     def ensure(self, inn: str, name: str = '', author: str = '') -> dict:
         """Карточка клиента с этим ИНН (найденная или новая). ValueError — ИНН с ошибкой."""
-        digits = re.sub(r'\D', '', str(inn or ''))
+        digits = Inn.digits(inn)
         if len(digits) not in DealRegs.INN_LENGTHS:
             raise ValueError('ИНН — 10 цифр (организация) или 12 (ИП)')
         known = self.store.client_get('inn' + digits)

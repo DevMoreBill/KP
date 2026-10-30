@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 from enum import Enum
 
+from clock import Clock
 from defaults import SrvVal
 
 LOGIN_MAX = 40
@@ -28,7 +29,7 @@ LOCK = threading.Lock()
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def enabled(store) -> bool:

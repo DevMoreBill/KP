@@ -10,6 +10,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from clock import Clock
 from defaults import SrvVal
 from server_log import ErrorText, ServerLog
 from storage import DbZip
@@ -23,7 +24,7 @@ IMG_EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.pdf')  # .pdf — буклет �
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec='seconds')
+    return Clock.now()
 
 
 def state(store) -> dict:

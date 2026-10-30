@@ -3,9 +3,9 @@
 import hashlib
 import os
 import re
-from datetime import datetime
 
 import images
+from clock import Clock
 from defaults import SrvVal
 from feed_desc import clean_desc, merge_specs, spec_class
 from feed_match import PRESSURE_ALIAS, _num_attr, match_prices, model_cfg, page_cfg, unique_names
@@ -52,7 +52,7 @@ def save_file(data_dir: str, fid: str, kind, data, name, slot=None) -> dict:
     max_mb = SrvVal.now('cat.feedFileMB')
     if len(data) > max_mb * 1024 * 1024:
         raise ValueError(f'Файл больше {max_mb} МБ (предел — «Настройки → Значения программы»)')
-    meta = {'name': str(name or '')[:120], 'size': len(data), 'at': datetime.now().isoformat(timespec='seconds')}
+    meta = {'name': str(name or '')[:120], 'size': len(data), 'at': Clock.now()}
     if kind == 'pages':
         rows = parse_pages(data)
         meta.update(rows=len(rows), cats=len({row['cat'] for row in rows}))

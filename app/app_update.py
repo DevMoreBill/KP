@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import version
+from clock import Clock
 from defaults import SrvVal
 from server_log import ServerLog
 from update_sign import UpdateSign
@@ -519,7 +520,7 @@ class Updater:
             else:
                 keys.pop('githubToken', None)
             self.store.kv_set('integrations', keys)
-        conf['updatedAt'], conf['updatedBy'] = datetime.now().isoformat(timespec='seconds'), author
+        conf['updatedAt'], conf['updatedBy'] = Clock.now(), author
         self._save(conf)
         return self.status()
 
@@ -530,10 +531,10 @@ class Updater:
         conf = self.settings()
         try:
             rel = self.source().latest()
-            rel['at'] = datetime.now().isoformat(timespec='seconds')
+            rel['at'] = Clock.now()
             conf['last'] = rel
         except UpdateError as exc:
-            conf['last'] = dict(conf.get('last') or {}, at=datetime.now().isoformat(timespec='seconds'), error=str(exc))
+            conf['last'] = dict(conf.get('last') or {}, at=Clock.now(), error=str(exc))
             self._save(conf)
             raise
         self._save(conf)
@@ -682,7 +683,7 @@ class Updater:
         )
         conf = self.settings()
         hist: list = picked if isinstance(picked := conf.get('history'), list) else []
-        hist.append(dict(rec, at=datetime.now().isoformat(timespec='seconds')))
+        hist.append(dict(rec, at=Clock.now()))
         conf['history'] = hist[-self.HISTORY :]
         for k, v in extra.items():  # failed=None — новая установка: прежнее предупреждение о сбое снимается
             if v is None:

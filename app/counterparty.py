@@ -13,7 +13,10 @@ from enum import Enum
 from typing import Any
 
 from client_contacts import ClientContacts
+from clock import Clock
 from defaults import SrvVal
+from inn import Inn
+from money import Money
 from net import Net
 from storage import DocLimits
 
@@ -75,7 +78,7 @@ def http_json(url, data=None, headers=None, method=None) -> Any:
 
 def valid_inn(inn) -> bool:
     """Проверка ИНН по контрольным цифрам (10 — организация, 12 — ИП)."""
-    digits_text = re.sub(r'\D', '', str(inn or ''))
+    digits_text = Inn.digits(inn)
 
     def ctl(digits, coefs) -> int:
         return sum(int(digit) * coef for digit, coef in zip(digits, coefs, strict=False)) % 11 % 10
@@ -404,7 +407,7 @@ class Rusprofile:
 
     @classmethod
     def url(cls, inn) -> str:
-        return cls.SEARCH + urllib.parse.quote(re.sub(r'\D', '', str(inn or '')))
+        return cls.SEARCH + urllib.parse.quote(Inn.digits(inn))
 
 
 class CheckMode(Enum):
@@ -569,8 +572,8 @@ class Counterparties:
             client['contacts'] = merge(old.get('contacts'), fresh, lambda obj: norm(obj.get('name')))
         client['kpCount'] = int(old.get('kpCount', 0)) + (1 if client.pop('_usedInKp', False) else 0)
         client['id'] = cid
-        client['createdAt'] = old.get('createdAt') or datetime.now().isoformat(timespec='seconds')
-        client['updatedAt'] = datetime.now().isoformat(timespec='seconds')
+        client['createdAt'] = old.get('createdAt') or Clock.now()
+        client['updatedAt'] = Clock.now()
         if not client.get('check') and old.get('check'):
             client['check'] = old['check']
         client['notes'] = old.get('notes') or []  # заметки о клиенте ведёт карточка клиента (/api/clientcard/note)
@@ -746,7 +749,7 @@ class Counterparties:
     def queue_add(self, inn, author: str = '') -> None:
         with self.store.lock:
             queue = [x for x in (self.store.kv_get('checkQueue') or []) if x.get('inn') != inn]
-            queue.append({'inn': inn, 'at': datetime.now().isoformat(timespec='seconds'), 'by': author})
+            queue.append({'inn': inn, 'at': Clock.now(), 'by': author})
             self.store.kv_set('checkQueue', queue[-500:])
 
     def _spare(self, api) -> int:
@@ -958,7 +961,7 @@ class Counterparties:
         return self._finish(inn, res, self.quota())
 
     def _finish(self, inn, res, quota, keep_full=None) -> dict:
-        res['checkedAt'] = datetime.now().isoformat(timespec='seconds')
+        res['checkedAt'] = Clock.now()
         res['quotaNow'] = quota
         res['rusprofile'] = Rusprofile.url(inn)
         # прежнюю полную проверку не затираем краткой / бесплатной: она остаётся в кэше, пока не устарела
@@ -1001,11 +1004,6 @@ class Counterparties:
         elif age >= self.MATURE_YEARS:
             add('green', f'Работает более {int(age)} лет')
         return age
-
-    @staticmethod
-    def _money(v) -> str:
-        """12345.6 → «12 346»."""
-        return f'{v:,.0f}'.replace(',', ' ')
 
     @staticmethod
     def _fin_flags(fin, add) -> None:
@@ -1116,7 +1114,7 @@ class Counterparties:
             add('red', 'Недостоверные сведения о руководителе')
         debt = _num(dig(company, 'Налоги', 'СумНедоим'))
         if debt:
-            add('yellow', f'Налоговая недоимка: {self._money(debt)} руб.')
+            add('yellow', f'Налоговая недоимка: {Money.whole(debt)} руб.')
         # бухотчётность: последние 3 года — из ответа сервиса (суммы в рублях) или из ГИР БО / прежней проверки
         fin, fin_src, fin_url = [], '', ''
         fdata = picked if isinstance(picked := raw.get('finances'), dict) else {}
@@ -1142,7 +1140,7 @@ class Counterparties:
             rev = fin[0]['revenue'] if fin and fin[0]['revenue'] else None
             add(
                 'red' if (rev and c_sum > rev * SrvVal.get(self.store, 'cp.courtsPct') / 100) else 'yellow',
-                f'Арбитражные дела в роли ответчика: {c_cnt} на {self._money(c_sum)} руб.',
+                f'Арбитражные дела в роли ответчика: {c_cnt} на {Money.whole(c_sum)} руб.',
             )
         fssp = raw.get('fssp')
         f_cnt = _num((fssp or {}).get('ЗапВсего')) or 0
@@ -1158,7 +1156,7 @@ class Counterparties:
         if f_cnt:
             add(
                 'yellow',
-                f'Исполнительные производства: {f_cnt}' + (f' на {self._money(f_sum)} руб.' if f_sum else ''),
+                f'Исполнительные производства: {f_cnt}' + (f' на {Money.whole(f_sum)} руб.' if f_sum else ''),
             )
         score = self._score(flags)
         ogrn = company.get('ОГРН') or company.get('ОГРНИП') or ''

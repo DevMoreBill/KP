@@ -8,6 +8,7 @@ import uuid
 import zipfile
 from datetime import datetime, timedelta
 
+from clock import Clock
 from defaults import SrvVal
 
 
@@ -399,7 +400,7 @@ class KpFiles:
                         len(data),
                         self.TYPES[ext][0],
                         self.clean_note(note),
-                        datetime.now().isoformat(timespec='seconds'),
+                        Clock.now(),
                         str(author or '')[:120],
                         str(by_id or '')[:64] or None,
                         *[(extra or {}).get(key) for key in self.EXTRA],

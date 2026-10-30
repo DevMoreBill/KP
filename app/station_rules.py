@@ -6,8 +6,8 @@ import math
 import os
 import re
 from collections.abc import Iterator
-from datetime import datetime
 
+from clock import Clock
 from config import APP_DIR
 
 
@@ -120,7 +120,7 @@ class StationRules:
         self._series_patterns(data, old)
         if old:
             self.store.kv_set(self.KV_PREV, old)
-        data['_saved'] = {'at': datetime.now().isoformat(timespec='seconds'), 'by': str(author or '')[:120]}
+        data['_saved'] = {'at': Clock.now(), 'by': str(author or '')[:120]}
         self.store.kv_set(self.KV_KEY, data)
         return self.info()
 

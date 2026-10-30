@@ -8,6 +8,7 @@ import threading
 from datetime import datetime
 from typing import Any
 
+from clock import Clock
 from server_log import ErrorText
 
 
@@ -106,7 +107,7 @@ class ServerTask:
     def check(self, started: float) -> dict:
         """Проверить задачу и исправить при необходимости → запись kv serverTask."""
         rec: dict[str, Any] = {
-            'at': datetime.now().isoformat(timespec='seconds'),
+            'at': Clock.now(),
             'started': self.iso(started),
             'exists': False,
         }

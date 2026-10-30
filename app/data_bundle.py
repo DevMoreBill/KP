@@ -9,6 +9,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from clock import Clock
 from images import EXTS, ImageStore
 
 
@@ -349,7 +350,7 @@ class SettingsFile:
             'format': self.FORMAT,
             'version': 1,
             'app': VERSION,
-            'createdAt': datetime.now().isoformat(timespec='seconds'),
+            'createdAt': Clock.now(),
             'keys': keys is Keys.WITH,
             'sections': sec,
         }

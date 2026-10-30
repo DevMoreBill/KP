@@ -25,6 +25,7 @@ from deal_intake import DealIntake
 from deal_rules import ClientByInn, DealRegs
 from features import FeatureAccess, Viewer
 from feedback import Feedback
+from inn import Inn
 from kp_files import KpFiles
 from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
 from server_log import ErrorText, ServerLog
@@ -468,7 +469,7 @@ class CrmController(Controller):
     @route(r'/api/crm/pick', 'GET')
     def pick(self) -> Any:
         uid, _name, everyone = self.who(self.handler)
-        inn = re.sub(r'\D', '', self.query.get('inn') or '')[:12]
+        inn = Inn.key(self.query.get('inn'))
         name = (self.query.get('name') or '').strip()[:300]
         kid = safe_id(self.query.get('kp')) if self.query.get('kp') else ''
         cur = DealBook(store()).deal_of(kid) if kid and admin.kp_access(self.handler, store(), kid) else None

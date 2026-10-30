@@ -9,10 +9,10 @@ from typing import Any
 
 from bitrix import BitrixError, BitrixQueue, BitrixSync
 from bitrix_clients import BitrixClients
+from clock import Clock
 from crm import DealBook, TaskBook
 from crm_funnels import DealFields, Funnels, UfValue
 from deal_rules import DealRegs
-from kp_track import Val
 from server_log import ErrorText, ServerLog
 
 
@@ -236,7 +236,7 @@ class MirrorImport:
 
     def _mark(self, **kw: Any) -> None:
         job = self.status()
-        job.update(kw, at=Val.now())
+        job.update(kw, at=Clock.now())
         self.store.kv_set(self.KEY, job)
 
     def start(self) -> dict:
@@ -246,7 +246,7 @@ class MirrorImport:
         if not self.LOCK.acquire(blocking=False):
             raise ValueError('Загрузка сделок уже идёт')
         self.store.kv_set(
-            self.KEY, {'state': 'run', 'started': Val.now(), 'done': 0, 'created': 0, 'updated': 0, 'skipped': 0}
+            self.KEY, {'state': 'run', 'started': Clock.now(), 'done': 0, 'created': 0, 'updated': 0, 'skipped': 0}
         )
         threading.Thread(target=self._thread, name='bitrix-mirror', daemon=True).start()
         return self.status()
