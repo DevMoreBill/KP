@@ -9,8 +9,11 @@ from datetime import datetime
 from xml.sax.saxutils import escape as xml_escape
 from xml.sax.saxutils import quoteattr
 
-from admin import AUTO_KEYS, LABELS, AdminSessions, _loads, actor, diff, is_admin, log, session
+from admin_access import _loads, actor
+from admin_accounts import AdminSessions, is_admin, session
+from admin_journal import log
 from catalog_quality import DupFinder
+from catalog_save import AUTO_KEYS, LABELS, diff
 
 
 def power(handler, key, method='GET') -> bool:

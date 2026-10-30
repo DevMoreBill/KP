@@ -51,7 +51,11 @@
 | `launcher.py` | точка входа EXE: подключение папки update, откат при сбое (`Launcher`, `_UpdateFinder`); патчем не меняется |
 | `kp_server.py` | HTTP/1.1-сервер: `Handler` (ответы, файлы, ETag/gzip, проверка Host/Origin, лимит тела, CSP, 409 по `X-KP-Rev`), `Server`, `Server6` |
 | `web_api.py` | маршруты API: `Controller` + `@route`, `Router`; контроллеры Static, Types, Geo, Parties, Templates, System, Catalog, Managers, Kp, Tools, Settings, Deal, Track, Drafts, ClientCard, Me, Service |
-| `admin.py` | «Настройки»: `AdminSessions`, `AdminApi` (`/api/admin/*`), `guard` (права, модерация, журнал до маршрутизации), `is_admin`, корзина, audit |
+| `admin.py` | «Настройки»: `AdminApi` (`/api/admin/*`), `guard` (права, модерация, журнал до маршрутизации), `RightsCheck`, `DeniedLog`, корзина, статистика, `startup` |
+| `admin_accounts.py` | учётные записи администраторов: пароли (`hash_password`), `AdminSessions`, `session`, `is_admin`, `LoginGuard` (с 3.233.0) |
+| `admin_access.py` | кто действует и что можно: `actor`, `login_on`, `perm`, `own_kp`, `kp_access`, `DealViewer`, `kp_in`/`kp_out`, `KpManagerLock`, `econ_rub` (с 3.233.0) |
+| `admin_journal.py` | журнал действий `log` и журнал КП с правами `KpJournal` (с 3.233.0) |
+| `catalog_save.py` | сохранение позиции каталога: `diff`, `AUTO_KEYS`, модерация, `CardQuality`, `RefusedCard`, `_put_product` (с 3.233.0) |
 | `admin_overview.py` | `SystemInfo` (версия, режим, папки, место), `Attention` («Требует внимания») |
 | `admin_alerts.py` | `AdminAlerts` — письма администратору о проблемах сервера (kv `alerts`) |
 | `auth_users.py` | вход менеджеров по логину/паролю и права (kv `mgrAccess`, `userSessions`, cookie `kp_user`) — функции |
@@ -169,7 +173,7 @@
 - **Совместная правка:** у `kp`, `catalog`, `clients`, `managers`, `suppliers` — `rev`. Клиент шлёт `X-KP-Rev` (`core/api.js`), `Store` при чужой
   правке бросает `Conflict` → `Handler` отвечает 409 с данными правки → `conflictAsk` спрашивает «перезаписать?» и повторяет с новым rev
   (прежний вариант КП остаётся в `kp_versions`). Справочники отдаются с ETag; каталог — докачкой по `seq`/`epoch` (`CatalogSync`, `CatalogCache`).
-- **Админ-сессия и CSRF:** `admin.py` — учётки в kv `admins` (scrypt, иначе PBKDF2), cookie `kp_admin` (HttpOnly, SameSite=Strict) + токен в
+- **Админ-сессия и CSRF:** `admin_accounts.py` (до 3.233.0 — `admin.py`) — учётки в kv `admins` (scrypt, иначе PBKDF2), cookie `kp_admin` (HttpOnly, SameSite=Strict) + токен в
   `X-CSRF-Token`; `admin.is_admin(h, need_csrf=True)`; 15 мин бездействия; 5 неверных паролей за 10 мин — пауза; первая учётка — только с самого
   компьютера; сброс — файл `data/admin-reset.txt`. `admin.guard` — права, модерация, журнал до маршрутизации. Менеджеры: без входа — подпись
   `X-KP-User-Id`/`X-KP-User`, со входом — `auth_users` (cookie `kp_user`, права «каталог, чужие КП, экономика»).
@@ -249,6 +253,7 @@
 - **3.212.1** (25.10) — имена стилей без пересечений между разделами: список открытых КП (телефон) `kpt-*`, окно «Модули» `smd-n/smd-st`, конструктор шаблона `td-f`, карточка компании `cc-fg` (таблица состава станции `kt-*` больше не перебивается)
 - **3.212.2** (25.10) — окно «Добавить оборудование» (`#dlg.nw`, `catalog.css`) прижато к верху на ПК — не прыгает при смене шага
 - **3.213.0** (25.10) — закупка опций и услуг: `features/kp/option-cost.js` (`OptionCost` — поле закупки с валютой, ввод `data-optcost/optcur` в карточке позиции и экономике); опции — строки закупки `KitDoc.lines` (id «позиция~opt~опция», `line.opt`), поставщик по умолчанию — `DealSuppliers._ofParent`; `KpEconomics._options`, `PriceGuard._optionsBelowCost`; выключатель `optCost`
+- **3.233.0** (30.10) — п. 29 отчёта аудита, шаг 1 (без изменения поведения): `admin.py` 3 559 → 2 718 строк — `admin_accounts`, `admin_access`, `admin_journal`, `catalog_save` (62 определения сверены по дереву разбора — одинаковы); `web_api`, `catalog_admin` подключают их напрямую
 - **3.232.0** (30.10) — безопасность (пп. 27–28 отчёта аудита): `catalog_quality.KpPriceProof` (цены «из КП» — по последнему КП сотрудника, иначе модерация), `imgfetch.SafeWeb.direct` (картинки без прокси, свой контекст TLS)
 - **3.231.0** (30.10) — видимые правки интерфейса (пп. 20–26 отчёта аудита): `var(--on-navy)` на заливках, `color-scheme`, `:disabled`, одно кольцо фокуса в base.css, `(pointer:coarse)` — цели 44 px, `--win-w` и dvh окон, `.app-offline`, `.uit-pen` — кнопка, `tests/ui/check.js` — область нажатия ::after
 - **3.230.0** (30.10) — серверные находки аудита (п. 19): `DealBook.deals(closed_days)` + `crm.closedDays`, `DealTime` — `crm.timeDays` и закрытые за весь срок, `TeamTime._period`; `BitrixTime.local` у `DATE_CREATE` в `BitrixSync.pull` и `BitrixImport.preview`; `genset_sheets.EtaDate` (`when`, `earliest`) — сроки поставки «ДД.ММ» в `StockFile._row`, `_merge_stock`, `Stock.add`

@@ -17,6 +17,8 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 import admin
+import admin_access
+import admin_journal
 import ai_llm
 import catalog_admin
 import defaults
@@ -693,7 +695,7 @@ class CatalogController(Controller):
     # перед сохранением карточки: что не заполнено у основного оборудования и похожие позиции (сервер проверит то же)
     @route(r'/api/catalog/check', 'POST')
     def card_check(self) -> Any:
-        from admin import CardQuality
+        from catalog_save import CardQuality
 
         body = self.json_body()
         doc = body.get('doc')
@@ -763,7 +765,7 @@ class ManagersController(Controller):
     def manager(self, mid: str) -> Any:
         mid, data = safe_id(mid), self.json_body()
         # при входе по паролю менеджер меняет только свою карточку (контакты в его КП); остальные — администратор
-        if admin.login_on(self.handler) and (getattr(self.handler, '_kp_user', None) or {}).get('id') != mid:
+        if admin_access.login_on(self.handler) and (getattr(self.handler, '_kp_user', None) or {}).get('id') != mid:
             return self.text(403, 'Карточку другого менеджера меняет администратор')
         for k in ('name', 'position', 'phone', 'ext', 'mobile', 'email'):
             if k in data and not isinstance(data[k], str):
@@ -799,7 +801,7 @@ class KpController(Controller):
         if (
             'limit' in self.query
         ):  # постранично, с поиском и итогами по всему отбору; files — число справочных документов КП
-            res = admin.KpJournal.page(self.handler, store(), self.query)
+            res = admin_journal.KpJournal.page(self.handler, store(), self.query)
             count = KpFiles.of(store()).counts([rec.get('id') for rec in res['items'] if isinstance(rec, dict)])
             links = DealLinks(store()).for_kps(
                 [str(rec.get('id') or '') for rec in res['items'] if isinstance(rec, dict)]
@@ -810,7 +812,7 @@ class KpController(Controller):
                 if isinstance(rec, dict) and str(rec.get('id') or '') in links:
                     rec['crm'] = links[str(rec['id'])]
             return self.send_json(res)
-        return self.send_json(admin.KpJournal.out(self.handler, store().kp_list()))
+        return self.send_json(admin_journal.KpJournal.out(self.handler, store().kp_list()))
 
     @route(r'/api/kp/new', 'POST')
     def new(self) -> Any:
@@ -834,7 +836,7 @@ class KpController(Controller):
             rev = store().kp_set(
                 kid,
                 field,
-                admin.kp_in(self.handler, store(), kid, field, text),
+                admin_access.kp_in(self.handler, store(), kid, field, text),
                 admin.actor(self.handler)[1],
                 self.base_rev() if field == 'state' else None,
             )
@@ -850,9 +852,9 @@ class KpController(Controller):
             return self.send_json({'ok': True, 'rev': rev})
         v = store().kp_get(kid, field)
         if v and field == 'state':
-            v = with_rev(admin.kp_out(self.handler, 'state', v), store().rev_of('kp', kid)['rev'])
+            v = with_rev(admin_access.kp_out(self.handler, 'state', v), store().rev_of('kp', kid)['rev'])
             return self.send_json(v)
-        return self.send_json(admin.kp_out(self.handler, field, v)) if v else self.not_found()
+        return self.send_json(admin_access.kp_out(self.handler, field, v)) if v else self.not_found()
 
     @route(r'/api/kp/([^/]+)/transfer', ('GET', 'POST'))
     def transfer(self, kid: str) -> Any:
@@ -922,7 +924,7 @@ class KpController(Controller):
         if len(num) > self.NUM_DIGITS_MAX:
             return self.not_found()
         v = store().kp_version_state(safe_id(kid), num)
-        return self.send_json(admin.kp_out(self.handler, 'state', v)) if v else self.not_found()
+        return self.send_json(admin_access.kp_out(self.handler, 'state', v)) if v else self.not_found()
 
     NAME_TRIES = 100
 
@@ -1497,7 +1499,7 @@ class TrackController(Controller):
         meta = self._obj(store().kp_get(kid, 'meta'))
         if not meta:
             return self.not_found('Сначала сохраните КП')
-        if not admin.deal_allowed(self.handler, meta):
+        if not admin_access.deal_allowed(self.handler, meta):
             return self.text(403, 'Экономика сделки — только автору КП и администратору')
         if not BitrixConf(store()).enabled():
             return self.send_json({'ok': False})
@@ -1525,7 +1527,11 @@ class TrackController(Controller):
             (date.today() - timedelta(days=defaults.SrvVal.get(store(), 'kp.remindDays'))).isoformat()
         ):
             meta_dict = self._obj(meta)
-            if admin.login_on(handler) and not admin.own_kp(handler, meta_dict) and not admin.perm(handler, 'kpOthers'):
+            if (
+                admin_access.login_on(handler)
+                and not admin_access.own_kp(handler, meta_dict)
+                and not admin.perm(handler, 'kpOthers')
+            ):
                 continue
             if not mine(meta_dict):
                 continue
@@ -1680,7 +1686,7 @@ class TrackController(Controller):
             )
             if day and date_from <= str(day.get('date') or '')[:10] <= date_to
         ]
-        rows = admin.KpJournal.rows(self.handler, docs)
+        rows = admin_journal.KpJournal.rows(self.handler, docs)
         states = store().kp_states(
             [rec.get('id') for rec in rows if isinstance(rec, dict) and rec.get('id') and not rec.get('locked')]
         )
@@ -1857,7 +1863,7 @@ class ClientCardController(Controller):
             name = name or str(client.get('name') or '')
         if not inn and not name:
             raise BadRequest('Нужен ИНН или название клиента')
-        res = admin.KpJournal.page(self.handler, store(), {'q': inn or name, 'limit': 500})
+        res = admin_journal.KpJournal.page(self.handler, store(), {'q': inn or name, 'limit': 500})
         key = (
             (lambda rec: re.sub(r'\D', '', str(rec.get('clientInn') or '')) == inn)
             if inn
@@ -1869,7 +1875,7 @@ class ClientCardController(Controller):
         total = 0
         people: dict = {}
         for rec in rows:
-            status = admin.KpJournal.status(rec)
+            status = admin_journal.KpJournal.status(rec)
             rub = admin.econ_rub(rec)[0] or 0
             group = by_status.setdefault(status, {'n': 0, 'sum': 0})
             group['n'] += 1
@@ -2381,7 +2387,7 @@ class CrmController(Controller):
         if not main:
             return False
         meta = TrackController._obj(store().kp_get(main['id'], 'meta'))
-        return admin.deal_allowed(self.handler, meta)
+        return admin_access.deal_allowed(self.handler, meta)
 
     @staticmethod
     def _client_card(deal) -> dict | None:

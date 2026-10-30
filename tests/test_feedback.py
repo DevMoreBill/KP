@@ -43,7 +43,7 @@ class InboxTest(unittest.TestCase):
 
 class JournalQuickTest(unittest.TestCase):
     def test_wanted(self):
-        from admin import KpJournal
+        from admin_journal import KpJournal
         store = TempStore(self).store
         old = (date.today() - timedelta(days=5)).isoformat()
         fresh = date.today().isoformat()
