@@ -1,7 +1,6 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { MyPrefs } from '../kp/my-prefs.js';
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { LostPick } from './lost-pick.js';
 import { DealNeed } from './deal-need.js';
@@ -15,8 +14,9 @@ import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { esc, today } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { KpDate } from '../kp/kp-date.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * «Сделки»: доска по стадиям (перетаскивание мышью) или список (на телефоне — по умолчанию, с отбором стадии чипами).

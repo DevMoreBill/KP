@@ -10,11 +10,11 @@ import { Api } from '../core/net.js';
 import { DefRegistry } from '../core/defaults.js';
 import { KpTrack } from '../features/kp/kp-track.js';
 import { ShortName } from '../features/kp/journal-row.js';
-import { KpDate } from '../features/kp/kp-date.js';
 import { esc, today } from '../core/util.js';
 import { S } from '../core/state.js';
 import { FEAT } from '../core/features.js';
 import { UiKit } from '../core/ui-kit.js';
+import { KpDate } from '../core/kp-date.js';
 
 /**
  * У клиента уже есть недавние КП (по ИНН, за срок «kp.dupDays» из «Значений программы») — чтобы два менеджера не

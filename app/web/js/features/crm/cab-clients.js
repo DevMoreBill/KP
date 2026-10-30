@@ -1,10 +1,10 @@
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { Cabinet } from './cabinet.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
 import { Str } from '../../core/str.js';
 import { CompanyCardView } from './company-card.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /** «Клиенты»: клиенты из сделок — в работе, сумма, выиграно, ближайшее дело. */
 export class CabClients {

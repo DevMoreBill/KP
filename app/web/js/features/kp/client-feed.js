@@ -1,9 +1,9 @@
-import { KpDate } from './kp-date.js';
 import { ShortName } from './journal-row.js';
-import { CrmFmt } from '../crm/crm-fmt.js';
-import { CrmFunnel } from '../crm/crm-funnel.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { KpDate } from '../../core/kp-date.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
+import { CabinetLink } from '../../core/cabinet-link.js';
 
 /** «Лента клиента» в карточке клиента: КП, сделки и заметки одной лентой — от новых к старым. */
 export class ClientFeed {
@@ -47,12 +47,12 @@ export class ClientFeed {
   }
 
   static _deal(row) {
-    const closed = CrmFunnel.closed(row);
+    const closed = CabinetLink.closed(row);
     return {
       kind: 'deal',
       when: String((closed && row.stageAt) || row.created || ''),
       date: Fmt.dateTime(closed ? row.stageAt : row.created),
-      title: `Сделка «${row.title || row.client || ''}»: ${closed ? CrmFunnel.label(row).toLowerCase() : 'создана'}`,
+      title: `Сделка «${row.title || row.client || ''}»: ${closed ? CabinetLink.stageLabel(row).toLowerCase() : 'создана'}`,
       sub: CrmFmt.short(row.sum),
     };
   }

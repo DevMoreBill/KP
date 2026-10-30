@@ -1,4 +1,3 @@
-import { KpDate } from './kp-date.js';
 import { KpTrack } from './kp-track.js';
 import { ShortName } from './journal-row.js';
 import { Toast } from '../../core/toast.js';
@@ -6,6 +5,7 @@ import { XlsxBook } from '../../core/xlsx.js';
 import { FileSave } from '../../core/files.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /** Вид отчёта по КП: плитки и таблицы в окне, книга Excel. Прибыль и маржа — только при включённой экономике сделки. */
 export class KpReportView {

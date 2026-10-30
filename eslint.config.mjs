@@ -167,6 +167,14 @@ export default [{
   files: ['app/web/js/features/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' }] }] },
 }, {
+  // КП не подключает кабинет (кабинет построен поверх КП): открыть кабинет или сделку, сделки и стадии — CabinetLink
+  // (core/cabinet-link.js, подключает features/crm/index.js); правило заменяет общее для этих файлов — запрет ui/ повторён
+  files: ['app/web/js/features/kp/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+    { group: ['../crm/**'], message: 'КП не подключает кабинет: CabinetLink (core/cabinet-link.js)' },
+  ] }] },
+}, {
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },

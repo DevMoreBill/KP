@@ -1,5 +1,4 @@
 import { Currency } from './currency.js';
-import { KpDate } from './kp-date.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { FEAT } from '../../core/features.js';
@@ -8,6 +7,7 @@ import { FeedBadge } from '../catalog/feed-badge.js';
 import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /** Подсказка под строкой цены: скидка для заказчика, контроль РРЦ, цена в каталоге, цены в прошлых КП. */
 export class PriceHints {

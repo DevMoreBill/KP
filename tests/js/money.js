@@ -36,7 +36,7 @@ check('коротко для кабинета', ()=>{
   assert.strictEqual(Money.short(999500), `1${NB}млн${NB}₽`, 'граница — по округлённому'); assert.strictEqual(Money.short(999.6), `1${NB}тыс.${NB}₽`);
 });
 check('рубли во всех разделах — через Money', ()=>{
-  const fmt=JS('core/str.js'), cab=JS('features/crm/crm-fmt.js'), lg=JS('features/deal/lg-fmt.js'), deal=JS('features/deal/deal-fmt.js'), dc=JS('features/deal/deal-values.js');
+  const fmt=JS('core/str.js'), cab=JS('core/crm-fmt.js'), lg=JS('features/deal/lg-fmt.js'), deal=JS('features/deal/deal-fmt.js'), dc=JS('features/deal/deal-values.js');
   assert.ok(/static rub\(value\) \{\s*return Money\.rub\(value\);/.test(fmt), 'Fmt.rub');
   assert.ok(/static rub\(kop\) \{\s*return Money\.rub\(\(\+kop \|\| 0\) \/ this\.KOPECKS\);/.test(cab) && /static KOPECKS = 100;/.test(cab) && /static short\(kop\) \{\s*return Money\.short/.test(cab), 'CrmFmt — копейки сделки');
   assert.ok(/static rub\(value\) \{\s*return Money\.rub\(value\);/.test(lg), 'LgFmt.rub'); assert.ok(/static rub\(value\) \{\s*return Money\.rub2\(value\);/.test(deal), 'DealFmt.rub');

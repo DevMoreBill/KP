@@ -1,8 +1,8 @@
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { DealBulk } from './deal-bulk.js';
 import { esc } from '../../core/util.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /**
  * «Сделки» списком — таблица как в Битрикс24: колонки на выбор (помнятся в браузере), сортировка щелчком по заголовку,

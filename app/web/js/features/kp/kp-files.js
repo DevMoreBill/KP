@@ -1,4 +1,3 @@
-import { KpDate } from './kp-date.js';
 import { ShortName } from './journal-row.js';
 import { AdminDialog } from '../admin/admin-core.js';
 import { Toast } from '../../core/toast.js';
@@ -11,6 +10,7 @@ import { DefRegistry } from '../../core/defaults.js';
 import { FEAT } from '../../core/features.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Справочные документы к КП (сервер: app/kp_files.py): паспорта, сертификаты, схемы, опросные листы — хранятся вместе

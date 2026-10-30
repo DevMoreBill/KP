@@ -2,7 +2,6 @@ import { DealLayout } from './deal-layout.js';
 import { KpRate } from './kp-rate.js';
 import { HelpLink } from '../../core/help-link.js';
 import { CrmData } from './crm-data.js';
-import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { CrmTask } from './crm-task.js';
 import { DealFieldsView } from './deal-fields.js';
@@ -32,7 +31,6 @@ import { ClientStore } from '../kp/client-store.js';
 import { Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
-import { KpDate } from '../kp/kp-date.js';
 import { ShortName } from '../kp/journal-row.js';
 import { Morph } from '../../core/morph.js';
 import { Toast } from '../../core/toast.js';
@@ -40,6 +38,8 @@ import { Api } from '../../core/net.js';
 import { Modal } from '../../core/modal.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
+import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,

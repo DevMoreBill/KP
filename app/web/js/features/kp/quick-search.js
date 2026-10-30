@@ -6,14 +6,10 @@ import { KpRepeat } from './kp-repeat.js';
 import { MyDay } from './my-day.js';
 import { KpLoader } from './reminders.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
-import { DealCard } from '../crm/deal-card.js';
-import { CabDeals } from '../crm/cab-deals.js';
-import { Cabinet } from '../crm/cabinet.js';
 import { Journal } from './journal.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
-import { CrmFmt } from '../crm/crm-fmt.js';
 import { CatFind } from '../catalog/catalog-store.js';
 import { Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
@@ -21,6 +17,8 @@ import { Debounce } from '../../core/debounce.js';
 import { Modal } from '../../core/modal.js';
 import { QuickFind } from '../catalog/quick-find.js';
 import { KpForm } from '../../core/kp-form.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
+import { CabinetLink } from '../../core/cabinet-link.js';
 
 /** Модели, недавно добавленные в КП (этот браузер) — для «Недавнего» в едином поиске. */
 export class RecentModels {
@@ -69,12 +67,9 @@ export class QuickCommands {
     { key: 'tender', find: /тендер|закупк/i, label: 'Тендерные КП' },
   ];
   static RUN = {
-    free: () => {
-      CabDeals.filter = 'free';
-      Cabinet.open('deals');
-    },
-    late: () => Cabinet.open('today'),
-    fresh: () => Cabinet.open('today'),
+    free: () => CabinetLink.openFreeDeals(),
+    late: () => CabinetLink.open('today'),
+    fresh: () => CabinetLink.open('today'),
     quiet: () => Journal.open({ quick: 'quiet' }),
     expiring: () => Journal.open({ quick: 'expiring' }),
     tender: () => Journal.open({ quick: 'tender' }),
@@ -234,7 +229,7 @@ export class QuickSearch {
         ),
       );
     }
-    const deal = DealCard.last();
+    const deal = CabinetLink.lastDeal();
     if (deal)
       rows.push(this._row(`data-qdl="${esc(deal.id)}"`, esc(deal.title || 'Сделка'), 'последняя открытая сделка'));
     return rows;
@@ -329,7 +324,7 @@ export class QuickSearch {
         // повреждённая строка — ничего не открываем
       }
     },
-    qdl: id => DealCard.open(id),
+    qdl: id => CabinetLink.openDeal(id),
     qcmd: key => QuickCommands.run(key),
     qback: () => AppTabs.open(AppTabs.HOME),
     qadd: id => {

@@ -1,4 +1,3 @@
-import { KpDate } from './kp-date.js';
 import { MyPrefs } from './my-prefs.js';
 import { MailTemplates } from './mail-templates.js';
 import { S } from '../../core/state.js';
@@ -9,6 +8,7 @@ import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { PriceGuard } from './price-guard.js';
 import { Fmt } from '../../core/str.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /** Письмо клиенту с файлом КП (сервер отправляет через почту из «Настройки → Почта»). */
 export class MailDlg {

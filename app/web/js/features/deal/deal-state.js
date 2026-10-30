@@ -11,7 +11,6 @@ import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { InputNum } from './input-num.js';
-import { KpDate } from '../kp/kp-date.js';
 import { Modal } from '../../core/modal.js';
 import { AdminDialog } from '../admin/admin-core.js';
 import { Toast } from '../../core/toast.js';
@@ -23,6 +22,7 @@ import { KitDoc } from '../kit/kit-doc.js';
 import { KpEconomics, PriceCalc } from '../kp/price-calc.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Данные сделки: входы расчёта из КП, расчёт КП (новый — из «Умолчаний» и справочника поставщиков), цены позиций под цену

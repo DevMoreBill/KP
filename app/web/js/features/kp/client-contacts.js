@@ -2,7 +2,7 @@ import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
-import { DealCard } from '../crm/deal-card.js';
+import { CabinetLink } from '../../core/cabinet-link.js';
 
 /**
  * «Контакты» в карточке клиента: звонок и письмо нажатием, «✎» — правка на месте, «＋ Контакт» — новый (первым в списке),
@@ -137,7 +137,7 @@ export class ClientContactsView {
   }
 
   static _dealReload(ctx) {
-    if (DealCard.modal && DealCard.deal && DealCard.deal.clientId === ctx.client.id) DealCard.reload();
+    CabinetLink.reloadDealOf(ctx.client.id);
   }
 
   static async _save(ctx, form) {

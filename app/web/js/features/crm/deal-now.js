@@ -1,6 +1,6 @@
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { esc, today } from '../../core/util.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /**
  * «Что сделать сейчас» в карточке сделки: одно главное действие по состоянию сделки (взять в работу, заполнить нужное по

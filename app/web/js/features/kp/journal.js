@@ -24,9 +24,9 @@ import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { $, esc, today } from '../../core/util.js';
 import { KpTabs } from './kp-tabs.js';
-import { DealCard } from '../crm/deal-card.js';
 import { KpTransferView } from './kp-transfer.js';
 import { KpForm } from '../../core/kp-form.js';
+import { CabinetLink } from '../../core/cabinet-link.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -333,7 +333,7 @@ export class Journal {
     ['[data-jv]', (ctx, button) => KpVersions.open(button.dataset.jv, button.dataset.jn, () => Journal._leave())],
     ['[data-jo]', (ctx, button) => Journal._openKp(ctx, { id: button.dataset.jo })],
     ['[data-jc]', (ctx, button) => Journal._openKp(ctx, { id: button.dataset.jc, copy: true })],
-    ['[data-jd]', (ctx, button) => DealCard.open(button.dataset.jd)],
+    ['[data-jd]', (ctx, button) => CabinetLink.openDeal(button.dataset.jd)],
     ['[data-je]', (ctx, button) => Journal._openKp(ctx, { id: button.dataset.je, econ: true })],
   ];
 

@@ -41,7 +41,9 @@
   `ui/` (ESLint `no-restricted-imports`): перерисовать форму, открытый шаг, выбрать или открыть шаг, боковая панель,
   «что мешает сохранить» — `KpForm` (`core/kp-form.js`, форму подключает `ui/index.js` — `KpForm.connect`), телефонная
   раскладка — `PhoneLayout.active()`, общие виджеты — в `core/` (`UiKit`, `DatePicker`/`WorkCalendar`, данные тендера
-  `Tender`, `CondMemory`); раздел, которому нужна форма, просит через `KpForm`, а не импортирует её.
+  `Tender`, `CondMemory`); раздел, которому нужна форма, просит через `KpForm`, а не импортирует её. (30.10, этап 2) КП
+  (`features/kp`) не подключает кабинет (`features/crm`, построен поверх КП): открыть кабинет или сделку, сделки и стадии —
+  `CabinetLink` (`core/cabinet-link.js`, подключает `features/crm/index.js`); `KpDate`, `CrmFmt`, `DateChips` — в `core/`.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

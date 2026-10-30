@@ -1,5 +1,4 @@
 import { CrmData } from './crm-data.js';
-import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
 import { DealCard } from './deal-card.js';
 import { Cabinet } from './cabinet.js';
@@ -12,6 +11,7 @@ import { Toast } from '../../core/toast.js';
 import { Str } from '../../core/str.js';
 import { ClientStore } from '../kp/client-store.js';
 import { Modal } from '../../core/modal.js';
+import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 
 /**
  * «Новая сделка» без КП: клиент с подсказкой из справочника, задача, сумма, ожидаемая дата чипом, воронка и сразу первое

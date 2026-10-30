@@ -1,11 +1,11 @@
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { Cabinet } from './cabinet.js';
 import { FEAT } from '../../core/features.js';
 import { Money } from '../../core/money.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /**
  * «Сделки → ₽ Оплаты»: платёжный календарь по плану исполнения сделок — когда ждём оплаты клиентов и когда платим

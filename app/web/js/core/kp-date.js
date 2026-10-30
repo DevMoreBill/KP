@@ -1,5 +1,5 @@
-import { S } from '../../core/state.js';
-import { today } from '../../core/util.js';
+import { S } from './state.js';
+import { today } from './util.js';
 /** Даты хода сделки: ДД.ММ.ГГГГ, сдвиг на дни, срок действия КП (как kp_track.OfferTerm на сервере). */
 export class KpDate {
   static NOON = 'T12:00:00';

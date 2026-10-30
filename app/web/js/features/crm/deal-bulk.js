@@ -1,12 +1,12 @@
 import { CrmData } from './crm-data.js';
 import { CrmTask } from './crm-task.js';
-import { DateChips } from './crm-fmt.js';
 import { DealPause } from './deal-pause.js';
 import { Modal } from '../../core/modal.js';
 import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { DateChips } from '../../core/crm-fmt.js';
 
 /**
  * Массовые действия в «Сделках» (доска и список): «☐ Выбрать» → галочки на карточках → внизу панель: стадия, ответственный

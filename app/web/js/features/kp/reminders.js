@@ -1,4 +1,3 @@
-import { KpDate } from './kp-date.js';
 import { KpTrack } from './kp-track.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
@@ -9,6 +8,7 @@ import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { KpTabs } from './kp-tabs.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /** Напоминания: колокольчик в шапке (перезвонить, срок действия КП, отправлено без ответа). */
 export class Reminders {

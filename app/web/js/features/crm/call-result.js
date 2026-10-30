@@ -1,4 +1,3 @@
-import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
 import { DealCard } from './deal-card.js';
 import { DealNeed } from './deal-need.js';
@@ -8,6 +7,7 @@ import { Modal } from '../../core/modal.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 
 /**
  * Итог звонка по сделке (галочка у звонка): «Договорились» — следующий шаг и стадия дальше, «Думает» и «Не дозвонился» —

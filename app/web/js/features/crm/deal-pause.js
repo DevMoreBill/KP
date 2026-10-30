@@ -3,9 +3,9 @@ import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc, today } from '../../core/util.js';
-import { KpDate } from '../kp/kp-date.js';
-import { CrmFmt } from './crm-fmt.js';
 import { Cabinet } from './cabinet.js';
+import { KpDate } from '../../core/kp-date.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /** «Отложить сделку до даты»: сделка уходит с доски и «Сегодня», в нужный день программа ставит дело «вернуться к сделке». */
 export class DealPause {

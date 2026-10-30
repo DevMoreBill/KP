@@ -1,4 +1,3 @@
-import { KpDate } from '../kp/kp-date.js';
 import { KpFilesPanel } from '../kp/kp-files.js';
 import { ShortName } from '../kp/journal-row.js';
 import { AdminDialog } from '../admin/admin-core.js';
@@ -7,6 +6,7 @@ import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * «Документы» в карточке сделки: договор, спецификация, счёт, акт, УПД, сканы — вид документа чипом, файл кнопкой,

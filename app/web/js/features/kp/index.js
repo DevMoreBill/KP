@@ -13,7 +13,6 @@ import { HelpWindow } from './help-window.js';
 import { Journal, KpVersions } from './journal.js';
 import { JournalEcon, JournalRow, ShortName } from './journal-row.js';
 import { KeyBackup } from './key-backup.js';
-import { KpDate } from './kp-date.js';
 import { KpFilesPanel } from './kp-files.js';
 import { KpDiff, KpReport } from './kp-report.js';
 import { KpReportView } from './kp-report-view.js';
@@ -42,6 +41,7 @@ import { KpGuard } from './kp-guard.js';
 import { OptionCost } from './option-cost.js';
 import { OptionSale } from './option-sale.js';
 import { BackGuard } from '../../core/back-guard.js';
+import { KpDate } from '../../core/kp-date.js';
 
 export const KP_PARTS = {
   OptionCost,

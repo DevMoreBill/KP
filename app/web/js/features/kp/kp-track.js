@@ -1,4 +1,3 @@
-import { KpDate } from './kp-date.js';
 import { Api } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Reminders } from './reminders.js';
@@ -7,6 +6,7 @@ import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
 import { esc, today } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Ход сделки по КП (сервер: app/kp_track.py): статус (подготовлено → отправлено → в работе → выиграно / проиграно),

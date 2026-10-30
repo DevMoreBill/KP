@@ -1,8 +1,8 @@
-import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 
 /**
  * КП ушло клиенту — сразу спросить, когда позвонить: чипы дня и время. Звонок, который программа уже поставила сама

@@ -14,7 +14,7 @@ web.load(path.join(JS, 'features', 'deal', 'index.js'));
 const mod=file=>require(path.join(JS, file));
 const { KpState }=mod('core/state.js');
 const { DocxFill }=mod('features/doc/docx-fill.js');
-const { KpDate }=mod('features/kp/kp-date.js');
+const { KpDate }=mod('core/kp-date.js');
 const { KpReport }=mod('features/kp/kp-report.js');
 const { KpReportView }=mod('features/kp/kp-report-view.js');
 const { Currency }=mod('features/kp/currency.js');

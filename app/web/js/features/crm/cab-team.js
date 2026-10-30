@@ -1,6 +1,5 @@
 import { CabLayout } from './cab-layout.js';
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { esc, today } from '../../core/util.js';
 import { Api } from '../../core/net.js';
@@ -8,6 +7,7 @@ import { Morph } from '../../core/morph.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { TeamRegs } from './team-regs.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /** «Отдел»: утренняя сводка «кому нужно внимание», воронка по стадиям, итоги месяца по менеджерам (руководителю и администратору). */
 export class CabTeam {

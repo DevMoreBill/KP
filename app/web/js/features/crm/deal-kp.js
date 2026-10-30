@@ -1,6 +1,5 @@
 import { DealCard } from './deal-card.js';
 import { ShortName } from '../kp/journal-row.js';
-import { KpDate } from '../kp/kp-date.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
 import { AppTabs } from '../../core/app-tabs.js';
@@ -15,6 +14,7 @@ import { Toast } from '../../core/toast.js';
 import { KpLoader } from '../kp/reminders.js';
 import { KpTabs } from '../kp/kp-tabs.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /** КП сделки: открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из журнала — в сделку. */
 export class DealKp {

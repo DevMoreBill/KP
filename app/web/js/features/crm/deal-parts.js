@@ -1,9 +1,9 @@
 import { SafeLink } from '../../core/safe-link.js';
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { Money } from '../../core/money.js';
 import { esc, today } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /**
  * Разделы карточки сделки строками-раскрывашками с итогом в заголовке («Клиент и сделка · ООО … · Иванов»), строка

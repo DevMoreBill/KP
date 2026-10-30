@@ -1,8 +1,8 @@
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { DealFeed } from './deal-feed.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /** Печать карточки сделки (🖨 или клавиша P): сделка, клиент, открытые дела и лента — на листе A4 без кнопок. */
 export class DealPrint {

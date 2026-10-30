@@ -1,4 +1,3 @@
-import { CrmFmt, DateChips } from './crm-fmt.js';
 import { CrmStages, CrmData } from './crm-data.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { CrmTask } from './crm-task.js';
@@ -23,6 +22,8 @@ import { LostPick } from './lost-pick.js';
 import { MirrorPanel } from './mirror-panel.js';
 import { PhoneCall } from './phone-call.js';
 import { LISTS } from '../../core/lists.js';
+import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
+import { CabinetLink } from '../../core/cabinet-link.js';
 
 export const CRM = {
   CrmFmt,
@@ -55,4 +56,20 @@ export const CRM = {
 
 LISTS.ready(CrmStages.LISTS);
 PhoneCall.listen();
+// КП просит кабинет (CabinetLink) — без import кабинета
+CabinetLink.connect({
+  open: tab => Cabinet.open(tab),
+  openFreeDeals: () => {
+    CabDeals.filter = 'free';
+    return Cabinet.open('deals');
+  },
+  openDeal: id => DealCard.open(id),
+  lastDeal: () => DealCard.last(),
+  reloadDealOf: clientId => {
+    if (DealCard.modal && DealCard.deal && DealCard.deal.clientId === clientId) DealCard.reload();
+  },
+  deals: () => CrmData.deals(),
+  closed: deal => CrmFunnel.closed(deal),
+  stageLabel: deal => CrmFunnel.label(deal),
+});
 document.addEventListener(CrmFmt.REDRAW, () => Cabinet.redraw());

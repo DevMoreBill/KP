@@ -1,12 +1,12 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { CrmTask } from './crm-task.js';
 import { KpTrack } from '../kp/kp-track.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 
 /**
  * Лента сделки, как в Битрикс24: сверху — «Дело / Комментарий», запланированные дела, ниже — всё, что было по сделке

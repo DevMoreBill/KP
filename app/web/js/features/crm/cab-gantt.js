@@ -1,10 +1,10 @@
 import { CrmData } from './crm-data.js';
-import { CrmFmt } from './crm-fmt.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { Cabinet } from './cabinet.js';
-import { KpDate } from '../kp/kp-date.js';
 import { esc, today } from '../../core/util.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /** «График»: лента времени — сделка (создана → ожидаемая дата), срок КП, поставка и оплаты по расчёту сделки, дела. */
 export class CabGantt {

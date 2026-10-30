@@ -2,7 +2,6 @@ import { KpReportView } from './kp-report-view.js';
 import { ClientStore } from './client-store.js';
 import { Currency } from './currency.js';
 import { Drafts } from './drafts.js';
-import { KpDate } from './kp-date.js';
 import { KpRepeat } from './kp-repeat.js';
 import { KpTrack } from './kp-track.js';
 import { Managers } from './managers.js';
@@ -15,15 +14,14 @@ import { AdminSession, Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
 import { FEAT } from '../../core/features.js';
 import { KpTabs } from './kp-tabs.js';
-import { CrmData } from '../crm/crm-data.js';
-import { CrmFmt } from '../crm/crm-fmt.js';
-import { CrmFunnel } from '../crm/crm-funnel.js';
-import { DealCard } from '../crm/deal-card.js';
 import { Fmt, Str } from '../../core/str.js';
 import { CopyText } from '../../core/files.js';
 import { ClientFeed } from './client-feed.js';
 import { ClientContactsView } from './client-contacts.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
+import { CabinetLink } from '../../core/cabinet-link.js';
 
 /**
  * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.
@@ -176,7 +174,7 @@ export class ClientCard {
   static _clientDeals({ answer, client }) {
     const inn = client.inn || answer.inn || '';
     const name = Str.norm(client.name || answer.name || '');
-    return CrmData.deals().filter(deal =>
+    return CabinetLink.deals().filter(deal =>
       inn ? deal.clientInn === inn : name && Str.norm(deal.client || '') === name,
     );
   }
@@ -187,7 +185,7 @@ export class ClientCard {
     const rows = deals
       .map(deal => {
         const next = deal.next ? ` · ${esc(deal.next.title)}, ${esc(CrmFmt.rel(deal.next.due))}` : '';
-        return `<button type="button" class="md-r cc-deal" data-ccdeal="${esc(deal.id)}"><b>${esc(deal.title || deal.client)}</b><span class="muted">${esc(CrmFunnel.label(deal))} · ${CrmFmt.short(deal.sum)}${next}</span></button>`;
+        return `<button type="button" class="md-r cc-deal" data-ccdeal="${esc(deal.id)}"><b>${esc(deal.title || deal.client)}</b><span class="muted">${esc(CabinetLink.stageLabel(deal))} · ${CrmFmt.short(deal.sum)}${next}</span></button>`;
       })
       .join('');
     return `<section class="cc-kps"><p class="sub">Сделки клиента <b class="md-c">${deals.length}</b></p><div class="cc-kl">${rows}</div></section>`;
@@ -282,7 +280,7 @@ export class ClientCard {
       '[data-ccdeal]',
       (ctx, button) => {
         ctx.modal.close();
-        DealCard.open(button.dataset.ccdeal);
+        CabinetLink.openDeal(button.dataset.ccdeal);
       },
     ],
   ];

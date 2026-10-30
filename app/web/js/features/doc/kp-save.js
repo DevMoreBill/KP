@@ -8,7 +8,6 @@ import { PriceGuard } from '../kp/price-guard.js';
 import { FEAT } from '../../core/features.js';
 import { DealXlsx } from '../deal/deal-xlsx.js';
 import { DealPlan, KpLines } from '../deal/deal-side.js';
-import { KpDate } from '../kp/kp-date.js';
 import { DealState } from '../deal/deal-state.js';
 import { KpEconomics } from '../kp/price-calc.js';
 import { ClientFields, ClientStore } from '../kp/client-store.js';
@@ -30,6 +29,7 @@ import { KpGuard } from '../kp/kp-guard.js';
 import { Tender } from '../../core/tender.js';
 import { CondMemory } from '../../core/cond-memory.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
