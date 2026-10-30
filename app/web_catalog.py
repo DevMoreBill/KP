@@ -10,7 +10,7 @@ import defaults
 import images
 from config import MIME, read_text, safe_id, store
 from equipment_types import load_types, save_user_types, types_builtin_path
-from web_base import IMAGES, Controller, route
+from web_base import IMAGES, Controller, NotFound, route
 
 
 class TypesController(Controller):
@@ -110,7 +110,9 @@ class CatalogController(Controller):
     @route(r'/api/catalog/([^/]+)', 'GET')  # запись позиции — PUT в admin.guard (модерация, права)
     def item(self, cid) -> Any:
         doc = store().catalog_get_rev(safe_id(cid))
-        return self.send_json(doc) if doc else self.not_found()
+        if not doc:
+            raise NotFound()
+        return self.send_json(doc)
 
     # изображения: папки «раздел/категория/производитель» латиницей (app/images.py); одинаковые хранятся один раз
     @route(r'/api/img', 'POST')
@@ -147,5 +149,5 @@ class CatalogController(Controller):
     def img(self, rel) -> Any:
         path = IMAGES.path(rel)
         if not path:
-            return self.not_found()
+            raise NotFound()
         return self.send_file(path, MIME[os.path.splitext(path)[1].lower()], 'private, max-age=604800')

@@ -29,7 +29,7 @@ from inn import Inn
 from kp_files import KpFiles
 from kp_track import DealTrack, Mailer, MailRate, MailTemplate, ReminderList
 from server_log import ErrorText, ServerLog
-from web_base import Controller, counterparties, pdf_of, route
+from web_base import Controller, Forbidden, NotFound, counterparties, pdf_of, route
 
 
 class TrackController(Controller):
@@ -47,7 +47,7 @@ class TrackController(Controller):
     )  # статус, причина, заметка, напоминание (права — admin.guard по /api/kp/<id>/)
     def track(self, kid: str) -> None:
         if not store().kp_get(kid, 'meta'):
-            return self.not_found('Сначала сохраните КП')
+            raise NotFound('Сначала сохраните КП')
         with self.user_input():
             track, changed = DealTrack(store()).update(kid, self.json_body(), admin.actor(self.handler)[1])
         if changed:
@@ -63,9 +63,9 @@ class TrackController(Controller):
     def econ(self, kid: str) -> None:
         meta = self._obj(store().kp_get(kid, 'meta'))
         if not meta:
-            return self.not_found('Сначала сохраните КП')
+            raise NotFound('Сначала сохраните КП')
         if not admin_access.deal_allowed(self.handler, meta):
-            return self.text(403, 'Экономика сделки — только автору КП и администратору')
+            raise Forbidden('Экономика сделки — только автору КП и администратору')
         if not BitrixConf(store()).enabled():
             return self.send_json({'ok': False})
         with self.user_input():
@@ -156,7 +156,7 @@ class TrackController(Controller):
             raise BadRequest('Укажите адрес получателя')
         path = self.kp_docx(kid)
         if not path:
-            return self.not_found('Файл КП не найден — сохраните КП')
+            raise NotFound('Файл КП не найден — сохраните КП')
         files = []
         if data.get('word', True):
             with open(path, 'rb') as handle:
@@ -361,17 +361,15 @@ class CrmController(Controller):
             raise BadRequest('Неверный менеджер')
         return [query]
 
-    def _deal(self, did) -> dict | None:
-        """Сделка, если она своя или есть право на чужие; иначе — ответ отправлен, None."""
+    def _deal(self, did) -> dict:
+        """Сделка, если она своя или есть право на чужие; иначе — NotFound или Forbidden (ответ — Router)."""
         deal = DealBook(store()).get(did)
         uid, _name, everyone = self.who(self.handler)
         if not deal:
-            self.not_found('Сделка не найдена')
-            return None
+            raise NotFound('Сделка не найдена')
         if not everyone and deal.get('managerId') != uid:
             admin.DeniedLog.note(self.handler, store(), 'deal', did)
-            self.text(403, 'Это сделка другого менеджера — нет доступа')
-            return None
+            raise Forbidden('Это сделка другого менеджера — нет доступа')
         return deal
 
     def _manager(self, mid: str) -> tuple:
@@ -386,7 +384,7 @@ class CrmController(Controller):
         try:
             scope = self._scope(self.query.get('manager'))
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         res = CrmBoard(store()).build(scope)
         res['regs'] = DealRegs(store()).enabled()  # регламент Битрикс24: источник заявки при создании, окно «Заполните»
         if BitrixConf(store()).enabled():  # ссылки «Открыть в Битрикс24» на карточках доски
@@ -405,7 +403,7 @@ class CrmController(Controller):
         try:
             scope = self._scope(self.query.get('manager'))
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         rows = PayCalendar(store()).rows(scope, self._money)
         return self.send_json({'rows': rows, 'overdue': PayCalendar.overdue(rows)})
 
@@ -413,8 +411,6 @@ class CrmController(Controller):
     def pay_remind(self, did: str) -> Any:
         """Дело «Напомнить об оплате» по точке оплаты клиента."""
         deal = self._deal(did)
-        if deal is None:
-            return None
         key = str(self.json_body().get('key') or '')[:80]
         deal['kps'] = DealBook(store()).kps([did])[did]
         step = next((row for row in ExecPlan(deal).raw() if row['key'] == key and row['kind'] == 'cust'), None)
@@ -430,7 +426,7 @@ class CrmController(Controller):
         try:
             self._scope('all')
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         from crm_time import DealTime
 
         return self.send_json(DealTime(store()).report())
@@ -441,7 +437,7 @@ class CrmController(Controller):
         try:
             self._scope('all')
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         from crm_month import MonthReport
 
         try:
@@ -461,7 +457,7 @@ class CrmController(Controller):
         try:
             self._scope('all')
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         from deal_reg_audit import RegAudit
 
         return self.send_json(RegAudit(store()).report())
@@ -543,8 +539,6 @@ class CrmController(Controller):
     @route(r'/api/crm/deal/(d\d{1,9})', ('GET', 'PUT'))
     def deal(self, did) -> Any:
         deal = self._deal(did)
-        if deal is None:
-            return None
         book = DealBook(store())
         if (
             deal.get('bxNew') and deal.get('managerId') == self.who(self.handler)[0]
@@ -556,8 +550,8 @@ class CrmController(Controller):
             mgr = None
             if body.get('managerId') and body['managerId'] != deal.get('managerId'):
                 if not self.who(self.handler)[2]:
-                    return self.text(
-                        403, 'Передать сделку коллеге может администратор или менеджер с правом «КП других менеджеров»'
+                    raise Forbidden(
+                        'Передать сделку коллеге может администратор или менеджер с правом «КП других менеджеров»'
                     )
                 mgr = self._manager(str(body['managerId']))
             with self.user_input():
@@ -566,7 +560,7 @@ class CrmController(Controller):
                 try:
                     new = book.update(did, body, admin.actor(self.handler)[1], self.base_rev(), mgr)
                 except LookupError as exc:
-                    return self.not_found(str(exc))
+                    raise NotFound(str(exc)) from None
             if mgr:
                 TaskBook(store()).move_deal(did, mgr[0])
             changes = {k: new.get(k) for k in ('stage', 'lostReason', 'manager') if new.get(k) != deal.get(k)}
@@ -587,11 +581,10 @@ class CrmController(Controller):
     @route(r'/api/crm/deal/(d\d{1,9})/comm/(\d{1,12})', 'GET')
     def comm_body(self, did, bx_id) -> Any:
         """Текст письма Битрикс24 целиком — по нажатию в ленте сделки."""
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         body = DealComms(store()).body(did, bx_id)
         if body is None:
-            return self.not_found('Письма нет')
+            raise NotFound('Письма нет')
         return self.send_json({'body': body})
 
     @route(r'/api/crm/client/inn', 'POST')
@@ -608,8 +601,6 @@ class CrmController(Controller):
     def need(self, did) -> Any:
         """Регламент Битрикс24: что заполнить для стадии (GET) — и заполнить, затем перевести (POST)."""
         deal = self._deal(did)
-        if deal is None:
-            return None
         regs, book = DealRegs(store()), DealBook(store())
         author = admin.actor(self.handler)[1]
         if self.method == 'GET':
@@ -711,21 +702,19 @@ class CrmController(Controller):
     @route(r'/api/crm/deal/(d\d{1,9})/comment', 'POST')
     def comment(self, did) -> Any:
         """Комментарий в ленту сделки (уходит и в ленту сделки Битрикс24)."""
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         with self.user_input():
             try:
                 DealBook(store()).comment(did, self.json_body().get('text'), admin.actor(self.handler)[1])
             except LookupError as exc:
-                return self.not_found(str(exc))
+                raise NotFound(str(exc)) from None
         self.bitrix_on(did)
         return self._card(did, DealBook(store()).get(did) or {})
 
     @route(r'/api/crm/deal/(d\d{1,9})/files', 'POST')
     def deal_file_add(self, did: str) -> Any:
         """Документ сделки: ?kind=…&name=…, тело — файл; уходит и в Битрикс24."""
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         uid, name, _role = admin.actor(self.handler)
         with self.user_input():
             rec = DealFiles.of(store()).add_kind(
@@ -738,11 +727,10 @@ class CrmController(Controller):
 
     @route(r'/api/crm/deal/(d\d{1,9})/files/(\d{1,9})', 'GET')
     def deal_file(self, did: str, fid: str) -> Any:
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         got = DealFiles.of(store()).read(did, fid)
         if not got:
-            return self.not_found('Документ не найден')
+            raise NotFound('Документ не найден')
         rec, data = got
         return self.send(
             200,
@@ -754,14 +742,13 @@ class CrmController(Controller):
     @route(r'/api/crm/deal/(d\d{1,9})/files/(\d{1,9})/remove', 'POST')
     def deal_file_remove(self, did: str, fid: str) -> Any:
         """Автор удаляет свой документ в первые kp.fileUndoMin минут; позже — администратор."""
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         try:
             rec = DealFiles.of(store()).delete_own(did, fid, admin.actor(self.handler)[0])
         except LookupError as exc:
-            return self.not_found(str(exc))
+            raise NotFound(str(exc)) from None
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         admin.log(self.handler, store(), 'delete_deal_file', 'deal', did, {'name': rec['name'], 'author': True}, None)
         return self._card(did, DealBook(store()).get(did) or {})
 
@@ -769,8 +756,6 @@ class CrmController(Controller):
     def deal_remove(self, did: str) -> Any:
         """Удалить сделку в корзину: ответственный — свою, руководитель и администратор — любую."""
         deal = self._deal(did)
-        if deal is None:
-            return None
         DealBook(store()).remove(did, admin.actor(self.handler)[1])
         admin.log(
             self.handler,
@@ -792,17 +777,16 @@ class CrmController(Controller):
         try:
             deal = DealBook(store()).restore(did, Viewer(admin=everyone, uid=uid))
         except LookupError as exc:
-            return self.not_found(str(exc))
+            raise NotFound(str(exc)) from None
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         admin.log(self.handler, store(), 'restore', 'deal', did, None, {'title': deal.get('title')})
         return self.send_json({'ok': True, 'id': did})
 
     @route(r'/api/crm/deal/(d\d{1,9})/exec', 'PUT')
     def exec_mark(self, did) -> Any:
         """Отметка точки исполнения: {key, at} — at пусто снимает отметку."""
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         body = self.json_body()
         with self.user_input():
             try:
@@ -810,19 +794,18 @@ class CrmController(Controller):
                     did, str(body.get('key') or '')[:80], str(body.get('at') or ''), admin.actor(self.handler)[1]
                 )
             except LookupError as exc:
-                return self.not_found(str(exc))
+                raise NotFound(str(exc)) from None
         self.bitrix_on(did)
         return self._card(did, DealBook(store()).get(did) or {})
 
     @route(r'/api/crm/deal/(d\d{1,9})/kp', 'POST')
     def link(self, did) -> Any:
-        if self._deal(did) is None:
-            return None
+        self._deal(did)
         kid = safe_id(str(self.json_body().get('kp') or ''))
         if not store().kp_get(kid, 'meta'):
-            return self.not_found('КП не найдено')
+            raise NotFound('КП не найдено')
         if not admin.kp_access(self.handler, store(), kid):
-            return self.text(403, 'Это КП другого менеджера — нет доступа')
+            raise Forbidden('Это КП другого менеджера — нет доступа')
         old = DealBook(store()).link(did, kid, admin.actor(self.handler)[1])
         admin.log(self.handler, store(), 'link_deal', 'deal', did, {'deal': old} if old else None, {'kp': kid})
         self.bitrix_on(did)
@@ -837,8 +820,6 @@ class CrmController(Controller):
         mid = uid
         if did:
             deal = self._deal(did)
-            if deal is None:
-                return None
             mid = deal.get('managerId') or uid
         elif everyone and data.get('managerId'):
             mid = self._manager(str(data['managerId']))[0]
@@ -856,10 +837,10 @@ class CrmController(Controller):
         tasks = TaskBook(store())
         task = tasks.get(tid)
         if not task:
-            return self.not_found('Дело не найдено')
+            raise NotFound('Дело не найдено')
         uid, _name, everyone = self.who(self.handler)
         if not everyone and task['managerId'] != uid:
-            return self.text(403, 'Это дело другого менеджера — нет доступа')
+            raise Forbidden('Это дело другого менеджера — нет доступа')
         with self.user_input():
             task = tasks.update(tid, self.json_body(), admin.actor(self.handler)[1])
         self.bitrix_on(task['id'], 'task')

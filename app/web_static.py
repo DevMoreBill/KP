@@ -10,7 +10,7 @@ import zlib
 from typing import Any
 
 from config import APP_DIR
-from web_base import Controller, route
+from web_base import Controller, NotFound, route
 
 WEB_DIR = os.path.join(APP_DIR, 'web')  # интерфейс: index.html, css/, js/, vendor/
 WEB_TYPES = {
@@ -131,7 +131,7 @@ class StaticController(Controller):
         idx = self.url_path in ('/', '/index.html')
         path = web_file('index.html' if idx else self.url_path[len('/web/') :])
         if not path:
-            return self.not_found()
+            raise NotFound()
         if idx:
             page, csp = WebIndex.build(path)
             return self.send_file(path, WEB_TYPES['.html'], 'no-cache', csp, data=page)
@@ -144,6 +144,6 @@ class StaticController(Controller):
     def favicon(self) -> Any:
         icon = os.path.join(APP_DIR, 'icon.ico')
         if not os.path.isfile(icon):
-            return self.not_found()
+            raise NotFound()
         with open(icon, 'rb') as handle:
             return self.send(200, 'image/x-icon', handle.read())

@@ -32,7 +32,7 @@ from kp_templates import (
     template_file,
 )
 from storage import with_rev
-from web_base import PASS, Controller, counterparties, pdf_of, route
+from web_base import PASS, Controller, Forbidden, NotFound, counterparties, pdf_of, route
 from web_crm import CrmController
 
 WIN_RESERVED = {'CON', 'PRN', 'AUX', 'NUL'} | {f'COM{i}' for i in range(1, 10)} | {f'LPT{i}' for i in range(1, 10)}
@@ -80,13 +80,13 @@ class TemplatesController(Controller):
                 return self.send_json({'ok': True})
         except TemplateError as exc:
             return self.text(400, str(exc))
-        return self.not_found()
+        raise NotFound()
 
     @route(r'/tpl/([A-Za-z0-9_-]+)/([^/]+)')
     def file(self, tid: str, name) -> Any:
         path = template_file(tid, urllib.parse.unquote(name))
         if not path:
-            return self.not_found('Файл шаблона не найден')
+            raise NotFound('Файл шаблона не найден')
         ext = os.path.splitext(path)[1].lower()
         ctype = {
             '.json': 'application/json; charset=utf-8',
@@ -176,7 +176,9 @@ class KpController(Controller):
         if v and field == 'state':
             v = with_rev(admin_access.kp_out(self.handler, 'state', v), store().rev_of('kp', kid)['rev'])
             return self.send_json(v)
-        return self.send_json(admin_access.kp_out(self.handler, field, v)) if v else self.not_found()
+        if not v:
+            raise NotFound()
+        return self.send_json(admin_access.kp_out(self.handler, field, v))
 
     @route(r'/api/kp/([^/]+)/transfer', ('GET', 'POST'))
     def transfer(self, kid: str) -> Any:
@@ -186,7 +188,7 @@ class KpController(Controller):
 
         kid = safe_id(kid)
         if not admin.kp_access(self.handler, store(), kid):
-            return self.text(403, 'Передать можно своё КП; чужое — администратору и с правом «КП других менеджеров»')
+            raise Forbidden('Передать можно своё КП; чужое — администратору и с правом «КП других менеджеров»')
         mover = KpTransfer(store())
         try:
             if self.method == 'GET':
@@ -196,7 +198,7 @@ class KpController(Controller):
             with self.user_input():
                 result = mover.move(kid, str(data.get('manager') or '')[:64], admin.actor(self.handler)[1], choice)
         except LookupError as exc:
-            return self.text(404, str(exc))
+            raise NotFound(str(exc)) from None
         admin.log(
             self.handler, store(), 'transfer_kp', 'kp', kid, {'manager': result['from']}, {'manager': result['manager']}
         )
@@ -244,9 +246,11 @@ class KpController(Controller):
     @route(r'/api/kp/([^/]+)/versions/(\d+)', 'GET')
     def version(self, kid: str, num) -> Any:
         if len(num) > self.NUM_DIGITS_MAX:
-            return self.not_found()
+            raise NotFound()
         v = store().kp_version_state(safe_id(kid), num)
-        return self.send_json(admin_access.kp_out(self.handler, 'state', v)) if v else self.not_found()
+        if not v:
+            raise NotFound()
+        return self.send_json(admin_access.kp_out(self.handler, 'state', v))
 
     NAME_TRIES = 100
 
@@ -303,7 +307,7 @@ class KpController(Controller):
         # скачивание готового КП — для сотрудников, открывших программу по сети
         path = self.kp_docx(safe_id(kid))
         if not path:
-            return self.not_found('Файл КП не найден')
+            raise NotFound('Файл КП не найден')
         with open(path, 'rb') as handle:
             data = handle.read()
         return self.send(
@@ -318,7 +322,7 @@ class KpController(Controller):
     def pdf(self, kid: str) -> Any:
         path = self.kp_docx(safe_id(kid))
         if not path:
-            return self.not_found('Файл КП не найден')
+            raise NotFound('Файл КП не найден')
         pdf = pdf_of(path)
         if self.method == 'POST':
             try:
@@ -328,7 +332,7 @@ class KpController(Controller):
             return self.send_json({'ok': True, 'path': pdf if self.is_local() else '', 'local': self.is_local()})
         if self.method == 'GET':
             if not os.path.isfile(pdf):
-                return self.not_found('PDF этого КП ещё не создан')
+                raise NotFound('PDF этого КП ещё не создан')
             with open(pdf, 'rb') as handle:
                 return self.send(200, 'application/pdf', handle.read(), self.attachment(os.path.basename(pdf)))
         return PASS
@@ -338,7 +342,7 @@ class KpController(Controller):
         rel = store().kp_get(safe_id(kid), 'docx')
         pdf = pdf_of(docs_path(rel.strip())) if rel else None
         if not pdf or not os.path.isfile(pdf):
-            return self.not_found('PDF этого КП ещё не создан')
+            raise NotFound('PDF этого КП ещё не создан')
         if not self.is_local():
             return self.send_json({'remote': True, 'download': f'/api/kp/{safe_id(kid)}/pdf'})
         open_file(pdf)
@@ -348,7 +352,7 @@ class KpController(Controller):
     def open_doc(self, kid: str, how) -> Any:
         rel = store().kp_get(safe_id(kid), 'docx')
         if not rel:
-            return self.not_found('Файл КП не найден')
+            raise NotFound('Файл КП не найден')
         if not self.is_local():  # открыть Word можно только на своём компьютере — сотруднику по сети отдаём файл
             return self.send_json(
                 {
@@ -359,7 +363,7 @@ class KpController(Controller):
             )
         path = docs_path(rel.strip())
         if not os.path.isfile(path):
-            return self.not_found('Файл КП был перемещён или удалён')
+            raise NotFound('Файл КП был перемещён или удалён')
         if os.path.splitext(path)[1].lower() not in ('.docx', '.pdf'):  # запускать на компьютере можно только документ
             return self.text(400, 'Это не документ Word — файл не открывается')
         if how == 'open':
@@ -396,7 +400,7 @@ class KpFilesController(Controller):
         files = KpFiles.of(store())
         if self.method == 'GET':
             if not self._kp_ok(kid):
-                return self.not_found('КП не найдено')
+                raise NotFound('КП не найдено')
             return self.send_json({'items': files.list(kid, admin.actor(self.handler)[0]), 'limits': files.limits()})
         if store().kp_get(kid, 'meta') is None:
             return self.text(400, 'Сначала сохраните КП, затем прикрепите документы')
@@ -411,18 +415,18 @@ class KpFilesController(Controller):
     def file(self, kid: str, fid: str) -> Any:
         files = KpFiles.of(store())
         if not self._kp_ok(kid):
-            return self.not_found('КП не найдено')
+            raise NotFound('КП не найдено')
         if self.method == 'PUT':
             note = self.json_body().get('note')
             if note is not None and not isinstance(note, str):
                 raise BadRequest('Примечание — строка')
             old = files.get(kid, fid)
             if old is None:
-                return self.not_found('Документ не найден')
+                raise NotFound('Документ не найден')
             try:
                 rec = files.set_note(kid, fid, note or '')
             except LookupError as exc:
-                return self.not_found(str(exc))
+                raise NotFound(str(exc)) from None
             admin.log(
                 self.handler,
                 store(),
@@ -435,7 +439,7 @@ class KpFilesController(Controller):
             return self.send_json(rec)
         got = files.read(kid, fid)
         if not got:
-            return self.not_found('Документ не найден')
+            raise NotFound('Документ не найден')
         rec, data = got
         return self.send(
             200,
@@ -450,9 +454,9 @@ class KpFilesController(Controller):
         try:
             rec = KpFiles.of(store()).delete_own(kid, fid, admin.actor(self.handler)[0])
         except LookupError as exc:
-            return self.not_found(str(exc))
+            raise NotFound(str(exc)) from None
         except PermissionError as exc:
-            return self.text(403, str(exc))
+            raise Forbidden(str(exc)) from None
         admin.log(
             self.handler,
             store(),
@@ -519,9 +523,9 @@ class DraftsController(Controller):
     def get(self, kind, did) -> Any:
         row, state = store().draft_get(did)
         if not row or row['kind'] != self.KINDS[kind]:
-            return self.not_found('Черновик не найден' if kind == 'drafts' else 'Заготовка не найдена')
+            raise NotFound('Черновик не найден' if kind == 'drafts' else 'Заготовка не найдена')
         if kind == 'drafts' and not self._mine(row):
-            return self.text(403, 'Это черновик другого менеджера')
+            raise Forbidden('Это черновик другого менеджера')
         return self.send(
             200,
             'application/json; charset=utf-8',
@@ -542,7 +546,7 @@ class DraftsController(Controller):
             raise BadRequest('Нет состояния КП')
         old, _ = store().draft_get(did)
         if old and (old['kind'] != k or not self._mine(old)):
-            return self.text(403, 'Это запись другого менеджера')
+            raise Forbidden('Это запись другого менеджера')
         uid, name = self._who()
         items = picked if isinstance(picked := state.get('items'), list) else []
         try:
@@ -585,7 +589,7 @@ class DraftsController(Controller):
         if not row or row['kind'] != self.KINDS[kind]:
             return self.send_json({'ok': True})
         if not self._mine(row):
-            return self.text(403, 'Удалить может только автор или администратор')
+            raise Forbidden('Удалить может только автор или администратор')
         store().draft_del(did)
         if kind == 'presets':
             admin.log(self.handler, store(), 'preset_delete', 'preset', did, {'title': row['title']}, None)

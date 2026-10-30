@@ -12,7 +12,7 @@ from clock import Clock
 from config import BadRequest, safe_id, store
 from inn import Inn
 from our_docs import DocTemplates, OurRequisites
-from web_base import Controller, counterparties, route
+from web_base import Controller, Forbidden, NotFound, counterparties, route
 
 
 class GeoController(Controller):
@@ -39,7 +39,7 @@ class GeoController(Controller):
                 return self.send_json({'url': geo.unshort(query.get('u', ''))})
         except Exception as exc:
             return self.send_json({'error': self.no_paths(exc)[:300] or exc.__class__.__name__})
-        return self.text(404, 'Нет такого запроса')
+        raise NotFound('Нет такого запроса')
 
 
 class PartiesController(Controller):
@@ -108,7 +108,9 @@ class PartiesController(Controller):
         cid = safe_id(cid)
         if self.method == 'GET':
             client = store().client_get_rev(cid)
-            return self.send_json(client) if client else self.text(404, 'Клиент не найден')
+            if not client:
+                raise NotFound('Клиент не найден')
+            return self.send_json(client)
         self.json_body()  # не объект JSON — 400
         return self.send_json(
             counterparties().save_client(cid, self.body(), admin.actor(self.handler)[1], self.base_rev())
@@ -125,7 +127,7 @@ class ManagersController(Controller):
         mid, data = safe_id(mid), self.json_body()
         # при входе по паролю менеджер меняет только свою карточку (контакты в его КП); остальные — администратор
         if admin_access.login_on(self.handler) and (getattr(self.handler, '_kp_user', None) or {}).get('id') != mid:
-            return self.text(403, 'Карточку другого менеджера меняет администратор')
+            raise Forbidden('Карточку другого менеджера меняет администратор')
         for k in ('name', 'position', 'phone', 'ext', 'mobile', 'email'):
             if k in data and not isinstance(data[k], str):
                 data[k] = '' if data[k] is None else str(data[k])
@@ -149,7 +151,7 @@ class DealController(Controller):
         if not catalog_admin.power(
             self.handler, 'catSelfMod', 'PUT'
         ):  # справочник поставщиков — администратор и право «Без модерации»
-            return self.text(403, 'Справочник поставщиков меняет администратор или менеджер с правом «Без модерации»')
+            raise Forbidden('Справочник поставщиков меняет администратор или менеджер с правом «Без модерации»')
         data = self.json_body()
         with self.user_input():
             saved = store().supplier_put(sid, data, admin.actor(self.handler)[1], self.base_rev())
@@ -233,7 +235,7 @@ class ClientCardController(Controller):
         data = self.json_body()
         client = self._client(str(data.get('id') or '')[:64], '')
         if not client:
-            return self.text(404, 'Клиент не найден в справочнике — сначала сохраните КП с этим клиентом')
+            raise NotFound('Клиент не найден в справочнике — сначала сохраните КП с этим клиентом')
         cid = safe_id(str(data.get('id')))
         uid, name = admin.actor(self.handler, admin=False)[0] or '', admin.actor(self.handler)[1] or ''
         notes = [note for note in (client.get('notes') or []) if isinstance(note, dict)]
@@ -241,7 +243,7 @@ class ClientCardController(Controller):
             mine = admin.AdminSessions.of(self.handler) is not None
             keep = [note for note in notes if not (note.get('at') == data['del'] and (mine or note.get('uid') == uid))]
             if len(keep) == len(notes):
-                return self.text(403, 'Удалить можно только свою заметку')
+                raise Forbidden('Удалить можно только свою заметку')
             notes = keep
         else:
             text = str(data.get('text') or '').strip()[:2000]
@@ -266,7 +268,7 @@ class ClientCardController(Controller):
                 admin.actor(self.handler)[1],
             )
         except LookupError as exc:
-            return self.text(404, str(exc))
+            raise NotFound(str(exc)) from None
         except ValueError as exc:
             raise BadRequest(str(exc)) from None
         return self.send_json({'ok': True, 'contacts': rows})
@@ -278,7 +280,7 @@ class ClientCardController(Controller):
         try:
             rows, gone = ClientContacts(store()).remove(cid, str(data.get('was') or ''), admin.actor(self.handler)[1])
         except LookupError as exc:
-            return self.text(404, str(exc))
+            raise NotFound(str(exc)) from None
         except ValueError as exc:
             raise BadRequest(str(exc)) from None
         admin.log(self.handler, store(), 'delete_contact', 'client', cid, before=gone)
@@ -331,7 +333,7 @@ class OurDocsController(Controller):
             return self.send_json({'ok': True, 'templates': tpl.info()})
         data = tpl.read(kind)
         if data is None:
-            return self.not_found('Шаблон не загружен')
+            raise NotFound('Шаблон не загружен')
         return self.send(200, self.DOCX, data, self.attachment(f'{kind}.docx', f'{kind}.docx'))
 
     @route(r'/api/doctpl/(contract|spec)/remove', 'POST')

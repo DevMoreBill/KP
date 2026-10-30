@@ -40,6 +40,31 @@ def pdf_of(docx) -> str:
 PASS = object()  # обработчик: «не мой случай» — ищем следующий маршрут
 
 
+class Refused(Exception):
+    """Отказ маршрута: ответ с кодом класса и текстом для пользователя формирует Router — 403 и 404 в одном месте."""
+
+    CODE: int
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.text = text
+
+
+class Forbidden(Refused):
+    """Нет прав на запись (чужое КП, сделка, дело) — 403."""
+
+    CODE = 403
+
+
+class NotFound(Refused):
+    """Нет такой записи или файла — 404 (без пояснения — «not found», как прежде)."""
+
+    CODE = 404
+
+    def __init__(self, text: str = 'not found') -> None:
+        super().__init__(text)
+
+
 def route(pattern: str, methods: str | tuple | None = None):
     """Обработчик маршрута: pattern — регулярное выражение всего пути, methods — метод, кортеж или None (любой)."""
     allowed = None if methods is None else ((methods,) if isinstance(methods, str) else tuple(methods))
@@ -143,6 +168,8 @@ class Router:
                 return handler.conflict(exc)
             except DesktopError as exc:
                 return handler.send(422, 'text/plain; charset=utf-8', str(exc))
+            except Refused as exc:  # нет прав (403), нет записи (404) — текст для пользователя
+                return handler.send(exc.CODE, 'text/plain; charset=utf-8', exc.text)
             if res is not PASS:
                 return res
         return handler.not_found()
