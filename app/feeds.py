@@ -14,7 +14,11 @@ from typing import Any
 from xml.etree import ElementTree
 
 import catalog_migrate
+import feed_desc
 import feed_files
+import feed_match
+import feed_site
+import feed_stock
 import images
 import imgfetch
 from config import DATA_DIR
@@ -548,7 +552,7 @@ def load(store, feed_cfg, max_age=CACHE_SEC, root: str = '') -> dict:
             else None
         )
         if extra:  # описания серий и позиций, которых нет в фиде, — из файла описаний
-            feed_files.apply_extra(feed, feed_files.parse_extra(extra))
+            feed_site.apply_extra(feed, feed_files.parse_extra(extra))
     with _LOCK:
         _CACHE[feed_cfg['id']] = (datetime.now(), key, feed)
     return feed
@@ -742,7 +746,7 @@ def _doc_cfg(doc) -> dict:
     """Исполнение позиции каталога: по модели, а если в ней нет латинской серии — по названию; плюс поля карточки."""
     attrs = doc.get('attrs') or {}
     cfg = feed_files.model_cfg(attrs.get('model') or doc.get('name'), doc.get('name'))
-    if not feed_files.lat_series(cfg):
+    if not feed_match.lat_series(cfg):
         cfg = feed_files.model_cfg(doc.get('name'), doc.get('name'))
     return feed_files.card_attrs(cfg, attrs)
 
@@ -1122,14 +1126,14 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
     for i, offer in enumerate(offs):
         if offer.get('url'):
             by_url[offer['url'].rstrip('/').lower()] = i
-        by_name.setdefault(feed_files.name_key(offer['name']), i)
+        by_name.setdefault(feed_match.name_key(offer['name']), i)
         ocfg.append(_offer_cfg(offer))
     by_lat: dict = {}
     by_code: dict = {}
     for i, cfg in enumerate(ocfg):
-        if feed_files.lat_series(cfg) and cfg['size'] is not None:
-            by_lat.setdefault((feed_files.lat_series(cfg), cfg['size']), []).append(i)
-        k = feed_files.code_cfg(offs[i]['name'])
+        if feed_match.lat_series(cfg) and cfg['size'] is not None:
+            by_lat.setdefault((feed_match.lat_series(cfg), cfg['size']), []).append(i)
+        k = feed_match.code_cfg(offs[i]['name'])
         if k:
             by_code.setdefault(k['ser'], []).append((i, k))
     pairs: list[tuple] = []
@@ -1138,12 +1142,12 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
         feed_info = doc.get('feed') or {}
         if feed_info.get('url') and feed_info['url'].rstrip('/').lower() in by_url:
             pairs.append((0, 0, by_url[feed_info['url'].rstrip('/').lower()], doc['id']))
-        offer_ix = by_name.get(feed_files.name_key(doc.get('name')))
+        offer_ix = by_name.get(feed_match.name_key(doc.get('name')))
         if offer_ix is not None:
             pairs.append((1, 0, offer_ix, doc['id']))
         cfg = _doc_cfg(doc)
         pressures = _pressures(doc)
-        lat, lat_hit = feed_files.lat_series(cfg), False
+        lat, lat_hit = feed_match.lat_series(cfg), False
         for offer_ix in by_lat.get((lat, cfg['size']), []) if lat and cfg['size'] is not None else []:
             offer_cfg = ocfg[offer_ix]
             if offer_cfg['vsd'] != cfg['vsd'] or offer_cfg['w'] != cfg['w'] or offer_cfg['dry'] != cfg['dry']:
@@ -1188,7 +1192,7 @@ def build_plan(store, feed, offs, feed_docs=None) -> dict:
 def _code_pairs(doc, offs, ocfg, by_code) -> list:
     """Русские коды моделей (АСО): карточка «АСО-ВК11/10» — позиция парса «АСО-ВК 11/10М2», «К25М1/10» — «К25М1»."""
     attrs = doc.get('attrs') or {}
-    doc_code = feed_files.code_cfg(doc.get('name'), attrs.get('model'))
+    doc_code = feed_match.code_cfg(doc.get('name'), attrs.get('model'))
     if not doc_code or not doc_code['cyr']:  # латинские модели (Dalgakiran) — только по исполнению выше
         return []
     out = []
@@ -1269,9 +1273,9 @@ def build(offer, feed, types, old=None, put_image=None) -> tuple:
     if not old or doc.get('name') == orig.get('name'):
         doc['name'] = offer['name']
     feats = doc.get('features') or []
-    # описание из фида — несколько блоков карточки (feed_files.desc_blocks); пока их не правили вручную, они обновляются целиком
+    # описание из фида — несколько блоков карточки (feed_desc.desc_blocks); пока их не правили вручную, они обновляются целиком
     fds = [x for x in feats if x.get('feed') and not x.get('feedOpts')]
-    blocks = feed_files.desc_blocks(desc) if desc else []
+    blocks = feed_desc.desc_blocks(desc) if desc else []
     untouched = (
         not fds
         or _hash('\n'.join(x.get('text') or '' for x in fds)) == orig.get('desc')
@@ -1528,7 +1532,7 @@ def _image_putter(store, image_store) -> tuple:
         split = urllib.parse.urlsplit(url)
         try:
             if url.startswith('kpa:'):  # картинка из самого JSON-парса (вырезка из каталога)
-                ctype, data = feed_files.asset(url) or (None, None)
+                ctype, data = feed_site.asset(url) or (None, None)
                 if not data:
                     raise ValueError('картинки нет в файле парса — загрузите парс заново')
             else:
@@ -1899,7 +1903,7 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None, sink=N
     sink — куда идут изменённые позиции (CatalogPut — в каталог; предпросмотр — только запоминает)."""
     changes: list = []
     sumr: dict[str, Any] = {'cards': 0, 'priced': 0, 'updated': 0, 'noPrice': [], 'missing': [], 'unclear': []}
-    sidx = feed_files.stock_index(stock) if stock else None
+    sidx = feed_stock.stock_index(stock) if stock else None
     sink = sink or CatalogPut(store, author or ('Фид «{}»'.format(feed['name'])))
     genset = any(price.get('genset') for price in prices)
     for doc in _maker_cards(store, feed):
@@ -1939,11 +1943,11 @@ def price_cards(store, feed, prices, today, author: str = '', stock=None, sink=N
         if (
             stock and sidx is not None and not price.get('genset')
         ):  # остатки поставщика — и у карточек, заведённых вручную
-            row = feed_files.StockModel.of_rows(stock, rows, doc.get('name'), sidx)
-            stock_info = feed_files.stock_info(row)
+            row = feed_stock.StockModel.of_rows(stock, rows, doc.get('name'), sidx)
+            stock_info = feed_stock.stock_info(row)
             offer.update(qty=stock_info['qty'], available=stock_info['available'], nostock=False, stockInfo=stock_info)
         elif price.get('genset'):  # прайс-склад ДГУ: наличие машин — в самом прайсе
-            stock_info = feed_files.GensetMatch.stock(rows) or feed_files.stock_info(None)
+            stock_info = feed_files.GensetMatch.stock(rows) or feed_stock.stock_info(None)
             offer.update(qty=stock_info['qty'], available=stock_info['available'], nostock=False, stockInfo=stock_info)
         for cat in _price_part(doc, offer, feed, today):
             changes.append(_change(doc['id'], doc, cat))

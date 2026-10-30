@@ -1,5 +1,5 @@
 """Прайс-склад генераторных установок (HERTZ): лист машин на складе и листы моделей — по заголовкам столбцов, в любом порядке
-листов и строк. Строки прайса и наличие — в формате feed_files.parse_price / stock_info; сопоставление с карточками каталога —
+листов и строк. Строки прайса и наличие — в формате feed_price_file.parse_price / feed_stock.stock_info; сопоставление с карточками каталога —
 по модели, исполнению (открытая / в кожухе) и альтернатору."""
 
 import re
@@ -164,7 +164,7 @@ class Stock:
 
     @staticmethod
     def info(state: dict) -> dict:
-        """→ doc.stock (как feed_files.stock_info): {qty, available, wh, transit, prod, eta, promo}."""
+        """→ doc.stock (как feed_stock.stock_info): {qty, available, wh, transit, prod, eta, promo}."""
         out: dict[str, Any] = {'qty': state['qty'], 'available': state['qty'] > 0}
         for key in ('transit', 'prod', 'eta', 'promo'):
             if state.get(key):

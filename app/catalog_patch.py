@@ -270,7 +270,7 @@ class CatalogSheet:
         return text[: CatalogPatch.MAX_TEXT]
 
     def patch(self, data: bytes, title: str = '') -> dict:
-        from feed_files import read_xlsx
+        from feed_xlsx import read_xlsx
 
         book = read_xlsx(data)
         orig, known = {}, set()  # known — позиции, у которых есть «было»: пустое поле в «было» не пишется

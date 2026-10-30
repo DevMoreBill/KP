@@ -72,7 +72,7 @@ class UnitTest(unittest.TestCase):
         self.assertEqual(offers[0].get('available'), 'true')
         self.assertTrue(offers[0].find('price') is not None and offers[0].find('categoryId') is not None)
         name, raw, ctype, _ = ex.build(ids, dict(opts, fmt='xlsx'), admin=False)
-        from feed_files import read_xlsx
+        from feed_xlsx import read_xlsx
         book = read_xlsx(raw)
         self.assertGreaterEqual(len(book), 2, 'лист на категорию')
         self.assertTrue(all(rows[0].get(0) == 'Наименование' for _, rows in book))
@@ -196,7 +196,7 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(self.http.req('POST', '/api/clients/export', {'fmt': 'xlsx'}, cookie=c2, headers=self.H)[0], 403)
             st, b, hd = self.http.req('POST', '/api/clients/export', {'fmt': 'xlsx'}, cookie=c1, headers=self.H, raw=True)
             self.assertEqual(st, 200)
-            from feed_files import read_xlsx
+            from feed_xlsx import read_xlsx
             self.assertEqual(len(read_xlsx(b)[0][1]), 4, 'шапка и 3 клиента')
         finally:
             self.admin('POST', '/api/admin/moderation', {'enabled': False, 'pending': 'reject'})

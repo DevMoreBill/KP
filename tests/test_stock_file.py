@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Файл остатков поставщика (feed_files.StockFile): одна модель несколькими строками — складывается (разные коды партий),
+"""Файл остатков поставщика (feed_stock.StockFile): одна модель несколькими строками — складывается (разные коды партий),
 общее название запчасти у разных артикулов — разные товары; склады отдельными столбцами (и под общей шапкой «Остатки по
 складам»), «Итого» не удваивает, свободный остаток важнее общего, резерв не считается; «в пути» и дата поступления (текстом
 и числом Excel); прежние виды файлов — как раньше. Вымышленные данные."""
@@ -9,6 +9,7 @@ from unittest import mock
 
 from test_feed_genset import Book  # подключает kit — путь к app/
 import feed_files  # noqa: E402
+import feed_stock  # noqa: E402
 
 
 def parse(rows):
@@ -32,7 +33,7 @@ class StockFileTest(unittest.TestCase):
         stock = feed_files.parse_stock(Book.xlsx([('Остатки', [['Артикул', 'Номенклатура', 'Остаток'],
                                                                ['00-001', 'Компрессор TIDY 10-10 (O)', 2],
                                                                ['00-002', 'Компрессор TIDY 10-10 (O)', 3]])]))
-        self.assertEqual(feed_files.stock_row(stock, '00-002', '')['qty'], 5)
+        self.assertEqual(feed_stock.stock_row(stock, '00-002', '')['qty'], 5)
 
     def test_warehouse_columns(self):
         got = parse([['Артикул', 'Номенклатура', 'Склад Москва', 'Склад Екатеринбург', 'Итого'],
@@ -41,7 +42,7 @@ class StockFileTest(unittest.TestCase):
         dk20 = got['Осушитель DK 20']
         self.assertEqual((dk20['qty'], dk20['wh']), (5, {'Склад Москва': 2, 'Склад Екатеринбург': 3}))
         self.assertEqual(got['Осушитель DK 30']['wh'], {'Склад Екатеринбург': 1})
-        info = feed_files.stock_info(dk20)
+        info = feed_stock.stock_info(dk20)
         self.assertEqual(info['wh'], [['Склад Екатеринбург', 3], ['Склад Москва', 2]])
 
     def test_two_row_head_transit_and_dates(self):
@@ -125,7 +126,7 @@ class StockFileTest(unittest.TestCase):
             got = parse([['Артикул', 'Номенклатура', 'В пути', 'Дата поступления'],
                          ['B-1', 'Компрессор GON 50-8', 2, '10.01.2027'],
                          ['B-2', 'Компрессор GON 50-8', 1, '20.12.2026']])
-            merged = feed_files._merge_stock([{'name': 'LUY050-7', 'eta': '10.01'}, {'name': 'LUY050-7 (на шасси)', 'eta': '20.12'}])
+            merged = feed_stock._merge_stock([{'name': 'LUY050-7', 'eta': '10.01'}, {'name': 'LUY050-7 (на шасси)', 'eta': '20.12'}])
             state = Stock.empty()
             for status in ('прибытие 10.01.2027', 'прибытие 20.12.2026'):
                 Stock.add(state, status)

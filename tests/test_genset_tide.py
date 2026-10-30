@@ -7,6 +7,7 @@ from datetime import date
 
 from test_feed_genset import Book  # подключает kit — путь к app/
 import feed_files  # noqa: E402
+import feed_xlsx  # noqa: E402
 from genset_sheets import GensetBook  # noqa: E402
 from genset_tide import TideBook  # noqa: E402
 
@@ -55,7 +56,7 @@ class TideBookTest(unittest.TestCase):
     SERIAL = (TODAY - date(1899, 12, 30)).days
 
     def rows(self, **kw):
-        sheets = feed_files.read_xlsx(book(self.SERIAL, **kw))
+        sheets = feed_xlsx.read_xlsx(book(self.SERIAL, **kw))
         self.assertTrue(TideBook.applies(sheets))
         rows, summary = TideBook.price_rows(sheets, self.TODAY)
         return {(row['short'], row['genset']['exec'], row['genset']['alt']): row for row in rows}, summary
@@ -90,7 +91,7 @@ class TideBookTest(unittest.TestCase):
         sheet = [{1: 'МАРКА', 2: 'МОДЕЛЬ', 3: 'НАЛИЧИЕ', 4: 'ДВИГАТЕЛЬ', 6: 'НОМИН. МОЩН.', 12: 'РРЦ с НДС ОТКРЫТАЯ'},
                  {6: 'кВт', 7: 'кВА'},
                  {1: 'Tide Power', 2: 'PDC10-SA', 3: 'под заказ', 4: 'Lister Petter', 6: 8, 7: 10, 12: 0}]
-        GensetBook.price_rows(feed_files.read_xlsx(Book.xlsx([('Lister Panda', sheet)])))
+        GensetBook.price_rows(feed_xlsx.read_xlsx(Book.xlsx([('Lister Panda', sheet)])))
 
 
 if __name__ == '__main__':

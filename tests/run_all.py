@@ -68,6 +68,12 @@ class Changed:
     NODE = re.compile(r"tests', 'js'|tests/js|'js', ")   # набор запускает проверки интерфейса в Node
     CONTROLS = 'test_controls'
     STATION = re.compile(r'^app/web/(js/(features/(layout|calc|draw|eskd|view|kit|station|req|rules|rules-doc|tz|tz-out)|core)/|rules/)')
+    PARTS = {  # части прежних модулей: правка части затрагивает те же наборы, что правка целого
+        'admin': ('admin_accounts', 'admin_access', 'admin_journal', 'catalog_save', 'admin_base', 'admin_feeds_api',
+                  'admin_system_api', 'admin_records_api', 'admin_data_api'),
+        'feeds': ('feed_text', 'feed_pages', 'feed_prices', 'feed_cats'),
+        'feed_files': ('feed_xlsx', 'feed_desc', 'feed_match', 'feed_price_file', 'feed_site', 'feed_stock'),
+    }
     SLOW = {'test_fuzz': ('web_api', 'kp_server'), 'test_security': ('web_api', 'admin', 'kp_server', 'storage'),
             'test_update_fallback': ('updater', 'update_sign', 'kp_server', 'launcher')}
 
@@ -83,6 +89,7 @@ class Changed:
         keys = {os.path.splitext(os.path.basename(f))[0] for f in touched
                 if f.endswith('.py') and f.startswith(('app/', 'tests/')) and not f.startswith('tests/ui/')}
         keys |= {os.path.splitext(os.path.basename(f))[0] for f in touched if f.startswith('templates/')}
+        keys |= {whole for whole, parts in cls.PARTS.items() if keys & set(parts)}
         js = any(f.startswith(('app/web/js/', 'tests/js/')) for f in touched)
         html = js or any(f.endswith('.html') and f.startswith('app/web/') for f in touched)
         station = any(cls.STATION.match(f) or f.startswith('tests/js/') for f in touched)
