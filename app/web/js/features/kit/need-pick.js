@@ -18,8 +18,6 @@ import { ReqNum } from '../req/req-num.js';
 export class NeedPick {
   static EPS = 1e-9;
   static ADS_CLASS_MAX = 3;
-  static DEFAULT_BAR = 7;
-  static HEAD_PENALTY = 0.3;
   static LABEL = { flow: 'производительность от', volume: 'объём от' };
   static UNIT = { flow: 'м³/мин', volume: 'л' };
   static MAIN = { comp: '_compressors', dgu: '_gensets', pump: '_pumps' };
@@ -31,7 +29,7 @@ export class NeedPick {
   static _context(item) {
     const air = KitNeed.air(item);
     const req = StationReq.of(item);
-    return { air, flow: air ? air.q : 0, req, bar: ReqNum.loose(req.pressure) || 0, compBar: KitNeed.bar(item) };
+    return { air, flow: air ? air.work : 0, req, bar: ReqNum.loose(req.pressure) || 0, compBar: KitNeed.bar(item) };
   }
 
   /**
@@ -55,12 +53,14 @@ export class NeedPick {
     return found ? { c: found.o.c, n: found.n } : null;
   }
 
+  // поправки — те же, что у «Компоновки» и расчётной записки; точка росы — у осушителя, который её даёт (как у TzPick)
   static _dryer(item, rec, ctx) {
     if (!(ctx.flow > 0)) return null;
     const ads = rec.cat === 'dryer_ads';
-    const dewPoint = ads && rec.f && rec.f.dewPoint ? ReqNum.loose(rec.f.dewPoint) : null;
-    const limits = { tmax: ReqNum.loose(ctx.req.tmax), pdp: dewPoint, H: TzPick.hmax(item), W: TzPick.wmax(item) };
-    return TzPick.dryer(ads, ctx.flow, ctx.bar, ctx.compBar, limits);
+    const need = { pdp: ctx.req.pdp, air: StationUi.opts(item).air };
+    const pdp = ads || !TzPick.adsNeed(need) ? TzPick.dewNeed(need) : null;
+    const limits = { temps: ctx.air.dryer.temps, pdp, H: TzPick.hmax(item), W: TzPick.wmax(item) };
+    return TzPick.dryer(ads, ctx.flow, ctx.air.dryer.bar, ctx.compBar, limits);
   }
 
   // замена ресиверов на учёте (recv-split) — по объёму заменяемых; остальные — типоразмер и число по методике
@@ -142,7 +142,9 @@ export class NeedPick {
     ];
     const title = rec.title.charAt(0).toLowerCase() + rec.title.slice(1);
     const chain =
-      air && air.q ? ` — к компрессорам ${AirChain.flowText(air.q)} м³/мин, ${AirChain.flowText(air.bar)} бар` : '';
+      air && air.work
+        ? ` — к компрессорам ${AirChain.flowText(air.work)} м³/мин, ${AirChain.flowText(air.bar)} бар`
+        : '';
     const tail = shown.length ? ` Показаны подходящие: ${shown.join(', ')}.` : '';
     return `${rec.swap ? 'Заменить: ' : 'Нужно: '}${title}${chain}.${tail}`;
   }
@@ -255,8 +257,7 @@ export class NeedPick {
       .filter(card => TzPick.pumpOk(card))
       .map(card => ({ c: card, v: flowOf(card), h: headOf(card) }))
       .filter(option => option.v > 0 && (!(head > 0) || option.h >= head));
-    const penalty = option => (head > 0 && option.h > 0 ? (this.HEAD_PENALTY * (option.h - head)) / head : 0);
-    const unit = TzPick.units(options, flow, work, penalty);
+    const unit = TzPick.units(options, flow, work, (option, count) => TzPick.pumpPen(option, count, { q: flow, head }));
     const count = unit ? unit.n : work || 1;
     const per = flow / count;
     const fmt = AirChain.flowText;

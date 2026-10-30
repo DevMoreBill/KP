@@ -2,6 +2,7 @@ import { AirCheck } from './air-check.js';
 import { PressureVessel } from './pressure-vessel.js';
 import { StationEquip } from './station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
+import { FieldUnit } from '../../core/field-unit.js';
 
 /**
  * Подготовка сжатого воздуха по ходу воздуха: компрессоры → (влагоотделитель) → «мокрый» ресивер → фильтры →
@@ -43,6 +44,14 @@ export class AirChain {
     [/м[³3]\s*\/\s*ч/i, v => v / 60],
     [/л\s*\/\s*с/i, v => v * 0.06],
   ];
+  /** Знак температуры в тексте: ноль — без знака. */
+  static _SIGN = { [-1]: '−', 0: '', 1: '+' };
+  /** Строка перепада давления и её единицы → делитель до бар. */
+  static _DROP = /перепад|потер[ия]\S* давлени/i;
+  static _DROP_UNITS = [
+    [/мбар|mbar/i, 1000],
+    [/кпа/i, 100],
+  ];
 
   /** Ступень по ходу воздуха у фильтров: без осушителя и с осушителем (до и после него). */
   static FILTER_STAGE = {
@@ -82,15 +91,6 @@ export class AirChain {
       stage: 'Угольный (от паров масла)',
     },
   };
-
-  static get _DRYER_K() {
-    return StationRules.raw('dryer.kp');
-  }
-
-  /** Запас производительности осушителя (правило dryer.margin). */
-  static get MARGIN() {
-    return StationRules.raw('dryer.margin');
-  }
 
   /** Доля воздуха на продувку адсорбционного осушителя. */
   static get PURGE() {
@@ -144,10 +144,26 @@ export class AirChain {
     return match ? StationEquip.num(match[0]) : null;
   }
 
-  /** Производительность, м³/мин: поле каталога или строка «Производительность» (л/мин, м³/ч, л/с). */
+  /**
+   * Перепад давления по паспорту, бар: строка «Перепад / потери давления» (бар, мбар или кПа); нет — null.
+   * @param {object} part
+   * @returns {number|null}
+   */
+  static drop(part) {
+    for (const row of (part.rows || []).filter(entry => entry && this._DROP.test(String(entry.k || '')))) {
+      const value = this.first(row.v);
+      if (value == null) continue;
+      const text = `${String(row.k || '')} ${String(row.v || '')}`;
+      const unit = this._DROP_UNITS.find(([pattern]) => pattern.test(text));
+      return unit ? value / unit[1] : value;
+    }
+    return null;
+  }
+
+  /** Производительность, м³/мин: поле каталога (в единице своей категории) или строка «Производительность» (л/мин, м³/ч, л/с). */
   static flow(part) {
     const own = StationEquip.num((part.attrs || {}).flow);
-    if (own > 0) return own;
+    if (own > 0) return own * FieldUnit.factor(StationEquip.cat(part), 'flow', 'м³/мин');
     for (const row of (part.rows || []).filter(
       x => x && /производительн|пропускн|расход воздух/i.test(AirChain._key(x)),
     )) {
@@ -159,10 +175,10 @@ export class AirChain {
     return null;
   }
 
-  /** Рабочее давление, бар (МПа пересчитываются). */
+  /** Рабочее давление, бар (поле каталога — в единице своей категории, МПа пересчитываются). */
   static bar(part) {
     const own = StationEquip.num((part.attrs || {}).pressure);
-    if (own > 0) return own;
+    if (own > 0) return own * FieldUnit.factor(StationEquip.cat(part), 'pressure', 'бар');
     const row = (part.rows || []).find(x => x && /давлени/i.test(AirChain._key(x)));
     const v = row ? this.first(row.v) : null;
     if (!(v > 0)) return null;
@@ -299,6 +315,8 @@ export class AirChain {
       /встроенн\S*\s+(?:\S+\s+){0,2}фильтр|фильтр\S*\s+(?:\S+\s+)?встроен|(?:^|\s)с\s+(?:\S+\s+)?фильтрам|интегрированн\S*\s+(?:\S+\s+)?фильтр/i;
     const pdp = this.first(String(attrs.dewPoint || '').replace('−', '-'));
     return {
+      card: { name: String(part.name || ''), attrs },
+      drop: this.drop(part),
       type: this._dryerType(String(attrs.cat || part.cat || ''), String(part.name || ''), text),
       filters: AirChain._isSet(attrs.filters)
         ? AirChain._isYes(attrs.filters)
@@ -320,6 +338,7 @@ export class AirChain {
     const grade = String(part.airGrade || '');
     const cat = String((part.attrs || {}).cat || part.cat || '');
     return {
+      drop: this.drop(part),
       grade: this.GRADES[grade] ? grade : this.grade(part, cat, this.text(part)),
       pinned: Boolean(this.GRADES[grade]),
       oil: this.oil(part),
@@ -451,11 +470,6 @@ export class AirChain {
     return (u.air || {}).type === 'gen' ? 'генераторы' : 'осушители';
   }
 
-  /** Поправка осушителя на давление. */
-  static dryerK(bar) {
-    return bar > 0 ? StationRules.interp(this._DRYER_K, bar) : 1;
-  }
-
   /** Поправка фильтра на давление: пропорционально абсолютному давлению к номиналу. */
   static filterK(bar) {
     const rule = StationRules.raw('filter.kp');
@@ -465,6 +479,15 @@ export class AirChain {
   /** Число с одним знаком после запятой: 7.5 → «7,5». */
   static flowText(v) {
     return (Math.round(v * 10) / 10).toString().replace('.', ',');
+  }
+
+  /**
+   * Точка росы для текста: «−40 °C», «+3 °C».
+   * @param {number} pdp
+   * @returns {string}
+   */
+  static dewText(pdp) {
+    return `${this._SIGN[Math.sign(pdp)]}${Math.abs(pdp)} °C`;
   }
 
   /** Произведение давления на вместимость, МПа·м³ — для отнесения сосуда к подконтрольным. */
@@ -488,8 +511,15 @@ export class AirChain {
     return v ? { n: Math.ceil(vol / v - 1e-9), v } : null;
   }
 
-  /** Проверка и подбор цепочки: {chain, q, bar, issues, recs, cls, units, cond} или null без компрессоров. */
-  static check(equip, cls, req) {
-    return new AirCheck(equip, cls, req).run();
+  /**
+   * Проверка и подбор цепочки: {chain, q, bar, dryer, issues, recs, cls, units, cond} или null без компрессоров.
+   * @param {object[]} equip StationEquip.list
+   * @param {string} cls класс чистоты
+   * @param {object} req StationReq.recvIn
+   * @param {object} [dryer] StationReq.dryer — условия поправок осушителя
+   * @returns {object|null}
+   */
+  static check(equip, cls, req, dryer) {
+    return new AirCheck(equip, cls, req, dryer).run();
   }
 }

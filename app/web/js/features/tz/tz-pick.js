@@ -1,6 +1,7 @@
 import { AirChain } from '../layout/air-chain.js';
-import { DryerSizing } from '../calc/dryer-sizing.js';
+import { DryerDerate } from '../layout/dryer-derate.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
+import { PumpPoint } from '../calc/pump-point.js';
 import { PressureVessel } from '../layout/pressure-vessel.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { StationClear } from '../layout/station-clear.js';
@@ -13,6 +14,7 @@ import { StationSup } from './station-sup.js';
 import { TzFit } from './tz-fit.js';
 import { StationDefaults } from '../kit/station-defaults.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { FieldUnit } from '../../core/field-unit.js';
 import { KitNeed } from '../kit/kit-need.js';
 import { KitPart } from '../kit/kit-part.js';
 import { Api } from '../../core/net.js';
@@ -43,6 +45,7 @@ export class TzPick {
     area: 0.3, // за м² пола («чтобы поместилось»)
     dguHood: 0.15, // ДГУ в кожухе шире — негабарит
     head: 0.3, // лишний напор насоса, доля
+    pumpCheck: 1, // рабочая точка между крайними точками паспорта — «уточните»: подходящий точно — важнее
   };
   static AREA_UNKNOWN = 3.5; // м², если габарит агрегата неизвестен
   static EPS = 1e-9;
@@ -52,11 +55,12 @@ export class TzPick {
   static BASE_MAX = 6; // базовых ресиверов не больше
   static NO_BAR = 99; // давление не указано — в конец списка
   static SUP_WEIGHT = 10; // тот же поставщик важнее, чем закрытые им виды
-  static LPM = 1000; // поршневые — производительность в л/мин
+  static PUMP = /pump$/;
   static WALL_DEFAULT = 100; // отступ от стены, если в матрице нет, мм
   static ROAD_LEN = 10000; // длина условного блока для ширины и высоты помещения, мм
   static ADS_CLASS = 3; // класс по влаге 1–3 — адсорбционный осушитель
   static ADS_PDP = -20; // точка росы ниже — адсорбционный, °C
+  static DEGREES = /\s*°\s*[CcСс]?\s*$/;
   static LOAD_DEFAULT = 75; // нагрузка ДГУ без расчёта, %
   static STEM = 5; // начало слова для «уже есть в названии»
 
@@ -85,12 +89,12 @@ export class TzPick {
     return StationEquip.num(value);
   }
 
-  /** Производительность позиции каталога: компрессоры и осушители — м³/мин, насосы — м³/ч. */
+  /** Производительность позиции каталога: компрессоры и осушители — м³/мин, насосы — м³/ч (из единицы поля категории). */
   static flow(item) {
     const attrs = Attrs.of(item);
     const value = this.num(attrs.flow);
     if (!(value > 0)) return 0;
-    return attrs.cat === 'comp_piston' ? value / this.LPM : value;
+    return value * FieldUnit.factor(attrs.cat, 'flow', this.PUMP.test(attrs.cat) ? 'м³/ч' : 'м³/мин');
   }
 
   /** Из подходящих — с наименьшим key. */
@@ -118,7 +122,7 @@ export class TzPick {
           options.push({
             o: option,
             n: count,
-            score: (option.v * count - need) / need + this.PENALTY.unit * (count - 1) + pen(option),
+            score: (option.v * count - need) / need + this.PENALTY.unit * (count - 1) + pen(option, count),
           });
     const best = StationSup.pick(options, () => 0, 0);
     if (!best || !rank) return best;
@@ -193,11 +197,18 @@ export class TzPick {
   }
 
   /**
-   * Осушитель на Qd, м³/мин, с поправками производителя на давление B и температуру tmax; давление аппарата — не ниже Bc,
-   * точка росы — не выше pdp, по высоте H и ширине W помещения: {o, n} | null.
+   * Осушитель на Qd, м³/мин, с поправками производителя (DryerDerate) на давление B и температуры (temps или из tmax, tin);
+   * давление аппарата — не ниже Bc, точка росы — не выше pdp, по высоте H и ширине W помещения: {o, n} | null. Условия вне
+   * таблиц производителя (взяты крайние значения) — только если других нет.
    */
-  static dryer(ads, demand, bar, barMin, { tmax, pdp = null, H: height = 0, W: width = 0 } = {}) {
-    const temps = DryerSizing.temps({ tmax, tin: null });
+  static dryer(
+    ads,
+    demand,
+    bar,
+    barMin,
+    { tmax, tin = null, temps = null, pdp = null, H: height = 0, W: width = 0 } = {},
+  ) {
+    const conditions = temps || DryerDerate.temps({ tmax, tin });
     const refBar = bar > 0 ? bar : StationRules.raw('dryer.ref').p;
     const category = ads ? 'dryer_ads' : 'dryer_refrig';
     const dewPoint = item => this.num(String(Attrs.of(item).dewPoint ?? '').replace(/[−–]/g, '-'));
@@ -208,16 +219,13 @@ export class TzPick {
     const options = Catalog.cache
       .filter(item => Attrs.of(item).cat === category && fits(item))
       .map(item => {
-        const factor = DryerSizing.factor(
-          { name: item.name, attrs: Attrs.of(item), rows: [] },
-          refBar,
-          temps,
-          ads ? 'ads' : 'refrig',
-        ).F;
-        return { c: item, v: this.flow(item), cap: this.flow(item) * factor };
+        const card = { name: item.name, attrs: Attrs.of(item), rows: [] };
+        const factor = DryerDerate.factor(card, refBar, conditions, ads ? 'ads' : 'refrig');
+        return { c: item, v: this.flow(item), cap: this.flow(item) * factor.F, out: factor.out.length > 0 };
       })
       .filter(option => option.v > 0 && this._pressOk(this.num(Attrs.of(option.c).pressure), barMin));
-    return this.many(options, demand);
+    const inTable = options.filter(option => !option.out);
+    return this.many(inTable, demand) || this.many(options, demand);
   }
 
   /**
@@ -590,11 +598,36 @@ export class TzPick {
     return this.note(job.got, job.miss);
   }
 
+  /**
+   * Требуемая точка росы, °C: более строгая из ТЗ и класса воды ISO 8573-1 (air.pdp); нет ни той, ни другой — null.
+   * @param {object} need запрос подбора
+   * @returns {number|null}
+   */
+  static dewNeed(need) {
+    const own = StationReq.num(
+      String(need.pdp ?? '')
+        .replace(/[−–]/g, '-')
+        .replace(this.DEGREES, ''),
+    );
+    const water = +(String(need.air || '').split('.')[1] || 0);
+    const known = [own, water ? AirChain.PDP[water] : null].filter(value => value != null);
+    return known.length ? Math.min(...known) : null;
+  }
+
+  /**
+   * Нужен ли адсорбционный осушитель: класс воды 1–3 или точка росы ниже ADS_PDP.
+   * @param {object} need запрос подбора
+   * @returns {boolean}
+   */
+  static adsNeed(need) {
+    const moistClass = +(String(need.air || '').split('.')[1] || 0);
+    return Boolean((moistClass && moistClass <= this.ADS_CLASS) || (need.pdp != null && +need.pdp <= this.ADS_PDP));
+  }
+
   /** Потребность — FAD с запасом; адсорбционный осушитель — компрессоры с запасом на продувку. */
   static _need(job) {
     const { q: need } = job;
-    const moistClass = +(String(need.air || '').split('.')[1] || 0);
-    job.ads = (moistClass && moistClass <= this.ADS_CLASS) || (need.pdp != null && +need.pdp <= this.ADS_PDP);
+    job.ads = this.adsNeed(need);
     const demand = need.flow > 0 ? StationReq.need(need, need.flow) : { v: 0, why: '' };
     job.Q = job.ads && demand.v > 0 ? demand.v / (1 - AirChain.PURGE) : demand.v;
     return demand;
@@ -652,15 +685,18 @@ export class TzPick {
       job.got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');
   }
 
-  /** Осушитель — на всю производительность рабочих компрессоров с поправками производителя. */
+  /** Осушитель — на всю производительность рабочих компрессоров с поправками производителя и точкой росы по ТЗ. */
   static async _compDryer(job) {
     const chosen = job.picked;
     const demand = chosen ? chosen.o.v * chosen.n : job.Q;
-    const tmax = StationReq.num(String(job.q.tmax ?? '').replace(/[−–]/g, '-'));
-    const dryers = this.dryer(job.ads, demand, job.B, job.Bc, { tmax, H: job.H, W: this.wmax(job.x) });
+    const degrees = key => StationReq.num(String(job.q[key] ?? '').replace(/[−–]/g, '-'));
+    const pdp = this.dewNeed(job.q);
+    const limits = { tmax: degrees('tmax'), tin: degrees('tin'), pdp, H: job.H, W: this.wmax(job.x) };
+    const dryers = this.dryer(job.ads, demand, job.B, job.Bc, limits);
     if (!dryers?.o) {
+      const dew = pdp == null ? '' : ` и точкой росы не выше ${AirChain.dewText(pdp)}`;
       job.miss.push(
-        `${job.ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.flowText(demand)} м³/мин с поправками на давление и температуру`,
+        `${job.ads ? 'адсорбционный' : 'рефрижераторный'} осушитель на ${AirChain.flowText(demand)} м³/мин с поправками на давление и температуру${dew}`,
       );
       return;
     }
@@ -734,9 +770,7 @@ export class TzPick {
       .filter(item => this.pumpOk(item))
       .map(item => ({ c: item, v: this._top(Attrs.of(item).flow) || 0, h: this._top(Attrs.of(item).head) }))
       .filter(option => option.v > 0 && (!(need.head > 0) || option.h >= need.head));
-    const chosen = this.units(options, need.q, need.work, option =>
-      need.head > 0 && option.h > 0 ? (this.PENALTY.head * (option.h - need.head)) / need.head : 0,
-    );
+    const chosen = this.units(options, need.q, need.work, (option, count) => this.pumpPen(option, count, need));
     if (!chosen) {
       job.miss.push(
         `${need.work > 1 ? `${need.work} насоса` : 'насос'} на ${AirChain.flowText(need.q)} м³/ч${need.head ? ` и ${AirChain.flowText(need.head)} м` : ''}`,
@@ -745,6 +779,21 @@ export class TzPick {
     }
     job.add.push(await this.part(chosen.o.c, chosen.n + job.res, 'main'));
     job.got.push(`насосы ${chosen.n}${job.res ? ` + ${job.res} резервн.` : ''} × ${chosen.o.c.name}`);
+  }
+
+  /**
+   * Штраф насоса: лишний напор и рабочая точка, которую по крайним точкам паспорта не проверить (PumpPoint).
+   * @param {{c: object, h: number|null}} option позиция каталога и её напор
+   * @param {number} count рабочих насосов
+   * @param {{q: number, head: number}} need подача станции, м³/ч, и напор, м
+   * @returns {number}
+   */
+  static pumpPen(option, count, need) {
+    if (!(need.head > 0)) return 0;
+    const extra = option.h > 0 ? (this.PENALTY.head * (option.h - need.head)) / need.head : 0;
+    const tol = StationRules.raw('calc.tolerance');
+    const unsure = PumpPoint.verdict(Attrs.of(option.c), need.q / count, need.head, tol) === PumpPoint.CHECK;
+    return extra + (unsure ? this.PENALTY.pumpCheck : 0);
   }
 
   static async _pickDgu(job) {

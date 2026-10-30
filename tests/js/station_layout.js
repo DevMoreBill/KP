@@ -381,6 +381,8 @@ Check.run('нет места для прохода — контейнер бол
   if (g.level==='error') assert.ok(g.suggest, 'широкая ДГУ: подсказка контейнера');
   else assert.ok(g.entry, 'широкая ДГУ: с проходом');
   const gb=solve(C('block'), [wide]); Check.plan(gb, 'широкая ДГУ, блок'); assert.ok(gb.level!=='error' && gb.entry, 'широкая ДГУ в блоке — с проходом');
+  // технические требования чертежа — проход вдоль ДГУ по правилу dgu.pass, которое держит компоновка (было: «не менее 600 мм»)
+  assert.ok(new DrawText({ plan:gb, outside:[] }).aisle().includes(`вдоль ДГУ — не менее ${Mm.text(StationMatrix.grp('dgu').pass)} мм`), new DrawText({ plan:gb, outside:[] }).aisle());
   const pair=solve(C('block'), [Object.assign({}, deep, { qty:2 })]);
   Check.plan(pair, 'два глубоких компрессора'); assert.ok(pair.level!=='error' && pair.entry, 'два компрессора — с проходом');
 });
@@ -424,14 +426,15 @@ Check.run('сжатый воздух: последовательно, фильт
   assert.ok(I('Компрессор GA 37 VSD', {}, 'compressor').vsd && I('Компрессор с осушителем и фильтрами', {}, 'compressor').filter);
   assert.ok(I('Осушитель DK 60 со встроенными фильтрами', {}, 'dryer').filters && I('Осушитель CD 50', { cat:'dryer_ads' }, 'dryer').type==='ads');
   assert.strictEqual(I('Ресивер сухой 500 л', {}, 'receiver').role, 'dry'); assert.ok(Math.abs(AirChain.flow({ attrs:{}, rows:[{ k:'Производительность', v:'6 200 л/мин' }] })-6.2)<1e-9);
-  assert.ok(Math.abs(AirChain.dryerK(7)-1)<1e-9 && AirChain.dryerK(10)>1.1 && AirChain.dryerK(5)<0.9, 'поправка на давление');
+  assert.ok(Math.abs(DryerDerate.pressK(7)-1)<1e-9 && DryerDerate.pressK(10)>1.1 && DryerDerate.pressK(5)<0.9, 'поправка на давление');
   // КС: компрессор → ресивер → фильтр до осушителя → осушитель → фильтр после; у осушителя и ресивера — вход и выход
   const c62=P('Винтовой компрессор', { cat:'comp_screw', model:'K 37', kw:37, flow:6.2, pressure:8, size:'1400 × 900 × 1500' }, { role:'main' });
   const dr6=P('Рефрижераторный осушитель', { cat:'dryer_refrig', model:'R 70', flow:7.5, size:'900 × 600 × 1100' });
   const rc=P('Ресивер', { cat:'receiver', model:'РВ 900', volume:900, size:'750 × 750 × 2100' });
   const two=P('Магистральный фильтр FA 110', { cat:'filter', model:'FA 110', flow:8, size:'610*140' }, { qty:2 });
   // ресивер до осушителя («мокрый») — по требованию станции; по умолчанию — после подготовки воздуха (проверка ниже)
-  const ks=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two, P('Трубопровод', {}, { pipeMat:'steel' })], recv:'before' }); Check.plan(ks, 'КС цепочка'); draw(ks, 'КС цепочка');
+  // площадка с летом +20 °C: осушителя 7,5 м³/мин хватает (по правилу heat.t_summer, +35 °C, — нет: проверка ниже)
+  const ks=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two, P('Трубопровод', {}, { pipeMat:'steel' })], recv:'before', req:{ dryer:{ tmax:20 } } }); Check.plan(ks, 'КС цепочка'); draw(ks, 'КС цепочка');
   assert.deepStrictEqual(ks.air.chain.map(c=>c.kind), ['compressor', 'receiver', 'filter', 'dryer', 'filter'], 'по ходу воздуха');
   const it=k=>ks.items.find(i=>i.kind===k), air=ks.lines.find(l=>l.medium==='air'), port=(k, r)=>air.branches.find(b=>b.to===it(k).id+'#0' && b.role===r);
   assert.ok(it('compressor').x<it('receiver').x && it('receiver').x<it('dryer').x, 'ряд — по ходу воздуха');
@@ -440,6 +443,12 @@ Check.run('сжатый воздух: последовательно, фильт
   assert.ok(F[1].air.grade==='micro' && F[1].x>=port('dryer', 'out').x, 'тонкой очистки — после выхода осушителя');
   assert.ok(port('receiver', 'in').z1<port('receiver', 'out').z1, 'ресивер: вход внизу, выход вверху');
   assert.ok(!ks.issues.some(i=>i.air && i.level==='warn'), 'по составу замечаний нет: '+ks.issues.filter(i=>i.air).map(i=>i.text).join(' | '));
+  // без температуры в требованиях — лето по правилу: осушитель с поправками производителя (как в расчётной записке) мал
+  const hot=StationLayout.solve({ cont:C('block'), parts:[c62, dr6, rc, two], recv:'before' });
+  assert.ok(hot.air.dryer.temps.tin===StationRules.raw('heat.t_summer')+StationRules.raw('heat.vent_dt')+StationRules.raw('dryer.inlet_dt'), 'на входе — лето по правилу');
+  assert.ok(hot.issues.some(i=>i.air && i.level==='warn' && /^Осушитель \(поз\. 2\): с поправками производителя .* Нужен номинал не менее/.test(i.text)), 'мал летом');
+  const need=hot.air.recs.find(r=>r.key==='dryer-refrig');
+  assert.ok(need && Math.abs(parseFloat(need.r.flow[0].replace(',', '.'))*DryerDerate.factor(null, hot.air.dryer.bar, hot.air.dryer.temps, 'refrig').F-6.2)<0.1, 'номинал — на всю производительность с поправками');
   const sv=StationDrawing.svg(ks, meta(ks)); assert.ok(/Сжатый воздух — последовательно: поз\. [\d → ]+ → к потребителю/.test(sv), 'на чертеже — цепочка');
   assert.ok(StationScheme.svg(ks, meta(ks)).includes('один вход и один выход'), 'на схеме — один вход и один выход');
   // адсорбционный: перед ним — фильтр от масла (нет — предупреждение и подбор), после — пылевой
@@ -951,6 +960,19 @@ Check.run('отопление: теплопотери, тепло оборудо
   const p=at(-40); Check.plan(p, 'отопление'); const h=p.heat;
   assert.ok(h && h.on && h.tout===-40 && h.tin===StationNorms.INSIDE, 'расчёт есть, температура снаружи — из требований');
   assert.ok(h.qStop>0 && Math.abs(h.qStop-(h.qEnv+h.qInf))<=1, 'потери = ограждения + воздух');
+  // жалюзи с закрытыми клапанами — по рамке из летнего расчёта (было: всегда 0,8 м²), не меньше heat.louver_leak.vent
+  const S={ sum:h.vent.sum, work:[] }, frame=S.sum.Sin+S.sum.Sout, sys=p.sys||{}, low=StationRules.raw('heat.louver_leak').vent;
+  assert.ok(frame>low, 'приток и выброс по рамке: '+frame);
+  assert.strictEqual(StationHeat.louverArea(p, sys, S), frame);
+  assert.strictEqual(StationHeat.louverArea(p, sys, null), low, 'без летнего расчёта — нижняя граница');
+  const e1=StationHeat.envelope(p, sys, h.dT, S), e0=StationHeat.envelope(p, sys, h.dT, null);
+  assert.ok(Math.abs((e1.qEnv-e0.qEnv)-(StationHeat._U_LOUVER-e1.U)*(frame-low)*h.dT)<1, 'разница — (U жалюзи − U стены) · ΔS · Δt');
+  assert.strictEqual(h.qEnv, Math.round(e1.qEnv));
+  // ДГУ: приток — на воздух радиаторов, как на плане вентиляции (было: только вентиляция помещения — теплопотери занижены)
+  const pd=StationLayout.solve({ cont:cont(), parts:[dgu], req:{ tmin:-40 } }), sd=pd.sys||{}; Check.plan(pd, 'ДГУ, −40 °C');
+  const Sd={ sum:pd.heat.vent.sum, work:pd.items.filter(i=>i.kind==='dgu' && !i.tank) }, radOnly=StationHeat.louverArea(pd, sd, null)-low;
+  assert.ok(pd.vent.need.in.gross>Sd.sum.Sin, 'приток ДГУ больше вентиляции помещения');
+  assert.ok(Math.abs(StationHeat.louverArea(pd, sd, Sd)-radOnly-pd.vent.need.in.gross)<0.02, `приток по рамке — как на плане: ${StationHeat.louverArea(pd, sd, Sd)-radOnly} ≈ ${pd.vent.need.in.gross}`);
   assert.ok(StationHeat.UNITS.some(([kw])=>kw===h.kw) && h.n>=1 && h.heaters.length===h.n, 'конвекторы из ряда мощностей, мест — по числу');
   assert.ok(h.short || h.n*h.kw>=h.need-1e-9, 'мощности хватает (с запасом 10 %)');
   assert.ok(Math.abs(h.need-Math.max(h.qStop, h.qRun||0)*StationHeat.RESERVE/1000)<0.01, 'нужно — наибольшее из «стоит» и «работает»');
@@ -1150,6 +1172,12 @@ Check.run('сжатый воздух: байпас осушителя, диам�
   const pm=P('Насос CR 32', { cat:'pump', flow:32, head:50, kw:7.5, size:'600 × 400 × 1000' }, { role:'main', qty:2 });
   const kp=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[pm, P('Трубопровод', {}, { pipeMat:'inox' })], req:{ kind:'pump', res:1 } }).pipe;
   assert.ok(kp && kp.medium==='water' && kp.lines.length===2 && kp.lines[0].dn===80 && kp.lines[1].dn===100, 'насосная: напорный DN 80, всасывающий DN 100 при 32 м³/ч: '+JSON.stringify(kp));
+  // подача диапазоном — трубы по наибольшей (было: «8–32» — по 8 м³/ч, «до 32» — без расчёта)
+  for (const flow of ['8–32', 'до 32']){
+    const pr=P('Насос CR 32', { cat:'pump', flow, head:50, kw:7.5, size:'600 × 400 × 1000' }, { role:'main', qty:2 });
+    const kr=StationLayout.solve({ cont:C('block', { sizeAuto:true }), parts:[pr, P('Трубопровод', {}, { pipeMat:'inox' })], req:{ kind:'pump', res:1 } }).pipe;
+    assert.deepStrictEqual(kr.lines.map(l=>l.dn), kp.lines.map(l=>l.dn), `подача «${flow}» — как 32 м³/ч`);
+  }
 });
 
 Check.run('масса и центр тяжести, строповка; знаки № 9 и № 12 (ГОСТ 14192-96) на 3D-виде', ()=>{
@@ -1551,6 +1579,14 @@ Check.run('вытяжные вентиляторы в стене напроти�
   assert.deepStrictEqual([p0.vent.need.in.gross, p0.vent.need.out.gross, p1.vent.need.in.gross, p1.vent.need.out.gross], [1.51, 1.01, 1.13, 0.67]);
   assert.strictEqual(S1.exfan.L, Math.round(S1.Lout*E.reserve/10)*10, 'расход вентиляторов — весь выброс с запасом');
   assert.ok(Math.abs(S1.exfan.P-S1.exfan.L*E.dp/(3600*1000*E.eta))<0.001, 'P = L · ΔP / (3600 · 1000 · η)');
+  // в нагрузке станции (было: только текстом): при работе — вытяжные; без них — вентилятор стоянки, только в установленной
+  const fanLine=(p, re)=>p.power.list.find(l=>re.test(l.name));
+  const F1=fanLine(p1, /^Вытяжные вентиляторы$/), F0=fanLine(p0, /при остановленных компрессорах/);
+  assert.ok(F1 && F1.run && !F1.idle && Math.abs(F1.kw-S1.exfan.P)<0.01, JSON.stringify(p1.power.list));
+  assert.ok(!fanLine(p1, /при остановленных компрессорах/), 'с вытяжными — отдельного вентилятора стоянки нет');
+  assert.ok(F0 && !F0.run && !F0.idle && Math.abs(F0.kw-S0.stand.P)<0.01, JSON.stringify(p0.power.list));
+  // 75 кВт: вытяжные 0,99 кВт — расчётная при работе 84,5 → 85,5 кВт (остальное у p0 и p1 одинаково)
+  assert.ok(Math.abs(p1.power.run-p0.power.run-S1.exfan.P)<0.1, 'при работе — больше на P вентиляторов: '+[p0.power.run, p1.power.run, S1.exfan.P].join(' / '));
   const O=p1.vent.louvers.filter(q=>q.kind==='out'), I=p1.vent.louvers.filter(q=>q.kind==='in');
   assert.ok(O.length && O.every(q=>q.fan) && p1.vent.exfan.n===O.length+(p1.vent.roof||[]).length, 'все проёмы выброса — с вентиляторами');
   assert.ok(!I.some(q=>O.some(o=>o.wall===q.wall)) && O.some(q=>q.wall==='back') && I.some(q=>q.wall==='front'), 'вентиляторы — на стене напротив притока');

@@ -4,6 +4,7 @@ import { StationClear } from './station-clear.js';
 import { StationEquip } from './station-equip.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationMods } from './station-mods.js';
+import { StationNorms } from './station-norms.js';
 import { esc } from '../../core/util.js';
 
 /**
@@ -161,7 +162,7 @@ export class LayoutDigest {
       h: '4. Двери и выходы',
       items: [
         `Дверь оператора — всегда, одностворчатая ${Mm.text(door.w)} × ${Mm.text(door.h)} мм в свету, наружу, с доводчиком внутри; над ней — козырёк и прожектор, над выходом — табло «Выход».`,
-        `Дверь оператора — одна; вторая — если от дальней точки помещения до выхода больше ${Mm.text(exits.far)} мм или ряд шкафов длиннее 7 м (ПУЭ, п. 4.1.23). Выходы — дверь оператора, ворота в торце (если перед ними не ресиверы парой) и дверь-жалюзи ДГУ.`,
+        `Дверь оператора — одна; вторая — если от дальней точки помещения до выхода больше ${Mm.text(exits.far)} мм или ряд шкафов длиннее ${StationNorms.shieldText()} (ПУЭ, п. 4.1.23). Выходы — дверь оператора, ворота в торце (если перед ними не ресиверы парой) и дверь-жалюзи ДГУ.`,
         `Между проёмами на одной стене — не меньше ${Mm.text(door.gap)} мм, от края станции — не меньше ${Mm.text(door.edge)} мм; две двери — не ближе ${Mm.text(exits.dist)} мм друг к другу, где позволяет длина.`,
       ],
     };

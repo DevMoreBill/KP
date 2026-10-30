@@ -7,6 +7,7 @@ import { StationMods } from '../layout/station-mods.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { FieldUnit } from '../../core/field-unit.js';
 import { Str } from '../../core/str.js';
 
 /** Значения, подставляемые в станцию из её оборудования. */
@@ -198,12 +199,18 @@ export class StationAuto {
     }
     if (main && this._filled(main, key)) {
       const value = main.attrs[key];
-      out[key] = field.num ? StationAutoVal.of(value, key === 'flow' ? this._qty(main) : 1) : value;
+      const factor = this._unit(main, field) * (key === 'flow' ? this._qty(main) : 1);
+      out[key] = field.num ? StationAutoVal.of(value, factor) : value;
       return;
     }
     if (this.MAIN_KEYS.includes(key)) return;
     const other = parts.find(part => part !== main && this._filled(part, key));
-    if (other) out[key] = field.num ? StationAutoVal.of(other.attrs[key]) : other.attrs[key];
+    if (other) out[key] = field.num ? StationAutoVal.of(other.attrs[key], this._unit(other, field)) : other.attrs[key];
+  }
+
+  // поле элемента — в единице своей категории (поршневой — л/мин), у станции — в своей (м³/мин)
+  static _unit(part, field) {
+    return FieldUnit.pair(FieldUnit.unit(part.attrs.cat, field.key), field.unit || '') ?? 1;
   }
 
   static _installed(parts, out) {

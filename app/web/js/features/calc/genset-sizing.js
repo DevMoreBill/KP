@@ -4,6 +4,7 @@ import { AirDemand } from './air-demand.js';
 import { CalcInput } from './calc-input.js';
 import { CalcNote } from './calc-note.js';
 import { StationRules } from '../rules/station-rules.js';
+import { ReserveCheck } from './reserve-check.js';
 
 /** ДГУ: мощность PRP/ESP против нагрузки, средняя и малая нагрузка, высота и жара, пуск двигателя, топливо. */
 export class GensetSizing {
@@ -56,7 +57,7 @@ export class GensetSizing {
     const units = GensetSizing._each(gensets)
       .map(unit => ({ u: unit, prp: GensetSizing._prp(unit) }))
       .sort((first, second) => second.prp - first.prp);
-    const work = units.slice(req.reserve != null ? Math.min(req.reserve, units.length - 1) : 0);
+    const work = units.slice(ReserveCheck.of(req, units.length));
     const PRP = work.reduce((sum, entry) => sum + entry.prp, 0);
     if (!(PRP > 0)) return null;
     const station =
@@ -124,7 +125,7 @@ export class GensetSizing {
         };
       })
       .sort((first, second) => second.prp - first.prp);
-    const res = req.reserve != null ? Math.min(req.reserve, units.length - 1) : 0;
+    const res = ReserveCheck.check(note, req, units.length, 'dgu');
     const work = units.slice(res);
     const sum = k => work.reduce((acc, entry) => acc + entry[k], 0);
     const group = { G: gensets, work, res, standby, PRP: sum('prp'), CAP: sum('cap'), KVA: sum('kva') };
@@ -328,7 +329,7 @@ export class GensetSizing {
     if (big.length) {
       note.issue(
         'warn',
-        `Дополнительный бак ${CalcNote.fmt(Math.max(...big), 0)} л больше ${CalcNote.fmt(GensetSizing.TANK_MAX, 0)} л (3 000 × 1 000 × 1 500 мм) — в отсеке не поместится одним баком: два бака или бак вне контейнера.`,
+        `Дополнительный бак ${CalcNote.fmt(Math.max(...big), 0)} л больше ${CalcNote.fmt(GensetSizing.TANK_MAX, 0)} л — в отсеке не поместится одним баком: два бака или бак вне контейнера.`,
       );
     }
   }

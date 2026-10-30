@@ -121,7 +121,29 @@ export class StationPower {
         idle: false,
         extra: Math.round(heat.qRun / 10) / 100,
       });
+    StationPower._fans(plan, add);
     StationPower._services(plan, add);
+  }
+
+  /**
+   * Вентиляторы, которые ставит программа (как в ТЗ на сборку): вытяжные в стене — они же при стоянке, иначе вентилятор
+   * стоянки (только при остановленных компрессорах — в установленную мощность); канальный, приточные, вытяжка помещения —
+   * при работе.
+   */
+  static _fans(plan, add) {
+    if ((plan.sys || {}).vent === false) return;
+    const sum = ((plan.heat || {}).vent || {}).sum || {};
+    const vent = plan.vent || {};
+    const walls = Boolean(sum.exfan);
+    const running = { idle: false };
+    const fans = [
+      ['Вытяжные вентиляторы', sum.exfan, running],
+      ['Вытяжной вентилятор при остановленных компрессорах', !walls && sum.stand, { run: false, idle: false }],
+      ['Канальный вентилятор в воздуховоде выброса', !walls && sum.boost, running],
+      ['Приточные вентиляторы', vent.infan, running],
+      ['Вытяжной вентилятор помещения', (vent.draft || {}).fan, running],
+    ];
+    for (const [name, fan, mode] of fans) if (fan) add(name, 1, fan.P, mode);
   }
 
   static _services(plan, add) {

@@ -5,6 +5,7 @@ import { ReqNum } from './req-num.js';
 import { AirDemand } from '../calc/air-demand.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { StationEquip } from '../layout/station-equip.js';
+import { SummerTemp } from '../layout/summer-temp.js';
 import { StationDefaults } from '../kit/station-defaults.js';
 import { Kit } from '../kit/kit.js';
 import { Attrs } from '../../core/item-attrs.js';
@@ -325,7 +326,19 @@ export class StationReq {
           .slice(0, this.WHY_MAX),
       },
       recvIn: kind === 'comp' ? this.recvIn(item) : null,
+      dryer: kind === 'comp' ? this.dryer(item) : null,
     };
+  }
+
+  /**
+   * Условия поправок осушителя из требований — те же числа, что у расчётной записки (ошибочные поля — как не заданные).
+   * @param {object} item
+   * @returns {{tmax: number|null, tin: number|null, pressure: number|null}}
+   */
+  static dryer(item) {
+    const req = this.of(item);
+    const valid = key => (ReqNum.check(key, req[key]) ? null : ReqNum.num(req[key]));
+    return { tmax: valid('tmax'), tin: valid('tin'), pressure: valid('pressure') };
   }
 
   /**
@@ -389,7 +402,7 @@ export class StationReq {
     return AirDemand.fad(
       flow,
       ReqNum.loose(req.alt) || 0,
-      tmax != null ? tmax : StationRules.raw('flow.fad_ref').t,
+      SummerTemp.of(tmax),
       humidity != null ? humidity : this.FULL_HUMIDITY,
       req.basis,
     );

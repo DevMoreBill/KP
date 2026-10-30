@@ -1,6 +1,7 @@
 import { AirChain } from '../layout/air-chain.js';
 import { CalcNote } from './calc-note.js';
 import { DryerSizing } from './dryer-sizing.js';
+import { DryerDerate } from '../layout/dryer-derate.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { StationRules } from '../rules/station-rules.js';
 
@@ -58,7 +59,7 @@ export class FilterSizing {
   static _factor(note, unit, pressure) {
     const series = StationRules.series(unit.p, 'filter');
     if (series) {
-      const kPress = DryerSizing.k(series.f.p, pressure);
+      const kPress = DryerDerate.k(series.f.p, pressure);
       if (kPress.out) note.issue('warn', `${CalcNote.lbl('Фильтр', unit.name)}: давление вне таблицы производителя.`);
       return {
         k: kPress.k,

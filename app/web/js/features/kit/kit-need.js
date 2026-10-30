@@ -15,10 +15,12 @@ import { StationLayout } from '../layout/station-layout.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Mm } from '../layout/mm.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
+import { PumpPoint } from '../calc/pump-point.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { ReqNum } from '../req/req-num.js';
 import { StationUi } from '../station/station-ui.js';
 import { AirChain } from '../layout/air-chain.js';
+import { DryerDerate } from '../layout/dryer-derate.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
 
@@ -29,7 +31,6 @@ import { StationReq } from '../req/station-req.js';
  */
 export class KitNeed {
   static EPS = 1e-9;
-  static DEFAULT_BAR = 7;
   static FILL_PASSES = 4;
   static MAIN = {
     comp: ['compressor', 'компрессор', 'м³/мин'],
@@ -53,7 +54,7 @@ export class KitNeed {
       recv: StationReq.recv(item),
       recvOut: StationReq.recvOut(item),
     });
-    return AirChain.check(equipment, StationUi.opts(item).air, StationReq.recvIn(item));
+    return AirChain.check(equipment, StationUi.opts(item).air, StationReq.recvIn(item), StationReq.dryer(item));
   }
 
   /**
@@ -177,15 +178,15 @@ export class KitNeed {
     };
   }
 
+  // подача и напор диапазоном — крайние точки паспорта: наибольшая подача, наибольший напор (PumpPoint)
   static _pumpRating(item, part, req) {
-    const attrs = part.attrs || {};
+    const { flow, head } = PumpPoint.of(part.attrs);
     const need = ReqNum.loose(req.head);
-    const head = ReqNum.loose(attrs.head);
     const bad =
-      need > 0 && head > 0 && head < need - this.EPS
-        ? `напор ${AirChain.flowText(head)} м меньше нужного ${AirChain.flowText(need)} м`
+      need > 0 && head && head.hi > 0 && head.hi < need - this.EPS
+        ? `напор ${AirChain.flowText(head.hi)} м меньше нужного ${AirChain.flowText(need)} м`
         : '';
-    return { cap: ReqNum.loose(attrs.flow) || 0, need: ReqNum.loose(req.q) || 0, bad };
+    return { cap: flow ? flow.hi : 0, need: ReqNum.loose(req.q) || 0, bad };
   }
 
   /**
@@ -260,7 +261,7 @@ export class KitNeed {
    * @returns {object[]}
    */
   static dryerFit(item, air) {
-    const limits = { height: TzPick.hmax(item), width: TzPick.wmax(item), flow: air.q || 0 };
+    const limits = { height: TzPick.hmax(item), width: TzPick.wmax(item), flow: air.work || 0 };
     const out = [];
     for (const type of ['ads', 'refrig']) {
       const rec = this._dryerFit(item, air, { ...limits, type });
@@ -289,7 +290,7 @@ export class KitNeed {
     const word = type === 'ads' ? 'Адсорбционный' : 'Рефрижераторный';
     const cat = type === 'ads' ? 'dryer_ads' : 'dryer_refrig';
     const total = flow
-      ? ` (всего не менее ${AirChain.flowText((flow * AirChain.MARGIN) / AirChain.dryerK(air.bar || this.DEFAULT_BAR))} м³/мин)`
+      ? ` (всего не менее ${AirChain.flowText(flow / DryerDerate.factor(null, air.dryer.bar, air.dryer.temps, type).F)} м³/мин)`
       : '';
     return {
       key: `dryer-${type}`,
@@ -695,7 +696,7 @@ export class KitNeed {
       return volume > 0 ? { volume: [volume] } : {};
     }
     const air = this.air(item);
-    const flow = air && air.q > 0 ? air.q : 0;
+    const flow = air && air.work > 0 ? air.work : 0;
     return (kind === 'dryer' || kind === 'filter') && flow ? { flow: [AirChain.flowText(flow).replace(',', '.')] } : {};
   }
 }

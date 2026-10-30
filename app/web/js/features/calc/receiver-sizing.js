@@ -29,7 +29,7 @@ export class ReceiverSizing {
 
   static _priorities(note, plan, method, recvIn) {
     note.step({
-      what: 'Приоритет 1. Цикл нагрузки/разгрузки (не более 10–15 циклов в час)',
+      what: 'Приоритет 1. Цикл нагрузки/разгрузки (не чаще 1 цикла за 30 с, Atlas Copco)',
       formula: `V = Q / (${method.cycles} · ΔP)`,
       rules: ['receiver.method', ...(recvIn.dp > 0 ? [] : ['pressure.band'])],
       data: [
@@ -98,6 +98,7 @@ export class ReceiverSizing {
       data: checks.map(check => [check.level === 'error' ? 'ошибка' : 'предупреждение', check.text]),
       result: checks.length ? `сработало: ${checks.length}` : 'Все проверки пройдены.',
       ok,
+      inner: true, // только на экране: указания менеджеру («Проверить…», «Рассмотреть…»), не для заказчика
     });
   }
 

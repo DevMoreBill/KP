@@ -2,16 +2,44 @@ import { StationEquip } from '../layout/station-equip.js';
 import { AirDemand } from './air-demand.js';
 import { CalcInput } from './calc-input.js';
 import { CalcNote } from './calc-note.js';
+import { PumpPoint } from './pump-point.js';
+import { ReserveCheck } from './reserve-check.js';
 
 /**
  * Насосная станция: рабочие насосы (самые крупные — резерв) параллельно на общий коллектор — Σ Qраб ≥ Qтреб, напор
- * каждого при доле Q/n не меньше требуемого (номинальная точка паспорта; кривой Q–H в каталоге нет). Кавитационный запас
+ * каждого при доле Q/n не меньше требуемого (номинальная точка паспорта или крайние точки диапазона — PumpPoint; кривой
+ * Q–H в каталоге нет). Кавитационный запас
  * NPSHa = (pатм − pнп(t)) / (ρ·g) − hвс − hпот ≥ NPSHr + запас — если есть NPSHr и условия всасывания; жидкость — вода.
  */
 export class PumpSizing {
   static MMHG_KPA = 0.133322; // мм рт. ст. → кПа (уравнение Антуана)
   static _names = list => [...new Set(list.map(entry => entry.u.name))];
   static GRAVITY = 9.81;
+  static WORST = [PumpPoint.SHORT, PumpPoint.OVER, PumpPoint.CHECK, PumpPoint.FITS];
+  static STEP_OK = {
+    [PumpPoint.FITS]: true,
+    [PumpPoint.CHECK]: null,
+    [PumpPoint.SHORT]: false,
+    [PumpPoint.OVER]: false,
+  };
+  /** Замечание по худшему насосу диапазона: напора не хватает или подача больше паспорта — ошибка; между точками — уточнить. */
+  static RANGE_ISSUE = {
+    [PumpPoint.SHORT]: {
+      level: 'error',
+      text: ({ name, attrs, need, fmt }) =>
+        `Напор насоса «${name}» — не больше ${fmt(PumpPoint.of(attrs).head.hi)} м, меньше требуемого ${fmt(need)} м.`,
+    },
+    [PumpPoint.OVER]: {
+      level: 'error',
+      text: ({ name, attrs, share, fmt }) =>
+        `Насос «${name}»: подача на насос ${fmt(share)} м³/ч больше наибольшей по паспорту ${fmt(PumpPoint.of(attrs).flow.hi)} м³/ч — такую подачу он не даст; нужно больше рабочих насосов или насос на большую подачу.`,
+    },
+    [PumpPoint.CHECK]: {
+      level: 'warn',
+      text: ({ name, share, need, passport, fmt }) =>
+        `Насос «${name}»: при ${fmt(share)} м³/ч нужен напор ${fmt(need)} м — между крайними точками паспорта (${passport}); уточните рабочую точку по кривой Q–H.`,
+    },
+  };
 
   static _units(input) {
     return input.units
@@ -42,7 +70,7 @@ export class PumpSizing {
     }
     PumpSizing._data(note, req, units);
     const sorted = [...units].sort((first, second) => second.Q - first.Q);
-    const res = req.reserve != null ? Math.min(req.reserve, sorted.length - 1) : 0;
+    const res = ReserveCheck.check(note, req, sorted.length, 'pump');
     const work = sorted.slice(res);
     if (!(req.q > 0)) {
       note.issue('info', 'Подача станции не задана — проверка насосов не выполнена.');
@@ -68,7 +96,7 @@ export class PumpSizing {
       );
     if (units.some(entry => entry.range))
       note.assume(
-        'Подача или напор насоса в карточке заданы диапазоном («до …») — в расчёте взята верхняя граница; рабочая точка — по кривой Q–H из паспорта.',
+        'Подача или напор насоса в карточке заданы диапазоном — это крайние точки кривой Q–H: наибольшая подача — при наименьшем напоре, наибольший напор — при наименьшей подаче; рабочая точка между ними — по кривой Q–H из паспорта.',
       );
     if (req.reserve == null)
       note.missing(
@@ -120,8 +148,18 @@ export class PumpSizing {
       );
       return;
     }
-    const low = heads.reduce((first, second) => (second.H < first.H ? second : first));
     const share = req.q / work.length;
+    const ranged = heads.some(entry => entry.range);
+    if (ranged) PumpSizing._headRange(note, req, heads, share);
+    else PumpSizing._headPoint(note, req, heads, share);
+    note.missing(
+      'pump.curve',
+      `Рабочая точка — по кривой Q–H из паспорта насоса (в каталоге кривых нет), проверка по ${ranged ? 'крайним точкам диапазона' : 'номинальной точке'}`,
+    );
+  }
+
+  static _headPoint(note, req, heads, share) {
+    const low = heads.reduce((first, second) => (second.H < first.H ? second : first));
     const headFit = note.fits(low.H, req.head);
     const over = low.Q > 0 && share > low.Q * (1 + note.rule('calc.tolerance'));
     note.step({
@@ -150,10 +188,75 @@ export class PumpSizing {
         'error',
         `Напор насоса «${low.u.name}» ${CalcNote.fmt(low.H, 1)} м меньше требуемого ${CalcNote.fmt(req.head, 1)} м.`,
       );
-    note.missing(
-      'pump.curve',
-      'Рабочая точка — по кривой Q–H из паспорта насоса (в каталоге кривых нет), проверка по номинальной точке',
+    else if (over)
+      note.issue(
+        'warn',
+        `Насос «${low.u.name}»: подача на насос ${CalcNote.fmt(share, 1)} м³/ч больше номинальной ${CalcNote.fmt(low.Q, 1)} м³/ч — напор в этой точке ниже паспортного ${CalcNote.fmt(low.H, 1)} м; уточните рабочую точку по кривой Q–H.`,
+      );
+  }
+
+  /** Диапазон паспорта: по крайним точкам — точно да, точно нет или «уточните рабочую точку» (худший из насосов). */
+  static _headRange(note, req, heads, share) {
+    const tol = note.rule('calc.tolerance');
+    const worst = heads
+      .map(entry => ({ entry, state: PumpPoint.verdict(entry.u.attrs, share, req.head, tol) }))
+      .reduce((first, second) =>
+        PumpSizing.WORST.indexOf(second.state) < PumpSizing.WORST.indexOf(first.state) ? second : first,
+      );
+    const attrs = worst.entry.u.attrs;
+    const name = worst.entry.u.name;
+    const fmt = value => CalcNote.fmt(value, 1);
+    const sure = PumpPoint.sure(attrs, share);
+    const passport = PumpPoint.text(attrs, fmt);
+    note.step({
+      what: 'Напор рабочих насосов против требуемого',
+      formula:
+        'Hнас ≥ Hтреб при подаче каждого Qтреб / n; диапазон паспорта — крайние точки кривой Q–H (подача растёт — напор падает)',
+      rules: ['calc.tolerance'],
+      data: [
+        ['Hтреб', `${fmt(req.head)} м`],
+        ['подача на насос', `${fmt(share)} м³/ч`],
+        ['по паспорту', `${name} — ${passport}`],
+      ],
+      result: PumpSizing._rangeResult(worst.state, { sure, attrs, share, fmt }),
+      ok: PumpSizing.STEP_OK[worst.state],
+      margin: worst.state === PumpPoint.FITS ? CalcNote.pct(sure, req.head) : null,
+      note:
+        worst.state === PumpPoint.OVER
+          ? 'Подача на насос больше наибольшей по паспорту — такую подачу насос не даст.'
+          : '',
+    });
+    const issue = PumpSizing.RANGE_ISSUE[worst.state];
+    if (issue) note.issue(issue.level, issue.text({ name, attrs, share, need: req.head, passport, fmt }));
+    PumpSizing._under(note, heads, share);
+  }
+
+  // подача на насос меньше наименьшей по паспорту — вне рабочей части кривой
+  static _under(note, heads, share) {
+    const tol = note.rule('calc.tolerance');
+    const low = heads.find(entry => PumpPoint.under(entry.u.attrs, share, tol));
+    if (!low) return;
+    note.issue(
+      'warn',
+      `Насос «${low.u.name}»: подача на насос ${CalcNote.fmt(share, 1)} м³/ч меньше наименьшей по паспорту ${CalcNote.fmt(PumpPoint.of(low.u.attrs).flow.lo, 1)} м³/ч — работа вне рабочей части кривой (перегрев, вибрация); проверьте по паспорту или возьмите насос на меньшую подачу.`,
     );
+  }
+
+  static _rangeResult(state, { sure, attrs, share, fmt }) {
+    const { flow, head } = PumpPoint.of(attrs);
+    const text = {
+      [PumpPoint.FITS]: () => `Hнас ≥ ${fmt(sure)} м при ${fmt(share)} м³/ч`,
+      [PumpPoint.SHORT]: () => `Hнас ≤ ${fmt(head.hi)} м`,
+      [PumpPoint.OVER]: () => `подача на насос больше ${fmt(flow.hi)} м³/ч`,
+      [PumpPoint.CHECK]: () => `Hнас при ${fmt(share)} м³/ч — ${PumpSizing._span(head, fmt)}по кривой Q–H`,
+    };
+    return text[state]();
+  }
+
+  // известные границы напора для «уточните по кривой»: «от 20 до 50 м: », «до 50 м: »; напор числом — без них
+  static _span(head, fmt) {
+    if (head.lo == null) return `до ${fmt(head.hi)} м: `;
+    return head.range ? `от ${fmt(head.lo)} до ${fmt(head.hi)} м: ` : '';
   }
 
   /** Кавитационный запас: нужны NPSHr (паспорт) и высота всасывания (ТЗ); давление пара — уравнение Антуана. */

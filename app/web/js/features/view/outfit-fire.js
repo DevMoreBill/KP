@@ -22,7 +22,7 @@ export class OutfitFire {
       wh: scene.meshFor(StMat.paint('#f2f3f4', 0.35)),
     };
     this.outfit.walls.shade(plan);
-    if (fire.ops) this.detectors(fire.rooms[0], meshes.wh);
+    if (fire.ops) this.detectors(fire.rooms[0], fire.detectors, meshes.wh);
     for (const spot of fire.rooms) for (const mod of spot.mods) this.buran(scene.point(mod.x, mod.y, plan.int[2]));
     this.boards(fire);
     const walls = ['back', 'right', 'left', 'front'];
@@ -41,11 +41,10 @@ export class OutfitFire {
     if (fire.ops) this.alarms(walls, door, meshes);
   }
 
-  /** Извещатели на потолке: не меньше двух, через 3,5 м. */
-  detectors(main, white) {
+  /** Извещатели на потолке — числом из расчёта (StationFire.detectors), поровну по длине помещения. */
+  detectors(main, count, white) {
     const scene = this.outfit.scene;
     const [, wid, height] = this.outfit.plan.int;
-    const count = Math.max(2, Math.ceil((main.x1 - main.x0) / 3500));
     const led = scene.meshFor(StMat.glow('#ff3b30', 2));
     for (let i = 0; i < count; i++) {
       const center = scene.point(main.x0 + ((main.x1 - main.x0) * (i + 0.5)) / count, wid * 0.28, height);

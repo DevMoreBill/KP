@@ -1,4 +1,5 @@
 import { Mm } from '../layout/mm.js';
+import { PressureVessel } from '../layout/pressure-vessel.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationClear } from '../layout/station-clear.js';
 import { StationGeo } from '../layout/station-geo.js';
@@ -134,10 +135,12 @@ export class DrawText {
   aisle() {
     const plan = this.drawing.plan;
     const num = Mm.text;
-    const [aRec, aMin] = plan.aisleRule || [1000, 800];
+    const [aRec, aMin] = plan.aisleRule || StationClear.aisle();
     if (plan.mode && plan.mode.tight)
       return `Проход для оператора и обслуживания — ${num((plan.aisle && plan.aisle.w) || aMin)} мм в свету: сужен по согласованию с заказчиком, чтобы станция прошла по габариту перевозки (норма — не менее ${num(StationClear.aisle()[1])} мм, ПУЭ, п. 4.1.23).`;
-    const dgu = plan.items.some(i => i.kind === 'dgu') ? '; вдоль ДГУ — не менее 600 мм' : '';
+    const dgu = plan.items.some(i => i.kind === 'dgu')
+      ? `; вдоль ДГУ — не менее ${num(StationMatrix.grp('dgu').pass)} мм`
+      : '';
     return `Проход для оператора и обслуживания — не менее ${num(aMin)} мм в свету (ПУЭ, п. 4.1.23), рекомендуется ${num(aRec)} мм${dgu}.`;
   }
 
@@ -149,7 +152,7 @@ export class DrawText {
     if (!wall.length) return '';
     const z0 = Math.min(...plan.items.filter(i => i.mount === 'wall').map(i => i.z));
     const many = wall.length > 1;
-    const aMin = (plan.aisleRule || [1000, 800])[1];
+    const aMin = (plan.aisleRule || StationClear.aisle())[1];
     return `${many ? 'Шкафы' : 'Шкаф'} ${DrawText.list(wall)} — на стене, низ на высоте ${num(z0)} мм; проход перед ${many ? 'ними' : 'ним'} — не менее ${num(aMin)} мм.`;
   }
 
@@ -246,7 +249,7 @@ export class DrawText {
     if (!fuel) return '';
     const num = Mm.text;
     const way = fuel.gate ? `ворота в торце ${num(fuel.gate.w)} × ${num(fuel.gate.h)} мм` : 'своя дверь снаружи';
-    return `Бак ${DrawText.list(this.pos(i => i.tank))} — в отсеке за противопожарной перегородкой (EI 45), вход — ${way}, горловина — в нише стены с лючком заподлицо, бак — в поддоне; топливопровод — по полу.`;
+    return `Бак ${DrawText.list(this.pos(i => i.tank))} — в отсеке за противопожарной перегородкой (${StationNorms.FIRE_WALL}), вход — ${way}, горловина — в нише стены с лючком заподлицо, бак — в поддоне; топливопровод — по полу.`;
   }
 
   /** Системы без изображения на чертеже. */
@@ -291,7 +294,7 @@ export class DrawText {
     if (frame)
       return `рамной траверсой (спредером) за четыре ${where} — ветви вертикальны, ${num(shortest)} мм; рама — на двухветвевом стропе ${num(frame.len)} мм от проушин над центром тяжести (угол с вертикалью ${frame.deg}°). Наклонными стропами за верхние фитинги контейнер с оборудованием не поднимать (ISO 3874).`;
     if (sling.beam)
-      return `длина больше 6,5 м — с траверсой: четыре ветви ${legText} мм за ${where} к траверсе над контейнером, траверса подвешена над центром тяжести.`;
+      return `длина больше ${Mm.dec(StationMass.RULES.beamL / 1000)} м — с траверсой: четыре ветви ${legText} мм за ${where} к траверсе над контейнером, траверса подвешена над центром тяжести.`;
     return `четырёхветвевым стропом за ${where}, крюк — над центром тяжести, ветви ${legText} мм, угол ветви с вертикалью — не более ${StationMass.ANGLE}°.`;
   }
 
@@ -361,7 +364,7 @@ export class DrawText {
     ].filter(Boolean);
   }
 
-  /** Пункт ТТ об учёте сосудов под давлением в Ростехнадзоре (ФНП ОРПД): p·V больше 1,0 МПа·м³ — подлежит. */
+  /** Пункт ТТ об учёте сосудов под давлением в Ростехнадзоре (ФНП ОРПД): p·V больше vessel.pv — подлежит. */
   static vessels(plan) {
     const vessels = (plan.vessels || []).filter(vessel => vessel.pv != null);
     const reg = vessels.filter(vessel => vessel.reg);
@@ -370,10 +373,10 @@ export class DrawText {
     const many = list => list.reduce((sum, vessel) => sum + (vessel.qty || 1), 0) > 1;
     return [
       reg.length
-        ? `${many(reg) ? 'Ресиверы' : 'Ресивер'} ${pos(reg)} подлеж${many(reg) ? 'а' : 'и'}т учёту в Ростехнадзоре (ФНП ОРПД: p·V более 1,0 МПа·м³).`
+        ? `${many(reg) ? 'Ресиверы' : 'Ресивер'} ${pos(reg)} подлеж${many(reg) ? 'а' : 'и'}т учёту в Ростехнадзоре (ФНП ОРПД: p·V более ${PressureVessel.limitText()} МПа·м³).`
         : '',
       free.length
-        ? `${many(free) ? 'Ресиверы' : 'Ресивер'} ${pos(free)} учёту в Ростехнадзоре не подлеж${many(free) ? 'а' : 'и'}т (p·V не более 1,0 МПа·м³).`
+        ? `${many(free) ? 'Ресиверы' : 'Ресивер'} ${pos(free)} учёту в Ростехнадзоре не подлеж${many(free) ? 'а' : 'и'}т (p·V не более ${PressureVessel.limitText()} МПа·м³).`
         : '',
     ].filter(Boolean);
   }

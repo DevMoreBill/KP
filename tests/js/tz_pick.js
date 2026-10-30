@@ -90,7 +90,8 @@ class Check {
     ];
     const x=Cat.station('st_comp', [Kit.newPart({ name:'Трубопроводная обвязка и запорная арматура' })], { reserve:'1' });
     x.stLayout={ air:'2.2.2' };
-    const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'1', work:0 });
+    // лето 25 °C — вход в осушитель 40 °C (без температуры в ТЗ — 35 °C по правилу heat.t_summer, проверка ниже)
+    const note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'1', work:0, tmax:25 });
     const K=Cat.kinds(x), comp=K.find(k=>k[0]==='compressor');
     assert.deepStrictEqual(comp.slice(0, 2), ['compressor', 2], '1 рабочий + 1 резервный: '+JSON.stringify(K));
     assert.strictEqual(Kit.parts(x).find(p=>StationEquip.kindOf(p)==='compressor').name, 'Компрессор винтовой К-130', '10 м³/мин + продувка 15 % — один на 13 м³/мин');
@@ -269,6 +270,48 @@ class Check {
     assert.ok(/В каталоге нет: насос на 500 м³\/ч и 30 м/.test(note), note);
   });
 
+  await Check.run('осушитель по ТЗ — с требуемой точкой росы: из ТЗ или по классу воды (было: только вид осушителя — −40 °C при требовании −70 °C)', async ()=>{
+    const base=[Cat.item('Компрессор винтовой К-130', { cat:'comp_screw', flow:13, pressure:10, kw:75 }),
+      Cat.item('Осушитель адсорбционный ОА-20/40', { cat:'dryer_ads', flow:20, dewPoint:'−40' })];
+    const dryer=x=>(Kit.parts(x).find(p=>StationEquip.kindOf(p)==='dryer') || {}).name;
+    Catalog.cache=[...base];
+    let x=Cat.station('st_comp', [], {}), note=await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'1.1.1', reserve:'0', work:0, tmax:25 });
+    assert.ok(!dryer(x) && /В каталоге нет: адсорбционный осушитель на [\d,]+ м³\/мин с поправками на давление и температуру и точкой росы не выше −70 °C/.test(note), note);
+    Catalog.cache=[...base, Cat.item('Осушитель адсорбционный ОА-20/70', { cat:'dryer_ads', flow:20, dewPoint:'−70' })];
+    x=Cat.station('st_comp', [], {}); await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'1.1.1', reserve:'0', work:0, tmax:25 });
+    assert.strictEqual(dryer(x), 'Осушитель адсорбционный ОА-20/70', 'класс 1 — −70 °C');
+    x=Cat.station('st_comp', [], {}); await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', pdp:'−70', reserve:'0', work:0, tmax:25 });
+    assert.strictEqual(dryer(x), 'Осушитель адсорбционный ОА-20/70', 'точка росы из ТЗ строже класса — по ТЗ');
+    // класс строже точки росы из ТЗ — по классу, как сервер (tz_parse) и расчётная записка (было: −40 °C по ТЗ и ошибка в записке)
+    x=Cat.station('st_comp', [], {}); await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.1.1', pdp:'−40', reserve:'0', work:0, tmax:25 });
+    assert.strictEqual(dryer(x), 'Осушитель адсорбционный ОА-20/70', 'класс 2.1.1 строже −40 °C из ТЗ');
+    assert.strictEqual(TzPick.dewNeed({ air:'2.1.1', pdp:-40 }), -70);
+    assert.strictEqual(TzPick.dewNeed({ air:'2.4.2', pdp:'−20 °C' }), -20, 'с единицей, строже — из ТЗ');
+    assert.strictEqual(TzPick.dewNeed({ pdp:'+3 °C' }), 3);
+    assert.strictEqual(AirChain.dewText(0), '0 °C', 'ноль — без знака (было «−0 °C»)');
+    x=Cat.station('st_comp', [], {}); await TzPick.run(x, { kind:'comp', flow:10, pressure:7, air:'2.2.2', reserve:'0', work:0, tmax:25 });
+    assert.ok(/ОА-20\/(40|70)/.test(dryer(x)), 'класс 2 — −40 °C, годятся оба');
+    assert.strictEqual(TzPick.dewNeed({ air:'4.4.4' }), StationRules.raw('air.pdp')[4]);
+    assert.strictEqual(TzPick.dewNeed({}), null);
+  });
+
+  await Check.run('насосная: подача и напор диапазоном — крайние точки паспорта; подходящий точно — важнее, чем «уточните рабочую точку»', async ()=>{
+    // А: 8–36 м³/ч при 50–20 м — 35 м³/ч при 45 м по крайним точкам не проверить; Б: 40 м³/ч при 46 м — точно (было: А, меньше запас)
+    Catalog.cache=[Cat.item('Насос А', { cat:'pump', flow:'8–36', head:'50–20' }), Cat.item('Насос Б', { cat:'pump', flow:40, head:46 })];
+    const x=Cat.station('st_pump', [], {});
+    await TzPick.run(x, { kind:'pump', q:35, head:45, reserve:'0', work:0 });
+    assert.strictEqual(Kit.parts(x).find(z=>StationEquip.kindOf(z)==='pump').name, 'Насос Б');
+    Catalog.cache=[Cat.item('Насос А', { cat:'pump', flow:'8–36', head:'50–20' })];
+    const y=Cat.station('st_pump', [], {});
+    await TzPick.run(y, { kind:'pump', q:35, head:45, reserve:'0', work:0 });
+    assert.strictEqual(Kit.parts(y).find(z=>StationEquip.kindOf(z)==='pump').name, 'Насос А', 'другого нет — берётся, расчёт попросит уточнить');
+    // состав вручную: подача диапазоном — наибольшая (было: 0 — «Нужно: ещё …»), напор — наибольший из паспорта
+    y.req={ q:'35', head:'45' }; KpState.replace({ items:[y] });
+    assert.ok(!KitNeed.recs(y).some(r=>/pump/.test(r.key)), JSON.stringify(KitNeed.recs(y).map(r=>[r.key, r.why])));
+    y.req={ q:'35', head:'55' };
+    assert.ok(/напор 50 м меньше нужного 55 м/.test(KitNeed.head(KitNeed.recs(y)[0])), JSON.stringify(KitNeed.recs(y).map(r=>[r.key, r.why])));
+  });
+
   // состав компрессорной «вручную» (KitNeed, kit-view.js): к выбранному компрессору программа сама называет, чего не хватает,
   // окно каталога открывается с фильтрами по нужному, «Подобрать всё недостающее» добавляет то же, что подобрал бы TzPick
   await Check.run('состав компрессорной: чего не хватает, фильтры подбора, «Подобрать всё недостающее»', async ()=>{
@@ -283,7 +326,7 @@ class Check {
       Cat.item('Ресивер РВ-900/11', { cat:'receiver', volume:900, pressure:11 }),
     ];
     const toasts=[]; Toast.show=t=>toasts.push(t); KpState.persist=()=>{}; ItemEditor.render=()=>{}; FormView.render=()=>{};
-    const comp=await TzPick.part(Catalog.cache[1], 1, 'main'), x=Cat.station('st_comp', [comp], {}); KpState.replace({ items:[x] });
+    const comp=await TzPick.part(Catalog.cache[1], 1, 'main'), x=Cat.station('st_comp', [comp], { tmax:'25' }); KpState.replace({ items:[x] });
     let R=KitNeed.recs(x);
     assert.deepStrictEqual(R.map(r=>r.key).sort(), ['dryer-refrig', 'receiver'], 'к компрессору: осушитель и ресивер (мокрый — когда будет осушитель) — '+JSON.stringify(R.map(r=>r.key)));
     const P=KitNeed.preset(x, R.find(r=>r.key==='dryer-refrig'));
@@ -533,7 +576,9 @@ class Check {
     assert.ok(rows.length===StationDoc.MAX_ROWS && !rows.some(r=>r.k==='Страна'), 'не больше 8 строк, без страны');
     const cr=StationDoc.rows({ name:'Компрессор винтовой', attrs:{ cat:'comp_screw', flow:15.28 }, rows:[{ k:'Давление', v:'8,5 бар' }] });
     assert.deepStrictEqual(cr[0], { k:'Производительность', v:'15,28 м³/мин' }, 'производительность из поля каталога — первой');
-    assert.strictEqual(StationDoc.rows({ name:'Компрессор поршневой', attrs:{ cat:'comp_piston', flow:500 }, rows:[] })[0].v, '0,5 м³/мин', 'поршневой — из л/мин');
+    // в документе заказчика — число паспорта в единице поля категории, без перевода и округления (было 125 л/мин → «0,13 м³/мин»)
+    assert.strictEqual(StationDoc.rows({ name:'Компрессор поршневой', attrs:{ cat:'comp_piston', flow:125 }, rows:[] })[0].v, '125 л/мин', 'поршневой — в л/мин');
+    assert.deepStrictEqual(StationDoc.rows({ name:'Генератор азота', attrs:{ cat:'gen_n2', flow:10 }, rows:[] })[0], { k:'Производительность', v:'10 м³/ч' }, 'генератор газа — производительность в м³/ч');
     // характеристики станции: габариты и контейнер добавляются один раз
     const g=StationDoc.extra(x, [{ name:'Основные', rows:[{ k:'Производительность', v:'12 м³/мин' }] }]);
     assert.ok(g[0].rows.some(r=>/^Габариты станции/.test(r.k)) && g[0].rows.some(r=>r.k==='Контейнер'), JSON.stringify(g));
@@ -568,7 +613,9 @@ class Check {
       Cat.item('Осушитель рефрижераторный ОР-80', { cat:'dryer_refrig', flow:80, pressure:16, size:'1200 × 800 × 1500', filters:'да' }),
       Cat.item('Ресивер РВ 900.16', { cat:'receiver', volume:900, pressure:16, size:'2200 × 1000 × 1000' }),   // исполнение не указано: «высота × Ø × Ø»
       ...(r5 ? [Cat.item('Ресивер РВ 500/16', { cat:'receiver', volume:500, pressure:16, size:'680 × 650 × 2000' })] : [])];
-    const go=async r5=>{ Catalog.cache=cat(r5); const x=Cat.station('st_comp', [], { flow:'40', pressure:'8' }); KpState.replace({ items:[x] });
+    // зима −30 °C: при −40 °C теплопотери с жалюзи по рамке (п. 8 аудита 30.10) требуют конвекторов больше, контейнер для них
+    // длиннее на 400 мм — и 7 × 900 л встают внутри (9 900 × 2 550 мм, так и задумано: 900 л внутри — первыми); здесь — ряд 500 л
+    const go=async r5=>{ Catalog.cache=cat(r5); const x=Cat.station('st_comp', [], { flow:'40', pressure:'8', tmin:'-30' }); KpState.replace({ items:[x] });
       const note=await TzPick.assemble(x, StationQuick.query(x)), p=StationLayout.solve(StationUi.input(x)), R=Kit.parts(x).find(q=>StationEquip.kindOf(q)==='receiver');
       return { x, note, p, R }; };
     try{

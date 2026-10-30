@@ -42,27 +42,12 @@ import { StationRules } from '../rules/station-rules.js';
 export class StationLayout {
   static _warned = res => res.iss.some(i => i.level === 'warn');
 
-  static ATTRS = [
-    'cat',
-    'size',
-    'mass',
-    'model',
-    'maker',
-    'orient',
-    'kw',
-    'volume',
-    'color',
-    'flow',
-    'pressure',
-    'stage',
-    'dryer',
-    'vsd',
-    'dewPoint',
-    'receiver',
-  ];
-
-  static ROW_KEYS =
-    /габарит|размер|масса|вес|цвет|окраск|покрыт|длина|ширина|высота|объ[её]м|RAL|установк|исполнен|производительн|пропускн|давлени|ступен|очистк|фильтр|осушител|регулирован|точк\S* росы|воздух|теплов|охлажд/i;
+  /**
+   * Поля элемента, от которых компоновка не зависит: закупка; фото и рисунки — своими отпечатками (_hashPart); служебные
+   * поля окна с «_» (текст в поле закупки, место замены, источник для ИИ) — тоже.
+   */
+  static NO_HASH = new Set(['cost', 'costCur', 'photo', 'draw']);
+  static _service = key => key.startsWith('_');
 
   /** Версия правил и рисунков: изменилась — картинки станций в КП пересобираются. */
   static VER = 25;
@@ -111,24 +96,13 @@ export class StationLayout {
     ];
   }
 
+  // всё, что есть у элемента (поля, строки характеристик, роль, вид ресивера, ступень…): расчёт читает их по месту
   static _hashPart(part) {
-    const attrs = part.attrs ? Object.fromEntries(StationLayout.ATTRS.map(k => [k, part.attrs[k]])) : null;
-    const rows = (part.rows || [])
-      .filter(row => row && StationLayout.ROW_KEYS.test(`${String(row.k || '')} ${String(row.v || '')}`))
-      .map(row => [row.k, row.v]);
-    return [
-      part.name,
-      part.qty,
-      part.role || '',
-      part.pipeMat || '',
-      part.dn || '',
-      part.mount || '',
-      attrs,
-      StationEquip.tint(part),
-      StationEquip.tones(part),
-      rows,
-      StationEquip.pic(part),
-    ];
+    const own = Object.keys(part)
+      .filter(key => !StationLayout.NO_HASH.has(key) && !StationLayout._service(key))
+      .sort()
+      .map(key => [key, part[key]]);
+    return [own, StationEquip.tint(part), StationEquip.tones(part), StationEquip.pic(part)];
   }
 
   /** Наибольшая длина станции, мм. */
@@ -357,7 +331,8 @@ export class StationLayout {
 
   /** Проверка воздушной цепочки. */
   air(plan) {
-    const air = AirChain.check(this.equip, this.input.air, this.input.req && this.input.req.recvIn);
+    const req = this.input.req || {};
+    const air = AirChain.check(this.equip, this.input.air, req.recvIn, req.dryer);
     if (air && plan.level !== 'error') {
       plan.air = air;
       plan.issues.push(...air.issues);
@@ -370,11 +345,11 @@ export class StationLayout {
     plan.fire = StationFire.calc(plan);
     plan.light = StationLight.calc(plan);
     plan.sockets = StationSockets.calc(plan);
-    plan.power = StationPower.calc(plan);
     plan.pipe = StationPipe.calc(plan);
     plan.mass = StationMass.calc(plan);
     plan.issues.push(...StationMass.issues(plan.mass));
     plan.vent = StationVent.calc(plan);
+    plan.power = StationPower.calc(plan); // после вентиляции: приточные и вытяжные вентиляторы — в нагрузке
     plan.tidy = StationTidy.score(plan, plan.geo);
     if (plan.fire.low) {
       plan.issues.push({

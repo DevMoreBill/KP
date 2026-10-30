@@ -85,12 +85,4 @@ export class CalcInput {
     }
     return null;
   }
-
-  /** Перепад давления элемента по паспорту, бар. */
-  static pressureDrop(unit) {
-    const row = CalcInput.row(unit, /перепад|потер[ия]\S* давлени/i);
-    if (!row) return null;
-    if (/мбар|mbar/i.test(row.t)) return row.v / 1000;
-    return /кпа/i.test(row.t) ? row.v / 100 : row.v;
-  }
 }

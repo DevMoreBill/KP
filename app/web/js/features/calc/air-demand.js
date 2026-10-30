@@ -1,6 +1,8 @@
 import { AirChain } from '../layout/air-chain.js';
+import { SummerTemp } from '../layout/summer-temp.js';
 import { CalcNote } from './calc-note.js';
 import { StationRules } from '../rules/station-rules.js';
+import { ReserveCheck } from './reserve-check.js';
 
 /**
  * Потребность → производительность компрессоров (ISO 1217, FAD). Н. м³ (DIN 1343) или ст. м³ (ГОСТ 2939-63) — в FAD по
@@ -57,6 +59,7 @@ export class AirDemand {
     const req = input.req;
     note.section('air', 'Производительность');
     if (!(req.flow > 0)) {
+      ReserveCheck.check(note, req, AirDemand._units(input).length, 'comp');
       note.issue('info', 'Производительность станции не задана — расчёт по потребности не выполнен.');
       note.ask(
         'Требуемая производительность станции, м³/мин, и к каким условиям она приведена (FAD — условия всасывания или нормальные м³).',
@@ -64,17 +67,20 @@ export class AirDemand {
       return null;
     }
     const alt = req.alt != null ? req.alt : 0;
-    const tAir = req.tmax != null ? req.tmax : StationRules.raw('flow.fad_ref').t;
+    const tAir = SummerTemp.of(req.tmax);
     if (req.alt == null) {
       note.assume('Высота над уровнем моря в ТЗ не указана — принято 0 м.');
       note.ask('Высота площадки над уровнем моря, м.', true);
     }
-    if (req.tmax == null)
+    if (req.tmax == null) {
+      // одна строка «требует подтверждения» на правило: осушитель и вентиляция ссылаются на него же
       note.missing(
-        't.max',
+        SummerTemp.RULE,
         `Наружная температура летом не задана — для расчёта принята ${CalcNote.fmt(tAir, 0)} °C`,
         'Максимальная температура наружного воздуха на площадке (летом), °C.',
       );
+      note.rule(SummerTemp.RULE);
+    }
     const demand = AirDemand.REF[req.basis] ? AirDemand._toFad(note, req, alt, tAir) : AirDemand._asFad(note, req.flow);
     note.rule('flow.fad_ref');
     const need = AirDemand.need(note, input, demand);
@@ -173,7 +179,7 @@ export class AirDemand {
 
   /** Рабочие против требуемой; резервные — самые крупные; без производительности — предупреждение. */
   static compare(note, req, comps, need) {
-    const res = req.reserve != null ? Math.min(req.reserve, comps.length - 1) : 0;
+    const res = ReserveCheck.check(note, req, comps.length, 'comp');
     const work = comps.slice(res);
     const spare = comps.slice(0, res);
     const sum = work.reduce((first, entry) => first + entry.v, 0);

@@ -10,6 +10,7 @@ import { StationReq } from '../req/station-req.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { FieldUnit } from '../../core/field-unit.js';
 import { Mm } from '../layout/mm.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { Kit } from '../kit/kit.js';
@@ -40,7 +41,7 @@ export class StationDoc {
     /напряжен|питани/i,
   ];
   static LAST = 99;
-  static LPM = 1000;
+  static FLOW_UNIT = 'м³/мин';
   static MASS_STEP = 10;
 
   /**
@@ -83,16 +84,19 @@ export class StationDoc {
     return place < 0 ? this.LAST : place;
   }
 
-  /** производительность компрессора и осушителя — из поля каталога, если строки нет (поршневые — из л/мин) */
+  /**
+   * производительность компрессора, осушителя и генератора газа — из поля каталога, если строки нет: числом паспорта в
+   * единице поля категории (без перевода и округления — в документе заказчика не больше паспорта)
+   */
   static _flowRow(part, kind, list) {
     if (!/^(compressor|dryer)$/.test(kind) || list.some(row => this.PRIO[0].test(String(row.k)))) return null;
     const attrs = part.attrs || {};
-    const perMin = attrs.cat === 'comp_piston' && StationEquip.num(attrs.flow) > 0 ? this.LPM : 1;
-    const flow = AirChain.flow(part) / perMin;
-    if (!(flow > 0)) return null;
+    const value = StationEquip.num(attrs.flow);
+    if (!(value > 0)) return null;
+    const gas = kind === 'dryer' && AirChain.info(part, kind).type === 'gen';
     return {
-      k: kind === 'dryer' ? 'Пропускная способность' : 'Производительность',
-      v: `${String(Math.round(flow * 100) / 100).replace('.', ',')} м³/мин`,
+      k: kind === 'dryer' && !gas ? 'Пропускная способность' : 'Производительность',
+      v: `${Mm.dec(value)} ${FieldUnit.unit(StationEquip.cat(part), 'flow') || this.FLOW_UNIT}`,
     };
   }
 

@@ -2,6 +2,7 @@ import { Kit } from './kit.js';
 import { KitPart } from './kit-part.js';
 import { StationPurpose } from './station-spec.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { FieldUnit } from '../../core/field-unit.js';
 import { SpecValues } from '../../core/spec-values.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Str } from '../../core/str.js';
@@ -28,7 +29,6 @@ export class AsmItem {
   static KW_ROUND = 100;
   static UNIT_ROUND = 1000;
   // единица карточки оборудования → единица поля станции: множитель
-  static UNITS = { 'л/мин>м³/мин': 0.001 };
 
   /**
    * Элемент изделия из полной карточки каталога: как элемент сборки, плюс цена продажи и до PICS картинок галереи.
@@ -366,7 +366,7 @@ export class AsmItem {
     const value = from[field.key];
     if (!source || !this.MAIN_KEYS.includes(field.key) || value == null || value === '') return null;
     if (field.unit === source.unit) return value;
-    const factor = this.UNITS[`${source.unit}>${field.unit}`];
+    const factor = FieldUnit.pair(source.unit, field.unit);
     const number = Str.num(value);
     if (!factor || number == null) return null;
     return Math.round(number * factor * this.UNIT_ROUND) / this.UNIT_ROUND;

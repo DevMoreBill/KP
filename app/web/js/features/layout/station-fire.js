@@ -1,4 +1,5 @@
 import { StationMatrix } from './station-matrix.js';
+import { StationRules } from '../rules/station-rules.js';
 
 /**
  * Пожарная безопасность станции. Огнетушители — ППР в РФ (пп. 401, 405, 406, 409, прил. 1); пожаротушение — модули
@@ -58,8 +59,19 @@ export class StationFire {
       exit2: StationFire.exit2(plan),
       mods: rooms.reduce((total, room) => total + room.n, 0),
       ext: rooms.reduce((total, room) => total + room.ext, 0),
+      detectors: StationFire.detectors(rooms[0]),
       low: !!sys.fire && Hi < StationFire.MOD.z[0],
     };
+  }
+
+  /**
+   * Извещатели на потолке помещения оборудования (fire.detectors): не меньше min, через step по длине.
+   * @param {object} room
+   * @returns {number}
+   */
+  static detectors(room) {
+    const rule = StationRules.raw('fire.detectors');
+    return Math.max(rule.min, Math.ceil((room.x1 - room.x0) / rule.step));
   }
 
   /** Защищаемые помещения: основное и топливный отсек. */

@@ -68,14 +68,14 @@ Check.run('ресивер: правило методики ПНЕВМОТЕХ (r
 Check.run('осушитель Dalgakiran DK: поправки производителя', ()=>{
   const p={ name:'Осушитель рефрижераторный Dalgakiran DK 1450', attrs:{ maker:'Dalgakiran', model:'DK 1450' } };
   // 8 бар → 1,04; вход 45 °C → 0,78; помещение 30 °C → 0,98: F = 1,04 · 0,78 · 0,98 = 0,79498
-  let o=DryerSizing.factor(p, 8, { tin:45, amb:30 });
+  let o=DryerDerate.factor(p, 8, { tin:45, amb:30 });
   assert.ok(o.s && /DK/.test(o.s.title), 'серия найдена');
   near(o.F, 0.79498, 1e-5, 'табличные точки');
   // интерполяция: 9 бар → 1,04 + (1,11 − 1,04)/2 = 1,075; вход 37,5 °C → (1 + 0,92)/2 = 0,96; 25 °C → 1: F = 1,032
-  o=DryerSizing.factor(p, 9, { tin:37.5, amb:25 });
+  o=DryerDerate.factor(p, 9, { tin:37.5, amb:25 });
   near(o.F, 1.032, 1e-6, 'интерполяция');
   // вне таблицы: 60 °C на входе — крайнее значение 0,45 и отметка «вне таблицы» не ставится (60 есть в таблице); 65 °C — ставится
-  o=DryerSizing.factor(p, 7, { tin:65, amb:25 });
+  o=DryerDerate.factor(p, 7, { tin:65, amb:25 });
   near(o.F, 0.45, 1e-9, 'за краем — крайнее значение'); assert.deepStrictEqual(o.out, ['температура входа']);
   // DK HPN — своя серия (опорное давление 40 бар), не DK
   const h=StationRules.series({ name:'Осушитель DK 50 HPN', attrs:{ maker:'Dalgakiran' } }, 'dryer');
@@ -86,27 +86,27 @@ Check.run('осушитель EXELUTE XRD: номинал при точке ро
   // каталог EXELUTE 2026: 8 бар → 1,04; вход 40 °C → 0,96; помещение 30 °C → 1,06; F4 (+3 °C) = 0,70:
   // F = 1,04 · 0,96 · 1,06 · 0,70 = 0,7408128
   const p={ name:'Рефрижераторный осушитель EXELUTE XRD 100', attrs:{ maker:'EXELUTE', model:'XRD 100' } };
-  const o=DryerSizing.factor(p, 8, { tin:40, amb:30 });
+  const o=DryerDerate.factor(p, 8, { tin:40, amb:30 });
   assert.ok(o.s && /XRD 13–130/.test(o.s.title), 'серия XRD: '+(o.s && o.s.title));
   near(o.kc, 0.7, 1e-12, 'поправка серии'); near(o.F, 1.04*0.96*1.06*0.7, 1e-9, 'F с поправкой серии');
   // XRD P — своя серия (вход до 60 °C), XHD/XED — адсорбционные; у DK поправки серии нет (kc = 1)
   assert.ok(/XRD P/.test(StationRules.series({ name:'Осушитель EXELUTE XRD 460 P', attrs:{ maker:'EXELUTE' } }, 'dryer').title));
-  assert.strictEqual(DryerSizing.factor({ name:'Осушитель Dalgakiran DK 100', attrs:{ maker:'Dalgakiran', model:'DK 100' } }, 7, { tin:35, amb:25 }).kc, 1);
+  assert.strictEqual(DryerDerate.factor({ name:'Осушитель Dalgakiran DK 100', attrs:{ maker:'Dalgakiran', model:'DK 100' } }, 7, { tin:35, amb:25 }).kc, 1);
 });
 
 Check.run('осушитель без данных производителя: типовые поправки серии (требует подтверждения)', ()=>{
   const p={ name:'Осушитель ОР-20', attrs:{ maker:'Пример' } };
   // рефрижераторный — по таблице DK: 9 бар → 1,075; вход 45 °C → 0,78; помещение 30 °C → 0,98: F = 0,821730
-  let o=DryerSizing.factor(p, 9, { tin:45, amb:30 }, 'refrig');
+  let o=DryerDerate.factor(p, 9, { tin:45, amb:30 }, 'refrig');
   assert.ok(o.generic && /DK/.test(o.s.title), 'типовая серия DK');
   near(o.F, 1.075*0.78*0.98, 1e-9, 'рефрижераторный');
   // адсорбционный — по таблице DA (без поправки на окружающую): 7 бар → 1; вход 40 °C → 0,8
-  o=DryerSizing.factor(p, 7, { tin:40, amb:30 }, 'ads');
+  o=DryerDerate.factor(p, 7, { tin:40, amb:30 }, 'ads');
   assert.ok(o.generic && /DA/.test(o.s.title)); near(o.F, 0.8, 1e-9, 'адсорбционный');
   assert.strictEqual(StationRules.status('dryer.generic'), 'unconfirmed');
   // без файла типовых серий — прежняя таблица Kp ÷ запас: Kp(9) = 1,085; F = 1,085 / 1,15
   const keep=StationRules.raw('dryer.generic'); StationRules.rule('dryer.generic').value={};
-  try{ o=DryerSizing.factor(p, 9, { tin:45, amb:30 }, 'refrig'); assert.strictEqual(o.s, null); near(o.F, 1.085/1.15, 1e-9, 'Kp ÷ запас'); }
+  try{ o=DryerDerate.factor(p, 9, { tin:45, amb:30 }, 'refrig'); assert.strictEqual(o.s, null); near(o.F, 1.085/1.15, 1e-9, 'Kp ÷ запас'); }
   finally{ StationRules.rule('dryer.generic').value=keep; }
 });
 
@@ -298,6 +298,143 @@ Check.run('погрешность данных (calc.tolerance): недобор 
   // 9,7 против 10: недобор 3 % — ошибка
   x=mk(9.7); R=StationCalc.run(x);
   assert.ok(R.errors.some(e=>/Производительность рабочих компрессоров 9,7/.test(e.text)), R.errors.map(e=>e.text).join(' | '));
+});
+
+Check.run('резерв по ТЗ, которого нет в составе, — ошибка (было: урезался молча, «проверки пройдены»)', ()=>{
+  const comp=(qty)=>part('Компрессор винтовой К', { cat:'comp_screw', maker:'Пример', flow:10, pressure:10, kw:55 }, qty);
+  const mk=(reserve, qty)=>station('st_comp', { flow:'8', pressure:'7', basis:'fad', tmax:'30', margin:'0', reserve, alt:'0' }, [comp(qty)]);
+  let R=StationCalc.run(mk('1', 1));
+  assert.ok(R.errors.some(e=>e.text==='Резерв по ТЗ не обеспечен: в составе 1 компрессор, а по ТЗ 1 резервный — нужно не меньше 2 компрессоров.'),
+    R.errors.map(e=>e.text).join(' | '));
+  R=StationCalc.run(mk('1', 2));
+  assert.ok(!R.errors.some(e=>/Резерв по ТЗ/.test(e.text)), 'резерв есть — ошибки нет');
+  R=StationCalc.run(mk('0', 1));
+  assert.ok(!R.errors.some(e=>/Резерв по ТЗ/.test(e.text)), 'без резерва — как было');
+  const dgu=part('ДГУ Energo 200', { cat:'dgu', maker:'Energo', kw:200, kwMax:220, kva:250 }, 1);
+  R=StationCalc.run(station('st_dgu', { kw:'180', reserve:'1', tmax:'30' }, [dgu]));
+  assert.ok(R.errors.some(e=>/^Резерв по ТЗ не обеспечен: в составе 1 ДГУ, а по ТЗ 1 резервная — нужно не меньше 2 ДГУ\./.test(e.text)), R.errors.map(e=>e.text).join(' | '));
+  assert.strictEqual(ReserveCheck.of({ reserve:2 }, 2), 1, 'хотя бы один агрегат — рабочий');
+  assert.strictEqual(ReserveCheck.of({}, 3), 0);
+});
+
+Check.run('лето без температуры в ТЗ — одно правило 35 °C (heat.t_summer): перевод в FAD, осушитель, вентиляция (было 20 / 25 / 35 °C)', ()=>{
+  assert.strictEqual(StationRules.raw('heat.t_summer'), 35);
+  assert.strictEqual(StationRules.status('heat.t_summer'), 'unconfirmed', 'требует подтверждения');
+  const comp=()=>part('Компрессор винтовой К-130', { cat:'comp_screw', maker:'Пример', flow:13, pressure:10, kw:75 });
+  const mk=extra=>station('st_comp', { flow:'10', pressure:'7', basis:'normal', alt:'0', rh:'100', margin:'0', reserve:'0', ...extra }, [comp()]);
+  const fad=R=>R.sections.find(sec=>sec.id==='air').steps.find(st=>/FAD/.test(st.what)).result;
+  const none=StationCalc.run(mk({})), hot=StationCalc.run(mk({ tmax:'35' })), cool=StationCalc.run(mk({ tmax:'20' }));
+  // 10 н. м³/мин, 100 %: 35 °C — 5,613 кПа пара: 10 · 101,325 / (101,325 − 5,613) · 308,15 / 273,15 = 11,94 (при 20 °C — 10,99)
+  assert.strictEqual(fad(none), fad(hot)); assert.ok(/11,94/.test(fad(none)), fad(none));
+  assert.notStrictEqual(fad(none), fad(cool), 'было 20 °C — потребность занижена на 8 %');
+  assert.ok(none.rules.includes('heat.t_summer') && none.weak.some(w=>w.id==='heat.t_summer'), 'правило — в «требует подтверждения»');
+  assert.ok(!hot.rules.includes('heat.t_summer'), 'температура в ТЗ — правило не нужно');
+  assert.deepStrictEqual(DryerDerate.temps({ tmax:null, tin:null }), DryerDerate.temps({ tmax:35, tin:null }), 'осушитель: было 25 °C');
+  assert.strictEqual(StationUi.plan(mk({})).heat.vent.tmax, 35, 'вентиляция');
+  assert.strictEqual(StationUi.plan(mk({ tmax:'28' })).heat.vent.tmax, 28);
+});
+
+Check.run('насосная: подача и напор диапазоном — крайние точки паспорта, между ними — «уточните рабочую точку» (было: обе верхние границы — «выполняется»)', ()=>{
+  TYPES.st_pump={ item:'Насосная станция', station:{ main:['pump'] } };
+  const pump=(flow, head)=>part('Насос Н', { cat:'pump', maker:'Пример', flow, head, kw:15 });
+  const mk=(q, head, flow, pumpHead)=>StationCalc.run(station('st_pump', { q:String(q), head:String(head), reserve:'0' }, [pump(flow, pumpHead)]));
+  const step=R=>R.sections.find(sec=>sec.id==='pump').steps.find(st=>/^Напор/.test(st.what));
+  const texts=R=>R.issues.map(i=>i.text).join(' | ');
+  // 35 м³/ч при 45 м: было Q 40 ≥ 35 и H 50 ≥ 45 — «выполняется», а при 40 м³/ч напор 20 м
+  let R=mk(35, 45, '8–40', '50–20');
+  assert.strictEqual(step(R).ok, null, 'между крайними точками — не «выполняется»');
+  assert.ok(R.warnings.some(w=>/^Насос «Насос Н»: при 35 м³\/ч нужен напор 45 м — между крайними точками паспорта \(50–20 м при 8–40 м³\/ч\); уточните рабочую точку по кривой Q–H\.$/.test(w.text)), texts(R));
+  assert.ok(!R.errors.some(e=>/Напор/.test(e.text)), 'не ошибка: кривой нет');
+  assert.deepStrictEqual(step(mk(35, 45, '8–40', '20–50')).result, step(R).result, 'порядок границ напора не важен');
+  assert.strictEqual(step(mk(35, 18, '8–40', '50–20')).ok, true, 'не выше наименьшего напора — при любой подаче');
+  assert.strictEqual(step(mk(6, 48, '8–40', '50–20')).ok, true, 'подача меньше наименьшей — напор не меньше наибольшего');
+  R=mk(35, 55, '8–40', '50–20');
+  assert.ok(R.errors.some(e=>e.text==='Напор насоса «Насос Н» — не больше 50 м, меньше требуемого 55 м.'), texts(R));
+  assert.strictEqual(step(mk(30, 38, 32, 40)).ok, true, 'числом — номинальная точка, как было');
+  assert.strictEqual(PumpPoint.text({ flow:'до 40', head:'50–20' }, String), '50–20 м при подаче до 40 м³/ч');
+  assert.strictEqual(PumpPoint.verdict({ flow:'до 40', head:'50–20' }, 35, 45, 0.02), PumpPoint.CHECK);
+  assert.strictEqual(PumpPoint.verdict({ flow:'8–40', head:'50–20' }, 45, 30, 0.02), PumpPoint.OVER);
+  // одна величина числом, другая диапазоном: рабочую точку не угадываем (было: «выполняется» с наибольшим напором)
+  R=mk(40, 45, 40, '50–20');
+  assert.strictEqual(step(R).ok, null, 'подача числом, напор диапазоном — «уточните»');
+  assert.strictEqual(PumpPoint.verdict({ flow:40, head:'50–20' }, 40, 18, 0.02), PumpPoint.FITS, 'не выше наименьшего напора — да');
+  assert.strictEqual(PumpPoint.verdict({ flow:'8–40', head:32 }, 20, 30, 0.02), PumpPoint.CHECK, 'подача диапазоном, напор числом');
+  assert.strictEqual(PumpPoint.verdict({ flow:'до 40', head:32 }, 20, 30, 0.02), PumpPoint.CHECK, '«до 40»');
+  assert.strictEqual(PumpPoint.verdict({ flow:'8–40', head:32 }, 8, 30, 0.02), PumpPoint.FITS, 'при наименьшей подаче — не меньше паспортного');
+  assert.strictEqual(PumpPoint.verdict({ flow:40, head:'50–20' }, 45, 18, 0.02), PumpPoint.CHECK, 'за номинальной подачей — «уточните», не «не даст»');
+  assert.strictEqual(step(mk(20, 30, '8–40', 32)).result, 'Hнас при 20 м³/ч — по кривой Q–H');
+  assert.strictEqual(step(mk(35, 45, '8–40', 'до 50')).result, 'Hнас при 35 м³/ч — до 50 м: по кривой Q–H', 'без «от ?»');
+  // подача на насос больше наибольшей по паспорту — ошибка (было: «выполняется» без замечания, КП сохранялось)
+  const two=station('st_pump', { q:'120', head:'25', reserve:'0' }, [pump('8–40', '50–20'), part('Насос Б', { cat:'pump', maker:'Пример', flow:'20–100', head:'60–30', kw:30 })]);
+  R=StationCalc.run(two);
+  assert.ok(R.errors.some(e=>/^Насос «Насос Н»: подача на насос 60 м³\/ч больше наибольшей по паспорту 40 м³\/ч/.test(e.text)), texts(R));
+  assert.ok(/подача на насос больше 40 м³\/ч — НЕ выполняется/.test(JSON.stringify(StationCalc.docGroups(two))), 'в КП — «НЕ выполняется»');
+  // подача меньше наименьшей по паспорту — вне рабочей части кривой
+  R=mk(6, 48, '8–40', '50–20');
+  assert.ok(R.warnings.some(w=>/^Насос «Насос Н»: подача на насос 6 м³\/ч меньше наименьшей по паспорту 8 м³\/ч/.test(w.text)), texts(R));
+  // числом: подача на насос больше номинальной — «уточните» (было: ✕ на экране без замечания)
+  R=mk(36, 38, 32, 40);
+  assert.ok(R.warnings.some(w=>/^Насос «Насос Н»: подача на насос 36 м³\/ч больше номинальной 32 м³\/ч/.test(w.text)), texts(R));
+});
+
+Check.run('осушитель без температуры в ТЗ: «Компоновка», «Нужно…», «Решить» и расчётная записка — одни поправки (было: в записке ошибка, «Решить» — нечем)', ()=>{
+  const comp=part('Компрессор винтовой К-100', { cat:'comp_screw', maker:'Пример', flow:10, pressure:8, kw:55 });
+  const card=(id, model, flow)=>({ id, name:'Осушитель Dalgakiran '+model, attrs:{ cat:'dryer_refrig', maker:'Dalgakiran', model, flow, pressure:16 } });
+  const cards=[card('d120', 'DK 120', 12), card('d200', 'DK 200', 20)];
+  const mk=c=>station('st_comp', { flow:'10', pressure:'7', basis:'fad', margin:'0', reserve:'0', alt:'0' }, [comp, part(c.name, { ...c.attrs }, 1)]);
+  Catalog.cache=cards;
+  try{
+    for (const c of cards){
+      const x=mk(c), bad=StationCalc.run(x).errors.some(e=>/^Осушитель .*: с поправками/.test(e.text));
+      const rec=KitNeed.recs(x).find(r=>r.key==='dryer-refrig');
+      assert.strictEqual(Boolean(rec && rec.swap), bad, `${c.attrs.model}: «Заменить» — тогда же, когда ошибка в записке`);
+      if (!bad) continue;
+      const item=ExpertFix.list(x).find(i=>/^Осушитель .*: с поправками/.test(i.text));
+      assert.ok(item && item.fix && item.fix.id==='need:dryer-refrig', 'у ошибки — «Решить»: '+JSON.stringify(item));
+      assert.strictEqual(NeedPick.best(x, rec).c.id, 'd200', 'подбор — с теми же поправками');
+    }
+  } finally { Catalog.cache=[]; }
+});
+
+Check.run('ресиверы: приоритет 1 — «не чаще 1 цикла за 30 с»; в КП — без проверок «на здравый смысл» и без «НЕ выполняется» там, где нет ошибки', ()=>{
+  const x=station('st_comp', { flow:'3', pressure:'7', basis:'fad', tmax:'30', margin:'0', reserve:'0', alt:'0' },
+    [part('Компрессор винтовой К-36', { cat:'comp_screw', maker:'Пример', flow:3.6, pressure:10, kw:22 }), part('Ресивер РВ-500', { cat:'receiver', maker:'Пример', volume:500, pressure:11 })]);
+  const R=StationCalc.run(x), recv=R.sections.find(sec=>sec.id==='recv');
+  // V = Q / (8 · ΔP): 3,6 / 8 = 0,45 м³ — до 2 циклов в минуту (Atlas Copco: fmax — 1 цикл за 30 с), а не 10–15 в час
+  assert.ok(recv.steps.some(st=>st.what==='Приоритет 1. Цикл нагрузки/разгрузки (не чаще 1 цикла за 30 с, Atlas Copco)'), recv.steps.map(st=>st.what).join(' | '));
+  const sanity=recv.steps.find(st=>/здравый смысл/.test(st.what));
+  assert.ok(sanity && /сработало/.test(sanity.result), 'на экране — есть: '+JSON.stringify(sanity));
+  assert.deepStrictEqual(R.errors.map(e=>e.text), [], 'без ошибок');
+  const doc=JSON.stringify(StationCalc.docGroups(x));
+  assert.ok(!/здравый смысл|предупреждение:|Проверить|Рассмотреть/.test(doc), 'указания менеджеру — не в КП');
+  assert.ok(!/НЕ выполняется/.test(doc), 'нет ошибки — нет и «НЕ выполняется»');
+  assert.ok(/выполняется/.test(doc), 'выполненные шаги — как были');
+  // лето +38 °C: перепад помещения 2 °C меньше 5 — предупреждение (шаг ✕ на экране), в КП — без «НЕ выполняется»
+  x.req.tmax='38'; StationCalc.cache.clear();
+  const hot=StationCalc.run(x), dt=hot.sections.find(sec=>sec.id==='vent').steps.find(st=>/^Перепад температур/.test(st.what));
+  assert.strictEqual(dt.ok, false, 'на экране — ✕');
+  assert.ok(!hot.errors.some(e=>e.sec==='vent'), hot.errors.map(e=>e.text).join(' | '));
+  assert.ok(!/Перепад температур помещения летом[^"]*НЕ выполняется/.test(JSON.stringify(StationCalc.docGroups(x))), 'в КП — без «НЕ выполняется»');
+});
+
+Check.run('отпечаток станции и кэш расчёта — от всего, что читает расчёт (было: ручной список — шум, роль ресивера, ступень, строки «NPSHr», «Способ пуска» не учитывались)', ()=>{
+  const comp=part('Компрессор винтовой К-130', { cat:'comp_screw', maker:'Пример', flow:13, pressure:10, kw:75, noise:60 });
+  const recv=part('Ресивер РВ-900', { cat:'receiver', maker:'Пример', volume:900, pressure:11 });
+  const x=station('st_comp', { flow:'10', pressure:'7', basis:'fad', tmax:'30', margin:'0', reserve:'0', alt:'0' }, [comp, recv]);
+  const hash=()=>StationLayout.hash(StationUi.input(x));
+  const changed=(what, edit)=>{ const before=hash(); edit(); assert.notStrictEqual(hash(), before, what); };
+  changed('шум', ()=>{ comp.attrs.noise=98; });
+  changed('строка характеристик', ()=>{ comp.rows=[{ k:'Уровень шума', v:'70 дБА' }]; });
+  changed('мокрый ресивер', ()=>{ recv.recvRole='wet'; });
+  changed('ступень', ()=>{ recv.airGrade='micro'; });
+  const kept=hash(); comp.cost=123456; comp.costCur='EUR';
+  assert.strictEqual(hash(), kept, 'закупка — картинки не пересобираются');
+  comp._costText='12 34'; comp._at=3;
+  assert.strictEqual(hash(), kept, 'служебные поля окна («_…», текст в поле закупки) — тоже (было: каждое нажатие — компоновка заново)');
+  const first=StationCalc.run(x);
+  assert.strictEqual(StationCalc.run(x), first, 'без правки — из кэша');
+  comp.rows=[...comp.rows, { k:'Способ пуска', v:'Плавный пуск' }];
+  assert.notStrictEqual(StationCalc.run(x), first, 'строка «Способ пуска» — расчёт заново');
 });
 
 Check.run('компрессорная без данных: вопросы и допущения, без ошибок', ()=>{

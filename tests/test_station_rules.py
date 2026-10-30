@@ -41,6 +41,19 @@ class RulesFileTest(unittest.TestCase):
                     self.assertEqual(xs, sorted(xs), 'таблица %s — по возрастанию' % k)
                     self.assertTrue(all(y > 0 for _, y in T))
 
+    def test_audit_statuses(self):
+        """отчёт аудита 30.10: правила без источника — «требует подтверждения» со сверкой; нормы — с источником"""
+        by_id = {r['id']: r for r in self.d['rules']}
+        pipe = by_id['el.pipe_v']
+        self.assertEqual(pipe['status'], 'unconfirmed', 'скорость во всасывающем трубопроводе — выше СП 31.13330 для DN до 250')
+        self.assertIn('СП 31.13330', pipe['source']['doc'])
+        wall = by_id['fire.fuel_wall']
+        self.assertEqual((wall['value'], wall['status']), (45, 'confirmed'))
+        self.assertIn('123-ФЗ', wall['source']['doc'])
+        for rid in ('heat.t_summer', 'heat.comp_tmax', 'fire.detectors'):
+            with self.subTest(rid):
+                self.assertEqual(by_id[rid]['status'], 'unconfirmed')
+
     def test_rules_used_in_code_exist(self):
         """каждое правило, на которое ссылается код (StationRules.raw/rule/v, N.rule), есть в файле"""
         have = {r['id'] for r in self.d['rules']}

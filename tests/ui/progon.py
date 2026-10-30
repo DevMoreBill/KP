@@ -810,20 +810,24 @@ class Scenario(UiRun):
         for t in tabs:
             pg.locator('dialog[open] .dl-tab[data-id="%s"]' % t).first.click()
             self.wait(800)
-            field = pg.locator('dialog[open] input[data-lgf="to"]')
+            # поле «Куда — адрес объекта»: у поставщика, который везёт на сборку станции, «Куда» — склад сборщика, без «→ В КП»
+            field = pg.locator('dialog[open] input[data-lgf="to"][placeholder^="адрес объекта"]')
             if field.count():
                 break
         else:
             self.errs.append(('deal', 'NOTE', 'нет поля «Куда» в логистике'))
             return
+        # кнопка «→ В КП» того же поставщика: у станции их несколько, первая на странице может быть чужой
+        k = field.first.get_attribute('data-k') or ''
+        tokp = 'dialog[open] [data-lgx="tokp"][data-k="%s"]' % k
         field.first.fill(addr)
         self.wait(600)
-        pg.locator('dialog[open] [data-lgx="tokp"]').first.click()
+        pg.locator(tokp).first.click()
         self.wait(400)
         got = self.ev("S.object && S.object.address")
         if got != addr:
             self.errs.append(('deal', 'SCRIPT', 'адрес в КП: ожидался %r, в КП %r' % (addr, got)))
-        if pg.locator('dialog[open] [data-lgx="tokp"]').count():
+        if pg.locator(tokp).count():
             self.errs.append(('deal', 'SCRIPT', 'кнопка «→ В КП» не скрылась после копирования'))
 
     def s_deal(self):

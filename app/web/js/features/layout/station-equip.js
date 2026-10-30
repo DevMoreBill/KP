@@ -108,12 +108,23 @@ export class StationEquip {
 
   /** Число поля каталога; диапазон или «до 40» — верхняя граница: {v, range} или null. */
   static top(v) {
+    const span = this.span(v);
+    return span ? { v: span.hi, range: span.range } : null;
+  }
+
+  /**
+   * Границы поля каталога: число — {lo = hi}, «8–40» — {lo 8, hi 40}, «до 40» — {lo null, hi 40}; нет числа — null.
+   * @param {*} v
+   * @returns {{lo: number|null, hi: number, range: boolean}|null}
+   */
+  static span(v) {
     const value = this.num(v);
-    if (value != null && /^\s*[\d.,\s]+\s*$/.test(String(v))) return { v: value, range: false };
+    if (value != null && /^\s*[\d.,\s]+\s*$/.test(String(v))) return { lo: value, hi: value, range: false };
     const all = (String(v ?? '').match(/\d[\d\s]*(?:[.,]\d+)?/g) || [])
       .map(token => this.num(token))
       .filter(x => x != null);
-    return all.length ? { v: Math.max(...all), range: true } : null;
+    if (!all.length) return null;
+    return { lo: all.length > 1 ? Math.min(...all) : null, hi: Math.max(...all), range: true };
   }
 
   /** Расход воздуха по паспорту, м³/ч: cool — на охлаждение, comb — на горение; heat — тепловыделение, кВт. */
@@ -577,11 +588,17 @@ export class StationEquip {
       air,
       noise: StationNorms.dba(part),
       pic: this.pic(part),
-      flow: k === 'pump' ? this.num(attrs.flow) : null,
+      flow: k === 'pump' ? this._topFlow(attrs.flow) : null,
       ...(k === 'tank' ? { vol: TankSize.vol(part) } : {}),
       ...(k === 'compressor' || k === 'dgu' ? this.airRows(part) : {}),
       ...(k === 'compressor' ? { ctype: this.ctype(part) } : {}),
     };
+  }
+
+  // подача насоса для труб — наибольшая по паспорту («8–40», «до 40» → 40)
+  static _topFlow(value) {
+    const top = this.top(value);
+    return top ? top.v : null;
   }
 
   static _mountOf(part, kind, dims, pipe) {

@@ -1,5 +1,6 @@
 import { Mm } from '../layout/mm.js';
 import { StationVent } from '../layout/station-vent.js';
+import { SummerTemp } from '../layout/summer-temp.js';
 import { VentCalc } from '../layout/vent-calc.js';
 import { CalcNote } from './calc-note.js';
 
@@ -13,7 +14,7 @@ export class VentSizing {
     if (!vent) return;
     const sum = heatVent && heatVent.sum;
     note.section('vent', 'Вентиляция и отопление');
-    if (sum) VentSizing._summer(note, sum, vent);
+    if (sum) VentSizing._summer(note, sum, vent, plan.req || {});
     if (vent.infan) VentSizing._infan(note, vent.infan);
     VentSizing.opening(note, vent, sum, 'Приточные жалюзи', 'in');
     VentSizing.opening(note, vent, sum, 'Выброс горячего воздуха', 'out');
@@ -29,7 +30,8 @@ export class VentSizing {
     if (rec && (rec.on || rec.worth)) VentSizing._recup(note, rec);
   }
 
-  static _summer(note, sum, vent) {
+  static _summer(note, sum, vent, req) {
+    if (!Number.isFinite(req.tmax)) note.rule(SummerTemp.RULE);
     note.rule('air.cp');
     note.rule('vent.temps');
     if (sum.units.length) VentSizing._compressors(note, sum);

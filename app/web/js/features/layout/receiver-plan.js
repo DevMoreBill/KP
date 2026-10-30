@@ -1,4 +1,4 @@
-import { AirChain } from './air-chain.js';
+import { DryerDerate } from './dryer-derate.js';
 import { Mm } from './mm.js';
 import { StationRules } from '../rules/station-rules.js';
 
@@ -225,7 +225,7 @@ export class ReceiverPlan {
     return [
       main > method.excess * plan.theor && {
         level: 'warn',
-        text: `Запас превышает 200% (${fmt(main)} л на ${fmt(plan.theor)} л). Рассмотреть переход на 500 л или пересмотр количества ресиверов.`,
+        text: `Запас превышает ${this.pct(method.excess)}% (${fmt(main)} л на ${fmt(plan.theor)} л). Рассмотреть переход на 500 л или пересмотр количества ресиверов.`,
       },
       main < method.low * plan.theor && {
         level: 'error',
@@ -233,11 +233,11 @@ export class ReceiverPlan {
       },
       main < method.ratio[0] * minute && {
         level: 'warn',
-        text: `Объём менее 15% минутной производительности (${fmt(main)} л при ${flowText} м³/мин) — риск частых циклов и пульсаций.`,
+        text: `Объём менее ${this.pct(method.ratio[0])}% минутной производительности (${fmt(main)} л при ${flowText} м³/мин) — риск частых циклов и пульсаций.`,
       },
       main > method.ratio[1] * minute && {
         level: 'warn',
-        text: `Объём более 5-кратной минутной производительности (${fmt(main)} л при ${flowText} м³/мин) — неоправданно велик, если нет задачи длительного буфера.`,
+        text: `Объём более ${this.dec(method.ratio[1])}-кратной минутной производительности (${fmt(main)} л при ${flowText} м³/мин) — неоправданно велик, если нет задачи длительного буфера.`,
       },
     ].filter(Boolean);
   }
@@ -252,7 +252,7 @@ export class ReceiverPlan {
       opts.bar > 0 &&
         pmin < opts.bar + this.METHOD.margin - ReceiverPlan.EPS && {
           level: 'error',
-          text: `Ресивер должен иметь запас по давлению минимум 1–2 бар относительно максимального давления компрессора (ресивер ${fmt(pmin)} бар, компрессор ${fmt(opts.bar)} бар).`,
+          text: `Ресивер должен иметь запас по давлению не меньше ${fmt(this.METHOD.margin)} бар относительно максимального давления компрессора (ресивер ${fmt(pmin)} бар, компрессор ${fmt(opts.bar)} бар).`,
         },
       opts.valve > 0 &&
         opts.valve > pmin + ReceiverPlan.EPS && {
@@ -350,7 +350,7 @@ export class ReceiverPlan {
     const dryers = equip.filter(unit => unit.kind === 'dryer' && unit.air && unit.air.type !== 'gen');
     const dryerCap =
       dryers.length && dryers.every(unit => unit.air.flow > 0)
-        ? dryers.reduce((acc, unit) => acc + unit.air.flow * (unit.qty || 1), 0) * AirChain.dryerK(bar)
+        ? dryers.reduce((acc, unit) => acc + unit.air.flow * (unit.qty || 1), 0) * DryerDerate.pressK(bar)
         : 0;
     const have = this.have(equip);
     const plan = this.calc({

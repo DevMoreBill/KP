@@ -3,6 +3,7 @@ import { StationMatrix } from './station-matrix.js';
 import { StationMods } from './station-mods.js';
 import { StationNorms } from './station-norms.js';
 import { StationTidy } from './station-tidy.js';
+import { SummerTemp } from './summer-temp.js';
 import { VentCalc } from './vent-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 
@@ -14,6 +15,7 @@ export class StationHeat {
   static _rule = name => StationRules.raw(name);
 
   static NO_HEAT = { n: 0, kw: 0, len: 0, heaters: [], short: false };
+  static SEC_PER_H = 3600;
 
   static UNIT_WORD = { compressor: 'компрессор', dgu: 'ДГУ', pump: 'насос' };
 
@@ -89,6 +91,14 @@ export class StationHeat {
     return air && air.c > 0 && air.rhoK > 0 ? (air.c * air.rhoK) / (273 + temp) / 3.6 : this.AIR;
   }
 
+  /**
+   * Запас мощности отопления в процентах (heat.reserve): «10».
+   * @returns {number}
+   */
+  static reservePct() {
+    return Math.round((this.RESERVE - 1) * 100);
+  }
+
   /** Наружная температура для отопления: из требований, иначе heat.t_default, но не холоднее исполнения. */
   static tOut(req, climate) {
     if (Number.isFinite(req.tmin)) return req.tmin;
@@ -110,15 +120,17 @@ export class StationHeat {
     const tout = this.tOut(req, plan.climate);
     const tin = StationNorms.INSIDE;
     const deltaT = Math.max(0, tin - tout);
-    const env = this.envelope(plan, sys, deltaT);
-    const airCap = this.airAt(tout);
-    const qInf = this._ACH * env.lenHeated * env.wi * env.hi * airCap * deltaT;
-    const qStop = env.qEnv + qInf;
-    const rec = sys.rec !== false;
     const units = (plan.items || []).filter(
       i => !i.tank && i.mount !== 'wall' && /^(compressor|dgu|pump)$/.test(i.kind) && i.kw > 0,
     );
     const exhaust = req.vent || {};
+    // сначала лето: площадь жалюзи по рамке нужна теплопотерям ограждений
+    const summer = this.summer({ plan, sys, r: req, units, ex: exhaust, room: this.room(plan), tout, tin });
+    const env = this.envelope(plan, sys, deltaT, summer);
+    const airCap = this.airAt(tout);
+    const qInf = this._ACH * env.lenHeated * env.wi * env.hi * airCap * deltaT;
+    const qStop = env.qEnv + qInf;
+    const rec = sys.rec !== false;
     const net = opt => opt.q - opt.a * airCap * deltaT;
     const run = units.map(i => ({ i, q: this.heatOf(i, rec, exhaust), a: this.airOf(i) }));
     const base = run.length ? run.reduce((first, second) => (net(first) <= net(second) ? first : second)) : null;
@@ -126,7 +138,7 @@ export class StationHeat {
     const need = (Math.max(qStop, qRun || 0) * this.RESERVE) / 1000;
     const isOn = sys.heat !== false;
     const pick = isOn ? this.pick(plan, need) : { ...StationHeat.NO_HEAT, heaters: [] };
-    const vent = this.vent({ plan, sys, r: req, units, ex: exhaust, env, base, tout, tin });
+    const vent = this.vent({ summer, sys, env, base, ex: exhaust });
     return {
       tout,
       tin,
@@ -150,37 +162,40 @@ export class StationHeat {
     };
   }
 
-  /** Ограждения отапливаемой части: U по утеплителю, площадь, двери и жалюзи; перегородка к отсеку бака — с ½ перепада. */
-  static envelope(plan, sys, deltaT) {
-    const geo = plan.geo;
-    const [Le, We, He] = geo.ext;
+  /** Помещение: наружные длина и ширина; отапливаемая часть (без отсека бака) и её объём, м. */
+  static room(plan) {
+    const [Le, We] = plan.geo.ext;
     const [Li, Wi, Hi] = plan.int;
     const fuel = plan.fuel;
     const tankLen = fuel ? fuel.x1 + fuel.part : 0;
+    const lenHeated = Mm.meters(Li - tankLen);
+    const width = Mm.meters(Wi);
+    const height = Mm.meters(Hi);
+    return { Le, We, tankLen, lenHeated, wi: width, hi: height, volume: lenHeated * width * height };
+  }
+
+  /**
+   * Ограждения отапливаемой части: U по утеплителю, площадь, двери и жалюзи (по рамке из летнего расчёта summer — {sum, work});
+   * перегородка к отсеку бака — с ½ перепада.
+   */
+  static envelope(plan, sys, deltaT, summer) {
+    const geo = plan.geo;
+    const room = this.room(plan);
+    const fuel = plan.fuel;
     const kind = this._bridgeKind(geo);
     const uWall = this._BRIDGE[kind] / (this._R_SURF + Mm.meters(geo.t) / this._LAMBDA);
-    const len = Mm.meters(Le - tankLen);
-    const wid = Mm.meters(We);
-    const height = Mm.meters(He);
+    const len = Mm.meters(room.Le - room.tankLen);
+    const wid = Mm.meters(room.We);
+    const height = Mm.meters(geo.ext[2]);
     const area = 2 * (len * wid + len * height + wid * height) - (fuel ? wid * height : 0);
-    const Apart = fuel ? Mm.meters(Wi) * Mm.meters(Hi) : 0;
+    const Apart = fuel ? room.wi * room.hi : 0;
     const doorArea = this.doorArea(plan).reduce((acc, v) => acc + v, 0);
-    const louverArea = this.louverArea(plan, sys);
+    const louverArea = this.louverArea(plan, sys, summer);
     const qEnv =
       (uWall * Math.max(0, area - doorArea - louverArea) + this._U_DOOR * doorArea + this._U_LOUVER * louverArea) *
         deltaT +
       (uWall * Apart * deltaT) / 2;
-    return {
-      U: uWall,
-      A: area,
-      qEnv,
-      Le,
-      We,
-      lenHeated: Mm.meters(Li - tankLen),
-      wi: Mm.meters(Wi),
-      hi: Mm.meters(Hi),
-      volume: Mm.meters(Li - tankLen) * Mm.meters(Wi) * Mm.meters(Hi),
-    };
+    return { U: uWall, A: area, qEnv, ...room };
   }
 
   static _bridgeKind(geo) {
@@ -202,15 +217,35 @@ export class StationHeat {
     return out;
   }
 
-  /** Жалюзи с закрытыми клапанами и жалюзи радиаторов ДГУ, м². */
-  static louverArea(plan, sys) {
+  /**
+   * Жалюзи с закрытыми клапанами, м²: приток и выброс по рамке из летнего расчёта summer ({sum, work}) — у ДГУ приток на
+   * воздух радиаторов, как на плане вентиляции, — не меньше heat.louver_leak.vent; плюс жалюзи радиаторов ДГУ.
+   */
+  static louverArea(plan, sys, summer) {
     const leak = StationHeat._rule('heat.louver_leak');
     const dgu = (plan.items || []).filter(i => i.kind === 'dgu' && !i.tank);
     const rad = dgu.reduce(
       (acc, unit) => acc + Mm.meters(unit.rad === 'back' ? unit.lx : unit.ly) * Mm.meters(unit.h) * leak.dguK,
       0,
     );
-    return (sys.vent !== false ? leak.vent : 0) + rad;
+    if (sys.vent === false && !dgu.length) return rad;
+    const frame = dgu.length ? this._dguFrame(summer) : this._frame(summer);
+    return Math.max(leak.vent, frame) + rad;
+  }
+
+  // проёмы по рамке из летнего расчёта: приток и выброс
+  static _frame(summer) {
+    const sum = summer && summer.sum;
+    return sum ? (sum.Sin || 0) + (sum.Sout || 0) : 0;
+  }
+
+  // у ДГУ — как на плане вентиляции (VentPlan): один приток на радиаторы, помещение, горение и охлаждение компрессоров;
+  // выброс помещения — через радиаторы, свой — только у охлаждения компрессоров
+  static _dguFrame(summer) {
+    const sum = summer && summer.sum;
+    if (!sum) return 0;
+    const flow = Math.max(this.radiators(summer.work || []), sum.Lgen) + sum.use + sum.Lcool;
+    return (flow / this.SEC_PER_H / sum.vIn) * sum.res + sum.Lcool / this.SEC_PER_H / sum.vOut;
   }
 
   /** Тепло в помещение при работе: компрессор с рециркуляцией — всё его тепло, без неё — корпус. */
@@ -229,16 +264,16 @@ export class StationHeat {
     return 0;
   }
 
-  /** Лето и зима (VentCalc): охлаждение компрессоров, помещение, радиатор ДГУ, рекуперация. */
-  static vent({ plan, sys, r: req, units, ex: exhaust, env, base, tout, tin }) {
+  /** Лето (VentCalc.summer): охлаждение компрессоров, помещение, расход и проёмы по рамке. */
+  static summer({ plan, sys, r: req, units, ex: exhaust, room, tout, tin }) {
     const items = plan.items || [];
-    const tmax = Number.isFinite(req.tmax) ? req.tmax : 35;
+    const tmax = SummerTemp.of(req.tmax);
     const work = this.working(units, Math.max(0, req.res || 0));
-    const sun = this.SUN * Mm.meters(env.Le) * Mm.meters(env.We);
+    const sun = this.SUN * Mm.meters(room.Le) * Mm.meters(room.We);
     const dryers = items.filter(i => i.kind === 'dryer').reduce((acc, i) => acc + (i.kw || 0) * 1000, 0);
     const qSum =
       work.reduce((acc, i) => acc + i.kw * 1000 * (this.LOSS[i.kind] || this._CASE), 0) +
-      this.SUN * 1000 * Mm.meters(env.Le) * Mm.meters(env.We) +
+      this.SUN * 1000 * Mm.meters(room.Le) * Mm.meters(room.We) +
       dryers;
     const warn = [];
     const input = {
@@ -248,7 +283,7 @@ export class StationHeat {
       qRoom: qSum / 1000,
       qSun: sun,
       use: work.reduce((acc, i) => acc + this.airOf(i), 0),
-      V: env.volume,
+      V: room.volume,
       tSum: tmax,
       tWin: tout,
       tInMin: tin,
@@ -256,22 +291,27 @@ export class StationHeat {
       exfan: Boolean(sys.exfan),
       ex: exhaust,
     };
-    const summer = VentCalc.summer(input, warn);
+    return { tmax, work, input, warn, sum: VentCalc.summer(input, warn) };
+  }
+
+  /** Лето и зима (VentCalc): зима и рекуперация — по летнему режиму summer и ограждениям env; радиатор ДГУ. */
+  static vent({ summer, sys, env, base, ex: exhaust }) {
+    const { input, warn, sum } = summer;
     const winter = {
       ...input,
       env: { U: env.U, A: env.A, qEnv: env.qEnv },
       Qrun: base ? base.q / 1000 : 0,
       useRun: base ? base.a : 0,
     };
-    const winterRes = VentCalc.winter(winter, summer, warn);
+    const winterRes = VentCalc.winter(winter, sum, warn);
     const recup = VentCalc.recup(Boolean(sys.hrv), winterRes, input, warn);
     return {
-      tmax,
-      m3h: summer.Lgen + summer.use,
-      use: summer.use,
-      cool: summer.Lcool,
-      rad: this.radiators(work),
-      sum: summer,
+      tmax: summer.tmax,
+      m3h: sum.Lgen + sum.use,
+      use: sum.use,
+      cool: sum.Lcool,
+      rad: this.radiators(summer.work),
+      sum,
       win: winterRes,
       rec: recup,
       warn,
@@ -575,7 +615,7 @@ export class StationHeat {
     }
     iss.push({
       level: 'info',
-      text: `Отопление: теплопотери при ${tempText} снаружи — ${k(heat.qStop)} кВт (ограждения ${k(heat.qEnv)}, воздух ${k(heat.qInf)}; внутри +${heat.tin} °C).${this.runNote(heat)} Конвекторы: ${heat.n} × ${this.kw(heat.kw)} кВт = ${this.kw(heat.total)} кВт (запас 10 %) — у стен, места на чертеже и 3D-виде.`,
+      text: `Отопление: теплопотери при ${tempText} снаружи — ${k(heat.qStop)} кВт (ограждения ${k(heat.qEnv)}, воздух ${k(heat.qInf)}; внутри +${heat.tin} °C).${this.runNote(heat)} Конвекторы: ${heat.n} × ${this.kw(heat.kw)} кВт = ${this.kw(heat.total)} кВт (запас ${this.reservePct()} %) — у стен, места на чертеже и 3D-виде.`,
     });
     if (heat.short) {
       iss.push({

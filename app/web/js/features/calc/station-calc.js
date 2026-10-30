@@ -55,7 +55,7 @@ export class StationCalc {
       input.req,
       input.cls,
       !!StationReq.of(station).accept,
-      input.units.map(unit => [unit.name, unit.qty, unit.attrs]),
+      input.units.map(unit => [unit.name, unit.qty, unit.attrs, unit.rows]),
       StationRules.version() + StationRules.stamp(),
       plan.hash,
     ]);
@@ -197,17 +197,22 @@ export class StationCalc {
         ? ' (в пределах погрешности данных)'
         : ` (запас ${CalcNote.fmt(step.margin, 1)} %)`;
     };
+    // «НЕ выполняется» — только в разделе с ошибкой (согласованным отклонением); без неё шаг — предупреждение менеджеру
+    const failed = new Set(result.errors.map(err => err.sec));
+    const mark = (section, step) => (step.ok === false && !failed.has(section.id) ? '' : ok[step.ok] || '');
     const steps = section =>
-      section.steps.map(step => ({
-        k: step.what,
-        v: [
-          step.formula,
-          (step.data || []).map(([k, value]) => `${k}: ${value}`).join('; '),
-          (step.result || '') + (ok[step.ok] || '') + marginText(step),
-        ]
-          .filter(Boolean)
-          .join('. '),
-      }));
+      section.steps
+        .filter(step => !step.inner)
+        .map(step => ({
+          k: step.what,
+          v: [
+            step.formula,
+            (step.data || []).map(([k, value]) => `${k}: ${value}`).join('; '),
+            (step.result || '') + mark(section, step) + marginText(step),
+          ]
+            .filter(Boolean)
+            .join('. '),
+        }));
     const out = [
       StationCalc.docHead(station, result),
       ...result.sections.map(section => ({

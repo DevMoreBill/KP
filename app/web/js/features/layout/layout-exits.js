@@ -188,7 +188,9 @@ export class LayoutExits {
     const cab = this.lay.equip
       .filter(unit => unit.kind === 'cabinet')
       .reduce((acc, unit) => acc + unit.l * (unit.qty || 1), 0);
-    return cab > StationNorms.SHIELD ? `шкафы вдоль прохода — ${Mm.text(cab)} мм, длиннее 7 м (ПУЭ, п. 4.1.23)` : '';
+    return cab > StationNorms.SHIELD
+      ? `шкафы вдоль прохода — ${Mm.text(cab)} мм, длиннее ${StationNorms.shieldText()} (ПУЭ, п. 4.1.23)`
+      : '';
   }
 
   /** Без сквозного прохода: вторая дверь оператора — во второй части (за агрегатом поперёк). */

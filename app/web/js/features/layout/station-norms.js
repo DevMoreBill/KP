@@ -12,6 +12,11 @@ export class StationNorms {
 
   static PIPE = { air: 'сжатый воздух — синий', water: 'вода — зелёный', fuel: 'топливо — коричневый' };
 
+  /** Перегородка отсека топливного бака (fire.fuel_wall) — один текст для ТТ чертежа, «Компоновки» и ТЗ. */
+  static get FIRE_WALL() {
+    return `EI ${StationRules.raw('fire.fuel_wall')}`;
+  }
+
   static get _NOISE() {
     return StationRules.raw('norm.noise');
   }
@@ -29,6 +34,14 @@ export class StationNorms {
   /** Правила электрощита. */
   static get SHIELD() {
     return StationRules.raw('norm.shield');
+  }
+
+  /**
+   * Длина щита для текста: «7 м».
+   * @returns {string}
+   */
+  static shieldText() {
+    return `${Mm.dec(this.SHIELD / 1000)} м`;
   }
 
   /** Уровень звука по паспорту, дБА: поле «noise» или строка «Уровень шума (звука)». */
@@ -121,21 +134,23 @@ export class StationNorms {
         text: `${who} тепло: без вентиляции контейнер перегревается — включите «Вентиляцию» в системах контейнера.`,
       });
     }
-    if (tmax != null && tmax > 40 && has('compressor')) {
+    const room = tmax != null ? tmax + StationRules.raw('heat.vent_dt') : null;
+    const limit = StationRules.raw('heat.comp_tmax');
+    if (room != null && room > limit && has('compressor')) {
       iss.push({
         level: 'info',
-        text: `Летом до ${this.deg(tmax)}: компрессоры и осушитель работают обычно до +40…+45 °C — вентиляция с запасом, осушитель — с запасом производительности.`,
+        text: `Летом до ${this.deg(tmax)}, в помещении — до ${this.deg(room)}: выше обычных для компрессоров и осушителей ${this.deg(limit)} — вентиляция с запасом; допустимую температуру проверьте по паспорту изготовителя.`,
       });
     }
   }
 
-  /** Шкафы в ряд длиннее 7 м — проход с двумя выходами. */
+  /** Шкафы в ряд длиннее norm.shield — проход с двумя выходами. */
   static shield({ plan, iss }) {
     const len = (plan.items || []).filter(i => i.kind === 'cabinet').reduce((acc, i) => acc + Math.max(i.lx, i.ly), 0);
     if (!(len > this.SHIELD)) return;
     iss.push({
       level: 'warn',
-      text: `Шкафы вместе — ${Mm.text(len)} мм, длиннее 7 м: проход обслуживания у щита — с двумя выходами (ПУЭ, п. 4.1.23).`,
+      text: `Шкафы вместе — ${Mm.text(len)} мм, длиннее ${this.shieldText()}: проход обслуживания у щита — с двумя выходами (ПУЭ, п. 4.1.23).`,
     });
   }
 

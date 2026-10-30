@@ -9,6 +9,15 @@ export class PressureVessel {
     return StationRules.raw('vessel.pv');
   }
 
+  /**
+   * Предел для текста: «1,0», «1,05» — без округления.
+   * @returns {string}
+   */
+  static limitText() {
+    const limit = this.LIMIT;
+    return (Number.isInteger(limit) ? limit.toFixed(1) : String(limit)).replace('.', ',');
+  }
+
   /** Ресиверы состава: [{pos, qty, vol, mpa, pv, reg, out}]; bar — рабочее давление станции (0 — неизвестно). */
   static list(equip, bar) {
     return equip
