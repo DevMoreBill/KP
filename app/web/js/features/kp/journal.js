@@ -1,3 +1,4 @@
+import { KpReportView } from './kp-report-view.js';
 import { Auth } from './auth.js';
 import { ClientFields } from './client-store.js';
 import { Currency } from './currency.js';
@@ -29,7 +30,6 @@ import { KpTransferView } from './kp-transfer.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
-  static PERCENT = 100;
   static econMemo = new Map(); // экономика КП прежних версий: «id@сохранено» → итоги (без повторной загрузки КП)
 
   /**
@@ -214,7 +214,7 @@ export class Journal {
       )
       .join('');
     const conversion = closed
-      ? `<span class="jf-c" title="Выиграно из закрытых (выиграно + проиграно)">Конверсия <b>${Math.round((won / closed) * this.PERCENT)} %</b></span>`
+      ? `<span class="jf-c" title="Выиграно из закрытых (выиграно + проиграно)">Конверсия <b>${KpReportView.conv({ won, lost: closed - won })}</b></span>`
       : '';
     return chips + conversion;
   }

@@ -58,6 +58,8 @@ export class BrowserNotify {
 
   static async _tick() {
     this.ticks += 1;
+    // только своя доска: открыт кабинет коллеги или весь отдел — без уведомлений о чужих делах и без перезагрузки
+    if (CrmData.board && !CrmData.mine()) return;
     if (this.ticks % this.RELOAD_TICKS === 0 || !CrmData.board) {
       try {
         await CrmData.load();
@@ -65,6 +67,7 @@ export class BrowserNotify {
         return;
       }
     }
+    if (!CrmData.mine()) return;
     this._tasks();
     this._fresh();
   }

@@ -1,3 +1,4 @@
+import { AirChain } from './air-chain.js';
 import { Num } from './num.js';
 import { LayoutMode } from './layout-mode.js';
 import { LayoutRoof } from './layout-roof.js';
@@ -132,6 +133,7 @@ export class LayoutNotes {
   /** Сведения плана: условные габариты, что не размещено, ресиверы снаружи, бак, отопление, учёт сосудов, крыша, трубы. */
   plan(plan) {
     const iss = plan.issues;
+    LayoutNotes.insulation(plan, iss);
     this.sizes(iss);
     this.outside(plan, iss);
     this.fuel(plan, iss);
@@ -141,6 +143,16 @@ export class LayoutNotes {
     this.roof(plan, iss);
     this.exhausts(plan, iss);
     this.piping(plan, iss);
+  }
+
+  /** Утепление в карточке контейнера не понято — расчёт по умолчанию правил. */
+  static insulation(plan, iss) {
+    const geo = plan.geo;
+    if (!geo || !geo.insText) return;
+    iss.push({
+      level: 'warn',
+      text: `Утепление контейнера «${geo.insText}» не распознано — принято ${Mm.text(geo.t)} мм (размеры внутри, отопление). Укажите толщину в мм или «без утепления».`,
+    });
   }
 
   /** Замечания о принятых и неизвестных габаритах. */
@@ -194,7 +206,7 @@ export class LayoutNotes {
     } else if (!dryers.some(unit => unit.air.type === 'ads')) {
       iss.push({
         level: 'info',
-        text: 'Ресивер снаружи после рефрижераторного осушителя (точка росы +3 °C): при морозе в нём выпадает и замерзает конденсат — нужен обогреваемый отвод конденсата или адсорбционный осушитель (точка росы −40 °C).',
+        text: `Ресивер снаружи после рефрижераторного осушителя (точка росы ${AirChain.refrigDew()}): при морозе в нём выпадает и замерзает конденсат — нужен обогреваемый отвод конденсата или адсорбционный осушитель (точка росы −40 °C).`,
       });
     }
     if (plan.chassis)
@@ -238,8 +250,17 @@ export class LayoutNotes {
     if (free.length)
       iss.push({
         level: 'info',
-        text: `Учёту в Ростехнадзоре не подлежат (p·V не больше ${PressureVessel.limitText()} МПа·м³): ${list(free)}.`,
+        text: `Учёту в Ростехнадзоре не подлежат (p·V не больше ${PressureVessel.limitText()} МПа·м³): ${list(free)}.${LayoutNotes._ratedNote(free)}`,
       });
+  }
+
+  // сосуды с паспортным давлением выше рабочего: без учёта — при уставке клапана не выше рабочего
+  static _ratedNote(free) {
+    const rated = free.filter(v => v.rated);
+    if (!rated.length) return '';
+    const pos = Num.uniq(rated.map(v => v.pos)).join(', ');
+    const bar = Mm.dec(Math.round(rated[0].mpa * 100) / 10);
+    return ` Поз. ${pos}: паспортное давление выше рабочего — без учёта при уставке предохранительного клапана не выше ${bar} бар (по паспортному давлению p·V больше ${PressureVessel.limitText()}; требует подтверждения по ФНП ОРПД).`;
   }
 
   /** Глушитель на крыше: высота станции с ним, по одному на ДГУ, условный размер. */

@@ -1,9 +1,11 @@
 """Инженерные правила станций (app/web/rules/stations.json) и своя версия администратора с проверкой значений."""
 
+import itertools
 import json
 import math
 import os
 import re
+from collections.abc import Iterator
 from datetime import datetime
 
 from config import APP_DIR
@@ -176,6 +178,33 @@ class RuleShape:
     TABLE_MAX = 200
 
     MAX = 1e9
+    # правка не должна давать деление на ноль и невозможные значения: числа-делители — больше 0, доли — в пределах
+    POSITIVE = frozenset(
+        {
+            'air.cp.c',
+            'air.cp.rhoK',
+            'vent.speed.in',
+            'vent.speed.out',
+            'vent.speed.max',
+            'vent.speed.inReserve',
+            'receiver.method.cycles',
+            'receiver.method.pa',
+            'receiver.method.unit',
+            'receiver.method.small',
+            'pressure.band',
+            'pressure.default',
+            'heat.air',
+            'heat.reserve',
+            'dryer.margin',
+        }
+    )
+    SHARE = {
+        'el.cos': (0.3, 1),
+        'el.eta': (0.3, 1),
+        'dgu.cos': (0.3, 1),
+        'flow.purge': (0, 0.9),
+        'calc.tolerance': (0, 0.5),
+    }
 
     @classmethod
     def check(cls, data, bundled) -> bool:
@@ -184,7 +213,43 @@ class RuleShape:
             rid = rule.get('id')
             if rid in base and rid not in LayoutValues.IDS:
                 cls.same(base[rid], rule.get('value'), f'Правило {rid}')
+                cls.limits(rid, rule.get('value'))
+        for i, series in enumerate(data.get('series') or []):
+            for key, table in ((series.get('f') or {}) if isinstance(series, dict) else {}).items():
+                cls.rising(table, f'Серия {i + 1}, {str(key)[:30]}')
         return True
+
+    @classmethod
+    def limits(cls, rid: str, value) -> None:
+        """числа-делители больше 0, доли — в пределах SHARE, таблица — первое число строки по возрастанию"""
+        low, high = cls.SHARE.get(rid, (-cls.MAX, cls.MAX))
+        for path, number in cls._numbers(rid, value):
+            if path in cls.POSITIVE and not number > 0:
+                raise ValueError(f'Правило {path}: нужно число больше 0')
+            if not low <= number <= high:
+                raise ValueError(f'Правило {path}: нужно число от {cls._dec(low)} до {cls._dec(high)}')
+        cls.rising(value, f'Правило {rid}')
+
+    @classmethod
+    def rising(cls, table, where: str) -> None:
+        """строки таблицы для интерполяции — по возрастанию первого числа, без повторов"""
+        if cls.table(table) and any(row[0] >= nxt[0] for row, nxt in itertools.pairwise(table)):
+            raise ValueError(where + ': первое число строк таблицы — по возрастанию, без повторов')
+
+    @staticmethod
+    def _dec(number: float) -> str:
+        return f'{number:g}'.replace('.', ',')
+
+    @classmethod
+    def _numbers(cls, path: str, value) -> Iterator[tuple[str, float]]:
+        if cls.number(value):
+            yield path, value
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                yield from cls._numbers(f'{path}.{key}', item)
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                yield from cls._numbers(f'{path}.{i}', item)
 
     @classmethod
     def table(cls, v) -> bool:
@@ -336,6 +401,7 @@ class LayoutValues:
         'tank.gates': (0, 1),
         'tank.top': (100, 1500),
         'tank.wMax': (500, 3500),
+        'tank.room': (1500, 4000),
         'tank.h1': (500, 2500),
         'tank.h2': (500, 2500),
         'tank.big': (200, 20000),
@@ -365,6 +431,8 @@ class LayoutValues:
         'conv.gap': (0, 2000),
         'conv.edge': (0, 1000),
         'conv.front': (0, 2000),
+        'conv.h': (100, 1500),
+        'conv.d': (30, 500),
         'muffler.gap': (0, 1000),
         'muffler.outlet': (0, 1500),
         # прочие числа станции — тоже правятся в «Настройках»
@@ -474,6 +542,9 @@ class LayoutValues:
         'fire.shadeH': (0, 3000),
         'fire.shadeGap': (0, 2000),
         'fire.ext': (500, 2500),
+        'fire.modD': (50, 1000),
+        'fire.modH': (50, 1000),
+        'fire.modKg': (0.5, 100),
         'power.dryerK': (0, 2),
         'power.dryerMin': (0, 20),
         'power.dryerAds': (0, 20),

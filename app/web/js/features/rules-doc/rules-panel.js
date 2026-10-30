@@ -158,7 +158,9 @@ export class RulesPanel {
   }
 
   _change(target) {
-    if (target.matches('[data-rlf]')) {
+    if (target.matches('[data-re]')) {
+      this.ruleEdit.edited(target.closest('.re'));
+    } else if (target.matches('[data-rlf]')) {
       this.statusFilter = target.value;
       this.render();
     } else if (/^m\|pair\.rows\.\d+\.[ab]$/.test(target.dataset.mx || '')) {
@@ -177,7 +179,9 @@ export class RulesPanel {
   }
 
   _input(target) {
-    if (target.matches('[data-lpq]')) {
+    if (target.matches('[data-re]')) {
+      this.ruleEdit.edited(target.closest('.re'));
+    } else if (target.matches('[data-lpq]')) {
       this.layout.query = target.value;
       this.layout.filter(this.box());
     } else if (target.matches('[data-rlq]')) {

@@ -162,7 +162,7 @@ export class KitNeed {
     const own = AirChain.bar(part) || 0;
     const loss = StationReq.loss(Kit.parts(item));
     if (bar > 0 && own > 0 && own - loss < bar - this.EPS) {
-      return `давление ${fmt(own)} бар${loss ? ` (с потерями в осушителе и фильтрах ≈ ${fmt(own - loss)})` : ''} меньше ${fmt(bar)} бар у потребителя`;
+      return `давление ${fmt(own)} бар (с потерями в подготовке воздуха и трубопроводе ≈ ${fmt(own - loss)}) меньше ${fmt(bar)} бар у потребителя`;
     }
     if (StationReq.oilFree(item) && !TzPick.oilFree(part)) {
       return `масляный, а ${StationReq.oilWhy(item)} нужен безмасляный (класс 0 по маслу)`;

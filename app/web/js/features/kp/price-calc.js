@@ -1,14 +1,13 @@
 import { Currency } from './currency.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { S } from '../../core/state.js';
+import { KpState, S } from '../../core/state.js';
 
 /** Цена продажи по закупке и марже (подстановка модели из каталога без цены); округление цен КП. */
 export class PriceCalc {
   static KOPECKS = 100;
   static PERCENT = 100;
   static MARGIN_MAX = 0.99;
-  static SUP_VAT = 22;
 
   /**
    * Округление цены (копейки) по шагу «Округление цен» КП.
@@ -37,7 +36,7 @@ export class PriceCalc {
     const rateTo = Currency.rate(Currency.current());
     if (!(from > 0 && rateTo > 0)) return NaN;
     const value = (item.cost * from) / rateTo;
-    return S.pricing.costNoVat ? value * (1 + DefRegistry.num('deal.supVat', this.SUP_VAT) / this.PERCENT) : value;
+    return S.pricing.costNoVat ? value * (1 + KpEconomics.supVat() / this.PERCENT) : value;
   }
 
   static _price(item) {
@@ -73,6 +72,14 @@ export class PriceCalc {
 export class KpEconomics {
   static PERCENT = 100;
   static SUP_VAT = 22;
+
+  /**
+   * НДС поставщика, % («Значения программы» → deal.supVat) — одно место для КП, проверки цен и экономики сделки.
+   * @returns {number}
+   */
+  static supVat() {
+    return DefRegistry.num('deal.supVat', this.SUP_VAT);
+  }
 
   /**
    * Экономика КП.
@@ -127,20 +134,11 @@ export class KpEconomics {
   }
 
   static _rate(pricing, code) {
-    if (!code || code === 'RUB') return 1;
-    const value = parseFloat(
-      String((pricing.rates || {})[code] || '')
-        .replace(/\s/g, '')
-        .replace(',', '.'),
-    );
-    return value > 0 ? value : NaN;
+    return !code || code === 'RUB' ? 1 : Currency.parseRate((pricing.rates || {})[code]);
   }
 
   static _line(item) {
-    const options = (item.options || [])
-      .filter(option => option.name)
-      .map(option => ({ qty: +option.qty || 0, price: option.price || 0 }));
-    return { qty: +item.qty || 0, price: item.price || 0, disc: item.disc, options };
+    return { qty: +item.qty || 0, price: item.price || 0, disc: item.disc, options: KpState.pricedOptions(item) };
   }
 
   /**
@@ -158,6 +156,6 @@ export class KpEconomics {
   static _unitCost(item, { pricing, rate, cur }) {
     if (!item.cost) return null;
     const value = (item.cost * rate(item.costCur || 'RUB')) / rate(cur);
-    return pricing.costNoVat ? value * (1 + DefRegistry.num('deal.supVat', this.SUP_VAT) / this.PERCENT) : value;
+    return pricing.costNoVat ? value * (1 + this.supVat() / this.PERCENT) : value;
   }
 }

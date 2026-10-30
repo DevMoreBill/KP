@@ -33,9 +33,17 @@ export class Currency {
    * @returns {number}
    */
   static rate(code) {
-    if (code === 'RUB') return 1;
+    return code === 'RUB' ? 1 : this.parseRate(S.pricing.rates[code]);
+  }
+
+  /**
+   * Курс из поля «1 234,56» — единственный разбор курса (КП, экономика КП, отчёт); не число или 0 — NaN.
+   * @param {*} raw
+   * @returns {number}
+   */
+  static parseRate(raw) {
     const value = parseFloat(
-      String(S.pricing.rates[code] || '')
+      String(raw ?? '')
         .replace(/\s/g, '')
         .replace(',', '.'),
     );

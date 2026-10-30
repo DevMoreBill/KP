@@ -64,9 +64,13 @@ export class TzPick {
   static LOAD_DEFAULT = 75; // нагрузка ДГУ без расчёта, %
   static STEM = 5; // начало слова для «уже есть в названии»
 
-  /** Запас давления компрессора к требуемому, бар. */
-  static get LOSS() {
-    return StationRules.raw('loss.pick');
+  /**
+   * Потери давления по плану цепочки до подбора, бар (DryerDerate.planLoss — как в расчётной записке).
+   * @param {{air?: string, ads?: boolean}} need запрос подбора
+   * @returns {number}
+   */
+  static lossPlan(need) {
+    return DryerDerate.planLoss({ ads: Boolean(need.ads), oilOne: String(need.air || '').split('.')[2] === '1' });
   }
 
   /** Добор производительности количеством: до стольких одинаковых агрегатов или аппаратов параллельно. */
@@ -152,6 +156,7 @@ export class TzPick {
   /** Компрессоры на Q, м³/мин, и B, бар, у потребителя; q — {oilFree, vsd, work, compact, ads}: {o, n} | null. */
   static comps(pool, demand, bar, need) {
     const vsd = item => AirChain.info({ name: item.name, attrs: Attrs.of(item), rows: [] }, 'compressor').vsd;
+    const loss = this.lossPlan(need);
     const options = pool
       .filter(item => !need.oilFree || this.oilFree(item))
       .map(item => ({
@@ -171,7 +176,7 @@ export class TzPick {
       demand,
       need.work,
       option =>
-        this.barPen(option.p, bar, option.vsd) +
+        this.barPen(option.p, bar, option.vsd, loss) +
         (option.f ? 0 : this.PENALTY.noVsd) +
         (option.of ? this.PENALTY.oilFree : 0) +
         (need.compact ? this.area(option.c) : 0),
@@ -185,7 +190,7 @@ export class TzPick {
   static _bulky(option, demand, bar, need) {
     return (
       option.of ||
-      this.barPen(option.p, bar, option.vsd) >= this.PENALTY.barShort ||
+      this.barPen(option.p, bar, option.vsd, this.lossPlan(need)) >= this.PENALTY.barShort ||
       (need.work && option.v * need.work > demand * this.OVER)
     );
   }
@@ -271,15 +276,15 @@ export class TzPick {
     return best ? { o: best, n: 1 } : null;
   }
 
-  /** Давление компрессора, бар, для B у потребителя: потери в подготовке и — без частотника — диапазон регулирования. */
-  static barNeed(bar, vsd) {
-    return bar + this.LOSS + (vsd ? 0 : StationRules.raw('pressure.band'));
+  /** Давление компрессора, бар, для B у потребителя: потери loss и — без частотника — диапазон регулирования. */
+  static barNeed(bar, vsd, loss) {
+    return bar + loss + (vsd ? 0 : StationRules.raw('pressure.band'));
   }
 
   /** Штраф по давлению: меньше нужного — barShort, больше — barOver за каждый бар. */
-  static barPen(pressure, bar, vsd) {
+  static barPen(pressure, bar, vsd, loss) {
     if (!(bar > 0) || !(pressure > 0)) return 0;
-    const need = this.barNeed(bar, vsd);
+    const need = this.barNeed(bar, vsd, loss);
     return pressure < need - this.BAR_TOL ? this.PENALTY.barShort : this.PENALTY.barOver * (pressure - need);
   }
 
@@ -387,7 +392,7 @@ export class TzPick {
     const options = this._recvAll().filter(
       option => option.v > 0 && this._pressOk(option.p, bar) && this._fitsTop(option, Hmax),
     );
-    const free = option => !(bar > 0) || ((bar / 10) * option.v) / 1000 <= PressureVessel.LIMIT + this.EPS;
+    const free = option => !(bar > 0) || !PressureVessel.registered(bar, option.v);
     const base = this._recvBase(options, volume, bar, free);
     if (base) return base;
     if (!(volume > 0)) return options.length ? { o: this.best(options, 'v'), n: 1, free: true } : null;
@@ -677,9 +682,10 @@ export class TzPick {
     job.got.push(
       `компрессоры ${chosen.n}${job.res ? ` + ${job.res} резервн.` : ''} × ${chosen.o.c.name}${demand.why ? ` (потребность: ${demand.why})` : ''}${job.ads ? ` (с запасом ${Math.round(AirChain.PURGE * 100)} % на продувку адсорбционного осушителя)` : ''}`,
     );
-    if (bar > 0 && chosen.o.p > 0 && chosen.o.p < this.barNeed(bar, chosen.o.vsd) - this.BAR_TOL)
+    const press = this.barNeed(bar, chosen.o.vsd, this.lossPlan({ ...need, ads: job.ads }));
+    if (bar > 0 && chosen.o.p > 0 && chosen.o.p < press - this.BAR_TOL)
       job.got.push(
-        `давление компрессора ${AirChain.flowText(chosen.o.p)} бар — без запаса на потери в осушителе и фильтрах${chosen.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.flowText(this.barNeed(bar, chosen.o.vsd))})`,
+        `давление компрессора ${AirChain.flowText(chosen.o.p)} бар — без запаса на потери в подготовке воздуха и трубопроводе${chosen.o.vsd ? '' : ' и диапазон регулирования'} (нужно около ${AirChain.flowText(press)})`,
       );
     if (need.vsd && !chosen.o.f)
       job.got.push('компрессора с частотным регулированием в каталоге нет — подобран без него');

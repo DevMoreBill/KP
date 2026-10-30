@@ -12,6 +12,7 @@ import { esc, today } from '../../core/util.js';
  * воронка по стадиям с суммами. Всё нажимается и ведёт к своим сделкам.
  */
 export class CabTodaySide {
+  static waiting = new Set();
   static WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
   static PERCENT = 100;
   static BAR_MIN = 4;
@@ -36,7 +37,7 @@ export class CabTodaySide {
   // неделя вперёд: сколько дел и ожидаемых договоров на каждый день
   static _week() {
     const now = today();
-    WorkCalendar.year(+now.slice(0, 4));
+    this._calendars(Array.from({ length: CrmFmt.WEEK }, (_unused, shift) => KpDate.addDays(now, shift)));
     const tasks = CrmData.openTasks();
     const deals = CrmData.openDeals();
     const over = tasks.filter(task => task.due < now).length;
@@ -54,6 +55,19 @@ export class CabTodaySide {
     }).join('');
     const late = over ? `<span class="bad-t">просрочено ${over}</span>` : '<span class="muted">без просрочек</span>';
     return `<section class="md-s ts"><div class="md-h"><p class="sub">Неделя${UiKit.tip('<p>Сколько дел на каждый день недели: чем больше дел, тем темнее день. Выходные и праздники — красным. Синяя метка в углу — в этот день ожидается договор по сделке.</p>')}</p>${late}</div><div class="tw">${cells}</div></section>`;
+  }
+
+  // календари всех лет недели (в конце декабря — и январь); загрузился позже — перерисовать кабинет
+  static _calendars(days) {
+    for (const year of new Set(days.map(day => +day.slice(0, 4)))) {
+      const loading = WorkCalendar.year(year) ? null : WorkCalendar.loading[year];
+      if (!loading || this.waiting.has(year)) continue;
+      this.waiting.add(year);
+      loading.then(() => {
+        this.waiting.delete(year);
+        document.dispatchEvent(new CustomEvent(CrmFmt.REDRAW));
+      });
+    }
   }
 
   // месяц: что ждём и что уже выиграно

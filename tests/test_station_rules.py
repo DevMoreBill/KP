@@ -15,7 +15,7 @@ import unittest
 from kit import APP, REPO, SampleData, Stand
 
 sys.path.insert(0, APP)
-from station_rules import LayoutValues, StationRules   # noqa: E402
+from station_rules import LayoutValues, RuleShape, StationRules   # noqa: E402
 
 
 class RulesFileTest(unittest.TestCase):
@@ -110,6 +110,31 @@ class RulesFileTest(unittest.TestCase):
         self.assertTrue(StationRules.validate(ok))
         ok = lay('layout.matrix', lambda r: r['value']['fit'].update(dense=0, wide=0, roadW=2500))
         self.assertTrue(StationRules.validate(ok))
+
+    def test_physical_limits(self):
+        """аудит 30.10, п. 19: правка не даёт деления на ноль — делители больше 0, доли в пределах, таблицы по возрастанию"""
+        def bad(rid, fix):
+            d = copy.deepcopy(self.d)
+            fix(next(r for r in d['rules'] if r['id'] == rid))
+            return d
+        for d, word in [
+            (bad('el.cos', lambda r: r.update(value=0)), 'el.cos'),
+            (bad('el.eta', lambda r: r.update(value=1.2)), 'el.eta'),
+            (bad('air.cp', lambda r: r['value'].update(c=0)), 'air.cp.c'),
+            (bad('vent.speed', lambda r: r['value'].update({'in': 0})), 'vent.speed.in'),
+            (bad('receiver.method', lambda r: r['value'].update(cycles=0)), 'receiver.method.cycles'),
+            (bad('pressure.band', lambda r: r.update(value=0)), 'больше 0'),
+            (bad('flow.purge', lambda r: r['value'].update(default=1)), 'от 0 до 0,9'),
+            (bad('dryer.kp', lambda r: r.update(value=[[4, 0.8], [4, 0.9]])), 'по возрастанию'),
+        ]:
+            with self.subTest(word), self.assertRaises(ValueError) as e:
+                RuleShape.check(d, self.d)
+            self.assertIn(word.lower(), str(e.exception).lower())
+        series = copy.deepcopy(self.d)
+        series['series'][0]['f']['p'] = [[7, 1], [6, 0.9]]
+        with self.assertRaises(ValueError):
+            RuleShape.check(series, self.d)
+        self.assertTrue(RuleShape.check(self.d, self.d), 'файл поставки — в пределах')
 
     def test_own_version_gets_new_rules(self):
         """своя версия администратора, сохранённая до новых правил поставки, получает их из файла поставки (14.10: числа станции

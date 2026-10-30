@@ -3,6 +3,8 @@ import { ReqForm } from './req-form.js';
 import { ReqLine } from './req-line.js';
 import { ReqNum } from './req-num.js';
 import { AirDemand } from '../calc/air-demand.js';
+import { AirChain } from '../layout/air-chain.js';
+import { DryerDerate } from '../layout/dryer-derate.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { SummerTemp } from '../layout/summer-temp.js';
@@ -109,19 +111,10 @@ export class StationReq {
     ['pump', /pump/],
   ];
   static NOISE = 80;
-  static FILTER_STAGES = 4;
   static CENTS = 100;
   static PERCENT = 100;
   static FULL_HUMIDITY = 100;
   static WHY_MAX = 300;
-
-  /**
-   * Потери давления в подготовке воздуха, бар (файл правил).
-   * @returns {{dryer: number, filter: number}}
-   */
-  static get LOSS() {
-    return { dryer: StationRules.raw('loss.dryer').refrig, filter: StationRules.raw('loss.filter') };
-  }
 
   /**
    * Требования позиции (пустой объект, если их нет).
@@ -409,15 +402,17 @@ export class StationReq {
   }
 
   /**
-   * Потери давления в подготовке воздуха, бар (оценка): осушитель и ступени фильтров.
+   * Потери давления в подготовке воздуха и трубопроводе станции, бар — как в расчётной записке (DryerDerate.loss):
+   * перепад аппарата по паспорту, иначе по правилу.
    * @param {object[]} parts
    * @returns {number}
    */
   static loss(parts) {
-    const kinds = parts.map(part => StationEquip.kindOf(part));
-    const dryer = kinds.includes('dryer') ? this.LOSS.dryer : 0;
-    const filters = Math.min(this.FILTER_STAGES, kinds.filter(kind => kind === 'filter').length);
-    return Math.round((dryer + this.LOSS.filter * filters) * this.CENTS) / this.CENTS;
+    const units = parts
+      .map(part => ({ part, kind: StationEquip.kindOf(part) }))
+      .filter(entry => entry.kind === 'dryer' || entry.kind === 'filter')
+      .map(entry => ({ kind: entry.kind, info: AirChain.info(entry.part, entry.kind) }));
+    return Math.round(DryerDerate.loss(units) * this.CENTS) / this.CENTS;
   }
 
   /**

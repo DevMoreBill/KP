@@ -55,3 +55,4 @@ export const CRM = {
 
 LISTS.ready(CrmStages.LISTS);
 PhoneCall.listen();
+document.addEventListener(CrmFmt.REDRAW, () => Cabinet.redraw());

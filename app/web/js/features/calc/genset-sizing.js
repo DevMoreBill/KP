@@ -8,10 +8,14 @@ import { ReserveCheck } from './reserve-check.js';
 
 /** ДГУ: мощность PRP/ESP против нагрузки, средняя и малая нагрузка, высота и жара, пуск двигателя, топливо. */
 export class GensetSizing {
-  static LOAD_MAX = 1.1; // нагрузка с кратковременной перегрузкой 10 %
   static _each = units => units.flatMap(unit => Array.from({ length: unit.qty }, () => unit));
   static _prp = unit => CalcInput.num(unit.attrs.kw) || 0;
   static _tankVol = unit => AirChain.volume(unit.p) || CalcInput.num(unit.attrs.tank) || 0;
+  /** Наибольшая доля нагрузки — перегрузка при PRP (правило dgu.overload). */
+  static get LOAD_MAX() {
+    return StationRules.raw('dgu.overload').k;
+  }
+
   /** Наибольший бак в отсеке контейнера, л (раздел tank матрицы). */
   static get TANK_MAX() {
     return StationMatrix.tank().max;

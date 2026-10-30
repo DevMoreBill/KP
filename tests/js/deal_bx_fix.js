@@ -24,7 +24,7 @@ class FixCases {
     return {...head, full:{price:c(calc.S), revenue:c(calc.R), cost:c((calc.base||calc.lo).Ctot), fin:c(calc.F),
       parts:calc.parts.map(([n, v])=>[n, c(v)]),
       fix:Object.fromEntries((calc.bxFix||[]).filter(l=>l.active).map(l=>[l.key, c(l.delta)])),
-      calc:{lo:side(calc.lo), hi:side(calc.hi), taxP:calc.taxP, xMode:calc.xMode, xV:calc.xV, xG:calc.xG, R:calc.R, S:calc.S, sv:calc.sv}}};
+      calc:{lo:side(calc.lo), hi:side(calc.hi), taxP:calc.taxP, xMode:calc.xMode, xV:calc.xV, xG:calc.xG, R:calc.R, S:calc.S, sv:calc.sv, vatShare:calc.bxShare}}};
   }
 
   static run(){
@@ -35,6 +35,12 @@ class FixCases {
       ['Прочие, наличные суммой', this.KP(), this.deal({oth:'20000', xc:{mode:'sum', v:'50000', cost:'10'}}), 'other', 30000],
       ['Закупка, ввозной НДС неизвестен', this.KP({items:[{id:'a', name:'Компрессор', qty:1, cost:5000, cur:'USD'}]}),
         this.deal({sup:{country:'Турция', cusMode:'sum', vatIn:false, cus:{v:'150000', cur:'RUB'}}}), 'equip', 40000],
+      // аудит CALC-041: таможня с ввозным НДС — вычет в доле НДС статьи (было: без вычета); логистика со страхованием — без
+      // НДС на страхование и перевозку до границы (было: весь прирост с вычетом 22/122)
+      ['Таможня с ввозным НДС +220 000', this.KP({items:[{id:'a', name:'Компрессор', qty:1, cost:6000, cur:'EUR', duty:5, code:'8414805900'}]}),
+        this.deal({sup:{country:'Германия', cusMode:'calc', vatIn:false, log:{v:'2500', cur:'EUR'}, brk:{v:'35000'}, logRu:{v:'60000'}}}), 'customs', 220000],
+      ['Логистика с перевозкой до границы и страхованием +100 000', this.KP({items:[{id:'a', name:'Компрессор', qty:1, cost:6000, cur:'EUR', duty:5, code:'8414805900'}]}),
+        this.deal({sup:{country:'Германия', cusMode:'calc', vatIn:false, log:{v:'2500', cur:'EUR'}, ins:'0,5', brk:{v:'35000'}, logRu:{v:'60000'}}}), 'logistics', 100000],
     ];
     return cases.map(([name, kp, d, key, delta])=>{
       const plain=DealCalculator.calc(kp, JSON.parse(JSON.stringify(d)));

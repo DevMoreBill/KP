@@ -367,8 +367,19 @@ export class KpState {
    * @returns {number}
    */
   static itemSum(item) {
-    const options = (item.options || []).reduce((sum, option) => sum + (+option.qty || 0) * (option.price || 0), 0);
+    const options = this.pricedOptions(item).reduce((sum, option) => sum + option.qty * option.price, 0);
     return (+item.qty || 0) * KPGen.netPrice(item) + options;
+  }
+
+  /**
+   * Опции позиции, которые входят в сумму и в документ: с названием, {qty, price} — одна выборка для строки и итога.
+   * @param {object} item
+   * @returns {{qty: number, price: number}[]}
+   */
+  static pricedOptions(item) {
+    return (item.options || [])
+      .filter(option => option.name)
+      .map(option => ({ qty: +option.qty || 0, price: option.price || 0 }));
   }
 
   /**
@@ -380,9 +391,7 @@ export class KpState {
       qty: +item.qty || 0,
       price: item.price || 0,
       disc: item.disc,
-      options: (item.options || [])
-        .filter(option => option.name)
-        .map(option => ({ qty: +option.qty || 0, price: option.price || 0 })),
+      options: this.pricedOptions(item),
     }));
     return KPGen.totals(items, +S.vat || 0);
   }

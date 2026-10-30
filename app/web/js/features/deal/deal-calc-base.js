@@ -3,6 +3,7 @@ import { DealValues } from './deal-values.js';
 import { InputNum } from './input-num.js';
 import { SupplierCalc } from './supplier-calc.js';
 import { SellerTax } from '../../core/seller-tax.js';
+import { KpEconomics } from '../kp/price-calc.js';
 
 /**
  * Основа расчёта сделки: поля с проверкой, курсы, цена и НДС, поставщики, сборка станции, прочие расходы. Все суммы — в
@@ -12,7 +13,6 @@ import { SellerTax } from '../../core/seller-tax.js';
 export class DealCalcBase {
   static PCT = 100;
   static EPS = 0.005;
-  static SUP_VAT = 22;
   static TAX = 25;
   static MONEY_FB = 2;
   static CASH_MAX = 90;
@@ -123,7 +123,7 @@ export class DealCalcBase {
    * @returns {number}
    */
   supVat() {
-    return DealValues.num('deal.supVat', DealCalcBase.SUP_VAT);
+    return DealValues.num('deal.supVat', KpEconomics.SUP_VAT);
   }
 
   /**

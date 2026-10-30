@@ -66,7 +66,7 @@ export class DealMoney {
 
   static _autoTitle(key, spread) {
     if (key)
-      return `Ключевая ставка ЦБ РФ ${DealFmt.inp(key.rate)} % с ${key.date} + ${spread} п.п. годовых, делённое на 12`;
+      return `Ключевая ставка ЦБ РФ ${DealFmt.inp(key.rate)} % с ${key.date} + ${spread} п.п. годовых × ${DealMoneyRate.text()}`;
     return DealUi.keyErr ? `Ключевая ставка ЦБ недоступна: ${DealUi.keyErr}` : '';
   }
 

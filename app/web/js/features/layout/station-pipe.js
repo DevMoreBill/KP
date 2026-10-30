@@ -85,7 +85,7 @@ export class StationPipe {
       .map(i => i.flow)
       .sort((left, right) => right - left);
     if (plan.air && plan.air.q > 0) {
-      const bar = plan.air.bar || 8;
+      const bar = plan.air.bar || StationRules.raw('pressure.default');
       const flow = ((plan.air.q / 60) * 1.013) / (bar + 1.013);
       add('магистраль сжатого воздуха', flow, maxSpeed.air);
       return {

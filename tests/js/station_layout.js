@@ -970,7 +970,7 @@ Check.run('отопление: теплопотери, тепло оборудо
   assert.strictEqual(h.qEnv, Math.round(e1.qEnv));
   // ДГУ: приток — на воздух радиаторов, как на плане вентиляции (было: только вентиляция помещения — теплопотери занижены)
   const pd=StationLayout.solve({ cont:cont(), parts:[dgu], req:{ tmin:-40 } }), sd=pd.sys||{}; Check.plan(pd, 'ДГУ, −40 °C');
-  const Sd={ sum:pd.heat.vent.sum, work:pd.items.filter(i=>i.kind==='dgu' && !i.tank) }, radOnly=StationHeat.louverArea(pd, sd, null)-low;
+  const Sd={ sum:pd.heat.vent.sum, work:pd.items.filter(i=>i.kind==='dgu' && !i.tank), tmax:pd.heat.vent.tmax }, radOnly=StationHeat.louverArea(pd, sd, null)-low;
   assert.ok(pd.vent.need.in.gross>Sd.sum.Sin, 'приток ДГУ больше вентиляции помещения');
   assert.ok(Math.abs(StationHeat.louverArea(pd, sd, Sd)-radOnly-pd.vent.need.in.gross)<0.02, `приток по рамке — как на плане: ${StationHeat.louverArea(pd, sd, Sd)-radOnly} ≈ ${pd.vent.need.in.gross}`);
   assert.ok(StationHeat.UNITS.some(([kw])=>kw===h.kw) && h.n>=1 && h.heaters.length===h.n, 'конвекторы из ряда мощностей, мест — по числу');
@@ -1841,7 +1841,11 @@ Check.run('ДГУ в контейнере: радиатор к жалюзи, д�
   assert.ok(p2.issues.some(i=>i.level==='warn' && /в составе 1 шт\., нужно 2/.test(i.text)), 'не хватает глушителей — предупреждение');
   const pw=solve(blk, [big(2), ats]); assert.ok(pw.exhausts.every(e=>e.how==='wall') && pw.issues.some(i=>/через заднюю стену/.test(i.text) && /глушитель встроен/.test(i.text)), 'без глушителей — выхлоп через стену у всех');
   // приточные жалюзи — у каждой ДГУ напротив, одинаковые
-  for (const [p, l] of [[p2, 'две'], [solve(blk, [sm(3), ats])]].filter(q=>q[0])){ const I=p.vent.louvers.filter(q=>q.kind==='in'), G=p.items.filter(i=>i.kind==='dgu');
+  // 2 × 176 и 3 × 30 кВт: радиаторам при +35 °C воздуха больше (теплоёмкость при летней температуре, аудит CALC-066) — у каждой
+  // ДГУ одинаковые жалюзи не встают, приток весь — общими жалюзи (исключение 19.10 «не встаёт у всех — как раньше»)
+  for (const [p, l] of [[p2, 'две 176 кВт'], [solve(blk, [sm(3), ats]), 'три 30 кВт']]) assert.ok(!p.vent.inEach && !(p.vent.short.in>0), l+': приток весь');
+  const sm24=q=>P('ДГУ ТСС АД-24', { cat:'dgu', model:'АД-24', kw:24 }, { role:'main', qty:q, rows:[{ k:'Габариты Д × Ш × В', v:'1900 × 850 × 1300 мм' }] });
+  for (const [p, l] of [[solve(blk, [sm(2), ats]), 'две'], [solve(blk, [sm24(3), ats])]].filter(q=>q[0])){ const I=p.vent.louvers.filter(q=>q.kind==='in'), G=p.items.filter(i=>i.kind==='dgu');
     assert.ok(p.vent.inEach && new Set(I.map(q=>q.w+'×'+q.h)).size===1 && I.length%G.length===0, (l||'три')+': приток у каждой ДГУ, одинаковый');
     for (const g of G){ const c=g.x+g.lx/2; assert.ok(I.some(q=>Math.abs((q.u0+q.u1)/2-c)<=Math.max(g.lx/2, 1500)), (l||'три')+': жалюзи напротив ДГУ'); } }
   assert.ok(p2.roof[0].dir==='x-' || p2.roof[0].dir==='x+', 'глушитель — над своей ДГУ');
@@ -1959,6 +1963,32 @@ Check.run('Аккуратная компоновка: лицевая линия,
   const L=(two.vent && two.vent.louvers||[]).filter(q=>q.wall==='back' && q.kind==='out' && !q.leaf && !q.door);
   if (L.length>1) assert.strictEqual(new Set(L.map(q=>q.z1)).size, 1, 'верх жалюзи выброса — одна линия');
   assert.ok(two.tidy.score>=90, 'простая станция — аккуратная: '+JSON.stringify(two.tidy));
+});
+
+Check.run('аудит п. 19: утепление «0», давление по умолчанию, огнетушители по категории, отопление и вентиляция', ()=>{
+  // утепление: «0» и «без утепления» — 0 мм, U неутеплённого (vent.winter.uBare); непонятный текст — 100 мм с замечанием
+  assert.deepStrictEqual(StationGeo.insOf('0'), { mm:0, guess:false }); assert.deepStrictEqual(StationGeo.insOf('без утепления'), { mm:0, guess:false });
+  assert.deepStrictEqual(StationGeo.insOf('80 мм'), { mm:80, guess:false }); assert.deepStrictEqual(StationGeo.insOf(''), { mm:100, guess:false });
+  assert.deepStrictEqual(StationGeo.insOf('пенопласт'), { mm:100, guess:true });
+  assert.strictEqual(StationHeat.uWall(0, 'block'), StationRules.raw('vent.winter').uBare, 'без утепления — U неутеплённого (было: 100 мм, U 0,48)');
+  const bare=StationLayout.solve({ cont:C('block', { ins:'без утепления', sizeAuto:true }), parts:[comp, dryer, rec], req:{ tmin:-40 } });
+  assert.ok(bare.geo.t===0 && bare.heat.U===StationRules.raw('vent.winter').uBare, JSON.stringify([bare.geo.t, bare.heat.U]));
+  const odd=StationLayout.solve({ cont:C('block', { ins:'пенопласт', sizeAuto:true }), parts:[comp, dryer, rec] });
+  assert.ok(odd.issues.some(i=>/Утепление контейнера «пенопласт» не распознано — принято 100 мм/.test(i.text)), 'непонятное утепление — замечание');
+  // давление компрессоров не указано — правило pressure.default с замечанием (было: 8 бар молча)
+  assert.ok(odd.issues.some(i=>/Давление компрессоров в составе не указано — проверки приняты при 8 бар/.test(i.text)));
+  // огнетушители — ППР в РФ, п. 406: А–В 30 м, Г 40 м (было 70), Д 70 м
+  assert.deepStrictEqual(['А', 'В2', 'Г', 'Д', ''].map(cat=>StationFire.extDistance(cat)), [30, 30, 40, 70, 30]);
+  // отопление насосной при работе — воздухообмен зимней вентиляции (2 объёма в час), а не инфильтрация 0,5
+  const pumps=StationLayout.solve({ cont:C('block', { sizeAuto:true, sys:{ heat:true, vent:true } }), parts:[pumpS], req:{ tmin:-40 } }), h=pumps.heat;
+  const air=Math.max(StationRules.raw('vent.ach').winter, StationRules.raw('heat.ach'))*StationHeat.room(pumps).volume*StationHeat.airAt(-40)*h.dT;
+  assert.ok(Math.abs(h.qRun-(h.qEnv+air-h.base.q))<=2, `qRun ${h.qRun} ≈ ${Math.round(h.qEnv+air-h.base.q)}`);
+  // лето: резерв — самые мощные, а тепло и воздух — по самым мощным рабочим (90 + 55 кВт, резерв 1 → 90 кВт)
+  assert.deepStrictEqual(StationHeat.working([{ kind:'compressor', kw:55 }, { kind:'compressor', kw:90 }], 1).map(i=>i.kw), [90]);
+  // воздух радиатора ДГУ — при летней температуре (было: при +20 °C, на ≈ 4,5 % меньше)
+  const r20=StationHeat.radiatorAir({ kw:100 }, 20), r35=StationHeat.radiatorAir({ kw:100 }, 35);
+  assert.ok(Math.abs(r35/r20-StationHeat.airAt(20)/StationHeat.airAt(35))<1e-9 && r35>r20, `${r20} → ${r35}`);
+  assert.strictEqual(StationHeat.radiatorAir({ kw:100, cool:9000 }, 35), 9000, 'по паспорту — как есть');
 });
 
 if (GOLDEN) GOLDEN.save(process.env.KP_GOLDEN);

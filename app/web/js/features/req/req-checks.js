@@ -98,7 +98,7 @@ export class ReqChecks {
     if (loss) {
       return {
         ok: out >= bar,
-        text: `давление на выходе ≈ ${fmt(out)} бар (компрессор ${fmt(top)}, потери в подготовке воздуха ≈ ${fmt(loss)}) — ${out >= bar ? 'не меньше' : 'меньше'} ${fmt(bar)}`,
+        text: `давление на выходе ≈ ${fmt(out)} бар (компрессор ${fmt(top)}, потери в подготовке воздуха и трубопроводе ≈ ${fmt(loss)}) — ${out >= bar ? 'не меньше' : 'меньше'} ${fmt(bar)}`,
       };
     }
     return { ok: out >= bar, text: `давление ${fmt(top)} бар — ${top >= bar ? 'не меньше' : 'меньше'} ${fmt(bar)}` };
@@ -176,10 +176,10 @@ export class ReqChecks {
 
   static _rough(work, fuel, hours) {
     const fmt = value => this._fmt(value);
-    const time = fuel / (work * StationDefaults.LOAD * StationDefaults.LPH);
+    const time = fuel / StationDefaults.MARGIN / StationDefaults.perHour(work);
     const ok = time >= hours * this.TOLERANCE;
     const text = ok
-      ? `работа от бака ≈ ${fmt(Math.floor(time))} ч при нагрузке ${Math.round(StationDefaults.LOAD * this.PERCENT)} % — не меньше ${fmt(hours)}`
+      ? `работа от бака ≈ ${fmt(Math.floor(time))} ч при нагрузке ${Math.round(StationDefaults.LOAD * this.PERCENT)} % (с запасом) — не меньше ${fmt(hours)}`
       : `работа от бака ≈ ${fmt(Math.floor(time))} ч — меньше ${fmt(hours)}: нужен бак около ${StationDefaults.tank(work, hours)} л`;
     return { ok, text };
   }

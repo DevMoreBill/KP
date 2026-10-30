@@ -24,6 +24,15 @@ export class CabTeam {
   static PERCENT = 100;
 
   /**
+   * «Повторить» у блока, который не загрузился: regs — регламент, time — где тратится время.
+   * @param {string} kind
+   */
+  static retry(kind) {
+    const block = { regs: TeamRegs, time: TeamTime }[kind];
+    if (block) block.retry();
+  }
+
+  /**
    * Раздел.
    * @returns {string}
    */
@@ -119,6 +128,8 @@ export class CabTeam {
       if (thisMonth) row.lost++;
       return;
     }
+    // отложенная («пауза до даты») — не в работе и не «проблема», как на доске и в «Сегодня»
+    if (CrmData.paused(deal)) return;
     row.open++;
     row.sum += deal.sum || 0;
     this._issues(row, deal);
@@ -146,7 +157,9 @@ export class CabTeam {
 export class TeamTime {
   static data = null;
   static loadedAt = 0;
+  static failedAt = 0;
   static FRESH_MS = 300000;
+  static RETRY_MS = 30000;
   static PERCENT = 100;
   static loading = false;
 
@@ -155,7 +168,7 @@ export class TeamTime {
    * @returns {string}
    */
   static html() {
-    if (!this.data || Date.now() - this.loadedAt > this.FRESH_MS) this._load();
+    if (this._due()) this._load();
     return `<section class="md-s wt-s" id="cabTime">${this._inner()}</section>`;
   }
 
@@ -166,7 +179,8 @@ export class TeamTime {
   static _body() {
     const data = this.data;
     if (!data) return '<p class="muted">Считаю…</p>';
-    if (data.error) return `<p class="muted">Не загрузилось: ${esc(data.error)}</p>`;
+    if (data.error)
+      return `<p class="muted">Не загрузилось: ${esc(data.error)} <button class="lnk" type="button" data-cabretry="time">Повторить</button></p>`;
     if (!data.deals) return '<p class="empty">Сделок за полгода нет — считать нечего.</p>';
     const top = Math.max(...data.stages.map(row => row.median), 1);
     const bars = data.stages
@@ -201,16 +215,34 @@ export class TeamTime {
     return `${String(value).replace('.', ',')} дн.`;
   }
 
+  /**
+   * Загрузить заново (кнопка «Повторить»).
+   */
+  static retry() {
+    this.failedAt = 0;
+    this._load();
+  }
+
+  // пора загрузить: нет данных, устарели или ошибка — не чаще раза в RETRY_MS
+  static _due() {
+    const now = Date.now();
+    if (this.loading || now - this.failedAt < this.RETRY_MS) return false;
+    return !this.data || Boolean(this.data.error) || now - this.loadedAt > this.FRESH_MS;
+  }
+
   static async _load() {
     if (this.loading) return;
     this.loading = true;
     try {
       this.data = await Api.request('/api/crm/time');
+      this.loadedAt = Date.now();
+      this.failedAt = 0;
     } catch (error) {
-      this.data = this.data || { error: String(error.message || error) };
+      // ошибка — не «выключено» и не «сделок нет»: прежние данные остаются, иначе текст и «Повторить»; срок кэша не продлевается
+      if (!this.data || this.data.error) this.data = { error: String(error.message || error) };
+      this.failedAt = Date.now();
     } finally {
       this.loading = false;
-      this.loadedAt = Date.now();
     }
     const box = document.getElementById('cabTime');
     if (box) Morph.apply(box, this._inner());

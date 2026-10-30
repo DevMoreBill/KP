@@ -34,6 +34,7 @@ import { Modal } from '../../core/modal.js';
  * содержимое раздела. Открывается на «Сегодня»; выбранный раздел помнится, пока открыта страница.
  */
 export class Cabinet {
+  static WIN_ID = 'cabWin';
   static NEW = [
     ['mail', '📩 Из письма или ТЗ', 'Вставьте письмо или ТЗ — клиент, суть и модели заполнятся сами'],
     ['deal', '🤝 Сделка', 'Сделка без КП: запрос, встреча, тендер'],
@@ -66,7 +67,13 @@ export class Cabinet {
    * @returns {HTMLDialogElement}
    */
   static dlg() {
-    return Modal.host('cabWin', 'cabwin', 'Кабинет менеджера', dialog => this._init(dialog));
+    return Modal.host(this.WIN_ID, 'cabwin', 'Кабинет менеджера', dialog => this._init(dialog));
+  }
+
+  /** Перерисовать, если кабинет открыт (догрузились данные, например календарь года). */
+  static redraw() {
+    const dialog = document.getElementById(this.WIN_ID);
+    if (dialog && dialog.open) this.render();
   }
 
   /**
@@ -343,6 +350,7 @@ export class Cabinet {
       ['[data-ccard]', () => CompanyCardView.open(() => this.reload())],
       ['[data-cldeals]', el => this._clientDeals(el.dataset.cldeals)],
       ['[data-tmgr]', el => this._manager(el.dataset.tmgr)],
+      ['[data-cabretry]', el => CabTeam.retry(el.dataset.cabretry)],
       ['[data-cabmonth]', el => MonthXlsx.save(el)],
       ['[data-gsc]', el => CabGantt.scale(el.dataset.gsc)],
     ];

@@ -490,9 +490,12 @@ export class AirChain {
     return `${this._SIGN[Math.sign(pdp)]}${Math.abs(pdp)} °C`;
   }
 
-  /** Произведение давления на вместимость, МПа·м³ — для отнесения сосуда к подконтрольным. */
-  static pvProduct(bar, litres) {
-    return ((bar / 10) * litres) / 1000;
+  /**
+   * Точка росы рефрижераторного осушителя для текста (правило dryer.pdp_refrig): «+3 °C».
+   * @returns {string}
+   */
+  static refrigDew() {
+    return this.dewText(StationRules.raw('dryer.pdp_refrig'));
   }
 
   /** Ресиверы по умолчанию на объём V: {n, v} по BASE.volume; null — правила нет или ресивер подлежит учёту. */
@@ -500,14 +503,14 @@ export class AirChain {
     const base = this.BASE;
     if (!base || !(vol > 0)) return null;
     const v = base.volume;
-    if (bar > 0 && this.pvProduct(bar, v) > PressureVessel.LIMIT + 1e-9) return null;
+    if (bar > 0 && PressureVessel.registered(bar, v)) return null;
     return { n: Math.max(1, Math.ceil(Math.round(vol) / v - 1e-9)), v };
   }
 
   /** Ресиверы без учёта в Ростехнадзоре на объём V: наименьшее число одинаковых из ряда; не нужно — null. */
   static split(vol, bar) {
-    if (!(vol > 0) || !(bar > 0) || this.pvProduct(bar, vol) <= PressureVessel.LIMIT + 1e-9) return null;
-    const v = this._RECV_SIZES.filter(x => this.pvProduct(bar, x) <= PressureVessel.LIMIT + 1e-9).pop();
+    if (!(vol > 0) || !(bar > 0) || !PressureVessel.registered(bar, vol)) return null;
+    const v = this._RECV_SIZES.filter(x => !PressureVessel.registered(bar, x)).pop();
     return v ? { n: Math.ceil(vol / v - 1e-9), v } : null;
   }
 

@@ -116,8 +116,8 @@ export class KpPreview {
     this._message('');
     try {
       const pdf = await PdfExport.fromBlob(this.blob);
-      await FileSave.save(PdfExport.fileName(), pdf);
-      this._message('PDF готов.', 'ok');
+      const saved = await FileSave.save(PdfExport.fileName(), pdf);
+      this._message(saved === false ? 'Сохранение отменено.' : 'PDF готов.', saved === false ? '' : 'ok');
     } catch (error) {
       this._message(
         `PDF не создан: ${esc(error.message || error)}. <button class="btn" type="button" data-pva="print">Печать → «Сохранить как PDF»</button>`,

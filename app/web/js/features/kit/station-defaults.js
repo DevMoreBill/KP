@@ -3,6 +3,7 @@ import { ContainerPart } from './container-part.js';
 import { Kit } from './kit.js';
 import { KitPipe } from './kit-fields.js';
 import { StationReq } from '../req/station-req.js';
+import { CalcInput } from '../calc/calc-input.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
@@ -155,7 +156,7 @@ export class StationDefaults {
   static _workRow(volume, power) {
     return {
       k: `Время работы ДГУ от бака при нагрузке ${Math.round(this.LOAD * this.PERCENT)} %`,
-      v: `около ${this.hours(volume, power * this.LOAD * this.LPH)} ч`,
+      v: `около ${this.hours(volume, this.perHour(power))} ч`,
     };
   }
 
@@ -166,18 +167,28 @@ export class StationDefaults {
    */
   static kw(item) {
     const dgu = Kit.parts(item).find(part => StationEquip.kindOf(part) === 'dgu');
-    return dgu ? StationEquip.num((dgu.attrs || {}).kw) : null;
+    return dgu ? CalcInput.num((dgu.attrs || {}).kw) : null;
   }
 
   /**
-   * Объём бака, л: на hours ч работы при нагрузке по умолчанию, ближайший типовой (больше типовых — кратно 500 л).
+   * Объём бака, л: на hours ч работы при нагрузке по умолчанию с запасом топлива, как в расчёте станции (GensetSizing),
+   * ближайший типовой (больше типовых — кратно 500 л).
    * @param {number} power кВт
    * @param {number} [hours]
    * @returns {number}
    */
   static tank(power, hours = this.HOURS) {
     if (!(power > 0)) return this.TANK_NO_DGU;
-    return this._typical(power * this.LOAD * this.LPH * hours);
+    return this._typical(this.perHour(power) * hours * this.MARGIN);
+  }
+
+  /**
+   * Расход топлива рабочих ДГУ мощностью power при нагрузке по умолчанию, л/ч.
+   * @param {number} power кВт
+   * @returns {number}
+   */
+  static perHour(power) {
+    return power * this.LOAD * this.LPH;
   }
 
   static _typical(need) {
@@ -221,7 +232,7 @@ export class StationDefaults {
     return Kit.parts(item)
       .filter(part => StationEquip.kindOf(part) === 'dgu' && part.role === 'main')
       .reduce(
-        (sum, part) => sum + (StationEquip.num((part.attrs || {}).kw) || 0) * Math.max(0, (+part.qty || 1) - reserve),
+        (sum, part) => sum + (CalcInput.num((part.attrs || {}).kw) || 0) * Math.max(0, (+part.qty || 1) - reserve),
         0,
       );
   }

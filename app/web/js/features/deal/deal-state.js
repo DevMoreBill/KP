@@ -69,6 +69,7 @@ export class DealState {
     if (start && !DealCal.ready(start)) DealCal.load(start);
     return {
       ...DealState._calendar(start),
+      date: start || today(),
       sumRub: rate > 0 ? (econ.sum / DealState.KOPECKS) * rate : 0,
       sumNoRate: !(rate > 0),
       cur: econ.cur,
@@ -386,6 +387,7 @@ export class DealState {
       R: calc.R,
       S: calc.S,
       sv: calc.sv,
+      vatShare: calc.bxShare || {},
     };
   }
 }

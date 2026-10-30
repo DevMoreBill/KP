@@ -9,7 +9,6 @@ import { S } from '../../core/state.js';
 import { WorkCalendar } from '../../ui/date-picker.js';
 import { KpEconomics } from './price-calc.js';
 import { RateSource } from './rate-source.js';
-import { DefRegistry } from '../../core/defaults.js';
 
 /** Проверка цен перед сохранением и отправкой КП: ниже закупки, маржа ниже красного порога, курс ЦБ старше суток. */
 export class PriceGuard {
@@ -56,7 +55,7 @@ export class PriceGuard {
   }
 
   static _supVat() {
-    return DefRegistry.num('deal.supVat', KpEconomics.SUP_VAT) / KpEconomics.PERCENT;
+    return KpEconomics.supVat() / KpEconomics.PERCENT;
   }
 
   // закупка — как в экономике (позиция КП), иначе из карточки каталога; цена — после скидки позиции

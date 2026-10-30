@@ -42,7 +42,8 @@ export class DocxFill {
     if (whole.trim() === `{${this.TABLE_TAG}}`) return `${table}<w:p/>`;
     const joined = this._join(para, whole);
     return joined.replace(this.TAG, (all, key) => {
-      if (key in tags) return DocxWriter.esc(tags[key]).replace(/\n/g, '</w:t><w:br/><w:t xml:space="preserve">');
+      if (Object.hasOwn(tags, key))
+        return DocxWriter.esc(tags[key]).replace(/\n/g, '</w:t><w:br/><w:t xml:space="preserve">');
       missing.add(key);
       return all;
     });

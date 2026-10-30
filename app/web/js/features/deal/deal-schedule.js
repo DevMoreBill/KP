@@ -11,6 +11,7 @@ export class DealSchedule extends DealCalcBase {
   static BG_ADV = 100;
   static BG_PCT = 10;
   static BG_WARR_DAYS = 365;
+  static BG_PERF_EXTRA = 30;
   static YEAR = 365;
   static MONTH = 30;
   static PCT_EPS = 0.0001;
@@ -246,7 +247,9 @@ export class DealSchedule extends DealCalcBase {
 
   _bgDays(type) {
     if (type === 'adv') return this.D;
-    return type === 'perf' ? this.pnrEnd : Math.round(DealValues.num('deal.bgWarrDays', DealSchedule.BG_WARR_DAYS));
+    if (type === 'perf')
+      return this.pnrEnd + Math.round(DealValues.num('deal.bgPerfExtra', DealSchedule.BG_PERF_EXTRA));
+    return Math.round(DealValues.num('deal.bgWarrDays', DealSchedule.BG_WARR_DAYS));
   }
 
   // по сроку или вручную; с календарём расчётный день переносится на рабочий, ручной нерабочий — помечается

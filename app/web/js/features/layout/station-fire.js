@@ -24,9 +24,9 @@ export class StationFire {
         k1: rule.k1,
         k3: rule.k3,
         k4: rule.k4,
-        d: 250,
-        h: 154,
-        kg: 3,
+        d: rule.modD,
+        h: rule.modH,
+        kg: rule.modKg,
         z: [rule.modZ0, rule.modZ1],
       };
     });
@@ -247,13 +247,23 @@ export class StationFire {
     ].filter(Boolean);
   }
 
+  /**
+   * Наибольшее расстояние до огнетушителя по категории помещения (правило fire.ext_dist); не задана — наименьшее.
+   * @param {string} cat категория: «А», «В1», «Г»…
+   * @returns {number} м
+   */
+  static extDistance(cat) {
+    const dist = StationRules.raw('fire.ext_dist');
+    return dist[String(cat || '').charAt(0)] ?? Math.min(...Object.values(dist));
+  }
+
   static _extText(fire) {
     const main = fire.rooms[0];
     const tank = fire.rooms.find(room => room.id === 'tank');
     const rank = tank && tank.rank !== main.rank ? ` (в отсеке бака — ${tank.rank})` : '';
     const need = main.need ? '' : ' (категория Д до 100 м² — по п. 401 можно без него, рекомендуется)';
     const inTank = tank ? `, в отсеке топливного бака — ${tank.ext} у двери` : '';
-    return `Огнетушители порошковые ${StationFire.EXT} с рангом тушения не ниже ${main.rank}${rank} (ППР в РФ, прил. 1) — ${fire.ext} шт.: в помещении оборудования — ${main.ext} у выхода${need}${inTank}; до огнетушителя — не более ${/^[ГД]$/.test(main.cat) ? 70 : 30} м (п. 406); на видных местах, не за оборудованием, верх — не выше 1,5 м от пола (п. 409), над каждым — знак F04 «Огнетушитель» (ГОСТ 12.4.026-2015).`;
+    return `Огнетушители порошковые ${StationFire.EXT} с рангом тушения не ниже ${main.rank}${rank} (ППР в РФ, прил. 1) — ${fire.ext} шт.: в помещении оборудования — ${main.ext} у выхода${need}${inTank}; до огнетушителя — не более ${StationFire.extDistance(main.cat)} м (п. 406); на видных местах, не за оборудованием, верх — не выше 1,5 м от пола (п. 409), над каждым — знак F04 «Огнетушитель» (ГОСТ 12.4.026-2015).`;
   }
 
   static _opsText(plan, fire) {

@@ -172,9 +172,17 @@ export class DealResult {
           : 'уплачен при ввозе, весь к вычету',
       ],
       ['НДС в доставке, брокере и услугах в России', calc.voRuSum, 'в ценах перевозчиков, брокера, СВХ'],
+      ['НДС в сборке станции', calc.asmVat, 'в цене сборщика'],
       ['Прочий НДС к вычету', calc.Vo, 'монтаж, ПНР и прочие подрядчики с НДС'],
-    ].filter(row => row[1] > DealResult.EPS || (row[0].startsWith('Ввозной') && unk));
+      ['НДС в поправках из Битрикс24', calc.fixVat, 'в статьях, изменённых в Битрикс24'],
+    ].filter(row => Math.abs(row[1]) > DealResult.EPS || (row[0].startsWith('Ввозной') && unk));
     return { viSum, unk, ded };
+  }
+
+  // вычет: «−сумма»; поправка, уменьшившая статью, — «+сумма»; нет суммы — «?»
+  static _dedCell(value) {
+    if (!(Math.abs(value) > DealResult.EPS)) return '?';
+    return value > 0 ? `−${Fmt.rub(value)}` : `+${Fmt.rub(-value)}`;
   }
 
   /**
@@ -192,7 +200,7 @@ export class DealResult {
     const rows = ded
       .map(
         ([title, value, hint]) =>
-          `<tr class="ded"><td>− ${esc(title)}${hint ? ` <small>${esc(hint)}</small>` : ''}</td><td class="num">${value > DealResult.EPS ? `−${Fmt.rub(value)}` : '?'}</td></tr>`,
+          `<tr class="ded"><td>− ${esc(title)}${hint ? ` <small>${esc(hint)}</small>` : ''}</td><td class="num">${DealResult._dedCell(value)}</td></tr>`,
       )
       .join('');
     const total = unk ? `${Fmt.rub(low.VATin)} … ${Fmt.rub(high.VATin)}` : `−${Fmt.rub(res.VATin)}`;

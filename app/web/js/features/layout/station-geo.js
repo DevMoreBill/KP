@@ -14,6 +14,10 @@ export class StationGeo {
 
   static SEA_ORDER = ['sea10', 'sea20', 'sea20hc', 'sea40', 'sea40hc'];
 
+  // «0», «0 мм», «нет», «без утепления», «не утеплён»
+  static NO_INS = /^(?:0+(?:[.,]0+)?\s*(?:мм)?|нет|без(?:\s.*)?|не\s*утепл.*)$/i;
+  static INS_MAX = 400;
+
   static FLOORS = {
     steel: {
       name: 'рифлёный стальной лист, окраска чёрная',
@@ -99,10 +103,22 @@ export class StationGeo {
     return v >= fit.minL && v <= fit.maxL ? v : null;
   }
 
-  /** Утеплитель, мм: из карточки; не указан — по умолчанию правил. */
+  /** Утеплитель, мм: из карточки; «0», «нет», «без утепления» — 0; не указан или не понят — по умолчанию правил. */
   static ins(text) {
-    const num = parseFloat(String(text || '').replace(',', '.'));
-    return num > 0 && num < 400 ? num : StationMatrix.grp('shell').ins;
+    return this.insOf(text).mm;
+  }
+
+  /**
+   * Утеплитель: {mm, guess}; guess — текст есть, но не понят (взято значение по умолчанию — замечание в «Компоновке»).
+   * @param {*} text
+   * @returns {{mm: number, guess: boolean}}
+   */
+  static insOf(text) {
+    const raw = String(text || '').trim();
+    if (this.NO_INS.test(raw)) return { mm: 0, guess: false };
+    const num = parseFloat(raw.replace(',', '.'));
+    if (num > 0 && num < this.INS_MAX) return { mm: num, guess: false };
+    return { mm: StationMatrix.grp('shell').ins, guess: Boolean(raw) };
   }
 
   /** Вид кровли станции. */
@@ -151,7 +167,8 @@ export class StationGeo {
    */
   static of(cont) {
     const type = cont.ctype || 'block';
-    const ins = this.ins(cont.ins);
+    const insInfo = this.insOf(cont.ins);
+    const ins = insInfo.mm;
     const sea = this.SEA[type];
     const own = cont.sizeAuto ? null : this.parseMm(cont.size);
     const mods = sea ? null : StationMods.of(cont);
@@ -160,6 +177,7 @@ export class StationGeo {
     return {
       type,
       t: ins,
+      ...this._insGuess(insInfo, cont),
       sea: Boolean(sea),
       own: Boolean(own),
       auto: !ext,
@@ -172,6 +190,11 @@ export class StationGeo {
       floor: this.floor(cont),
       mods: mods ? { ...mods, ...(mod ? { Lm: mod[0], Wm: mod[1] } : {}) } : null,
     };
+  }
+
+  // текст утепления, который не понят, — для замечания
+  static _insGuess(insInfo, cont) {
+    return insInfo.guess ? { insText: String(cont.ins) } : {};
   }
 
   /** Заданная длина станции (у модулей — модуля × число по длине) или null. */

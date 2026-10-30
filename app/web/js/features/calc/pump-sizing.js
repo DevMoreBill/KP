@@ -269,7 +269,13 @@ export class PumpSizing {
       );
       return;
     }
-    const temp = req.tliq != null ? req.tliq : 20;
+    const temp = req.tliq != null ? req.tliq : note.rule('pump.t_liquid');
+    if (req.tliq == null) {
+      note.assume(
+        `Температура жидкости в ТЗ не указана — для давления насыщенного пара принята ${CalcNote.fmt(temp, 0)} °C.`,
+      );
+      note.ask('Температура перекачиваемой жидкости, °C.', true);
+    }
     const antoine = note.rule('pump.antoine');
     const vapor = Math.pow(10, antoine.A - antoine.B / (antoine.C + temp)) * PumpSizing.MMHG_KPA;
     const baro = AirDemand.baro(req.alt || 0);
@@ -282,7 +288,7 @@ export class PumpSizing {
     note.step({
       what: 'Кавитационный запас на всасывании',
       formula: 'NPSHa = (pатм − pнп(t)) / (ρ·g) − hвс − hпот ≥ NPSHr + запас',
-      rules: ['pump.suct_loss', 'pump.npsh', 'pump.antoine'],
+      rules: ['pump.suct_loss', 'pump.npsh', 'pump.antoine', ...(req.tliq == null ? ['pump.t_liquid'] : [])],
       data: [
         ['pатм', `${CalcNote.fmt(baro, 1)} кПа`],
         [`pнп(${CalcNote.fmt(temp, 0)} °C)`, `${CalcNote.fmt(vapor, 2)} кПа`],

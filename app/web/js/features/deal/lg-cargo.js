@@ -8,6 +8,9 @@ export class LgCargo {
   static TRIPLE =
     /(\d+(?:[.,]\d+)?)(?:\/\d+(?:[.,]\d+)?)?\s*×\s*(\d+(?:[.,]\d+)?)(?:\/\d+(?:[.,]\d+)?)?\s*×\s*(\d+(?:[.,]\d+)?)(?:\/(\d+(?:[.,]\d+)?))?/;
   static METER = /(^|[^а-я])м([^а-я]|$)/;
+  // единицы — отдельным словом: «смонтированном», «смазки» — не сантиметры
+  static MILLI = /(^|[^а-яё])мм([^а-яё]|$)/;
+  static CENTI = /(^|[^а-яё])см([^а-яё]|$)/;
   static UNIT_K = { м: 1, см: 0.01, мм: 0.001 };
   static UNIT_DIV = { м: 1, см: 100, мм: 1000 };
   static MAX_M = 40;
@@ -51,8 +54,8 @@ export class LgCargo {
   }
 
   static _unit(lower, guess) {
-    if (/мм/.test(lower)) return 'мм';
-    if (/см/.test(lower)) return 'см';
+    if (this.MILLI.test(lower)) return 'мм';
+    if (this.CENTI.test(lower)) return 'см';
     return this.METER.test(lower) ? 'м' : guess;
   }
 

@@ -21,6 +21,13 @@ function deal(o={}){
 }
 const KP={sumRub:1220000, vat:22, rates:{USD:'92,5', EUR:'100'}, items:[{id:'a', name:'Компрессор', qty:1, cost:500000, cur:'RUB'}], moneyAuto:2};
 
+check('единицы габаритов — отдельным словом (аудит CALC-049)', ()=>{
+  // «смонтированном», «смесителя», «смазки» — не сантиметры: мм по величине числа
+  assert.deepStrictEqual(LgCargo.triple('3197 × 1840 × 2450', 'Габариты в смонтированном виде'), [3.197, 1.84, 2.45]);
+  assert.deepStrictEqual(LgCargo.triple('120 x 65 x 135 см'), [1.2, 0.65, 1.35], 'сантиметры — словом');
+  near(LgCargo.len('2400', 'Длина смесителя'), 2.4, 'длина в мм');
+});
+
 check('ручной груз: мм и кг → метры и тонны', ()=>{
   const o={}; LgCargoIn.set(o, 'l', '2400'); LgCargoIn.set(o, 'w', '1200,5'); LgCargoIn.set(o, 'h', '1 850'); LgCargoIn.set(o, 'm', '1500,5');
   assert.deepStrictEqual(o, {lmm:'2400', wmm:'1200,5', hmm:'1 850', kg:'1500,5'});

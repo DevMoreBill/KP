@@ -140,21 +140,13 @@ export class KpReport {
     const byCategory = new Map();
     const byClient = new Map();
     const list = [];
+    const tot = { n: 0, sum: 0, won: 0, wonSum: 0, lost: 0, profit: 0, pBase: 0 };
     for (const row of rows) {
       const status = KpTrack.status(row.track);
-      const sum = row.sumRub || 0;
+      const values = this._values(status, row);
+      const { sum, won } = values;
       const profit = row.profitRub;
-      const won = status === 'won' ? 1 : 0;
-      const values = {
-        n: 1,
-        sum,
-        won,
-        wonSum: won ? sum : 0,
-        lost: status === 'lost' ? 1 : 0,
-        sent: status !== 'new' ? 1 : 0,
-        profit: profit ?? 0,
-        pBase: profit != null ? sum : 0,
-      };
+      for (const key of Object.keys(tot)) tot[key] += values[key];
       this._add(byManager, row.manager || 'Без автора', values);
       this._add(byClient, row.client || 'Без получателя', values);
       list.push({
@@ -171,7 +163,7 @@ export class KpReport {
     }
     const bySum = map => [...map.values()].sort((left, right) => right.sum - left.sum);
     return {
-      tot: this._total(rows),
+      tot,
       mgr: bySum(byManager),
       cat: bySum(byCategory),
       cli: bySum(byClient).slice(0, Math.round(DefRegistry.num('ui.repClients', 20))),
@@ -181,12 +173,24 @@ export class KpReport {
 
   static _rate(calc) {
     const cur = (calc.pricing || {}).cur || 'RUB';
-    if (cur === 'RUB') return 1;
-    return parseFloat(
-      String((calc.pricing.rates || {})[cur] || '')
-        .replace(/\s/g, '')
-        .replace(',', '.'),
-    );
+    return cur === 'RUB' ? 1 : Currency.parseRate((calc.pricing.rates || {})[cur]);
+  }
+
+  // одна строка отчёта — для итога, менеджеров и клиентов (итог считается тем же сложением)
+  static _values(status, row) {
+    const sum = row.sumRub || 0;
+    const won = status === 'won' ? 1 : 0;
+    const profit = row.profitRub;
+    return {
+      n: 1,
+      sum,
+      won,
+      wonSum: won ? sum : 0,
+      lost: status === 'lost' ? 1 : 0,
+      sent: status !== 'new' ? 1 : 0,
+      profit: profit ?? 0,
+      pBase: profit != null ? sum : 0,
+    };
   }
 
   static _categories(byCategory, calc, won) {
@@ -208,25 +212,6 @@ export class KpReport {
       group.cost += toRub(econ.cost);
       group.won += won ? toRub(econ.sum) : 0;
     }
-  }
-
-  static _total(rows) {
-    const total = { n: 0, sum: 0, won: 0, wonSum: 0, lost: 0, profit: 0, pBase: 0 };
-    for (const row of rows) {
-      const status = KpTrack.status(row.track);
-      total.n++;
-      total.sum += row.sumRub || 0;
-      if (status === 'won') {
-        total.won++;
-        total.wonSum += row.sumRub || 0;
-      }
-      if (status === 'lost') total.lost++;
-      if (row.profitRub != null) {
-        total.profit += row.profitRub;
-        total.pBase += row.sumRub || 0;
-      }
-    }
-    return total;
   }
 }
 

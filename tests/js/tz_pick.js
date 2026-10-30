@@ -42,13 +42,16 @@ class Check {
 
 (async ()=>{
   await Check.run('рабочие агрегаты и запас давления', ()=>{
-    const pool=[{ v:6.5, p:9.7 }, { v:13, p:13 }, { v:12.6, p:8 }], pen=o=>TzPick.barPen(o.p, 8);
+    // потери — как в расчётной записке (аудит CALC-067): рефрижераторный 0,2 + два фильтра по 0,1 + трубопровод 0,1 = 0,5 бар
+    const loss=TzPick.lossPlan({}); assert.ok(Math.abs(loss-0.5)<1e-9, 'потери по плану: '+loss);
+    assert.ok(Math.abs(TzPick.lossPlan({ ads:true, air:'1.2.1' })-0.6)<1e-9, 'класс масла 1 — ещё угольный фильтр');
+    const pool=[{ v:6.5, p:9.7 }, { v:13, p:13 }, { v:12.6, p:8 }], pen=o=>TzPick.barPen(o.p, 8, false, loss);
     let u=TzPick.units(pool, 12.5, 0, pen);
     assert.deepStrictEqual([u.n, u.o.v], [2, 6.5], 'два по 6,5 м³/мин при 9,7 бар — лучше одного на 13 бар или впритык по давлению');
     u=TzPick.units(pool, 12.5, 1, pen);
     assert.deepStrictEqual([u.n, u.o.v], [1, 13], 'один рабочий — как в ТЗ');
-    assert.strictEqual(TzPick.barPen(8, 8), 0.5, 'без запаса на потери в подготовке воздуха — штраф');
-    assert.ok(TzPick.barPen(10, 8)<TzPick.barPen(13, 8), 'лишнее давление — штраф больше');
+    assert.strictEqual(TzPick.barPen(8, 8, false, loss), 0.5, 'без запаса на потери в подготовке воздуха — штраф');
+    assert.ok(TzPick.barPen(10, 8, false, loss)<TzPick.barPen(13, 8, false, loss), 'лишнее давление — штраф больше');
     assert.strictEqual(TzPick.units(pool, 50, 1), null, 'подходящего нет');
   });
 
@@ -421,7 +424,8 @@ class Check {
     const y=Cat.station('st_comp', [await TzPick.part(C[2], 2, 'main'), await TzPick.part(C[1], 1)], { flow:'6', pressure:'8,5' });
     assert.deepStrictEqual(keys(y).filter(k=>/^main/.test(k)), [], 'две модели — собрано вручную, решают проверки');
     y.kit.parts=y.kit.parts.filter(p=>p.role==='main' || p.role==='container'); r=KitNeed.recs(y)[0];
-    assert.ok(r.main && r.swap && /^Заменить: компрессор — давление 8 бар меньше 8,5 бар у потребителя$/.test(KitNeed.head(r)), KitNeed.head(r));
+    // потери — как в расчётной записке: без осушителя и фильтров — трубопровод станции 0,1 бар (аудит CALC-067)
+    assert.ok(r.main && r.swap && /^Заменить: компрессор — давление 8 бар \(с потерями в подготовке воздуха и трубопроводе ≈ 7,9\) меньше 8,5 бар у потребителя$/.test(KitNeed.head(r)), KitNeed.head(r));
     assert.ok(!KitNeed.fillable(y).includes(r), 'замену основного выбирает менеджер — не в «Подобрать всё»');
     const M=KitNeed.mainPreset(y); assert.ok(M.min.pressure===8.5 && M.test(C[1]) && !M.test(C[0]), 'подходящие: производительность и давление');
     // больше четырёх рабочих — мал

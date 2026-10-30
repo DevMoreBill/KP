@@ -88,22 +88,16 @@ export class FilterSizing {
   /** Ступени по классу: частицы и масло класса 1–2, пары масла класса 1, пылевой после адсорбционного осушителя. */
   static stages(calcNote, input, filters, cls) {
     const chain = calcNote.rule('air.chain');
-    const [particleClass, oilClass] = [+cls[1], +cls[3]];
     const have = new Set(filters.map(unit => unit.info.grade));
-    const lvl = Math.min(particleClass, oilClass);
-    const need = [];
-    if (lvl === 1 || lvl === 2) need.push([`частицы / масло класса ${lvl}`, chain[String(lvl)]]);
-    if (oilClass === 1) need.push(['масло класса 1 (пары)', chain.oil1]);
-    if (input.units.some(unit => unit.kind === 'dryer' && unit.info.type === 'ads'))
-      need.push(['после адсорбционного осушителя', chain.afterAds]);
+    const need = FilterSizing._need(calcNote, input, cls, chain);
     const oilFree = input.units.filter(unit => unit.kind === 'compressor').every(unit => FilterSizing.oilFree(unit));
-    for (const [why, grades] of need) {
+    for (const [why, grades, limit] of need) {
       const ok = grades.some(grade => have.has(grade));
       const vapour = grades === chain.oil1 && oilFree;
       calcNote.step({
         what: `Ступень очистки: ${why}`,
         formula: `в составе есть: ${FilterSizing._grades(grades)}`,
-        rules: ['air.chain'],
+        ...(limit ? { data: [limit], rules: ['air.chain', 'air.oil'] } : { rules: ['air.chain'] }),
         ok,
         result: ok ? 'есть' : 'нет',
       });
@@ -115,6 +109,26 @@ export class FilterSizing {
         );
       }
     }
+  }
+
+  // нужные ступени: [почему, марки фильтров, строка предела масла или null]
+  static _need(calcNote, input, cls, chain) {
+    const [particleClass, oilClass] = [+cls[1], +cls[3]];
+    const lvl = Math.min(particleClass, oilClass);
+    const oil = FilterSizing._oilLimit(calcNote, oilClass);
+    const need = [];
+    if (lvl === 1 || lvl === 2)
+      need.push([`частицы / масло класса ${lvl}`, chain[String(lvl)], oilClass === lvl ? oil : null]);
+    if (oilClass === 1) need.push(['масло класса 1 (пары)', chain.oil1, oil]);
+    if (input.units.some(unit => unit.kind === 'dryer' && unit.info.type === 'ads'))
+      need.push(['после адсорбционного осушителя', chain.afterAds, null]);
+    return need;
+  }
+
+  // строка «масло по классу N — не более …» для шага (правило air.oil); нет значения — null
+  static _oilLimit(calcNote, oilClass) {
+    const limit = (calcNote.rule('air.oil') || {})[String(oilClass)];
+    return limit > 0 ? [`масло класса ${oilClass}`, `не более ${CalcNote.fmt(limit, 2)} мг/м³`] : null;
   }
 
   /** Безмасляный компрессор: пары масла — только из всасываемого воздуха, угольный фильтр — по анализу воздуха. */

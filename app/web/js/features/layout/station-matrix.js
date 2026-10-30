@@ -69,9 +69,9 @@ export class StationMatrix {
   move: { pass: 25 },
   tank: {
     pad: 300, gap: 300, back: 100, aisle: 600, part: 100, door: 800, fill: 1000, max: 4500, gates: 1, h1: 1000,
-    h2: 1500, big: 2000, w1: 800, w2: 1000, step: 50, wall: 4, top: 300, wMax: 3000,
+    h2: 1500, big: 2000, w1: 800, w2: 1000, step: 50, wall: 4, top: 300, wMax: 3000, room: 2290,
   },
-  conv: { z: 150, gap: 100, edge: 100, front: 150 },
+  conv: { z: 150, gap: 100, edge: 100, front: 150, h: 400, d: 90 },
   dgu: { rad: 50, rot: 1, two: 1, across: 3, pass: 400, convGap: 50, convEdge: 50, convFront: 100 },
   muffler: { gap: 200, outlet: 300 },
   mods: { max: 9, post: 200, wMin: 2448, wMax: 2550, lMin: 7000 },
@@ -97,7 +97,7 @@ export class StationMatrix {
   light: { plane: 800, lampW: 36, lampLm: 3600, lampLen: 1200, small: 15, flood: 30, exit: 3, fuelPump: 2.4 },
   fire: {
     modArea: 7, modVolA: 18, modVolB: 16, modSide: 2640, modZ0: 2500, modZ1: 3500, k1: 1, k3: 1, k4: 1,
-    shadeH: 600, shadeGap: 150, ext: 1500,
+    shadeH: 600, shadeGap: 150, ext: 1500, modD: 250, modH: 154, modKg: 3,
   },
   power: {
     dryerK: 0.2, dryerMin: 0.3, dryerAds: 0.1, dguHeat: 2, dguHeatBig: 3, dguHeatKw: 250, charger: 0.1,

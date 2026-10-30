@@ -44,6 +44,13 @@ export class DealHs {
     return { code, duty, src: dutySrc || codeSrc, ref };
   }
 
+  // код из справочника, а ставка другая — отметка (ставку выбирает менеджер)
+  static _codeDuty(hsCode) {
+    const known = TnVed.known(hsCode.code);
+    if (!known || hsCode.duty === '' || InputNum.parse(hsCode.duty) === known.duty) return '';
+    return ` <span class="dl-badge warn" title="${esc(`По справочнику ЕТТ ЕАЭС у кода ${known.code} пошлина ${known.duty} %`)}">код и ставка не совпадают со справочником</span>`;
+  }
+
   static _first(chain, field) {
     for (const [row, src] of chain) {
       if (row && row[field] != null && String(row[field]).trim() !== '') return [String(row[field]).trim(), src];
@@ -68,7 +75,7 @@ export class DealHs {
       return `<span class="dl-badge ${ok === 1 ? 'kp' : 'warn'}" title="${esc(tip)}">${DealHs.REF_TEXT[ok] || 'справочно · уточните'}</span>`;
     }
     const differs = ref && ref.duty !== '' && InputNum.parse(ref.duty) !== InputNum.parse(hsCode.duty);
-    const own = `<span class="dl-badge kp" title="${esc(tip ? `Справочно: ${tip}` : '')}">${esc(hsCode.src)}</span>`;
+    const own = `<span class="dl-badge kp" title="${esc(tip ? `Справочно: ${tip}` : '')}">${esc(hsCode.src)}</span>${DealHs._codeDuty(hsCode)}`;
     if (!differs) return own;
     return `${own}<button type="button" class="lnk dl-hsref" data-dlx="hsref" data-id="${esc(item.id)}" title="${esc(`Взять справочный код и ставку:\n${tip}`)}">справочно ${esc(ref.code)} · ${esc(ref.duty)} %</button>`;
   }
@@ -146,6 +153,7 @@ export class DealHs {
     const hsCode = DealHs.of(item);
     const value = { code: hsCode.code, duty: hsCode.duty };
     for (const field of ['code', 'duty']) if (patch[field] != null) value[field] = String(patch[field]).trim();
+    if (patch.duty == null && value.code !== hsCode.code) value.duty = DealHs.dutyOf(value.code);
     if (!item.catId) {
       deal.hs = deal.hs || {};
       deal.hs[lineId] = value;
@@ -158,6 +166,16 @@ export class DealHs {
     Api.request('/api/customs', { method: 'PUT', headers: DealHs.JSON_HEAD, body }).catch(() =>
       Toast.show('Код не сохранён в справочнике — проверьте связь с сервером'),
     );
+  }
+
+  /**
+   * Ставка пошлины по коду из справочника ТН ВЭД; нет кода в справочнике — пусто («укажите»).
+   * @param {string} code
+   * @returns {string}
+   */
+  static dutyOf(code) {
+    const known = TnVed.known(code);
+    return known ? String(known.duty) : '';
   }
 
   /**

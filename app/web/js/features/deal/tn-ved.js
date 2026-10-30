@@ -5,6 +5,7 @@
  */
 export class TnVed {
   static RATES_AT = 'октябрь 2026';
+  static CODE_DIGITS = 10;
   static STATUS = {
     1: 'код и ставка подтверждены по ЕТТ ЕАЭС',
     2: 'вероятный код — подтвердите у таможенного брокера',
@@ -361,6 +362,19 @@ export class TnVed {
   ];
   static BELT_LONG = 1800;
   static BELT_LONGER = 2400;
+
+  /**
+   * Код и ставка справочника по коду в любой записи («7311009100», «7311 00 910 0»); нет в справочнике — null.
+   * @param {string} code
+   * @returns {{code: string, duty: number}|null}
+   */
+  static known(code) {
+    const digits = String(code || '').replace(/\D/g, '');
+    if (digits.length !== this.CODE_DIGITS) return null;
+    const text = `${digits.slice(0, 4)} ${digits.slice(4, 6)} ${digits.slice(6, 9)} ${digits.slice(9)}`;
+    const row = this.CODES[text];
+    return row ? { code: text, duty: row.duty } : null;
+  }
 
   /**
    * Особая ставка для кода и страны на дату (ГГГГ-ММ-ДД) или null.

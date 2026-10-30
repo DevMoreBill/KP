@@ -6,6 +6,8 @@ export class CrmFmt {
   static KOPECKS = 100;
   static DAY_MS = 864e5;
   static WEEK = 7;
+  // событие document: данные кабинета догрузились (календарь года) — перерисовать открытый кабинет
+  static REDRAW = 'kp-cab-redraw';
   static NEAR = { 0: 'сегодня', 1: 'завтра', '-1': 'вчера' };
 
   /**

@@ -136,4 +136,16 @@ export class DryerDerate {
     const own = this.lossUnits(units).reduce((sum, unit) => sum + this.drop(unit).v, 0);
     return own + StationRules.raw('loss.pipe');
   }
+
+  /**
+   * Потери по плану цепочки до подбора, бар (по правилам): осушитель вида ads / рефрижераторный, два фильтра (до и после
+   * осушителя), угольный — при классе масла 1, трубопровод станции.
+   * @param {{ads: boolean, oilOne: boolean}} plan
+   * @returns {number}
+   */
+  static planLoss({ ads, oilOne }) {
+    const filter = { kind: 'filter', info: { grade: 'micro', drop: null } };
+    const dryer = { kind: 'dryer', info: { type: ads ? 'ads' : 'refrig', drop: null } };
+    return this.loss([dryer, filter, filter, ...(oilOne ? [filter] : [])]);
+  }
 }

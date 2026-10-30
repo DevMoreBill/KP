@@ -47,13 +47,19 @@ export class CabClients {
     if (deal.stage === 'won') {
       client.won++;
       client.wonSum += deal.sum || 0;
-    } else if (deal.stage !== 'lost') {
+    } else if (this._open(deal)) {
       client.open++;
       client.sum += deal.sum || 0;
     }
-    if (deal.next && (!client.next || deal.next.due < client.next.due)) client.next = deal.next;
+    if (!CrmData.paused(deal) && deal.next && (!client.next || deal.next.due < client.next.due))
+      client.next = deal.next;
     client.who = client.who || this._reachable(deal.who);
     byKey.set(key, client);
+  }
+
+  // в работе: не закрыта и не отложена («пауза до даты»), как на доске
+  static _open(deal) {
+    return deal.stage !== 'won' && deal.stage !== 'lost' && !CrmData.paused(deal);
   }
 
   /**

@@ -1,3 +1,4 @@
+import { KpReportView } from './kp-report-view.js';
 import { ClientStore } from './client-store.js';
 import { Currency } from './currency.js';
 import { Drafts } from './drafts.js';
@@ -32,7 +33,6 @@ import { ClientContactsView } from './client-contacts.js';
 export class ClientCard {
   static OBJECTS = 6;
   static MANAGERS = 3;
-  static PERCENT = 100;
 
   /**
    * Функция включена.
@@ -163,7 +163,7 @@ export class ClientCard {
         this.tile('Выиграно', won, `${KPGen.money(total('won'))} руб.`) +
         this.tile(
           'Конверсия',
-          closed ? `${Math.round((won / closed) * this.PERCENT)} %` : '—',
+          KpReportView.conv({ won, lost: closed - won }),
           closed ? `из ${closed} закрытых` : 'нет закрытых',
         )
       : '';

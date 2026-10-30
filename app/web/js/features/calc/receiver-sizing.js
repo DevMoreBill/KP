@@ -1,3 +1,4 @@
+import { PressureVessel } from '../layout/pressure-vessel.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { CalcNote } from './calc-note.js';
@@ -102,12 +103,13 @@ export class ReceiverSizing {
     });
   }
 
-  /** Учёт в Ростехнадзоре: p · V больше vessel.pv (ФНП ОРПД). */
+  /** Учёт в Ростехнадзоре: p · V больше vessel.pv (ФНП ОРПД); давление — рабочее станции. */
   static vessels(note, receivers, bar) {
     const pvRule = note.rule('vessel.pv');
     for (const unit of receivers) {
       const volume = unit.info.vol || 0;
-      const station = ((bar / 10) * volume) / 1000;
+      const station = PressureVessel.product(bar, volume);
+      const reg = PressureVessel.registered(bar, volume);
       if (volume > 0 && bar > 0) {
         note.step({
           what: `Учёт в Ростехнадзоре: ${unit.name}`,
@@ -118,14 +120,25 @@ export class ReceiverSizing {
             ['V', `${CalcNote.fmt(volume / 1000, 3)} м³`],
           ],
           result: `p·V = ${CalcNote.fmt(station, 3)}`,
-          ok: station <= pvRule + 1e-9,
+          ok: !reg,
         });
       }
-      if (station > pvRule + 1e-9)
+      if (reg)
         note.issue(
           'warn',
           `${unit.name}: p·V = ${CalcNote.fmt(station, 3)} МПа·м³ — подлежит учёту в Ростехнадзоре (ФНП ОРПД).`,
         );
+      ReceiverSizing._rated(note, unit, bar, volume);
     }
+  }
+
+  // паспортное давление выше рабочего и по нему сосуд подлежал бы учёту — условие «без учёта»
+  static _rated(note, unit, bar, volume) {
+    const own = PressureVessel.ratedOnly(bar, unit.info.bar, volume);
+    if (!own) return;
+    note.missing(
+      `vessel.rated.${unit.name}`,
+      `${unit.name}: без учёта в Ростехнадзоре — при уставке предохранительного клапана не выше ${CalcNote.fmt(bar, 1)} бар; по паспортному давлению ${CalcNote.fmt(own, 1)} бар p·V = ${CalcNote.fmt(PressureVessel.product(own, volume), 3)} МПа·м³ — подлежал бы учёту (какое давление брать по ФНП ОРПД — уточните)`,
+    );
   }
 }

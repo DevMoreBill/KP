@@ -80,9 +80,9 @@ export class StationHeat {
     return StationHeat._rule('heat.conv_units');
   }
 
-  /** Размеры конвектора. */
+  /** Размеры и места конвектора (раздел conv матрицы). */
   static get CONV() {
-    return { h: 400, d: 90, ...StationMatrix.conv() };
+    return StationMatrix.conv();
   }
 
   /** Объёмная теплоёмкость воздуха при t, Вт·ч/(м³·°C): зимой воздух плотнее, чем при +20 °C. */
@@ -131,10 +131,14 @@ export class StationHeat {
     const qInf = this._ACH * env.lenHeated * env.wi * env.hi * airCap * deltaT;
     const qStop = env.qEnv + qInf;
     const rec = sys.rec !== false;
-    const net = opt => opt.q - opt.a * airCap * deltaT;
+    // при работе — воздухообмен зимней вентиляции (VentCalc.winter), не меньше инфильтрации
+    const roomAir = Math.max(this._rule('vent.ach').winter, this._ACH) * env.volume;
+    const runNeed = opt => env.qEnv + Math.max(roomAir, opt.a) * airCap * deltaT - opt.q;
     const run = units.map(i => ({ i, q: this.heatOf(i, rec, exhaust), a: this.airOf(i) }));
-    const base = run.length ? run.reduce((first, second) => (net(first) <= net(second) ? first : second)) : null;
-    const qRun = base ? qStop - net(base) : null;
+    const base = run.length
+      ? run.reduce((first, second) => (runNeed(first) >= runNeed(second) ? first : second))
+      : null;
+    const qRun = base ? runNeed(base) : null;
     const need = (Math.max(qStop, qRun || 0) * this.RESERVE) / 1000;
     const isOn = sys.heat !== false;
     const pick = isOn ? this.pick(plan, need) : { ...StationHeat.NO_HEAT, heaters: [] };
@@ -183,7 +187,7 @@ export class StationHeat {
     const room = this.room(plan);
     const fuel = plan.fuel;
     const kind = this._bridgeKind(geo);
-    const uWall = this._BRIDGE[kind] / (this._R_SURF + Mm.meters(geo.t) / this._LAMBDA);
+    const uWall = this.uWall(geo.t, kind);
     const len = Mm.meters(room.Le - room.tankLen);
     const wid = Mm.meters(room.We);
     const height = Mm.meters(geo.ext[2]);
@@ -196,6 +200,17 @@ export class StationHeat {
         deltaT +
       (uWall * Apart * deltaT) / 2;
     return { U: uWall, A: area, qEnv, ...room };
+  }
+
+  /**
+   * U ограждения, Вт/(м²·°C): по утеплителю thick мм; без утепления — U неутеплённого контейнера (vent.winter.uBare).
+   * @param {number} thick мм
+   * @param {string} kind вид поправки на каркас (heat.bridge)
+   * @returns {number}
+   */
+  static uWall(thick, kind) {
+    if (!(thick > 0)) return StationHeat._rule('vent.winter').uBare;
+    return this._BRIDGE[kind] / (this._R_SURF + Mm.meters(thick) / this._LAMBDA);
   }
 
   static _bridgeKind(geo) {
@@ -244,7 +259,7 @@ export class StationHeat {
   static _dguFrame(summer) {
     const sum = summer && summer.sum;
     if (!sum) return 0;
-    const flow = Math.max(this.radiators(summer.work || []), sum.Lgen) + sum.use + sum.Lcool;
+    const flow = Math.max(this.radiators(summer.work || [], summer.tmax), sum.Lgen) + sum.use + sum.Lcool;
     return (flow / this.SEC_PER_H / sum.vIn) * sum.res + sum.Lcool / this.SEC_PER_H / sum.vOut;
   }
 
@@ -310,7 +325,7 @@ export class StationHeat {
       m3h: sum.Lgen + sum.use,
       use: sum.use,
       cool: sum.Lcool,
-      rad: this.radiators(summer.work),
+      rad: this.radiators(summer.work, summer.tmax),
       sum,
       win: winterRes,
       rec: recup,
@@ -319,11 +334,21 @@ export class StationHeat {
     };
   }
 
-  /** Воздух радиаторов ДГУ, м³/ч: по паспорту, иначе по мощности. */
-  static radiators(work) {
+  /** Воздух радиаторов ДГУ, м³/ч: по паспорту, иначе по мощности при летней температуре tmax. */
+  static radiators(work, tmax) {
+    return Math.round(work.filter(i => i.kind === 'dgu').reduce((acc, i) => acc + this.radiatorAir(i, tmax), 0));
+  }
+
+  /**
+   * Воздух радиатора ДГУ i, м³/ч: по паспорту, иначе доля мощности в радиатор при нагреве heat.dgu_rad.dt и tmax.
+   * @param {object} i агрегат плана
+   * @param {number} tmax летняя температура, °C
+   * @returns {number}
+   */
+  static radiatorAir(i, tmax) {
+    if (i.cool > 0) return i.cool;
     const rule = StationHeat._rule('heat.dgu_rad');
-    const coolOf = i => (i.cool > 0 ? i.cool : (i.kw * 1000 * rule.share) / (this.AIR * rule.dt));
-    return Math.round(work.filter(i => i.kind === 'dgu').reduce((acc, i) => acc + coolOf(i), 0));
+    return (i.kw * 1000 * rule.share) / (this.airAt(SummerTemp.of(tmax)) * rule.dt);
   }
 
   /** Воздух охлаждения компрессора i, м³/ч — из летнего расчёта. */
@@ -334,11 +359,14 @@ export class StationHeat {
     return i.cool > 0 ? i.cool : 0;
   }
 
-  /** Рабочие агрегаты: без res самых мощных каждого вида (резерв). */
+  /**
+   * Рабочие агрегаты летом: резерв — res агрегатов каждого вида; тепло и воздух — в запас, по самым мощным из
+   * работающих (их число — без резерва).
+   */
   static working(units, res) {
     return ['compressor', 'pump', 'dgu'].flatMap(k => {
       const list = units.filter(i => i.kind === k).sort((first, second) => second.kw - first.kw);
-      return list.length > res ? list.slice(res) : list.slice(-1);
+      return list.slice(0, Math.max(1, list.length - res));
     });
   }
 
@@ -636,7 +664,8 @@ export class StationHeat {
     if (!heat.base) return '';
     const k = v => this.kw(v / 1000);
     if (heat.qRun > 0) {
-      return ` При работе поз. ${heat.base.pos}: ${k(heat.base.q)} кВт тепла, подогрев забираемого воздуха ${k(heat.base.a * this.AIR * heat.dT)} кВт — конвекторы нужны и при работе (${k(heat.qRun)} кВт).`;
+      const air = heat.qRun + heat.base.q - heat.qEnv;
+      return ` При работе поз. ${heat.base.pos}: ${k(heat.base.q)} кВт тепла, подогрев приточного воздуха ${k(air)} кВт — конвекторы нужны и при работе (${k(heat.qRun)} кВт).`;
     }
     const rec = heat.rec && heat.base.kind !== 'pump' ? ' (рециркуляция тёплого воздуха — рекуперация)' : '';
     return ` При работе ${StationHeat.UNIT_WORD[heat.base.kind] || 'агрегат'} поз. ${heat.base.pos} даёт ${k(heat.base.q)} кВт тепла${rec} — потери покрыты, конвекторы отключаются терморегуляторами.`;

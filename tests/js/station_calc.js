@@ -522,6 +522,11 @@ Check.run('ресиверы — методика ПНЕВМОТЕХ: приор�
   assert.deepStrictEqual(S(300), [500, 1, 500], '300 л: 900 — запас 300 % → 500 л');
   assert.deepStrictEqual(S(460), [900, 1, 900], '460 л: 900 — запас 196 % → 900 л');
   assert.deepStrictEqual(S(1550), [900, 2, 1800]); assert.deepStrictEqual(S(3250), [900, 4, 3600]);
+  // 500 л — только если и наименьшее допустимое в него помещается (аудит CALC-060): 3,5 м³/мин, ΔP 1 → нужно 438 л, не меньше 525 л (15 %)
+  assert.deepStrictEqual(S(438, { min:525 }), [900, 1, 900], '438 л при допустимых ≥ 525 л — 900 л');
+  assert.ok(/меньше наименьшего допустимого 525 л/.test(ReceiverPlan.size(438, { min:525 }).why), ReceiverPlan.size(438, { min:525 }).why);
+  { const R0=ReceiverPlan.calc({ Q:3.5, S:3.5 }); assert.deepStrictEqual([R0.theor, R0.main.total], [438, 900], JSON.stringify(R0.main));
+    assert.ok(!R0.checks.some(c=>/менее 15|Запас превышает/.test(c.text)), 'без «менее 15 %» и без совета перейти на 500 л: '+JSON.stringify(R0.checks)); }
   // 500 л вручную (нехватка места) — сколько нужно по 500 л (решение ПНЕВМОТЕХ: «13 × 500 л» вместо 900 л); до 500 л — один
   assert.deepStrictEqual(S(1550, { force:'500', reason:'space' }), [500, 4, 2000], 'вручную 500 л — несколько');
   assert.deepStrictEqual(S(450, { force:'500', reason:'space' }), [500, 1, 500], 'вручную 500 л — один');
@@ -583,6 +588,38 @@ Check.run('отопление: теплоёмкость воздуха при н
   // c · 353 / (273 + t) / 3,6: −40 °C → 1,005 · 1,5150 / 3,6 = 0,4229 Вт·ч/(м³·°C); +20 °C → 0,3363 (heat.air 0,335 — только для +20)
   near(StationHeat.airAt(-40), 0.4229, 0.0005, '−40 °C'); near(StationHeat.airAt(20), 0.3363, 0.0005, '+20 °C');
   for (const id of ['heat.comp_air', 'heat.dgu_rad', 'heat.louver_leak']){ const r=StationRules.rule ? StationRules.rule(id) : null; assert.ok(StationRules.raw(id)!=null, id); if (r) assert.strictEqual(r.status, 'unconfirmed', id); }
+});
+
+// ---------------------------------------------------------------- мелкие расчётные находки аудита 30.10 (п. 19 отчёта)
+Check.run('аудит п. 19: перегрузка ДГУ, точка росы, предел масла — из правил; бак ДГУ — одной формулой с запасом', ()=>{
+  assert.strictEqual(GensetSizing.LOAD_MAX, StationRules.raw('dgu.overload').k, 'перегрузка PRP — правило dgu.overload');
+  assert.strictEqual(AirChain.refrigDew(), '+3 °C');
+  // бак без расчёта станции: P · нагрузка · расход · часы · запас — как GensetSizing (было: без запаса, «около N ч» < часов)
+  for (const [kw, hours] of [[100, 10], [200, 16], [60, 24]]){
+    const v=StationDefaults.tank(kw, hours);
+    assert.ok(StationDefaults.hours(v, StationDefaults.perHour(kw))>=hours, `${kw} кВт, ${hours} ч: бак ${v} л`);
+  }
+  const x=station('st_comp', { flow:'5', pressure:'7', reserve:'0', tmax:'25' }, [part('Компрессор К', { cat:'comp_screw', flow:6, pressure:8, kw:37 }), part('Рефрижераторный осушитель Д', { cat:'dryer_refrig', flow:8, pressure:16 })], '1.4.1');
+  const oil=StationCalc.run(x).sections.flatMap(sec=>sec.steps).filter(st=>/масло класса 1/.test(st.what));
+  assert.ok(oil.length && oil.every(st=>st.rules.includes('air.oil') && /не более 0,01 мг\/м³/.test(JSON.stringify(st.data))), 'класс масла 1 — предел 0,01 мг/м³ (ГОСТ Р ИСО 8573-1, табл. 4)');
+});
+Check.run('аудит п. 19: насос без температуры жидкости — допущение 20 °C и вопрос «позже»', ()=>{
+  TYPES.st_pump={ item:'Насосная станция', station:{ main:['pump'] } };
+  const pump=part('Насос Н', { cat:'pump', maker:'Пример', flow:40, head:50, kw:15 }, 1, [{ k:'NPSHr', v:'3 м' }]);
+  const R=StationCalc.run(station('st_pump', { q:'35', head:'45', reserve:'0', hsuct:'2' }, [pump]));
+  assert.ok(R.sections.some(sec=>sec.steps.some(st=>/Кавитационный/.test(st.what))), 'кавитационный запас считается');
+  assert.ok(R.assumptions.some(a=>/Температура жидкости в ТЗ не указана — .* принята 20 °C/.test(a)), R.assumptions.join(' | '));
+  assert.ok(R.later.some(q=>/Температура перекачиваемой жидкости/.test(q)), R.later.join(' | '));
+  const T=StationCalc.run(station('st_pump', { q:'35', head:'45', reserve:'0', hsuct:'2', tliq:'40' }, [pump]));
+  assert.ok(!T.assumptions.some(a=>/Температура жидкости/.test(a)), 'температура задана — без допущения');
+});
+Check.run('аудит п. 19: ресивер — паспортное давление выше рабочего: условие «при уставке клапана», одно сравнение p·V', ()=>{
+  assert.strictEqual(PressureVessel.ratedOnly(8, 16, 900), 16, '900 л: 8 бар — 0,72, 16 бар — 1,44');
+  assert.strictEqual(PressureVessel.ratedOnly(8, 11, 900), null, '11 бар — 0,99: без учёта и по паспорту');
+  assert.strictEqual(PressureVessel.registered(11, 909), false); assert.strictEqual(PressureVessel.registered(11, 910), true);
+  const x=station('st_comp', { flow:'5', pressure:'6', reserve:'0', tmax:'25' }, [part('Компрессор К', { cat:'comp_screw', flow:6, pressure:8, kw:37 }), part('Ресивер Р', { cat:'receiver', volume:900, pressure:16 })]);
+  const R=StationCalc.run(x);
+  assert.ok(R.weak.some(w=>/при уставке предохранительного клапана не выше 8 бар/.test(w.title)), JSON.stringify(R.weak.map(w=>w.title)));
 });
 
 process.on('beforeExit', ()=>{ if (!process.exitCode) console.log('расчёт станции: проверок пройдено — '+Check.n); });

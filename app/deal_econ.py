@@ -185,6 +185,10 @@ class EconShift:
 
     @classmethod
     def vat_of(cls, item: EconValue, delta: float, calc: dict) -> float:
+        """НДС к вычету в поправке: доля НДС статьи по расчёту программы (vatShare), в прежних итогах — ставка поставщика"""
+        share = _obj(calc.get('vatShare')).get(item.key)
+        if isinstance(share, (int, float)) and not isinstance(share, bool):
+            return delta * min(1.0, max(0.0, float(share)))
         rate = float(calc.get('sv') or 0)
         if item.vat is FixVat.WITHOUT or rate <= 0:
             return 0.0

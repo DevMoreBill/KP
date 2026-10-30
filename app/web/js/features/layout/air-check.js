@@ -35,7 +35,7 @@ export class AirCheck {
     this.total = flows.reduce((sum, value) => sum + value, 0);
     this.spare = Math.max(0, Math.min(Math.round((req && req.reserve) || 0), flows.length - 1));
     this.flow = flows.slice(this.spare).reduce((sum, value) => sum + value, 0);
-    this.bar = Math.max(0, ...this.comps.map(unit => unit.air.bar || 0)) || 8;
+    this.bar = Math.max(0, ...this.comps.map(unit => unit.air.bar || 0)) || StationRules.raw('pressure.default');
     this.builtDryer = this.comps.some(unit => unit.air.dryer);
     this.builtFilter = this.comps.some(unit => unit.air.filter) || this.dryers.some(unit => unit.air.filters);
     this.temps = DryerDerate.temps(dryer || {});
@@ -61,6 +61,7 @@ export class AirCheck {
   /** @returns {object | null} */
   run() {
     if (!this.comps.length) return null;
+    this.pressureNote();
     this.stages();
     this.capacity();
     this.registered();
@@ -68,6 +69,15 @@ export class AirCheck {
     this.receiverBar();
     const cls = this.purity();
     return this.result(cls);
+  }
+
+  /** Давления нет ни у одного компрессора — проверки по правилу pressure.default, с замечанием. */
+  pressureNote() {
+    if (this.comps.some(unit => unit.air.bar > 0)) return;
+    this.issue(
+      'info',
+      `Давление компрессоров в составе не указано — проверки приняты при ${AirChain.flowText(this.bar)} бар; уточните по паспорту.`,
+    );
   }
 
   /** Фильтры заданной степени очистки. */
@@ -343,16 +353,14 @@ export class AirCheck {
   /** Ресиверы на учёте в Ростехнадзоре: несколько меньших — каждый без учёта. */
   registered() {
     const { bar } = this;
-    const reg = this.recvUnits.filter(
-      unit => unit.air.vol > 0 && AirChain.pvProduct(bar, unit.air.vol) > PressureVessel.LIMIT + 1e-9,
-    );
+    const reg = this.recvUnits.filter(unit => unit.air.vol > 0 && PressureVessel.registered(bar, unit.air.vol));
     const total = reg.reduce((acc, unit) => acc + unit.air.vol * unit.qty, 0);
     const split = total ? AirChain.base(total, bar) || AirChain.split(total, bar) : null;
     if (!split) return;
     const who = Num.uniq(reg.map(AirCheck._pos)).join(', ');
     this.issue(
       'info',
-      `Ресивер ${who}: p·V больше ${PressureVessel.limitText()} МПа·м³ — подлежит учёту в Ростехнадзоре. Без учёта — ${split.n} ресивера по ${Mm.text(split.v)} л (p·V каждого — ${AirChain.flowText(AirChain.pvProduct(bar, split.v))} МПа·м³): замена — на вкладке «Компоновка».`,
+      `Ресивер ${who}: p·V больше ${PressureVessel.limitText()} МПа·м³ — подлежит учёту в Ростехнадзоре. Без учёта — ${split.n} ресивера по ${Mm.text(split.v)} л (p·V каждого — ${AirChain.flowText(PressureVessel.product(bar, split.v))} МПа·м³): замена — на вкладке «Компоновка».`,
     );
     this.rec('recv-split', {
       title: `Ресиверы ${split.n} × ${Mm.text(split.v)} л вместо ${who} — без учёта в Ростехнадзоре`,
@@ -375,9 +383,9 @@ export class AirCheck {
     const flow = need ? ` не менее ${AirChain.flowText(need)} м³/мин` : '';
     this.issue(
       'info',
-      `Осушителя в составе нет: влага остаётся в сжатом воздухе — конденсат в трубах и у потребителей, зимой замерзает. Обычно ставят рефрижераторный осушитель (точка росы +3 °C)${flow} с байпасом — подбор на вкладке «Компоновка».`,
+      `Осушителя в составе нет: влага остаётся в сжатом воздухе — конденсат в трубах и у потребителей, зимой замерзает. Обычно ставят рефрижераторный осушитель (точка росы ${AirChain.refrigDew()})${flow} с байпасом — подбор на вкладке «Компоновка».`,
     );
-    this._dryerRec('refrig', 'точка росы +3 °C: без конденсата в трубах; ставится с байпасом', {
+    this._dryerRec('refrig', `точка росы ${AirChain.refrigDew()}: без конденсата в трубах; ставится с байпасом`, {
       rows: need ? [{ k: 'Производительность', v: `не менее ${AirChain.flowText(need)} м³/мин` }] : [],
     });
   }
@@ -428,7 +436,7 @@ export class AirCheck {
     const dewText = AirChain.dewText(pdp);
     const need = flow ? this._dryerNeed('ads') : 0;
     if (waterCls <= 3 && !this.ads.some(unit => unit.air.pdp == null || unit.air.pdp <= pdp)) {
-      const refrig = this.refrig.length || this.builtDryer ? ' (рефрижераторный даёт +3 °C)' : '';
+      const refrig = this.refrig.length || this.builtDryer ? ` (рефрижераторный даёт ${AirChain.refrigDew()})` : '';
       this.issue('warn', `Класс ${cls}: точка росы ${dewText} — нужен адсорбционный осушитель${refrig}.`);
       this._dryerRec('ads', `класс воды ${waterCls} по ISO 8573-1`, {
         title: `Адсорбционный осушитель (точка росы ${dewText})${need ? `, не менее ${AirChain.flowText(need)} м³/мин` : ''}`,

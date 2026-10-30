@@ -193,8 +193,7 @@ export class VentPlan {
   radiators() {
     if (!this.dgu) return;
     const dgus = VentPlan._floorDgu(this.items);
-    const rule = StationRules.raw('heat.dgu_rad');
-    const own = i => (i.cool > 0 ? i.cool : (i.kw * 1000 * rule.share) / (StationHeat.AIR * rule.dt));
+    const own = i => StationHeat.radiatorAir(i, this.vent.tmax);
     const sum = dgus.reduce((acc, i) => acc + own(i), 0) || 1;
     const rads = dgus.map(dgu => this.radiator(dgu, Math.round((this.qRad * own(dgu)) / sum)));
     const top = rads.reduce((best, other) => ((other.v || 0) > (best.v || 0) ? other : best), rads[0]);

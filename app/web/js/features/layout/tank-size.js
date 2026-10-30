@@ -7,8 +7,12 @@ import { StationMatrix } from './station-matrix.js';
  * объёму, длиннее глубины — сначала выше (почти под потолок), затем глубже; длина — с шагом tank.step.
  */
 export class TankSize {
-  static HEIGHT = 2290;
   static LITRE = /(?:^|[^а-яё])л(?![а-яё])|литр/i;
+
+  /** Высота помещения, если контейнер ещё не подобран, мм. */
+  static get HEIGHT() {
+    return StationMatrix.tank().room;
+  }
 
   /**
    * @param {number} v объём, л

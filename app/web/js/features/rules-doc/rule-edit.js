@@ -66,6 +66,17 @@ export class RuleEdit {
   open(rule) {
     this.id = rule.id;
     this.value = JSON.parse(JSON.stringify(rule.value));
+    this.statusShown = false;
+  }
+  /**
+   * Значение правят — статус по умолчанию «требует подтверждения» (один раз: свой выбор статуса после этого остаётся).
+   * @param {Element|null} root поля правки правила
+   */
+  edited(root) {
+    const select = root && root.querySelector('[data-rest]');
+    if (!select || this.statusShown) return;
+    this.statusShown = true;
+    select.value = 'unconfirmed';
   }
   /** Поля → значение; ошибка — текстом. */
   read(root) {

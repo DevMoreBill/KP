@@ -50,34 +50,43 @@ export class ReceiverPlan {
   static size(volume, opts = {}) {
     if (!(volume > 0)) return null;
     const unitVol = this.UNIT;
-    const small = this.SMALL;
-    const excess = this.METHOD.excess;
     const need = opts.min > 0 ? opts.min : volume;
     const n900 = Math.max(1, Math.ceil(need / unitVol - ReceiverPlan.EPS));
     const by900 = { size: unitVol, n: n900, total: n900 * unitVol };
     if (opts.force === '900') return { ...by900, why: `${Mm.text(unitVol)} л — выбор вручную` };
     if (opts.force === '500' || opts.space) return this.small(need, opts);
-    if (volume <= small && unitVol > excess * volume) {
-      return {
-        size: small,
-        n: 1,
-        total: small,
-        why: `${Mm.text(small)} л — ресивер ${Mm.text(unitVol)} л дал бы запас ${this.pct(unitVol / volume)} % (больше ${this.pct(excess)} %)`,
-        reason: 'excess',
-      };
-    }
+    const small = this._smallByExcess(volume, need);
+    if (small) return small;
     const least =
       need < volume - ReceiverPlan.EPS && by900.total < volume - ReceiverPlan.EPS
         ? ` — наименьшее допустимое по методике (${this.pct(by900.total / volume)} % нужного, не меньше ${this.pct(this.METHOD.low)} %)`
         : '';
-    const notSmall =
-      volume <= small
-        ? ` (${Mm.text(small)} л не применён: ${Mm.text(unitVol)} л даёт запас не больше ${this.pct(excess)} %)`
-        : '';
     return {
       ...by900,
-      why: `кратно ${Mm.text(unitVol)} л: ${by900.n} × ${Mm.text(unitVol)} = ${Mm.text(by900.total)} л${least}${notSmall}`,
+      why: `кратно ${Mm.text(unitVol)} л: ${by900.n} × ${Mm.text(unitVol)} = ${Mm.text(by900.total)} л${least}${this._notSmall(volume, need)}`,
     };
+  }
+
+  /** 500 л вместо 900 л: наименьшее допустимое помещается в 500 л, а 900 л дал бы запас больше excess; иначе null. */
+  static _smallByExcess(volume, need) {
+    const { unit: unitVol, small, excess } = this.METHOD;
+    if (!(volume <= small && need <= small + ReceiverPlan.EPS && unitVol > excess * volume)) return null;
+    return {
+      size: small,
+      n: 1,
+      total: small,
+      why: `${Mm.text(small)} л — ресивер ${Mm.text(unitVol)} л дал бы запас ${this.pct(unitVol / volume)} % (больше ${this.pct(excess)} %)`,
+      reason: 'excess',
+    };
+  }
+
+  // почему при малом объёме не 500 л
+  static _notSmall(volume, need) {
+    const { unit: unitVol, small, excess } = this.METHOD;
+    if (volume > small) return '';
+    return need > small + ReceiverPlan.EPS
+      ? ` (${Mm.text(small)} л не применён: меньше наименьшего допустимого ${Mm.text(need)} л)`
+      : ` (${Mm.text(small)} л не применён: ${Mm.text(unitVol)} л даёт запас не больше ${this.pct(excess)} %)`;
   }
 
   /** По 500 л: выбор вручную, нехватка места или 900 л не встаёт по высоте. */
@@ -113,7 +122,7 @@ export class ReceiverPlan {
     const vols = this.volumes(opts, flow, drop, cyc);
     const gov = this.governing(vols);
     const theor = Math.round(vols[gov[0]]);
-    const main = this.size(theor, { ...opts, min: this.least(gov, theor, flow) });
+    const main = this.size(theor, { ...opts, min: this.least(gov[1], theor, flow) });
     const peak = Math.max(cyc ? cyc.C : 0, opts.point || 0);
     const risk = opts.dryerCap > 0 && peak > opts.dryerCap;
     const plan = {
@@ -165,9 +174,16 @@ export class ReceiverPlan {
     return cand.reduce((best, cand1) => (vols[cand1[0]] > vols[best[0]] + ReceiverPlan.EPS ? cand1 : best), cand[0]);
   }
 
-  /** Наименьшее допустимое: по ТЗ — полностью, иначе 80 % нужного и 15 % минутной производительности. */
-  static least(gov, theor, flow) {
-    return gov[0] === 'tz' ? theor : Math.max(this.METHOD.low * theor, this.METHOD.ratio[0] * flow * 1000);
+  /** Наименьшее допустимое при сработавшем приоритете: по ТЗ — полностью, иначе 80 % нужного и 15 % минутной производительности. */
+  static least(prio, theor, flow) {
+    return prio === 'ТЗ' ? theor : Math.max(this.METHOD.low * theor, this.METHOD.ratio[0] * flow * 1000);
+  }
+
+  /** Наименьший объём ряда 500 / кратно 900 л, не меньше need. */
+  static rowAtLeast(need) {
+    return need <= this.SMALL + ReceiverPlan.EPS
+      ? this.SMALL
+      : Math.ceil(need / this.UNIT - ReceiverPlan.EPS) * this.UNIT;
   }
 
   /** Мокрый ресивер: задан («основной + мокрый») или по методике при риске проскока влаги. */
@@ -222,11 +238,13 @@ export class ReceiverPlan {
     const fmt = v => Mm.text(v);
     const flowText = this.dec(plan.Q);
     const minute = plan.Q * 1000;
+    const fewer = main > this.rowAtLeast(this.least(plan.prio, plan.theor, plan.Q)) + ReceiverPlan.EPS;
     return [
-      main > method.excess * plan.theor && {
-        level: 'warn',
-        text: `Запас превышает ${this.pct(method.excess)}% (${fmt(main)} л на ${fmt(plan.theor)} л). Рассмотреть переход на 500 л или пересмотр количества ресиверов.`,
-      },
+      fewer &&
+        main > method.excess * plan.theor && {
+          level: 'warn',
+          text: `Запас превышает ${this.pct(method.excess)}% (${fmt(main)} л на ${fmt(plan.theor)} л). Рассмотреть переход на 500 л или пересмотр количества ресиверов.`,
+        },
       main < method.low * plan.theor && {
         level: 'error',
         text: `Объём ниже минимально допустимого (${fmt(main)} л при нужных ${fmt(plan.theor)} л). Расчёт некорректен.`,

@@ -7,7 +7,6 @@ import { DealSteps } from './deal-steps.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { InputNum } from './input-num.js';
-import { Currency } from '../kp/currency.js';
 import { Fmt } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { KitDoc } from '../kit/kit-doc.js';
@@ -39,8 +38,8 @@ export class DealPurchase {
       body: `${DealPurchase.asmCard(calc)}${cards}<button type="button" class="btn dl-add" data-dlx="addsup">+ Ещё поставщик</button>`,
       tot: [
         'Итого закупка и доставка',
-        calc.sup.reduce((sum, sup) => sum + sup.cash - sup.T, 0),
-        'оборудование, перевозка, страхование, комиссии, брокер — без таможни',
+        calc.sup.reduce((sum, sup) => sum + sup.cash - sup.T, 0) + (calc.asm ? calc.asm.cost : 0),
+        `оборудование${calc.asm ? ', сборка станции' : ''}, перевозка, страхование, комиссии, брокер — без таможни`,
       ],
       id: 'buy',
     });
@@ -223,10 +222,11 @@ export class DealSupplierCard {
               ${this.multi ? this._mapCell(line) : ''}</tr>`;
   }
 
+  // как в расчёте (SupplierCalc._item): курс расчёта сделки, «цены без НДС» — с НДС поставщика
   _lineSum(line) {
     if (!line.cost) return 0;
-    const rate = Currency.rate(line.costCur || 'RUB');
-    const vatK = this.cs.noVat ? 1 + this.calc.v / DealPurchase.PCT : 1;
+    const rate = this.calc.rate(line.costCur || 'RUB');
+    const vatK = this.cs.noVat ? 1 + this.calc.sv / DealPurchase.PCT : 1;
     return (line.cost / DealPurchase.KOPECKS) * (+line.qty || 0) * (rate || 0) * vatK;
   }
 
@@ -348,7 +348,7 @@ export class DealSupplierCard {
 
   _more() {
     const { sup, cs, calc, path, k } = this;
-    const auto = `авто ${calc.v}/${DealPurchase.PCT + calc.v}`;
+    const auto = `авто ${calc.sv}/${DealPurchase.PCT + calc.sv}`;
     const fields = [
       DealFmt.field('Прочая закупка у поставщика', `${path}.extra.v`, {
         calc,
