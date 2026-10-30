@@ -3,6 +3,7 @@
 import http.client
 import ipaddress
 import socket
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -114,7 +115,8 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class SafeWeb:
-    """Запросы на чужие сайты: адрес соединения проверяется после подключения (подмена DNS); через прокси — нельзя."""
+    """Запросы на чужие сайты: адрес соединения проверяется после подключения (подмена DNS). Через прокси (фиды в отделе с
+    прокси) эта проверка невозможна — картинки по ссылке идут только напрямую (`direct`)."""
 
     @staticmethod
     def _peer(sock) -> None:
@@ -141,14 +143,23 @@ class SafeWeb:
             return self.do_open(http.client.HTTPConnection if SafeWeb._proxied(req) else SafeWeb.HTTPConn, req)
 
     class HTTPS(urllib.request.HTTPSHandler):
+        def __init__(self) -> None:
+            self.tls = ssl.create_default_context()
+            super().__init__(context=self.tls)
+
         def https_open(self, req):
             return self.do_open(
-                http.client.HTTPSConnection if SafeWeb._proxied(req) else SafeWeb.HTTPSConn, req, context=self._context
+                http.client.HTTPSConnection if SafeWeb._proxied(req) else SafeWeb.HTTPSConn, req, context=self.tls
             )
 
     @classmethod
     def opener(cls, *extra) -> urllib.request.OpenerDirector:
         return urllib.request.build_opener(_SafeRedirect, cls.HTTP, cls.HTTPS, *extra)
+
+    @classmethod
+    def direct(cls, *extra) -> urllib.request.OpenerDirector:
+        """Без прокси, в том числе системного Windows: адрес соединения проверяется всегда."""
+        return cls.opener(urllib.request.ProxyHandler({}), *extra)
 
 
 def retry(func, tries: int = 3, pause: float = 1.5):
@@ -175,7 +186,7 @@ def fetch_image(url: str, referer: str | None = None, tries: int = 1) -> tuple[s
     max_mb = SrvVal.now('cat.imgMaxMB')
 
     def get() -> tuple[str, bytes]:
-        with SafeWeb.opener().open(urllib.request.Request(url, headers=headers), timeout=20) as resp:
+        with SafeWeb.direct().open(urllib.request.Request(url, headers=headers), timeout=20) as resp:
             ctype = (resp.headers.get('Content-Type') or '').split(';')[0].strip().lower()
             if ctype not in TYPES:
                 raise ValueError('По ссылке не картинка (нужен PNG, JPEG, GIF, WebP или BMP)')

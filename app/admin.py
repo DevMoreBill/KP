@@ -18,7 +18,7 @@ from typing import Any
 
 import auth_users
 from admin_rights import AdminRights
-from catalog_quality import CardRules, DupFinder
+from catalog_quality import CardRules, DupFinder, KpPriceProof
 from config import BadRequest
 from data_file import Load
 from defaults import SrvVal
@@ -843,25 +843,23 @@ def _put_product(handler, store, cid, admin) -> None:
     before = _loads(before_text)
     before_diff, after_diff = diff(before, after)  # что изменилось (одним сравнением на всё сохранение)
     auto = before is not None and set(after_diff) <= AUTO_KEYS  # сохранение КП обновило только цены и историю
-    if (
-        not admin
-        and login_on(handler)
-        and not auto
-        and not perm(handler, 'catEdit' if before is not None else 'catAdd')
-    ):
+    no_right = not admin and login_on(handler) and not perm(handler, 'catEdit' if before is not None else 'catAdd')
+    if no_right and not auto:
         reason = f'Нет права {"редактировать" if before is not None else "добавлять"} оборудование в каталоге — обратитесь к администратору'
         RefusedCard.log(handler, store, before, after, cid, reason)
         return handler.send(403, 'text/plain; charset=utf-8', reason)
     quality = CardQuality(store, before, after, cid, CardSource.of(handler.headers.get('X-KP-Edit')))
     gaps = quality.gaps() if not auto and quality.enabled else []
     from_kp = handler.headers.get('X-KP-Edit') == 'auto'
+    # цены «из КП» мимо модерации и без права правки — только подтверждённые последним КП, сохранённым этим сотрудником
+    kp_price = auto and from_kp and KpPriceProof(store).holds(actor(handler)[1], cid, before, after)
     if gaps and not from_kp:
         RefusedCard.log(handler, store, before, after, cid, CardRules.text(gaps))
         return handler.send(400, 'text/plain; charset=utf-8', CardRules.text(gaps))
     # модерация не касается администратора и менеджера с правом «Правки без модерации»
     mod = moderation(store).get('enabled') and not admin and not (login_on(handler) and perm(handler, 'catSelfMod'))
-    if mod and before is not None and handler.headers.get('X-KP-Edit') == 'auto':
-        mod = not auto  # сохранение КП обновило только цены и историю — без модерации
+    # без права правки цена, которую КП не подтверждает, ждёт решения (КП сохраняется, каталог не меняется)
+    mod = (mod or no_right) and not kp_price
     dups = quality.dups() if not (admin or auto) and quality.enabled else []
     # возможный дубль и неполная позиция из сохранённого КП — на модерацию (КП сохраняется, каталог не засоряется)
     if mod or dups or gaps:

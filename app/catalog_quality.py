@@ -1,7 +1,10 @@
-"""Качество карточек каталога: обязательные поля основного оборудования и поиск возможных дублей."""
+"""Качество карточек каталога: обязательные поля основного оборудования, поиск возможных дублей и цены «из КП»,
+подтверждённые последним КП сотрудника."""
 
 import difflib
+import json
 import re
+from collections.abc import Iterator
 from typing import Any
 
 
@@ -152,3 +155,126 @@ class DupFinder:
     def _key(doc: dict) -> tuple:
         attrs = picked if isinstance(picked := doc.get('attrs'), dict) else {}
         return doc.get('name'), attrs.get('model'), attrs.get('maker')
+
+
+class KpPriceProof:
+    """Цены позиции каталога, присланные сохранением КП (аудит 30.10, п. 27): без права «Правка каталога» и мимо модерации
+    принимаются, только если их подтверждает последнее КП, сохранённое этим сотрудником, — позиция (цена, валюта КП,
+    закупка, наценка) или её опция (цена) с тем же кодом каталога или названием; история цен — прежняя плюс запись этого КП.
+    Расчёт полей — как у сохранения КП в интерфейсе (`CatalogSync._money`, `_history`)."""
+
+    FIELDS = ('price', 'priceCur', 'cost', 'costCur', 'margin', 'mmode')
+    NUMBERS = frozenset({'price', 'cost'})
+    HISTORY = 'prices'
+    DEFAULT_CUR = 'RUB'
+    EPS = 0.005
+    LAST = 'SELECT number, state FROM kp WHERE updated_by=? AND state IS NOT NULL ORDER BY updated DESC LIMIT 1'
+
+    def __init__(self, store) -> None:
+        self.store = store
+
+    def holds(self, saver: str, cid: str, before: dict, after: dict) -> bool:
+        """Изменённое в ценах позиции cid подтверждает последнее КП, которое сохранил saver (подпись сохранения КП)."""
+        last = self._last(saver)
+        if last is None:
+            return False
+        number, state = last
+        changed = [key for key in self.FIELDS if self._value(after.get(key)) != self._value(before.get(key))]
+        return any(
+            self._same(row, cid, after)
+            and self._fits(want, changed, after)
+            and self._history(before, after, number, want)
+            for row, want in self._candidates(state, before)
+        )
+
+    def _last(self, saver: str) -> tuple[str, dict] | None:
+        found = self.store.one(self.LAST, (saver,)) if saver else None
+        state = self._obj(found[1]) if found else {}
+        if not found or not state:
+            return None
+        return str(state.get('number') or found[0] or ''), state
+
+    def _candidates(self, state: dict, before: dict) -> Iterator[tuple[dict, dict]]:
+        """(строка КП, какими по ней станут поля цены): у опции меняется только цена."""
+        pricing = state.get('pricing')
+        cur = str((pricing if isinstance(pricing, dict) else {}).get('cur') or self.DEFAULT_CUR)
+        kept = {key: before.get(key) for key in self.FIELDS}
+        for item in self._list(state.get('items')):
+            yield item, self._item_values(item, before, cur)
+            for option in self._list(item.get('options')):
+                yield option, dict(kept, price=option.get('price'))
+
+    @classmethod
+    def _item_values(cls, item: dict, before: dict, cur: str) -> dict:
+        own_cost = cls._truthy(item.get('cost'))
+        return {
+            'price': item.get('price'),
+            'priceCur': cur,
+            'cost': item.get('cost') if own_cost else before.get('cost') or 0,
+            'costCur': (item.get('costCur') or cls.DEFAULT_CUR)
+            if own_cost
+            else before.get('costCur') or cls.DEFAULT_CUR,
+            'margin': item.get('margin') if item.get('margin') is not None else before.get('margin'),
+            'mmode': item.get('mmode') or before.get('mmode'),
+        }
+
+    @staticmethod
+    def _same(row: dict, cid: str, after: dict) -> bool:
+        if str(row.get('catId') or '') == cid:
+            return True
+        name = DupFinder.norm(row.get('name'))
+        return bool(name) and name == DupFinder.norm(after.get('name'))
+
+    def _fits(self, want: dict, changed: list[str], after: dict) -> bool:
+        return all(self._equal(key, after.get(key), want.get(key)) for key in changed)
+
+    def _equal(self, key: str, got: Any, want: Any) -> bool:
+        if key not in self.NUMBERS:
+            return self._value(got) == self._value(want)
+        first, second = self._num(got), self._num(want)
+        return first is not None and second is not None and abs(first - second) < self.EPS
+
+    def _history(self, before: dict, after: dict, number: str, want: dict) -> bool:
+        """История цен: прежние записи (без записи этого КП) и первой — запись этого КП с его ценой."""
+        new = after.get(self.HISTORY)
+        if new == before.get(self.HISTORY):
+            return True
+        if not isinstance(new, list) or not new or not isinstance(new[0], dict):
+            return False
+        head = new[0]
+        old = [entry for entry in self._list(before.get(self.HISTORY)) if str(entry.get('number') or '') != number]
+        return (
+            bool(number)
+            and str(head.get('number') or '') == number
+            and self._equal('price', head.get('price'), want.get('price'))
+            and new[1:] == old[: len(new) - 1]
+        )
+
+    @staticmethod
+    def _value(value: Any) -> Any:
+        """Пустое и отсутствующее поле — одно и то же (как в сравнении правок каталога)."""
+        return None if value in (None, '', [], {}) else value
+
+    @staticmethod
+    def _truthy(value: Any) -> bool:
+        """Как в интерфейсе: пусто, 0 и «» — нет значения."""
+        return value not in (None, '', 0, False)
+
+    @staticmethod
+    def _num(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _list(value: Any) -> list[dict]:
+        return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
+
+    @staticmethod
+    def _obj(raw: Any) -> dict:
+        try:
+            found = json.loads(raw or '{}')
+        except (TypeError, ValueError):
+            return {}
+        return found if isinstance(found, dict) else {}
