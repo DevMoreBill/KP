@@ -16,7 +16,6 @@ import { DealCard } from './deal-card.js';
 import { DealNew } from './deal-new.js';
 import { Debounce } from '../../core/debounce.js';
 import { ClientCard } from '../kp/client-card.js';
-import { Str } from '../../core/str.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Journal } from '../kp/journal.js';
 import { NewKp } from '../kp/new-kp.js';
@@ -28,6 +27,7 @@ import { esc, today } from '../../core/util.js';
 import { MyDay } from '../kp/my-day.js';
 import { BrowserNotify } from './browser-notify.js';
 import { Modal } from '../../core/modal.js';
+import { CabState } from './cab-state.js';
 
 /**
  * Окно кабинета менеджера: почти весь экран, шапка в одну строку (приветствие, разделы, чей кабинет, «＋ Дело / Сделка / КП»),
@@ -55,9 +55,6 @@ export class Cabinet {
     [24, 'Добрый вечер'],
   ];
   static TYPING_MS = 250;
-  static tab = 'today';
-  static query = '';
-  static drafts = [];
   static _seenNew = 0;
   static _shownTab = '';
   static _typing = null;
@@ -82,7 +79,7 @@ export class Cabinet {
    */
   static async open(tab) {
     if (!MyDay.enabled()) return;
-    if (tab) this.tab = tab;
+    if (tab) CabState.tab = tab;
     this._legacy();
     const dialog = this.dlg();
     AppTabs.show(dialog, 'cab');
@@ -98,7 +95,7 @@ export class Cabinet {
       this._fail(error);
       return;
     }
-    if (!this._shownTabs().some(([key]) => key === this.tab)) this.tab = 'today';
+    if (!this._shownTabs().some(([key]) => key === CabState.tab)) CabState.tab = 'today';
     CabPay.reset();
     KpRate.load();
     await this._extras();
@@ -115,7 +112,7 @@ export class Cabinet {
   static async _extras() {
     const mine = CrmData.mine();
     if (FEAT.on('reminders') && mine) await Reminders.load();
-    this.drafts = Drafts.enabled() && mine ? await Drafts.list() : [];
+    CabState.drafts = Drafts.enabled() && mine ? await Drafts.list() : [];
   }
 
   static _announce() {
@@ -130,12 +127,12 @@ export class Cabinet {
     if (!CrmData.board) return;
     const dialog = this.dlg();
     const old = dialog.querySelector('.cab-b');
-    const scroll = old && this._shownTab === this.tab ? old.scrollTop : 0;
+    const scroll = old && this._shownTab === CabState.tab ? old.scrollTop : 0;
     const view = this._view();
-    dialog.innerHTML = `${this._head()}<div class="cab-b cab-${this.tab}">${view.html()}</div>`;
+    dialog.innerHTML = `${this._head()}<div class="cab-b cab-${CabState.tab}">${view.html()}</div>`;
     const body = dialog.querySelector('.cab-b');
     body.scrollTop = scroll;
-    this._shownTab = this.tab;
+    this._shownTab = CabState.tab;
     if (view.after) view.after(body);
     this._tabCount();
   }
@@ -166,14 +163,14 @@ export class Cabinet {
 
   // «График» — вид внутри «Сделок» (прежняя ссылка на раздел ведёт туда)
   static _legacy() {
-    if (this.tab !== 'gantt') return;
-    this.tab = 'deals';
+    if (CabState.tab !== 'gantt') return;
+    CabState.tab = 'deals';
     CabDeals.view = 'gantt';
   }
 
   static _view() {
     const views = { today: CabToday, deals: CabDeals, clients: CabClients, team: CabTeam, prefs: CabPrefs };
-    return views[this.tab] || CabToday;
+    return views[CabState.tab] || CabToday;
   }
 
   /**
@@ -181,7 +178,7 @@ export class Cabinet {
    * @param {string} tab
    */
   static show(tab) {
-    this.tab = tab;
+    CabState.tab = tab;
     this._legacy();
     this.render();
   }
@@ -216,7 +213,7 @@ export class Cabinet {
   static _tabs() {
     return this._shownTabs()
       .map(([key, label]) => {
-        const active = this.tab === key;
+        const active = CabState.tab === key;
         return `<button type="button" role="tab" aria-selected="${active}" class="cab-tab${active ? ' on' : ''}" data-ctab="${key}">${label}${this._badge(key)}</button>`;
       })
       .join('');
@@ -301,28 +298,6 @@ export class Cabinet {
     next();
   }
 
-  /**
-   * Поиск: сделка подходит под строку (название, клиент, ИНН, номер, КП).
-   * @param {object} deal
-   * @param {string} [text]
-   * @returns {boolean}
-   */
-  static match(deal, text = this.query) {
-    const wanted = Str.norm(text);
-    if (!wanted) return true;
-    const words = [deal.title, deal.client, deal.clientInn, `№${deal.number}`, deal.manager];
-    return Str.norm([...words, ...(deal.kps || []).map(offer => offer.number)].join(' ')).includes(wanted);
-  }
-
-  /**
-   * Поле поиска раздела.
-   * @param {string} placeholder
-   * @returns {string}
-   */
-  static search(placeholder) {
-    return `<input type="search" id="cabQ" class="cab-s" value="${esc(this.query)}" placeholder="${esc(placeholder)}" aria-label="Поиск" autocomplete="off" enterkeyhint="search">`;
-  }
-
   static _dealIds(from) {
     const box = from.closest('.cab-b') || this.dlg();
     return [...new Set([...box.querySelectorAll('[data-deal]')].map(el => el.dataset.deal))];
@@ -369,7 +344,7 @@ export class Cabinet {
   }
 
   static _clientDeals(name) {
-    this.query = name;
+    CabState.query = name;
     CabDeals.filter = '';
     this.show('deals');
   }
@@ -377,7 +352,7 @@ export class Cabinet {
   // имя менеджера в «Отделе» — его сделки; «Показать весь отдел» — остаться в «Отделе»
   static _manager(id) {
     CrmData.who = id;
-    if (id !== 'all') this.tab = 'deals';
+    if (id !== 'all') CabState.tab = 'deals';
     this.reload();
   }
 
@@ -395,7 +370,7 @@ export class Cabinet {
 
   static _input(event) {
     if (event.target.id !== 'cabQ') return;
-    this.query = event.target.value;
+    CabState.query = event.target.value;
     this._typing = this._typing || new Debounce(this.TYPING_MS);
     this._typing.run(() => this.renderBody());
   }

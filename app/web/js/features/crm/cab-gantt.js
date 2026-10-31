@@ -1,10 +1,10 @@
 import { CrmData } from './crm-data.js';
 import { CrmFunnel } from './crm-funnel.js';
-import { Cabinet } from './cabinet.js';
 import { esc, today } from '../../core/util.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
+import { CabState } from './cab-state.js';
 
 /** «График»: лента времени — сделка (создана → ожидаемая дата), срок КП, поставка и оплаты по расчёту сделки, дела. */
 export class CabGantt {
@@ -63,7 +63,7 @@ export class CabGantt {
    */
   static scale(scale) {
     this._set('scale', scale);
-    Cabinet.render();
+    CabState.render();
   }
 
   /**
@@ -104,7 +104,7 @@ export class CabGantt {
 
   static _rows(opts) {
     const deals = CrmData.openDeals()
-      .filter(deal => Cabinet.match(deal))
+      .filter(deal => CabState.match(deal))
       .sort((one, two) => String(one.expected || '9').localeCompare(String(two.expected || '9')));
     const tasks = CrmData.openTasks();
     return deals.map(deal => {
@@ -150,7 +150,7 @@ export class CabGantt {
         ? `<div class="gn-r"><div class="gn-l"><b>Дела без сделки</b><span class="muted">${free.length}</span></div><div class="gn-tr" style="width:${tape.width}px">${free.map(task => tape.task(task)).join('')}</div></div>`
         : '';
     if (!rows.length && !freeRow)
-      return `${this._controls(opts, lead)}<p class="empty">${Cabinet.query ? 'Не найдено.' : 'Сделок в работе нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button>'}</p>`;
+      return `${this._controls(opts, lead)}<p class="empty">${CabState.query ? 'Не найдено.' : 'Сделок в работе нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button>'}</p>`;
     const lines = rows.map(row => this._line(row, tape, opts)).join('');
     return `${this._controls(opts, lead)}<div class="gn" id="gn"><div class="gn-in"><div class="gn-r gn-hd"><div class="gn-l"><b>Сделка</b></div><div class="gn-tr" style="width:${tape.width}px">${tape.head()}</div></div>
       <div class="gn-rows">${lines}${freeRow}<div class="gn-now" style="left:calc(var(--gl) + ${tape.mid(now)}px)" aria-hidden="true"></div></div></div></div>`;
@@ -165,7 +165,7 @@ export class CabGantt {
       .join('');
     const check = (key, label) =>
       `<label class="cab-ck"><input type="checkbox" data-gsh="${key}"${opts[key] ? ' checked' : ''}> ${label}</label>`;
-    return `<div class="cab-bar">${Cabinet.search('Сделка или клиент')}${lead}<div class="seg" role="radiogroup" aria-label="Масштаб">${scales}</div>${check('deal', 'Сроки сделок')}${check('sup', 'Поставка')}${check('task', 'Дела')}</div>
+    return `<div class="cab-bar">${CabState.search('Сделка или клиент')}${lead}<div class="seg" role="radiogroup" aria-label="Масштаб">${scales}</div>${check('deal', 'Сроки сделок')}${check('sup', 'Поставка')}${check('task', 'Дела')}</div>
       <details class="gn-lg muted"${PhoneLayout.active() ? '' : ' open'}><summary>Обозначения</summary><div class="gn-lgi"><span><i class="gb-d t-s2"></i> сделка: создана → ожидаемая дата</span><span><i class="gb-s"></i> поставка по расчёту сделки</span><span>◇ КП действует до</span><span>◆ готовность</span><span>₽ оплата заказчика</span><span>☎ 👥 ✉ ✓ дела</span></div></details>`;
   }
 

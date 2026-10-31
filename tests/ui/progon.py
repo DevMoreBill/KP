@@ -1312,7 +1312,7 @@ class Scenario(UiRun):
         self.ev("Cabinet.open('today')")
         pg.wait_for_selector('#cabWin .cab-tabs', timeout=30000)
         self.wait(1200)
-        if self.ev("Cabinet.tab") != 'today':
+        if self.ev("CabState.tab") != 'today':
             self.errs.append(('cabinet', 'ERR', 'кабинет открылся не на «Сегодня»'))
         self.snap('f_cab_start', '#cabWin', wait=200)
         if pg.locator('#cabWho').count():
@@ -1344,7 +1344,7 @@ class Scenario(UiRun):
         self.closeall()
         self.ev("Cabinet.open()")
         self.wait(800)
-        if self.ev("Cabinet.tab") != 'deals':
+        if self.ev("CabState.tab") != 'deals':
             self.errs.append(('cabinet', 'ERR', 'кабинет не запомнил раздел'))
         pg.click('#cabWin [data-cguide]')
         pg.wait_for_selector('dialog.cg-dlg[open]', timeout=10000)

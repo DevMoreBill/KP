@@ -1,7 +1,6 @@
 import { CrmData } from './crm-data.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { CrmTask } from './crm-task.js';
-import { Cabinet } from './cabinet.js';
 import { CabDeals } from './cab-deals.js';
 import { CabGuide } from './cab-guide.js';
 import { CabTodaySide } from './cab-today-side.js';
@@ -21,6 +20,7 @@ import { MyPrefs } from '../kp/my-prefs.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
+import { CabState } from './cab-state.js';
 
 /** «Сегодня»: плитки дня, «Что сделать» (дела и сделки, которым нужно действие), напоминания по КП; справа — неделя, месяц, воронка. */
 export class CabToday {
@@ -119,7 +119,7 @@ export class CabToday {
 
   // «Разобрать просроченное» — к списку «Что сделать», он подсвечивается
   static _goTodo() {
-    const list = Cabinet.dlg().querySelector('.td');
+    const list = CabState.dlg().querySelector('.td');
     if (!list) return;
     list.scrollIntoView({ block: 'start', behavior: 'smooth' });
     list.classList.add('td-flash');
@@ -203,15 +203,15 @@ export class CabToday {
    */
   static kpi(key) {
     if (key === 'tasks') {
-      const add = Cabinet.dlg().querySelector('.td-add');
+      const add = CabState.dlg().querySelector('.td-add');
       if (add) add.open = true;
       add?.querySelector('input[name=title]')?.focus();
       return;
     }
     CabDeals.filter = { month: 'month', free: 'free', new: 'new' }[key] || '';
     CabDeals.closed = key === 'won' || key === 'lost';
-    Cabinet.query = '';
-    Cabinet.show('deals');
+    CabState.query = '';
+    CabState.show('deals');
   }
 
   static _tasks() {
@@ -357,7 +357,7 @@ export class CabToday {
 
   static _drafts() {
     if (!Drafts.enabled() || !CrmData.mine()) return '';
-    const drafts = Cabinet.drafts || [];
+    const drafts = CabState.drafts || [];
     const limit = MyPrefs.limit('drafts', Math.round(DefRegistry.num('ui.mdDrafts', this.DRAFTS)));
     const rows = drafts
       .slice(0, limit)
@@ -389,7 +389,7 @@ export class CabToday {
       due: today(),
       again: true,
     });
-    if (task) Cabinet.reload();
+    if (task) CabState.reload();
   }
 
   /**
@@ -414,8 +414,8 @@ export class CabToday {
       ['[data-dro]', el => this._leave(() => Drafts.open(el.dataset.dro))],
       ['[data-didle]', el => this._callToday(el.dataset.didle)],
       ['[data-ctago]', () => this._goTodo()],
-      ['[data-ntfon]', () => BrowserNotify.ask().then(Cabinet.render.bind(Cabinet), Cabinet.render.bind(Cabinet))],
-      ['[data-dweek]', el => DealPause.week({ id: el.dataset.dweek }, () => Cabinet.reload())],
+      ['[data-ntfon]', () => BrowserNotify.ask().then(CabState.render.bind(CabState), CabState.render.bind(CabState))],
+      ['[data-dweek]', el => DealPause.week({ id: el.dataset.dweek }, () => CabState.reload())],
     ];
     for (const [selector, run] of actions) {
       const el = target.closest(selector);
@@ -428,7 +428,7 @@ export class CabToday {
   }
 
   static _leave(next) {
-    Cabinet.dlg().close();
+    CabState.dlg().close();
     next();
   }
 }

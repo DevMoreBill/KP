@@ -8,6 +8,7 @@ import { Cabinet } from '../features/crm/cabinet.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { Journal } from '../features/kp/journal.js';
 import { AdminState } from '../features/admin/admin-state.js';
+import { CabState } from '../features/crm/cab-state.js';
 
 /**
  * После обновления страницы — тот же раздел, где был человек (вкладка, раздел кабинета, вкладка «Настроек»).
@@ -36,7 +37,7 @@ export class SectionMemory {
     const panel = AdminNav.panel[AdminState.tab];
     const saved = {
       section: AppTabs.active,
-      cab: Cabinet.tab,
+      cab: CabState.tab,
       set: panel ? `${AdminState.tab}:${panel}` : AdminState.tab,
     };
     try {
@@ -64,7 +65,7 @@ export class SectionMemory {
     const saved = FEAT.on('sectionMemory') ? this._saved() : null;
     if (!saved || !saved.section) return false;
     if (saved.section === 'cab') {
-      if (saved.cab && saved.cab !== Cabinet.tab) Cabinet.open(saved.cab);
+      if (saved.cab && saved.cab !== CabState.tab) Cabinet.open(saved.cab);
       return false;
     }
     const open = this.OPEN[saved.section];

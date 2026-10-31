@@ -1,11 +1,11 @@
 import { CrmData } from './crm-data.js';
-import { Cabinet } from './cabinet.js';
 import { FEAT } from '../../core/features.js';
 import { Money } from '../../core/money.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
+import { CabState } from './cab-state.js';
 
 /**
  * «Сделки → ₽ Оплаты»: платёжный календарь по плану исполнения сделок — когда ждём оплаты клиентов и когда платим
@@ -38,7 +38,7 @@ export class CabPay {
   static html() {
     if (this.who !== CrmData.who) this._load();
     if (!this.data) return `<p class="muted">${esc(this.error || 'Загружаю оплаты…')}</p>`;
-    const rows = this.data.rows.filter(row => Cabinet.match({ title: row.title, client: row.client }));
+    const rows = this.data.rows.filter(row => CabState.match({ title: row.title, client: row.client }));
     if (!rows.length)
       return '<p class="msg">Оплат по плану нет: они появляются из «Экономики сделки» КП (график платежей), когда сделка в работе.</p>';
     return `${this._overdue()}${this._months(rows)}`;
@@ -56,7 +56,7 @@ export class CabPay {
       this.error = `Оплаты не загрузились: ${error.message || error}`;
     }
     this.loading = false;
-    if (Cabinet.tab === 'deals') Cabinet.renderBody();
+    if (CabState.tab === 'deals') CabState.renderBody();
   }
 
   /** Перечитать (после отметки оплаты, напоминания). */

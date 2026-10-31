@@ -1,11 +1,11 @@
 import { CabLayout } from './cab-layout.js';
 import { CabDeals } from './cab-deals.js';
 import { CabToday } from './cab-today.js';
-import { Cabinet } from './cabinet.js';
 import { MyPrefs } from '../kp/my-prefs.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { FEAT } from '../../core/features.js';
 import { esc } from '../../core/util.js';
+import { CabState } from './cab-state.js';
 
 /**
  * Вкладка кабинета «⚙ Мои настройки»: общие настройки менеджера (MyPrefs) и свои для кабинета — раздел при запуске,
@@ -115,7 +115,7 @@ export class CabPrefs {
     }
     if (await MyPrefs.store(patch)) {
       CabDeals.useView(view);
-      Cabinet.render();
+      CabState.render();
     }
   }
 

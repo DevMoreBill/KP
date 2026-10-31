@@ -4,7 +4,6 @@ import { CrmData } from './crm-data.js';
 import { CrmFunnel } from './crm-funnel.js';
 import { LostPick } from './lost-pick.js';
 import { DealNeed } from './deal-need.js';
-import { Cabinet } from './cabinet.js';
 import { DealBulk } from './deal-bulk.js';
 import { CabList } from './cab-list.js';
 import { CabGantt } from './cab-gantt.js';
@@ -17,6 +16,7 @@ import { DefRegistry } from '../../core/defaults.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
+import { CabState } from './cab-state.js';
 
 /**
  * «Сделки»: доска по стадиям (перетаскивание мышью) или список (на телефоне — по умолчанию, с отбором стадии чипами).
@@ -70,12 +70,12 @@ export class CabDeals {
     const deals = this.deals();
     const open = deals.filter(deal => !CrmData.closed(deal));
     const empty =
-      deals.length || Cabinet.query || this.filter
+      deals.length || CabState.query || this.filter
         ? ''
         : '<p class="msg">Сделки появляются сами, когда вы сохраняете КП, — или нажмите «＋ Сделка» вверху.</p>';
     const body = this.view === 'list' ? this._list(deals) : this._board(deals);
     const sum = CrmFmt.short(open.reduce((total, deal) => total + (deal.sum || 0), 0));
-    return `<div class="cab-bar">${CrmFunnel.switcher(CrmData.deals(), CrmData.funnel())}${Cabinet.search('Сделка, клиент, ИНН или № КП')}${this._views()}${this._sortSelect()}${DealBulk.toggle()}<span class="muted cab-tot">В работе <b>${open.length}</b> · ${sum}</span></div>
+    return `<div class="cab-bar">${CrmFunnel.switcher(CrmData.deals(), CrmData.funnel())}${CabState.search('Сделка, клиент, ИНН или № КП')}${this._views()}${this._sortSelect()}${DealBulk.toggle()}<span class="muted cab-tot">В работе <b>${open.length}</b> · ${sum}</span></div>
       <div class="cab-flt" role="group" aria-label="Быстрый отбор">${this._chips()}</div>${empty}${body}${DealBulk.bar()}`;
   }
 
@@ -126,7 +126,7 @@ export class CabDeals {
     return CrmData.deals().filter(
       deal =>
         CrmData.inFunnel(deal) &&
-        Cabinet.match(deal) &&
+        CabState.match(deal) &&
         (this.closed || !CrmData.closed(deal)) &&
         (CrmData.closed(deal) || (CrmData.paused(deal) === paused && (paused || test(deal)))),
     );
@@ -149,7 +149,7 @@ export class CabDeals {
   }
 
   static _pay() {
-    return `<div class="cab-bar">${this._views()}${Cabinet.search('Сделка или клиент')}</div>${CabPay.html()}`;
+    return `<div class="cab-bar">${this._views()}${CabState.search('Сделка или клиент')}</div>${CabPay.html()}`;
   }
 
   static _sortSelect() {
@@ -279,7 +279,7 @@ export class CabDeals {
       });
       this.adding = '';
       Toast.show(`Сделка «${title}» создана`);
-      Cabinet.reload();
+      CabState.reload();
     } catch (error) {
       Toast.show(`Сделка не создана: ${error.message}`);
     }
@@ -366,7 +366,7 @@ export class CabDeals {
       ? `<button type="button" class="btn ghost kb-more" data-kbmore="list">Показать ещё ${rest}</button>`
       : '';
     if (!rows.length)
-      return `${this._stageChips(stages, deals, picked)}<p class="empty">${Cabinet.query || this.filter ? 'Не найдено.' : 'Сделок нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button> <button class="btn sm" type="button" data-cq="deal">🤝 Сделка</button>'}</p>`;
+      return `${this._stageChips(stages, deals, picked)}<p class="empty">${CabState.query || this.filter ? 'Не найдено.' : 'Сделок нет. <button class="btn sm primary" type="button" data-cq="mail">📩 Сделка из письма</button> <button class="btn sm" type="button" data-cq="deal">🤝 Сделка</button>'}</p>`;
     const row = { expected: deal => this._expected(deal), next: deal => `${this._next(deal)}${this.exec(deal)}` };
     return `${this._stageChips(stages, deals, picked)}${CabList.html(rows, { more, row, limit })}`;
   }
@@ -404,14 +404,14 @@ export class CabDeals {
     if (
       DealBulk.click(
         event,
-        () => Cabinet.renderBody(),
-        () => Cabinet.reload(),
+        () => CabState.renderBody(),
+        () => CabState.reload(),
       )
     )
       return true;
     if (this.view === 'pay' && CabPay.click(event)) return true;
     if (CabList.click(event)) {
-      Cabinet.renderBody();
+      CabState.renderBody();
       return true;
     }
     const actions = [
@@ -427,8 +427,8 @@ export class CabDeals {
       const el = target.closest(selector);
       if (el) {
         run(el);
-        if (Cabinet.tab === 'deals') Cabinet.renderBody();
-        else Cabinet.show('deals');
+        if (CabState.tab === 'deals') CabState.renderBody();
+        else CabState.show('deals');
         if (this.adding) document.querySelector(`[data-kbform="${CSS.escape(this.adding)}"] input`)?.focus();
         return true;
       }
@@ -469,7 +469,7 @@ export class CabDeals {
    * @returns {boolean}
    */
   static change(target) {
-    if (DealBulk.change(target, () => Cabinet.reload())) return false;
+    if (DealBulk.change(target, () => CabState.reload())) return false;
     if (target.id === 'cabFunnel') {
       CrmFunnel.set(target.value);
       this.more.clear();
@@ -532,6 +532,6 @@ export class CabDeals {
     if (!body) return;
     if (await DealNeed.move(deal, body))
       Toast.show(`«${deal.title || deal.client}» → ${CrmFunnel.anyLabel(body.stage)}`);
-    Cabinet.reload();
+    CabState.reload();
   }
 }

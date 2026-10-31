@@ -1,4 +1,3 @@
-import { CallResult } from './call-result.js';
 import { CrmData } from './crm-data.js';
 import { Modal } from '../../core/modal.js';
 import { FEAT } from '../../core/features.js';
@@ -11,6 +10,8 @@ import { KpDate } from '../../core/kp-date.js';
 
 /** Дела: строка списка, быстрое добавление (вид, что сделать, дата чипом, время), правка; дела не удаляются — отменяются. */
 export class CrmTask {
+  /** Звонок по сделке сделан — окно «Итог звонка» (подключает crm/index.js: дела его не подключают — циклы import). */
+  static callResult = () => {};
   static VERBS = { call: 'Позвонить', meet: 'Встреча', mail: 'Написать', task: 'Задача' };
   static FOCUS_MS = 50;
   static JSON_HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -146,7 +147,7 @@ export class CrmTask {
    * @param {Function} after
    */
   static done(task, after) {
-    if (task.kind === 'call' && task.deal) CallResult.ask(task.id, task.deal, after);
+    if (task.kind === 'call' && task.deal) this.callResult(task.id, task.deal, after);
     else this.put(task.id, { state: 'done' }, after);
   }
 

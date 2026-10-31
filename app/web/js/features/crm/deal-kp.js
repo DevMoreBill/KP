@@ -1,4 +1,3 @@
-import { DealCard } from './deal-card.js';
 import { ShortName } from '../kp/journal-row.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
@@ -18,11 +17,13 @@ import { KpDate } from '../../core/kp-date.js';
 
 /** КП сделки: открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из журнала — в сделку. */
 export class DealKp {
+  /** Закрыть карточку сделки (подключает crm/index.js: КП сделки не подключает карточку — циклы import). */
+  static closeCard = () => {};
   static HISTORY_LIMIT = 40;
 
   // к КП — карточка сделки закрывается, кабинет остаётся своей вкладкой
   static _closeAll() {
-    DealCard.close();
+    this.closeCard();
     AppTabs.open(AppTabs.HOME);
   }
 

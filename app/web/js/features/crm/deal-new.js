@@ -1,7 +1,6 @@
 import { CrmData } from './crm-data.js';
 import { CrmTask } from './crm-task.js';
 import { DealCard } from './deal-card.js';
-import { Cabinet } from './cabinet.js';
 import { ClientSuggest } from './client-suggest.js';
 import { InnClient } from './inn-client.js';
 import { DealIntakeView } from './deal-intake.js';
@@ -12,6 +11,7 @@ import { Str } from '../../core/str.js';
 import { ClientStore } from '../kp/client-store.js';
 import { Modal } from '../../core/modal.js';
 import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
+import { CabState } from './cab-state.js';
 
 /**
  * «Новая сделка» без КП: клиент с подсказкой из справочника, задача, сумма, ожидаемая дата чипом, воронка и сразу первое
@@ -154,7 +154,7 @@ export class DealNew {
       await this._firstTask(form, deal);
       const models = DealIntakeView.models(form);
       modal.close();
-      if (document.getElementById('cabWin')?.open) await Cabinet.reload();
+      if (document.getElementById('cabWin')?.open) await CabState.reload();
       if (models.length)
         DealKp.newKp(deal, models).catch(error => Toast.show(`КП из заявки не создано: ${error.message || error}`));
       else DealCard.open(deal.id);

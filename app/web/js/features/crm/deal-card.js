@@ -11,7 +11,6 @@ import { DealKeys } from './deal-keys.js';
 import { LostPick } from './lost-pick.js';
 import { DealNeed } from './deal-need.js';
 import { DealKp } from './deal-kp.js';
-import { Cabinet } from './cabinet.js';
 import { DealParts } from './deal-parts.js';
 import { DealNow } from './deal-now.js';
 import { DealExec } from './deal-exec.js';
@@ -40,6 +39,7 @@ import { UiKit } from '../../core/ui-kit.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
 import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
+import { CabState } from './cab-state.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,
@@ -149,7 +149,7 @@ export class DealCard {
 
   static _closed() {
     const cabinet = document.getElementById('cabWin');
-    if (this.changed && cabinet && cabinet.open) Cabinet.reload();
+    if (this.changed && cabinet && cabinet.open) CabState.reload();
     this.modal = null;
   }
 

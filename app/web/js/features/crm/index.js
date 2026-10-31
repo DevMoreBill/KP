@@ -20,6 +20,8 @@ import { ClientSuggest } from './client-suggest.js';
 import { DealFieldsView } from './deal-fields.js';
 import { LostPick } from './lost-pick.js';
 import { PhoneCall } from './phone-call.js';
+import { CabState } from './cab-state.js';
+import { CallResult } from './call-result.js';
 import { LISTS } from '../../core/lists.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
@@ -69,3 +71,15 @@ CabinetLink.connect({
   stageLabel: deal => CrmFunnel.label(deal),
 });
 document.addEventListener(CrmFmt.REDRAW, () => Cabinet.redraw());
+// окно кабинета, «Итог звонка», карточка сделки и воронки доски — регистрацией (разделы кабинета, дела, КП сделки
+// и воронки их не подключают — циклы import)
+CabState.connect({
+  dlg: () => Cabinet.dlg(),
+  reload: () => Cabinet.reload(),
+  render: () => Cabinet.render(),
+  renderBody: () => Cabinet.renderBody(),
+  show: tab => Cabinet.show(tab),
+});
+CrmTask.callResult = (taskId, dealId, after) => CallResult.ask(taskId, dealId, after);
+DealKp.closeCard = () => DealCard.close();
+CrmFunnel.boardFunnels = () => CrmData.board && CrmData.board.funnels;

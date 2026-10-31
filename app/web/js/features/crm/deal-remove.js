@@ -1,8 +1,8 @@
-import { Cabinet } from './cabinet.js';
 import { Modal } from '../../core/modal.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { CabState } from './cab-state.js';
 
 /** «Удалить сделку»: после вопроса — в корзину «Настроек» (восстанавливает администратор вместе с делами, документами и КП). */
 export class DealRemove {
@@ -41,6 +41,6 @@ export class DealRemove {
   }
 
   static _refresh() {
-    if (document.getElementById('cabWin')?.open) Cabinet.reload();
+    if (document.getElementById('cabWin')?.open) CabState.reload();
   }
 }

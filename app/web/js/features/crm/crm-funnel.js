@@ -1,10 +1,11 @@
 import { esc } from '../../core/util.js';
-import { CrmData } from './crm-data.js';
 /**
  * Воронки кабинета: своя воронка программы и воронки, повторяющие Битрикс24 (стадии — как в Битриксе). Закрытые стадии на
  * доске — две колонки: «успех» и «провал» (у воронки Битрикса провалов несколько — стадия видна в карточке как причина).
  */
 export class CrmFunnel {
+  /** Воронки загруженной доски сделок (подключает crm/index.js: воронки не подключают данные кабинета — циклы import). */
+  static boardFunnels = () => null;
   static KEY = 'kp.cab.funnel';
   static MAIN = 'main';
   static TONES = 4;
@@ -16,7 +17,7 @@ export class CrmFunnel {
    * @returns {object[]}
    */
   static all() {
-    const fromBoard = CrmData.board && CrmData.board.funnels;
+    const fromBoard = this.boardFunnels();
     return fromBoard || this.cache;
   }
 

@@ -1,10 +1,10 @@
 import { CrmData } from './crm-data.js';
-import { Cabinet } from './cabinet.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
 import { Str } from '../../core/str.js';
 import { CompanyCardView } from './company-card.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
+import { CabState } from './cab-state.js';
 
 /** «Клиенты»: клиенты из сделок — в работе, сумма, выиграно, ближайшее дело. */
 export class CabClients {
@@ -67,15 +67,15 @@ export class CabClients {
    * @returns {string}
    */
   static html() {
-    const wanted = Str.norm(Cabinet.query);
+    const wanted = Str.norm(CabState.query);
     const list = this.list().filter(client => !wanted || Str.norm(`${client.name} ${client.inn}`).includes(wanted));
-    const empty = Cabinet.query
+    const empty = CabState.query
       ? 'Не найдено.'
       : 'Клиенты появятся вместе со сделками: сохраните КП или нажмите «＋ Сделка».';
     const body = list.length
       ? `<div class="cab-cls">${list.map(client => this._card(client)).join('')}</div>`
       : `<p class="empty">${empty}</p>`;
-    return `<div class="cab-bar">${Cabinet.search('Клиент или ИНН')}<span class="muted cab-tot">Клиентов: <b>${list.length}</b></span>${CompanyCardView.button()}</div>${body}`;
+    return `<div class="cab-bar">${CabState.search('Клиент или ИНН')}<span class="muted cab-tot">Клиентов: <b>${list.length}</b></span>${CompanyCardView.button()}</div>${body}`;
   }
 
   static _card(client) {

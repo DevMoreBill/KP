@@ -3,9 +3,9 @@ import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { esc, today } from '../../core/util.js';
-import { Cabinet } from './cabinet.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
+import { CabState } from './cab-state.js';
 
 /** «Отложить сделку до даты»: сделка уходит с доски и «Сегодня», в нужный день программа ставит дело «вернуться к сделке». */
 export class DealPause {
@@ -107,6 +107,6 @@ export class DealPause {
     }
     Toast.show(day ? `Сделка отложена до ${CrmFmt.day(day)}` : 'Сделка снова в работе');
     if (after) after();
-    if (document.getElementById('cabWin')?.open) Cabinet.reload();
+    if (document.getElementById('cabWin')?.open) CabState.reload();
   }
 }
