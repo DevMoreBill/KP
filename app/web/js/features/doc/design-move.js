@@ -120,7 +120,7 @@ export class DesignMove {
   _placeOwn() {
     const { dx, dy } = this.last;
     const rect = this.rect;
-    const perCm = DesignView.pxPerCm();
+    const perCm = Design.pxPerCm();
     const anchor = DesignView.anchorFor(rect.left + dx, rect.top + dy);
     if (!anchor) {
       this.moved.forEach(element => {
@@ -147,7 +147,7 @@ export class DesignMove {
   _shiftLayout() {
     const { dx, dy } = this.last;
     const { STILL, HALVES } = this.constructor;
-    const perCm = DesignView.pxPerCm();
+    const perCm = Design.pxPerCm();
     const paraKey = DesignModel.paraKey(this.sel);
     if (!paraKey) return;
     DesignHistory.change(

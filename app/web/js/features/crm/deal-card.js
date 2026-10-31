@@ -30,7 +30,6 @@ import { ClientStore } from '../kp/client-store.js';
 import { Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { ClientCard } from '../kp/client-card.js';
-import { ShortName } from '../kp/journal-row.js';
 import { Morph } from '../../core/morph.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
@@ -40,6 +39,7 @@ import { PhoneLayout } from '../../core/phone-layout.js';
 import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CabState } from './cab-state.js';
+import { ShortName } from '../kp/short-name.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,

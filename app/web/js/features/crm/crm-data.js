@@ -1,8 +1,8 @@
 import { CrmFunnel } from './crm-funnel.js';
-import { ShortName } from '../kp/journal-row.js';
 import { esc, today } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
+import { ShortName } from '../kp/short-name.js';
 
 /** Этапы своей воронки программы — «Настройки → Списки и тексты → Этапы сделки» (crm.stages); у сервера — тот же список. */
 export class CrmStages {

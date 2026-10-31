@@ -2,7 +2,6 @@ import { LivePreview } from '../features/doc/live-preview.js';
 import { OptionCost } from '../features/kp/option-cost.js';
 import { Steps } from './steps.js';
 import { Templates } from '../features/doc/templates.js';
-import { ShortName } from '../features/kp/journal-row.js';
 import { KpFile } from '../features/doc/kp-file.js';
 import { PdfExport } from '../features/doc/pdf-export.js';
 import { DealSide } from '../features/deal/deal-side.js';
@@ -20,6 +19,7 @@ import { Tender } from '../core/tender.js';
 import { Currency } from '../core/currency.js';
 import { StationPlan } from '../features/req/station-plan.js';
 import { CatalogSession } from '../features/catalog/catalog-session.js';
+import { ShortName } from '../features/kp/short-name.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {

@@ -67,6 +67,15 @@ export class Auth {
   static cannot(perm) {
     Toast.show(`Нет права ${this.TEXT[perm] || perm} — обратитесь к администратору`);
   }
+
+  /**
+   * Менеджер закреплён входом: вошёл по паролю не администратор — менеджер в КП только он (MgrLock).
+   * @returns {boolean}
+   */
+  static pinned() {
+    const state = this.state;
+    return !!(state.enabled && state.user && !state.admin && !AdminSession.on);
+  }
 }
 
 /**

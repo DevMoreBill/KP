@@ -1,4 +1,3 @@
-import { Modal } from '../../core/modal.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
@@ -6,9 +5,7 @@ import { Api } from '../../core/net.js';
 import { KpState, LocalDraft, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { KpTabs } from './kp-tabs.js';
 import { KpGuard } from './kp-guard.js';
-import { KpForm } from '../../core/kp-form.js';
 import { Currency } from '../../core/currency.js';
 
 /**
@@ -296,34 +293,6 @@ export class Drafts {
   }
 
   /**
-   * Продолжить черновик.
-   * @param {string} id
-   */
-  static async open(id) {
-    let answer;
-    try {
-      answer = await Api.request(`/api/drafts/${encodeURIComponent(id)}`);
-    } catch (error) {
-      Toast.show(`Черновик не открылся: ${error.message || error}`);
-      return;
-    }
-    if (!(await KpTabs.prepare({ draft: id, kpId: (answer.data.state && answer.data.state.kpId) || '' }))) return;
-    KpState.replace(Object.assign(KpState.fresh(), answer.data.state || {}));
-    if (answer.data.rev != null) S._rev = answer.data.rev;
-    S._draft = id;
-    KpTabs.show();
-    KpForm.render();
-    KpState.persist();
-    window.scrollTo({ top: 0 });
-    this.loaded();
-    Toast.show(
-      answer.row.kp
-        ? `Открыты несохранённые правки КП № ${answer.row.kp} — сохраните КП, чтобы они попали в журнал`
-        : 'Черновик открыт',
-    );
-  }
-
-  /**
    * Удалить черновик.
    * @param {string} id
    * @returns {Promise<boolean>}
@@ -348,36 +317,5 @@ export class Drafts {
     const sum = row.sum ? ` · ${KPGen.money(row.sum)} ${esc(Currency.short(row.cur || 'RUB'))}` : '';
     return `<div class="st-row"><div><b>${esc(row.client || 'Клиент не указан')}</b><span class="muted">${esc(this.title(row))} · ${row.positions || 0} поз.${sum} · ${esc(Fmt.dateTime(row.updated))}${S._draft === row.id ? ' · <b>открыт сейчас</b>' : ''}</span></div>
       <div class="acts"><button class="btn" type="button" data-dro="${esc(row.id)}">Продолжить</button><button class="btn ghost" type="button" data-drd="${esc(row.id)}" title="Удалить черновик">Удалить</button></div></div>`;
-  }
-
-  /** Окно «Черновики». */
-  static async dialog() {
-    const modal = new Modal(
-      `<div class="dlg-h"><h3>Черновики</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
-      <p class="muted" style="margin:0 0 10px">Незаконченные КП и несохранённые правки — ваши, доступны с любого компьютера.${FEAT.on('autosave') ? ` Изменения записываются сюда автоматически ${this.autoText()}.` : ''} После сохранения КП в журнал черновик удаляется.</p>
-      <div class="dr-l"><p class="empty">Загружаю…</p></div>`,
-      'drafts-dlg',
-    );
-    const draw = async () => {
-      const list = await this.list();
-      modal.$('.dr-l').innerHTML = list.length
-        ? list.map(row => this.rowHtml(row)).join('')
-        : '<p class="empty">Черновиков нет.</p>';
-    };
-    modal.d.onclick = async event => {
-      if (event.target.closest('[data-x]')) {
-        modal.close();
-        return;
-      }
-      const open = event.target.closest('[data-dro]');
-      if (open) {
-        modal.close();
-        this.open(open.dataset.dro);
-        return;
-      }
-      const drop = event.target.closest('[data-drd]');
-      if (drop && (await this.remove(drop.dataset.drd))) draw();
-    };
-    await draw();
   }
 }

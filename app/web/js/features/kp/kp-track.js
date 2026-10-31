@@ -1,6 +1,5 @@
 import { Api } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { Reminders } from './reminders.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
@@ -13,6 +12,9 @@ import { KpDate } from '../../core/kp-date.js';
  * напоминание «перезвонить», история. Хранится отдельно от КП — пересохранение не стирает.
  */
 export class KpTrack {
+  /** Отметка сохранена: напоминания заново (Reminders.load) — подключает kp/index.js (напоминания стоят на отметках). */
+  static saved = () => {};
+
   static LISTS = { 'kp.lost': () => KpTrack.LOST };
   static STATUS = { new: 'Подготовлено', sent: 'Отправлено', work: 'В работе', won: 'Выиграно', lost: 'Проиграно' };
   // причины проигрыша — список «Причины проигрыша КП» в «Настройках → Списки и выборы»
@@ -201,7 +203,7 @@ export class KpTrack {
       if (onSave) onSave(answer.track);
       Toast.show(`КП № ${row.number}: ${this.STATUS[status].toLowerCase()}`);
       modal.close();
-      Reminders.load();
+      KpTrack.saved();
     } catch (error) {
       Toast.show(`Не сохранено: ${error.message}`);
     }

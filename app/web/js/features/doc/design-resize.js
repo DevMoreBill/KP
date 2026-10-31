@@ -25,7 +25,7 @@ export class DesignResize {
     this.x0 = event.clientX;
     this.y0 = event.clientY;
     this.ratio = this.rect.width / Math.max(1, this.rect.height);
-    this.perCm = DesignView.pxPerCm();
+    this.perCm = Design.pxPerCm();
     this.frame = this.own && this.own.float ? element.closest('.kp-float') : null;
     this.box = { left: this.rect.left, top: this.rect.top, width: this.rect.width, height: this.rect.height };
     Design.state.drag = true;

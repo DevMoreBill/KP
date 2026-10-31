@@ -1,4 +1,5 @@
 import { MatrixDefaults } from '../layout/matrix-defaults.js';
+
 /** Данные правил компоновки для редактора и формы: правило по номеру, копия значения, матрица поверх значений. */
 export class LayoutData {
   /** Правило id из файла правил data. */

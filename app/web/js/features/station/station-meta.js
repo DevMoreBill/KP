@@ -6,6 +6,7 @@ import { Mm } from '../layout/mm.js';
 import { S } from '../../core/state.js';
 import { StationScheme } from '../eskd/station-scheme.js';
 import { esc } from '../../core/util.js';
+
 /** Станция для листов и вкладки: подписи основной надписи, организация, картинка-ссылка, схема, кнопка замены контейнера. */
 export class StationMeta {
   static FULL_NAME = 3;

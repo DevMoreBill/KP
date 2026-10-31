@@ -54,13 +54,4 @@ export class DesignHistory {
     DesignPanels.panels();
     DesignView.previewNow();
   }
-
-  /**
-   * Есть несохранённые изменения.
-   * @returns {boolean}
-   */
-  static dirty() {
-    const state = Design.state;
-    return state.work && JSON.stringify(state.work) !== state.saved;
-  }
 }

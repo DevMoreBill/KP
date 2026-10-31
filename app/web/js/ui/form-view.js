@@ -6,11 +6,11 @@ import { CoverThumb } from '../features/doc/cover-thumb.js';
 import { Morph } from '../core/morph.js';
 import { AppTabs } from '../core/app-tabs.js';
 import { $ } from '../core/util.js';
-import { MgrLock } from '../features/kp/managers.js';
 import { Templates } from '../features/doc/templates.js';
 import { AdminGear } from '../core/admin-gear.js';
 import { KpGuard } from '../features/kp/kp-guard.js';
 import { CatalogSession } from '../features/catalog/catalog-session.js';
+import { MgrLock } from '../features/kp/mgr-lock.js';
 
 /** Перерисовка формы КП: полоса шагов, открытый шаг, фокус в поле, боковая панель. */
 export class FormView {

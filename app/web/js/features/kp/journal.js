@@ -27,6 +27,7 @@ import { DealLink } from '../../core/deal-link.js';
 import { Auth } from '../../core/auth.js';
 import { Currency } from '../../core/currency.js';
 import { DocLink } from '../../core/doc-link.js';
+import { DraftsWin } from './drafts-win.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -149,7 +150,7 @@ export class Journal {
       status.value = status.value === button.dataset.jf ? '' : button.dataset.jf;
       this._load(ctx);
     };
-    $('#jDr').onclick = () => Drafts.dialog();
+    $('#jDr').onclick = () => DraftsWin.dialog();
     $('#jRep').onclick = () => KpReport.open({ author: $('#jA').value, kind: $('#jK').value });
     $('#jMe').onclick = () => this._mine(ctx);
   }

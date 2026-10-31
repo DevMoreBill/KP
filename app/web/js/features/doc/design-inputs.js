@@ -133,7 +133,7 @@ export class DesignInputs {
 
   static _pickTemplate(field) {
     const state = Design.state;
-    if (DesignHistory.dirty() && !confirm('Перейти к другому шаблону без сохранения изменений?')) {
+    if (Design.dirty() && !confirm('Перейти к другому шаблону без сохранения изменений?')) {
       field.value = state.id;
       return undefined;
     }
@@ -220,7 +220,7 @@ export class DesignInputs {
   }
 
   static _keySave() {
-    if (DesignHistory.dirty()) TemplateDesigner.save().catch(error => alert(`Не сохранено: ${error.message || error}`));
+    if (Design.dirty()) TemplateDesigner.save().catch(error => alert(`Не сохранено: ${error.message || error}`));
   }
 
   static _keyDuplicate() {

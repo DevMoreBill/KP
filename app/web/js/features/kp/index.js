@@ -8,7 +8,7 @@ import { Discount } from './currency.js';
 import { Drafts } from './drafts.js';
 import { HelpWindow } from './help-window.js';
 import { Journal, KpVersions } from './journal.js';
-import { JournalEcon, JournalRow, ShortName } from './journal-row.js';
+import { JournalEcon, JournalRow } from './journal-row.js';
 import { KpFilesPanel } from './kp-files.js';
 import { KpDiff, KpReport } from './kp-report.js';
 import { KpReportView } from './kp-report-view.js';
@@ -16,7 +16,7 @@ import { KpRepeat } from './kp-repeat.js';
 import { KpTrack } from './kp-track.js';
 import { LoginForm } from './login-form.js';
 import { MailDlg } from './mail-dlg.js';
-import { Managers, MgrLock } from './managers.js';
+import { Managers } from './managers.js';
 import { MgrBar } from './mgr-bar.js';
 import { MyDay } from './my-day.js';
 import { MyPrefs } from './my-prefs.js';
@@ -37,6 +37,8 @@ import { OptionCost } from './option-cost.js';
 import { OptionSale } from './option-sale.js';
 import { BackGuard } from '../../core/back-guard.js';
 import { Currency } from '../../core/currency.js';
+import { ShortName } from './short-name.js';
+import { MgrLock } from './mgr-lock.js';
 
 export const KP_PARTS = {
   OptionCost,
@@ -112,3 +114,14 @@ Reminders.listen();
 MyDay.listen();
 MyPrefs.listen();
 AuthScreen.listen();
+// личные настройки стоят на менеджерах — смена менеджера зовёт их портом
+Managers.changed = () => MyPrefs.load();
+// «Мои настройки» открываются во вкладке кабинета — кабинет стоит на настройках
+MyPrefs.day = { enabled: () => MyDay.enabled(), open: tab => MyDay.open(tab) };
+// курсы ЦБ: валюты опций и пересчёт их цен — регистрацией (опции стоят на курсах)
+CbrRates.uses = items => [...OptionCost.currencies(items), ...OptionSale.currencies(items)];
+CbrRates.synced = () => OptionSale.syncAll();
+// напоминания стоят на отметках по КП — сохранённая отметка зовёт их портом
+KpTrack.saved = () => Reminders.load();
+// закрепление менеджера входом стоит на справочнике — загрузка справочника зовёт его портом
+Managers.pin = () => MgrLock.apply();

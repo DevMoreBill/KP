@@ -8,6 +8,7 @@ import { StationPlan } from '../req/station-plan.js';
 import { StationSize } from './station-size.js';
 import { TzFit } from './tz-fit.js';
 import { TzPick } from './tz-pick.js';
+
 /** Сборка станции по ТЗ: шкафы, подбор с защитой состава (TzFit), название, характеристики, контейнер. */
 export class TzBuild {
   /** Подбор и сборка станции: шкафы по особым требованиям, оборудование, название, характеристики, контейнер. */

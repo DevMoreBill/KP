@@ -5,6 +5,7 @@ import { ItemSpec } from '../../core/item-spec.js';
 import { Str } from '../../core/str.js';
 import { TzPick } from './tz-pick.js';
 import { esc } from '../../core/util.js';
+
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций
  * перебирается на каждое нажатие); набор в поле поиска — с короткой задержкой.

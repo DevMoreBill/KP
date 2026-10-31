@@ -16,9 +16,6 @@ import { CatalogSession } from '../catalog/catalog-session.js';
 export class DesignView {
   static DELAY = 400;
   static DRAG_WAIT = 300;
-  static TWIPS_PER_CM = 567;
-  static PAGE_CM = 21;
-  static PX_PER_CM = 37.8;
   static FIT = { min: 0.35, max: 1.4, pad: 40 };
   static ZOOM = { min: 0.3, max: 2.5, steps: 20 };
   static HERE = { view: 0.3, top: 60, bottom: 120, left: 0.3 };
@@ -157,20 +154,6 @@ export class DesignView {
     }
   }
 
-  static _pageCm() {
-    const found = /<w:pgSz[^>]*w:w="(\d+)"/.exec(Design.state.pack.sect || '');
-    return found ? +found[1] / this.TWIPS_PER_CM : this.PAGE_CM;
-  }
-
-  /**
-   * Пикселей экрана в сантиметре страницы.
-   * @returns {number}
-   */
-  static pxPerCm() {
-    const page = Design.query('section.docx');
-    return page ? page.getBoundingClientRect().width / this._pageCm() : this.PX_PER_CM * (Design.state.zoom || 1);
-  }
-
   /** Масштаб по ширине окна. */
   static fit() {
     const canvas = $('#tdCanvas');
@@ -223,7 +206,7 @@ export class DesignView {
     const canvas = $('#tdCanvas');
     if (!box || !canvas) return;
     const frame = canvas.getBoundingClientRect();
-    const perCm = this.pxPerCm();
+    const perCm = Design.pxPerCm();
     Object.assign(box.style, {
       left: `${rect.left - frame.left + canvas.scrollLeft}px`,
       top: `${rect.top - frame.top + canvas.scrollTop}px`,
@@ -294,7 +277,7 @@ export class DesignView {
       anchor = all.filter(row => row.r.top <= y).pop() || all[0];
       far = true;
     }
-    const perCm = this.pxPerCm();
+    const perCm = Design.pxPerCm();
     return {
       place: anchor.place,
       x: Design.round((x - anchor.r.left) / perCm, Design.CENTS),

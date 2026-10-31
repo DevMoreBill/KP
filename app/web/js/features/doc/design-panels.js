@@ -1,10 +1,8 @@
 import { Design } from './design.js';
 import { DesignForm } from './design-form.js';
-import { DesignHistory } from './design-history.js';
 import { DesignInspector } from './design-inspector.js';
 import { DesignModel } from './design-model.js';
 import { TemplateFields } from './template-fields.js';
-import { TemplateDesigner } from './template-designer.js';
 import { Templates } from './templates.js';
 import { ObjPath } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
@@ -24,10 +22,12 @@ export class DesignPanels {
   static TWIPS_PER_CM = 567;
   static LABEL_SHOWN = 40;
 
-  /** Окно редактора целиком. */
-  static render() {
+  /**
+   * Окно редактора целиком.
+   * @param {HTMLDialogElement} dialog окно дизайнера (TemplateDesigner.dialog — окно подключает панели)
+   */
+  static render(dialog) {
     const state = Design.state;
-    const dialog = TemplateDesigner.dialog();
     const tabs = this.TABS.map(
       ([key, title]) =>
         `<button type="button" role="tab" data-tdtab="${key}" aria-selected="${state.tab === key}">${title}</button>`,
@@ -82,7 +82,7 @@ export class DesignPanels {
       panel.innerHTML = this._topHtml();
     }
     const button = action => panel.querySelector(`[data-td="${action}"]`);
-    const dirty = DesignHistory.dirty();
+    const dirty = Design.dirty();
     button('undo').disabled = !state.undo.length;
     button('redo').disabled = !state.redo.length;
     button('save').disabled = !!state.err || !dirty;

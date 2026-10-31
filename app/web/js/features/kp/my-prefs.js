@@ -1,5 +1,4 @@
 import { Managers } from './managers.js';
-import { MyDay } from './my-day.js';
 import { DEF_BY, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
@@ -15,6 +14,9 @@ import { DocLink } from '../../core/doc-link.js';
  * Открываются вкладкой кабинета (CabPrefs), без кабинета — окном.
  */
 export class MyPrefs {
+  /** Кабинет «Мой день» (MyDay): включён ли и открыть вкладку — подключает kp/index.js (кабинет стоит на настройках). */
+  static day = { enabled: () => false, open: () => {} };
+
   static prefs = {};
   static uid = '';
   static THEME = [
@@ -133,8 +135,8 @@ export class MyPrefs {
       Toast.show('Сначала выберите себя в разделе «Менеджер» — настройки сохраняются для менеджера');
       return;
     }
-    if (FEAT.on('cabPrefs') && MyDay.enabled()) {
-      MyDay.open('prefs');
+    if (FEAT.on('cabPrefs') && this.day.enabled()) {
+      this.day.open('prefs');
       return;
     }
     const modal = new Modal(

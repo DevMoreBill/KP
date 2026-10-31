@@ -1,8 +1,8 @@
-import { TemplateEditor } from './template-editor.js';
 import { Templates } from './templates.js';
 import { Srv } from '../../core/net.js';
 import { esc } from '../../core/util.js';
 import { ObjPath } from '../../core/str.js';
+import { TemplateState } from './template-state.js';
 
 /**
  * Поля формы редактора шаблона по описанию editor.json: текст, шрифт, число, переключатель, список, цвет, пары
@@ -47,7 +47,7 @@ export class TemplateFields {
   static HEX = /^[0-9A-Fa-f]{6}$/;
 
   static get _state() {
-    return TemplateEditor.state;
+    return TemplateState.state;
   }
 
   /**

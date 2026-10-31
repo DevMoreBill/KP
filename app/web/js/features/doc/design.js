@@ -132,4 +132,33 @@ export class Design {
   static imageUrl(file) {
     return `/tpl/${encodeURIComponent(this.state.id)}/${encodeURIComponent(file)}`;
   }
+
+  static TWIPS_PER_CM = 567;
+
+  static PAGE_CM = 21;
+
+  static PX_PER_CM = 37.8;
+
+  static _pageCm() {
+    const found = /<w:pgSz[^>]*w:w="(\d+)"/.exec(Design.state.pack.sect || '');
+    return found ? +found[1] / this.TWIPS_PER_CM : this.PAGE_CM;
+  }
+
+  /**
+   * Пикселей экрана в сантиметре страницы.
+   * @returns {number}
+   */
+  static pxPerCm() {
+    const page = Design.query('section.docx');
+    return page ? page.getBoundingClientRect().width / this._pageCm() : this.PX_PER_CM * (Design.state.zoom || 1);
+  }
+
+  /**
+   * Есть несохранённые изменения.
+   * @returns {boolean}
+   */
+  static dirty() {
+    const state = Design.state;
+    return state.work && JSON.stringify(state.work) !== state.saved;
+  }
 }

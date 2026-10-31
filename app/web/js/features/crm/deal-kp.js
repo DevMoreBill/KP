@@ -1,4 +1,3 @@
-import { ShortName } from '../kp/journal-row.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
 import { AppTabs } from '../../core/app-tabs.js';
@@ -14,6 +13,7 @@ import { KpLoader } from '../kp/reminders.js';
 import { KpTabs } from '../kp/kp-tabs.js';
 import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
+import { ShortName } from '../kp/short-name.js';
 
 /** КП сделки: открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из журнала — в сделку. */
 export class DealKp {

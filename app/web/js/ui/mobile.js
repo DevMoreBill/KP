@@ -4,7 +4,6 @@ import { DealDefaults } from '../features/deal/deal-defaults.js';
 import { Presets } from '../features/kp/presets.js';
 import { Theme } from '../core/theme.js';
 import { Modal } from '../core/modal.js';
-import { FormView } from './form-view.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { MyPrefs } from '../features/kp/my-prefs.js';
 import { ProblemReport } from './problem-report.js';
@@ -21,6 +20,7 @@ import { UiTexts } from '../features/kp/ui-texts.js';
 import { $ } from '../core/util.js';
 import { PhoneLayout } from '../core/phone-layout.js';
 import { DealWin } from '../features/deal/deal-win.js';
+import { KpForm } from '../core/kp-form.js';
 /**
  * Телефон (Safari iOS, Chrome Android): режим «mob» на <html> (ставится ещё в <head>, чтобы не мигала настольная
  * раскладка), меню «☰», поле названия по высоте текста, пустые поля дат, шапка прячется при прокрутке вниз.
@@ -63,7 +63,7 @@ export class Mobile {
     query.addEventListener('change', () => {
       const was = PhoneLayout.active();
       apply();
-      if (was !== query.matches) FormView.render();
+      if (was !== query.matches) KpForm.render();
     });
     apply();
   }

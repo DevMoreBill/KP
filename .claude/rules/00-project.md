@@ -97,9 +97,14 @@
   станций без внутренних циклов: воздух состава — `KitAir`, сборка по ТЗ — `TzBuild` (над `TzFit` и `TzPick`), фильтры
   подбора — `pick-filter.js`; окно подбора из «Нужно…» — портом `KitNeed.pickOpen`, подбор заново из формы требований —
   `ReqForm.autoPick`, шаг «Новая станция» — `WizardState` (порты подключают `index.js` своих разделов); подписи станции
-  для листов — `StationMeta`, значения разбора ТЗ — `TzValues`.
-- Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), циклы `import` (`test_project.test_import_cycles`: не через
-  границы разделов и только в разделах `CYCLES_LEFT`, развязали раздел — убрать его из списка; 31.10), слепки
+  для листов — `StationMeta`, значения разбора ТЗ — `TzValues`. (31.10, этап 16) КП, документ и форма КП без
+  внутренних циклов — циклов `import` в интерфейсе нет: «менеджер закреплён входом» — `Auth.pinned`, закрепление —
+  `MgrLock` (`mgr-lock.js`), порты `Managers.pin` / `changed`, `MyPrefs.day`, `CbrRates.uses` / `synced`, `KpTrack.saved`
+  (подключает `kp/index.js`); окно черновиков — `DraftsWin`; дизайнер шаблона — `Design.pxPerCm` / `dirty`, редактор —
+  `TemplateState`; части формы КП — через `KpForm` (`render`, `problems`, `step`).
+- Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), циклы `import` (`test_project.test_import_cycles`: с 3.265.0
+  циклов нет — новый развязать портом в `core/`, регистрацией в `index.js` раздела или вынести общее ниже, а не вписывать
+  раздел в `CYCLES_LEFT`; 31.10), слепки
   (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

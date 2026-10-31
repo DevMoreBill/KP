@@ -1,5 +1,4 @@
 import { Design } from './design.js';
-import { DesignHistory } from './design-history.js';
 import { DesignPanels } from './design-panels.js';
 import { DesignView } from './design-view.js';
 import { KpSave } from './kp-save.js';
@@ -83,7 +82,7 @@ export class TemplateDesigner {
       state.err =
         'скелет этого шаблона (skeleton.js) не поддерживает графический редактор — верните заводской скелет или используйте «Настроить» (форму)';
     }
-    DesignPanels.render();
+    DesignPanels.render(this.dialog());
     if (!state.err) DesignView.previewNow();
   }
 
@@ -172,7 +171,7 @@ export class TemplateDesigner {
 
   /** Закрыть окно (несохранённое — с вопросом). */
   static close() {
-    if (DesignHistory.dirty() && !confirm('Закрыть без сохранения? Изменения шаблона пропадут.')) return;
+    if (Design.dirty() && !confirm('Закрыть без сохранения? Изменения шаблона пропадут.')) return;
     const dialog = $('#tddlg');
     if (dialog) {
       dialog.close();
@@ -216,7 +215,7 @@ export class TemplateDesigner {
   /** К форме «Настроить» (несохранённое — с вопросом). */
   static toForm() {
     const state = Design.state;
-    if (DesignHistory.dirty() && !confirm('Несохранённые изменения графического редактора пропадут. Перейти к форме?'))
+    if (Design.dirty() && !confirm('Несохранённые изменения графического редактора пропадут. Перейти к форме?'))
       return undefined;
     state.saved = JSON.stringify(state.work);
     const id = state.id;

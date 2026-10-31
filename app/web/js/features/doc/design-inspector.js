@@ -1,7 +1,6 @@
 import { Design } from './design.js';
 import { DesignForm } from './design-form.js';
 import { DesignModel } from './design-model.js';
-import { DesignView } from './design-view.js';
 import { ObjPath } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
 
@@ -137,7 +136,7 @@ export class DesignInspector {
     }
     const fixed = work.imgSize[key] || {};
     const element = DesignModel.primary();
-    const perCm = DesignView.pxPerCm();
+    const perCm = Design.pxPerCm();
     const rect = element ? element.getBoundingClientRect() : null;
     const widthNow = rect ? Design.round(rect.width / perCm, Design.CENTS) : '';
     const heightNow = rect ? Design.round(rect.height / perCm, Design.CENTS) : '';

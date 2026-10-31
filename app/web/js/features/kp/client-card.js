@@ -5,7 +5,6 @@ import { KpRepeat } from './kp-repeat.js';
 import { KpTrack } from './kp-track.js';
 import { Managers } from './managers.js';
 import { KpLoader } from './reminders.js';
-import { ShortName } from './journal-row.js';
 import { KpState, S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
@@ -22,6 +21,7 @@ import { KpDate } from '../../core/kp-date.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
 import { Currency } from '../../core/currency.js';
+import { ShortName } from './short-name.js';
 
 /**
  * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.

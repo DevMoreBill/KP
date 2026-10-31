@@ -1,4 +1,3 @@
-import { FormView } from './form-view.js';
 import { Toast } from '../core/toast.js';
 import { KpFilesPanel } from '../features/kp/kp-files.js';
 import { esc } from '../core/util.js';
@@ -10,6 +9,7 @@ import { KpConditions } from '../core/conditions.js';
 import { CondMemory } from '../core/cond-memory.js';
 import { UiKit } from '../core/ui-kit.js';
 import { AdminDialog } from '../core/admin-dialog.js';
+import { KpForm } from '../core/kp-form.js';
 
 /**
  * Раздел 5 «Условия»: поле и список вариантов ▾ у каждого условия, «Как в прошлом КП»; «Очистить все условия» —
@@ -160,7 +160,7 @@ export class CondsStep {
     const changed = clear ? await this._clear() : this._act(event.target);
     if (!changed) return;
     event.target.closest('details')?.removeAttribute('open');
-    FormView.render();
+    KpForm.render();
     KpState.persist();
   }
 

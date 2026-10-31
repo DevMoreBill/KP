@@ -1,8 +1,10 @@
-import { Managers, MgrLock } from './managers.js';
+import { Managers } from './managers.js';
 import { Morph } from '../../core/morph.js';
 import { $, esc } from '../../core/util.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';
+import { MgrLock } from './mgr-lock.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Выбор менеджера в разделе «Менеджер»: выбран из справочника — правки сохраняются сами; не выбран — подсказка,
@@ -26,7 +28,7 @@ export class MgrBar {
    * @returns {string}
    */
   static inner() {
-    if (MgrLock.locked()) return MgrLock.html();
+    if (Auth.pinned()) return MgrLock.html();
     const current = Managers.list.find(row => row.id === S.managerId);
     const typed = !!String(S.manager.name || '').trim();
     // КП прежней версии: менеджер записан под старым кодом, а в справочнике есть с тем же ФИО — предложить взять оттуда

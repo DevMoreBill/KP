@@ -96,7 +96,9 @@ check('заготовка — без сделки (и заготовки пре�
   const { KpSave }=mod('features/doc/kp-save.js');
   const { PriceGuard }=mod('features/kp/price-guard.js');
   const { StationImages }=mod('features/station/station-images.js');
-  const { MgrLock, Managers }=mod('features/kp/managers.js');
+  const { Managers }=mod('features/kp/managers.js');
+  const { MgrLock }=mod('features/kp/mgr-lock.js');
+  const { Auth }=mod('core/auth.js');
   const { KpDocx }=mod('features/doc/kp-docx.js');
   const { KpFile }=mod('features/doc/kp-file.js');
   const { Drafts }=mod('features/kp/drafts.js');
@@ -108,7 +110,7 @@ check('заготовка — без сделки (и заготовки пре�
     Object.assign(S, { client:'ООО «Б»', clientInn:'7700000002' });
     await swap([
       [PriceGuard, 'confirm', async ()=>true], [StationImages, 'syncAll', async ()=>{}], [StationImages, 'confirmSave', ()=>true],
-      [MgrLock, 'apply', ()=>{}], [MgrLock, 'locked', ()=>false], [KpDocx, 'state', ()=>({})], [KpDocx, 'render', async ()=>null],
+      [MgrLock, 'apply', ()=>{}], [Auth, 'pinned', ()=>false], [KpDocx, 'state', ()=>({})], [KpDocx, 'render', async ()=>null],
       [KpSave, '_pack', async ()=>({ settings:{} })], [KpSave, '_number', async ()=>{}], [KpSave, '_uploadImages', async ()=>{}],
       [Managers, 'meId', ()=>'m1'], [KpState, 'totals', ()=>({})], [KpFile, 'name', ()=>'КП.docx'],
       [KpSave, '_journal', async ()=>{ journaled=Drafts.clean().dealId; throw new Error('стоп после записи состояния'); }],
@@ -173,7 +175,7 @@ check('сохранение КП: сделка, которую назначил 
       [mod('features/kp/price-guard.js').PriceGuard, 'confirm', async ()=>true],
       [mod('features/station/station-images.js').StationImages, 'syncAll', async ()=>{}],
       [mod('features/station/station-images.js').StationImages, 'confirmSave', ()=>true],
-      [mod('features/kp/managers.js').MgrLock, 'apply', ()=>{}], [mod('features/kp/managers.js').MgrLock, 'locked', ()=>false],
+      [mod('features/kp/mgr-lock.js').MgrLock, 'apply', ()=>{}], [mod('core/auth.js').Auth, 'pinned', ()=>false],
       [mod('features/kp/managers.js').Managers, 'meId', ()=>'m1'],
       [mod('features/doc/kp-docx.js').KpDocx, 'state', ()=>({})], [mod('features/doc/kp-docx.js').KpDocx, 'render', async ()=>null],
       [mod('features/doc/kp-file.js').KpFile, 'name', ()=>'КП.docx'],

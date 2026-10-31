@@ -21,6 +21,7 @@ import { UiKit } from '../../core/ui-kit.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CabState } from './cab-state.js';
+import { DraftsWin } from '../kp/drafts-win.js';
 
 /** «Сегодня»: плитки дня, «Что сделать» (дела и сделки, которым нужно действие), напоминания по КП; справа — неделя, месяц, воронка. */
 export class CabToday {
@@ -411,8 +412,8 @@ export class CabToday {
           ),
       ],
       ['[data-mdall]', () => this._leave(() => Reminders.open())],
-      ['[data-mddr]', () => this._leave(() => Drafts.dialog())],
-      ['[data-dro]', el => this._leave(() => Drafts.open(el.dataset.dro))],
+      ['[data-mddr]', () => this._leave(() => DraftsWin.dialog())],
+      ['[data-dro]', el => this._leave(() => DraftsWin.open(el.dataset.dro))],
       ['[data-didle]', el => this._callToday(el.dataset.didle)],
       ['[data-ctago]', () => this._goTodo()],
       ['[data-ntfon]', () => BrowserNotify.ask().then(CabState.render.bind(CabState), CabState.render.bind(CabState))],

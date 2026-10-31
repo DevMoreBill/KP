@@ -1,11 +1,9 @@
-import { MyPrefs } from './my-prefs.js';
-import { $, Uid, esc } from '../../core/util.js';
+import { $, Uid } from '../../core/util.js';
 import { Str } from '../../core/str.js';
 import { KpState, S } from '../../core/state.js';
-import { AdminSession, Api } from '../../core/net.js';
+import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { Toast } from '../../core/toast.js';
-import { KpGuard } from './kp-guard.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Auth } from '../../core/auth.js';
 
@@ -14,6 +12,11 @@ import { Auth } from '../../core/auth.js';
  * запоминается на этом устройстве; правки контактов выбранного менеджера сохраняются в базу сами.
  */
 export class Managers {
+  /** Менеджер сменился: личные настройки заново (MyPrefs.load) — подключает kp/index.js (настройки стоят на менеджерах). */
+  static changed = () => {};
+  /** Менеджер в КП — вошедший по паролю (MgrLock.apply) — подключает kp/index.js (закрепление стоит на справочнике). */
+  static pin = () => {};
+
   // менеджеры из справочника
   static list = [];
   static KEYS = ['name', 'position', 'phone', 'ext', 'mobile', 'email', 'site', 'address', 'hours', 'folder'];
@@ -77,7 +80,7 @@ export class Managers {
     }
     if (!id || id === was) return;
     FEAT.refresh();
-    MyPrefs.load();
+    Managers.changed();
   }
 
   /**
@@ -104,7 +107,7 @@ export class Managers {
     }
     const manager = this._current();
     if (manager) this.use(manager);
-    MgrLock.apply();
+    Managers.pin();
     try {
       if (!localStorage.getItem('kp.me') && manager && !S.kpId) this.setMe(manager.id);
     } catch {
@@ -162,7 +165,7 @@ export class Managers {
    * @param {string} id
    */
   static select(id) {
-    if (MgrLock.locked()) return;
+    if (Auth.pinned()) return;
     const manager = Managers.list.find(row => row.id === id);
     if (!manager) return;
     this.use(manager);
@@ -174,7 +177,7 @@ export class Managers {
 
   /** Новый менеджер — пустые контакты. */
   static startNew() {
-    if (MgrLock.locked()) return;
+    if (Auth.pinned()) return;
     S.managerId = '';
     S.manager = { ...KpState.defManager(), name: '', position: '', ext: '', mobile: '', email: '', folder: '' };
     this._remember('');
@@ -285,37 +288,5 @@ export class Managers {
     const status = $('#mgrStat');
     if (status) status.textContent = 'Сохранено в справочнике менеджеров';
     notify.say(wasNew ? 'Менеджер добавлен в справочник' : 'Сохранено');
-  }
-}
-
-/**
- * Вход по паролю: менеджер в КП — только тот, кто вошёл (другого не выбрать и не завести); свои контакты он правит.
- * Администратор и вход без пароля — выбор из справочника. То же проверяет сервер.
- */
-export class MgrLock {
-  /**
-   * Менеджер закреплён входом.
-   * @returns {boolean}
-   */
-  static locked() {
-    const state = Auth.state;
-    return !!(state.enabled && state.user && !state.admin && !AdminSession.on);
-  }
-
-  /** КП открыто, создано, взято из черновика или заготовки — менеджером в нём становится вошедший. */
-  static apply() {
-    if (!this.locked() || S.managerId === Auth.state.user.id || KpGuard.locked()) return; // КП коллеги на просмотре — не трогать
-    const manager = Managers.list.find(row => row.id === Auth.state.user.id);
-    if (manager) Managers.use(manager);
-  }
-
-  /**
-   * Строка «Менеджер в КП — …» вместо выбора.
-   * @returns {string}
-   */
-  static html() {
-    const manager = Managers.list.find(row => row.id === Auth.state.user.id);
-    return `<p id="mgrStat" style="grid-column:1/-1;margin:0">Менеджер в КП — <b>${esc(manager ? manager.name : Auth.state.user.name || '')}</b> (вы вошли по паролю).
-      <span class="muted">Правки полей ниже сохраняются в вашей карточке сами.</span></p>`;
   }
 }

@@ -121,8 +121,9 @@ class ProjectRules(unittest.TestCase):
         found = [why for _path, why in RepoGuard(folder).run()]
         self.assertEqual(len(found), 2, found)
 
-    # разделы интерфейса, где циклы import ещё остались (каждый — внутри своего раздела); развязали раздел — убрать отсюда
-    CYCLES_LEFT = {'ui', 'doc', 'kp'}
+    # разделы интерфейса, где циклы import ещё остались (каждый — внутри своего раздела); с 3.265.0 — нет ни одного: новый
+    # цикл — развязать (порт в core/, регистрация в index.js раздела, общее — ниже), а не вписывать раздел сюда
+    CYCLES_LEFT = set()
     IMPORT = re.compile(r"^import (?:[^;']*? from )?'(\.\.?/[^']+)';", re.M)
 
     def test_import_cycles(self):

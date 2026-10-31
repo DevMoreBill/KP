@@ -3,10 +3,10 @@ import { Modal } from '../../core/modal.js';
 import { FEAT } from '../../core/features.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
-import { ShortName } from '../kp/journal-row.js';
 import { esc, today } from '../../core/util.js';
 import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
+import { ShortName } from '../kp/short-name.js';
 
 /** Дела: строка списка, быстрое добавление (вид, что сделать, дата чипом, время), правка; дела не удаляются — отменяются. */
 export class CrmTask {

@@ -3,6 +3,7 @@ import { Kit } from '../../core/kit.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationPlan } from '../req/station-plan.js';
 import { StationReq } from '../req/station-req.js';
+
 /** Воздух состава станции: цепочка подготовки по составу, компрессоры с характеристиками, давление. */
 export class KitAir {
   /**

@@ -8,13 +8,13 @@ import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { TemplateState } from './template-state.js';
 
 /**
  * Редактор шаблона КП («Настроить»): форма строится по editor.json из папки шаблона, настройки сохраняются в template.json.
  * Всё оформление документа (цвета, шрифт, стили, надписи, разделы, правила) правится здесь без программирования.
  */
 export class TemplateEditor {
-  static state = { id: '', pack: null, form: null, work: null, dirty: false, tab: '', err: '', note: '' };
   static KIND_NAMES = {
     template: 'Настройки (template.json)',
     base: 'Основа Word (base.docx)',
@@ -52,7 +52,7 @@ export class TemplateEditor {
    * @param {{keepNote?: boolean}} [options] keepNote — оставить сообщение в строке состояния
    */
   static async open(id, options = {}) {
-    const state = this.state;
+    const state = TemplateState.state;
     const templateId = id || S.template;
     const dialog = $('#dlg');
     dialog.className = 'tpled';
@@ -84,8 +84,8 @@ export class TemplateEditor {
 
   /** Окно редактора по состоянию. */
   static render() {
-    const { form, id, err } = this.state;
-    const tab = form.tabs.find(row => row.id === this.state.tab) || form.tabs[0];
+    const { form, id, err } = TemplateState.state;
+    const tab = form.tabs.find(row => row.id === TemplateState.state.tab) || form.tabs[0];
     $('#dlg').innerHTML = `<div class="dlg-h"><h3>Шаблон КП</h3>
       <select class="te-pick" aria-label="Шаблон">${Templates.list.map(row => `<option value="${esc(row.id)}"${row.id === id ? ' selected' : ''}>${esc(row.name)}</option>`).join('')}</select>
       <button class="btn" type="button" data-te="preview" ${err ? 'disabled' : ''} title="Собрать .docx по текущему КП с этими настройками — без номера и записи в журнал">Пробный DOCX</button>
@@ -100,7 +100,7 @@ export class TemplateEditor {
   }
 
   static _stateLine() {
-    const { dirty, note } = this.state;
+    const { dirty, note } = TemplateState.state;
     let cls = 'muted';
     if (dirty) cls = 'warn';
     else if (note) cls = 'okn';
@@ -112,19 +112,19 @@ export class TemplateEditor {
    * @param {string} text
    */
   static note(text) {
-    this.state.note = text;
+    TemplateState.state.note = text;
     const line = $('#teState');
     if (!line) {
       Toast.show(text);
       return;
     }
     line.textContent = text;
-    line.className = this.state.dirty ? 'warn' : 'okn';
+    line.className = TemplateState.state.dirty ? 'warn' : 'okn';
   }
 
   static _dirty() {
-    this.state.dirty = true;
-    this.state.note = '';
+    TemplateState.state.dirty = true;
+    TemplateState.state.note = '';
     const line = $('#teState');
     if (line) {
       line.textContent = 'Есть несохранённые изменения';
@@ -136,7 +136,7 @@ export class TemplateEditor {
     const box = $('#teHist');
     if (!box) return;
     try {
-      const list = await Api.request(`/api/templates/${encodeURIComponent(this.state.id)}/history`);
+      const list = await Api.request(`/api/templates/${encodeURIComponent(TemplateState.state.id)}/history`);
       box.innerHTML = list.length
         ? list
             .map(
@@ -158,7 +158,7 @@ export class TemplateEditor {
   }
 
   static _url(path) {
-    return `/api/templates/${encodeURIComponent(this.state.id)}/${path}`;
+    return `/api/templates/${encodeURIComponent(TemplateState.state.id)}/${path}`;
   }
 
   static async _reload() {
@@ -167,7 +167,7 @@ export class TemplateEditor {
   }
 
   static async _save() {
-    const state = this.state;
+    const state = TemplateState.state;
     const body = JSON.stringify(JSON.parse(JSON.stringify(state.work)), null, 2);
     await Api.request(this._url('file?name=template.json'), { method: 'PUT', headers: this.JSON_HEADERS, body });
     state.dirty = false;
@@ -183,7 +183,7 @@ export class TemplateEditor {
   }
 
   static _close() {
-    if (this.state.dirty && !confirm('Закрыть без сохранения? Изменения шаблона пропадут.')) return;
+    if (TemplateState.state.dirty && !confirm('Закрыть без сохранения? Изменения шаблона пропадут.')) return;
     const dialog = $('#dlg');
     dialog.close();
     dialog.className = '';
@@ -191,14 +191,14 @@ export class TemplateEditor {
 
   static async _preview() {
     this.note('Собираю пробный файл…');
-    await KpSave.trial(this.state.id, this.state.work);
+    await KpSave.trial(TemplateState.state.id, TemplateState.state.work);
     this.note(
       'Пробный файл скачан — откройте его из загрузок браузера. Шаблон не изменён, пока не нажмёте «Сохранить».',
     );
   }
 
   static async _copy() {
-    const state = this.state;
+    const state = TemplateState.state;
     if (
       state.dirty &&
       !confirm('Сначала сохраните изменения — копия делается из сохранённого шаблона. Продолжить без них?')
@@ -222,12 +222,12 @@ export class TemplateEditor {
     if (!confirm('Вернуть заводской вариант шаблона? Текущие файлы останутся в истории версий.')) return undefined;
     await Api.request(this._url('reset'), { method: 'POST' });
     await this._reload();
-    this.state.note = 'Заводской шаблон восстановлен, прежние файлы — в истории';
-    return this._reopen(this.state.id);
+    TemplateState.state.note = 'Заводской шаблон восстановлен, прежние файлы — в истории';
+    return this._reopen(TemplateState.state.id);
   }
 
   static async _delete() {
-    const state = this.state;
+    const state = TemplateState.state;
     if (
       !confirm(
         `Удалить шаблон «${(state.work && state.work.name) || state.id}»? Папка будет перемещена в templates/_deleted.`,
@@ -269,8 +269,8 @@ export class TemplateEditor {
   }
 
   static _input(field) {
-    if (!field.closest || !field.closest('#dlg.tpled') || !this.state.work) return;
-    const work = this.state.work;
+    if (!field.closest || !field.closest('#dlg.tpled') || !TemplateState.state.work) return;
+    const work = TemplateState.state.work;
     const data = field.dataset;
     if (data.k) {
       this._inputValue(field);
@@ -306,7 +306,7 @@ export class TemplateEditor {
       value = value === '' ? '' : +value;
       if (value !== '' && !isFinite(value)) return;
     }
-    ObjPath.set(this.state.work, key, value);
+    ObjPath.set(TemplateState.state.work, key, value);
     this._dirty();
     if (/^styles\./.test(key) || key === 'font') this._samples();
   }
@@ -321,7 +321,7 @@ export class TemplateEditor {
   }
 
   static async _changeField(field) {
-    const state = this.state;
+    const state = TemplateState.state;
     const data = field.dataset;
     if (field.classList.contains('te-pick')) {
       if (state.dirty && !confirm('Перейти к другому шаблону без сохранения изменений?')) {
@@ -350,7 +350,7 @@ export class TemplateEditor {
   }
 
   static async _changeFile(field) {
-    const state = this.state;
+    const state = TemplateState.state;
     const data = field.dataset;
     const file = field.files && field.files[0];
     if (data.img && file) {
@@ -404,12 +404,12 @@ export class TemplateEditor {
   }
 
   static _buttonTab(button) {
-    this.state.tab = button.dataset.tab;
+    TemplateState.state.tab = button.dataset.tab;
     this.render();
   }
 
   static _buttonSwitch(button) {
-    const work = this.state.work;
+    const work = TemplateState.state.work;
     const path = button.dataset.sw;
     ObjPath.set(work, path, !ObjPath.get(work, path));
     this._dirty();
@@ -417,7 +417,7 @@ export class TemplateEditor {
   }
 
   static _buttonStyle(button) {
-    const work = this.state.work;
+    const work = TemplateState.state.work;
     const path = button.dataset.st;
     const prop = button.dataset.prop;
     const style = ObjPath.get(work, path) || {};
@@ -430,7 +430,7 @@ export class TemplateEditor {
   }
 
   static _buttonSectionOn(button) {
-    const section = this.state.work.sections[+button.dataset.secOn];
+    const section = TemplateState.state.work.sections[+button.dataset.secOn];
     section.on = !section.on;
     this._dirty();
     this._refresh();
@@ -439,14 +439,14 @@ export class TemplateEditor {
   static _buttonSectionMove(button) {
     const i = +button.dataset.i;
     const j = i + +button.dataset.secMv;
-    const list = this.state.work.sections;
+    const list = TemplateState.state.work.sections;
     [list[i], list[j]] = [list[j], list[i]];
     this._dirty();
     this._refresh();
   }
 
   static _buttonRowAdd(button) {
-    const work = this.state.work;
+    const work = TemplateState.state.work;
     const list = ObjPath.get(work, button.dataset.rowAdd) || [];
     list.push(button.dataset.kind === 'brand' ? ['', 'BLUE'] : ['', '']);
     ObjPath.set(work, button.dataset.rowAdd, list);
@@ -455,13 +455,13 @@ export class TemplateEditor {
   }
 
   static _buttonRowDelete(button) {
-    ObjPath.get(this.state.work, button.dataset.rowDel).splice(+button.dataset.i, 1);
+    ObjPath.get(TemplateState.state.work, button.dataset.rowDel).splice(+button.dataset.i, 1);
     this._dirty();
     this._refresh();
   }
 
   static _buttonImageDelete(button) {
-    ObjPath.set(this.state.work, button.dataset.imgDel, '');
+    ObjPath.set(TemplateState.state.work, button.dataset.imgDel, '');
     this._dirty();
     this._refresh();
   }
@@ -477,7 +477,7 @@ export class TemplateEditor {
   }
 
   static async _buttonRestore(button) {
-    const state = this.state;
+    const state = TemplateState.state;
     if (state.dirty && !confirm('Несохранённые изменения в окне пропадут. Продолжить?')) return;
     const result = await Api.request(this._url(`restore?name=${encodeURIComponent(button.dataset.teRestore)}`), {
       method: 'POST',
@@ -488,7 +488,7 @@ export class TemplateEditor {
   }
 
   static _samples() {
-    const { form, work, tab } = this.state;
+    const { form, work, tab } = TemplateState.state;
     document.querySelectorAll('#dlg.tpled .te-style').forEach(row => {
       const input = row.querySelector('[data-k$=".size"]');
       if (!input) return;

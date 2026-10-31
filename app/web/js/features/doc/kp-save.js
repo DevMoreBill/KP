@@ -17,7 +17,7 @@ import { DealDefaults } from '../deal/deal-defaults.js';
 import { Api, ImgUpload, Srv } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
 import { MgrBar } from '../kp/mgr-bar.js';
-import { Managers, MgrLock } from '../kp/managers.js';
+import { Managers } from '../kp/managers.js';
 import { Drafts } from '../kp/drafts.js';
 import { $, esc } from '../../core/util.js';
 import { StationImages } from '../station/station-images.js';
@@ -30,6 +30,8 @@ import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
 import { KpSaved } from './kp-saved.js';
 import { Kit } from '../../core/kit.js';
+import { MgrLock } from '../kp/mgr-lock.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
@@ -115,7 +117,7 @@ export class KpSave {
     await StationImages.syncAll(); // 3D-вид и чертёж станций — по текущему составу
     if (!StationImages.confirmSave()) throw this._declined('изображения станции не готовы');
     MgrLock.apply(); // вход по паролю: в КП — контакты вошедшего менеджера
-    if (MgrLock.locked()) {
+    if (Auth.pinned()) {
       clearTimeout(MgrBar.timer);
       await Managers.saveQuiet(); // свежие правки своих контактов — в карточку до записи КП
     }

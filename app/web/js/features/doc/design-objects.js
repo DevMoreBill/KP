@@ -159,8 +159,8 @@ export class DesignObjects {
           y: Design.round(anchor.y + dy, Design.CENTS),
         });
         if (sel.kind === 'label' && !item.widthCm) {
-          item.widthCm = Design.round(rect.width / DesignView.pxPerCm(), Design.CENTS);
-          item.heightCm = Design.round(rect.height / DesignView.pxPerCm(), Design.CENTS);
+          item.widthCm = Design.round(rect.width / Design.pxPerCm(), Design.CENTS);
+          item.heightCm = Design.round(rect.height / Design.pxPerCm(), Design.CENTS);
         }
       },
       { merge: 'nudge' },
@@ -214,7 +214,7 @@ export class DesignObjects {
     const float = value === '1';
     const sel = Design.state.sel;
     const element = DesignModel.primary();
-    const perCm = DesignView.pxPerCm();
+    const perCm = Design.pxPerCm();
     const rect = element ? element.getBoundingClientRect() : null;
     const anchor = float && rect ? DesignView.anchorFor(rect.left, rect.top) : null;
     DesignHistory.change(work => {

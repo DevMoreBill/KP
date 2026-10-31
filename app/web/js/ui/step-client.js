@@ -1,20 +1,19 @@
-import { FormView } from './form-view.js';
 import { TenderBlock } from './tender.js';
 import { Str } from '../core/str.js';
 import { ClientCard } from '../features/kp/client-card.js';
 import { DealPick } from '../features/crm/deal-pick.js';
 import { PartyCheck } from '../features/kp/party-check.js';
 import { ClientFields, ClientStore, Inn } from '../features/kp/client-store.js';
-import { Steps } from './steps.js';
 import { Api } from '../core/net.js';
 import { DefRegistry } from '../core/defaults.js';
 import { KpTrack } from '../features/kp/kp-track.js';
-import { ShortName } from '../features/kp/journal-row.js';
 import { esc, today } from '../core/util.js';
 import { S } from '../core/state.js';
 import { FEAT } from '../core/features.js';
 import { UiKit } from '../core/ui-kit.js';
 import { KpDate } from '../core/kp-date.js';
+import { ShortName } from '../features/kp/short-name.js';
+import { KpForm } from '../core/kp-form.js';
 
 /**
  * У клиента уже есть недавние КП (по ИНН, за срок «kp.dupDays» из «Значений программы») — чтобы два менеджера не
@@ -75,7 +74,7 @@ export class ClientPrev {
     }
     state.key = key;
     state.busy = false;
-    if (Steps.current === 'client' && state.items.some(saved => saved.id !== S.kpId)) FormView.render();
+    if (KpForm.step() === 'client' && state.items.some(saved => saved.id !== S.kpId)) KpForm.render();
   }
 }
 

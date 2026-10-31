@@ -7,6 +7,7 @@ import { KpState, S } from '../../core/state.js';
 import { Modal } from '../../core/modal.js';
 import { KpTabs } from './kp-tabs.js';
 import { KpForm } from '../../core/kp-form.js';
+import { DraftsWin } from './drafts-win.js';
 
 /** «Новое КП»: пустое, из заготовки или продолжить черновик; текущее — в черновики. */
 export class NewKp {
@@ -83,10 +84,10 @@ export class NewKp {
     ['[data-x]', modal => modal.close()],
     ['[data-nk]', modal => NewKp._blankAfterStash(modal)],
     ['[data-nps]', modal => NewKp._then(modal, () => Presets.ask())],
-    ['[data-nall]', modal => NewKp._then(modal, () => Drafts.dialog())],
+    ['[data-nall]', modal => NewKp._then(modal, () => DraftsWin.dialog())],
     ['[data-pru]', (modal, button) => NewKp._then(modal, () => Presets.use(button.dataset.pru))],
     ['[data-prd]', (modal, button) => NewKp._dropPreset(button)],
-    ['[data-dro]', (modal, button) => NewKp._then(modal, () => Drafts.open(button.dataset.dro))],
+    ['[data-dro]', (modal, button) => NewKp._then(modal, () => DraftsWin.open(button.dataset.dro))],
     ['[data-drd]', (modal, button) => NewKp._dropDraft(button)],
   ];
 
