@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { FeedState } from './feed-state.js';
 import { FeedsTab } from './feeds-tab.js';
 import { Currency } from '../kp/currency.js';
@@ -8,6 +7,8 @@ import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { esc } from '../../core/util.js';
 import { Fmt, Str } from '../../core/str.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** Удаление позиций, загруженных фидом: все или одной категории фида — в корзину; «не загружать снова» (feeds.FeedPurge). */
 export class FeedPurgeUi {

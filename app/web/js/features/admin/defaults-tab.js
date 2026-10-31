@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { FeaturesPanel, ListsPanel, TextsPanel } from './lists-panel.js';
 import { StDirty } from './settings-tools.js';
 import { LazyJs } from '../../core/lazy-js.js';
@@ -7,6 +6,8 @@ import { Debounce } from '../../core/debounce.js';
 import { DealLogistics } from '../deal/deal-logistics.js';
 import { DEF_BY, DEF_GROUPS, DEF_GROUP_HINTS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
 import { $, esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /**
  * «Параметры программы»: всё, что программа подставляет и с чем считает, — по частям программы, с поиском и пояснениями;

@@ -1,9 +1,10 @@
 import { SafeLink } from '../../core/safe-link.js';
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /**
  * «Обслуживание»: обновления программы, сведения о системе, журнал сервера, перезапуск (сервер: app/app_update.py,

@@ -1,6 +1,6 @@
-import { AdminApi } from './admin-core.js';
 import { BitrixPanel } from './bitrix-panel.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /** Направление вида данных (сделки, компании, дела) поверх общего — первой настройкой пункта. */
 class BitrixKindDir {

@@ -1,7 +1,7 @@
-import { AdminApi } from './admin-core.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /** «Сообщения о проблемах» от менеджеров (из «Требует внимания»): текст, где случилось, «Прочитано». */
 export class AdminFeedback {

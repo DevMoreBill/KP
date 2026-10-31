@@ -1,8 +1,8 @@
-import { AdminApi } from './admin-core.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { Fmt } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /** Ход загрузки или проверки фида. */
 export class FeedJob {

@@ -1,7 +1,7 @@
-import { AdminApi } from './admin-core.js';
 import { FEAT } from '../../core/features.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /**
  * «Битрикс24 → Журнал и проверка → Расхождения»: связанные сделки, у которых стадия, сумма или ответственный в программе

@@ -1,10 +1,10 @@
-import { AdminApi } from './admin-core.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { FeedsTab } from './feeds-tab.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /** Сетка скидок поставщика: правила по категориям, приводу и мощности, «остальное», серии по приводу. */
 export class FeedDiscounts {

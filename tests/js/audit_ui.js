@@ -360,7 +360,7 @@ check('Битрикс24, «Регламент» и «Экономика сдел
   const { BitrixPanel }=mod('features/admin/bitrix-panel.js');
   const { BitrixRegs }=mod('features/admin/bitrix-regs.js');
   const { BitrixEcon }=mod('features/admin/bitrix-econ.js');
-  const { AdminApi }=mod('features/admin/admin-core.js');
+  const { AdminApi }=mod('core/admin-api.js');
   for (const [view, tab] of [[BitrixRegs, 'regs'], [BitrixEcon, 'econ']]) {
     let calls=0;
     view.view=null;
@@ -384,7 +384,7 @@ check('Битрикс24, «Регламент» и «Экономика сдел
 check('Битрикс24, «Воронки и этапы»: стадии каждой воронки — один запрос (было: отказ — без конца, успех — повторы)', async ()=>{
   const { BitrixPanel }=mod('features/admin/bitrix-panel.js');
   const { BitrixStages }=mod('features/admin/bitrix-tabs.js');
-  const { AdminApi }=mod('features/admin/admin-core.js');
+  const { AdminApi }=mod('core/admin-api.js');
   const blocks=['1', '2', '3'].map(bxcat=>({ dataset:{ bxcat } }));
   for (const fail of [true, false]) {
     const asked=[];
@@ -406,7 +406,8 @@ check('Битрикс24, «Воронки и этапы»: стадии кажд
 
 check('фиды: опрос загрузки и проверки идёт, пока открыта панель «Фиды» (с 3.189 — в вкладке «Каталог»)', async ()=>{
   const { FeedsTab }=mod('features/admin/feeds-tab.js');
-  const { AdminApi, AdminState }=mod('features/admin/admin-core.js');
+  const { AdminApi }=mod('core/admin-api.js');
+  const { AdminState }=mod('features/admin/admin-state.js');
   const { Catalog }=mod('features/catalog/catalog-store.js');
   let asked=0, refreshed=0;
   AdminState.tab='catalog';

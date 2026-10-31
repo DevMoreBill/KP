@@ -1,15 +1,17 @@
-import { Catalog } from './catalog-store.js';
-import { CatalogIndex } from './catalog-index.js';
-import { CatalogWindow } from './catalog-window.js';
-import { CatalogTool } from '../admin/records-tab.js';
+import { Catalog } from '../catalog/catalog-store.js';
+import { CatalogIndex } from '../catalog/catalog-index.js';
+import { CatalogWindow } from '../catalog/catalog-window.js';
+import { CatalogTool } from './records-tab.js';
 import { EquipWizard } from '../wizard/equip-wizard.js';
-import { SettingsWindow } from '../admin/settings-window.js';
+import { SettingsWindow } from './settings-window.js';
 import { Managers } from '../kp/managers.js';
 import { Toast } from '../../core/toast.js';
 import { Debounce } from '../../core/debounce.js';
 import { Fmt, Str } from '../../core/str.js';
-import { AdminApi, AdminDialog, AuditLabels } from '../admin/admin-core.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
+import { AuditLabels } from '../../core/audit-labels.js';
 
 /** Корзина в «Настройках»: восстановить, удалить навсегда, очистить (всё или один вид). */
 export class TrashTab {

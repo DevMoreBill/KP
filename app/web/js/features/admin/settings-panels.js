@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { AdminNav } from './admin-nav.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { ListsPanel } from './lists-panel.js';
@@ -13,6 +12,8 @@ import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { Fmt } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** История изменений настроек с откатом (сервер: app/settings_history.py). */
 export class SettingsHistoryPanel {

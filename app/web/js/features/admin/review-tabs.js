@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog, AdminState, AuditLabels } from './admin-core.js';
 import { AdminInbox, AdminReadiness } from './admin-inbox.js';
 import { SettingsWindow } from './settings-window.js';
 import { Debounce } from '../../core/debounce.js';
@@ -11,6 +10,10 @@ import { KpReport } from '../kp/kp-report.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
+import { AuditLabels } from '../../core/audit-labels.js';
 
 /** Сводка «Обзора»: плитки, график КП по периодам, менеджеры, товары, модерация, база. */
 export class StatsTab {

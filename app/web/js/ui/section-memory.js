@@ -1,13 +1,13 @@
 import { AppTabs } from '../core/app-tabs.js';
 import { S } from '../core/state.js';
 import { FEAT } from '../core/features.js';
-import { AdminState } from '../features/admin/admin-core.js';
 import { AdminNav } from '../features/admin/admin-nav.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { CatalogWindow } from '../features/catalog/catalog-window.js';
 import { Cabinet } from '../features/crm/cabinet.js';
 import { DealState } from '../features/deal/deal-state.js';
 import { Journal } from '../features/kp/journal.js';
+import { AdminState } from '../features/admin/admin-state.js';
 
 /**
  * После обновления страницы — тот же раздел, где был человек (вкладка, раздел кабинета, вкладка «Настроек»).

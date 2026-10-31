@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { BackupTab } from './backup-tab.js';
 import { ClientStore } from '../kp/client-store.js';
 import { Managers } from '../kp/managers.js';
@@ -10,6 +9,8 @@ import { Api } from '../../core/net.js';
 import { Fmt, Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** «Проверка базы» (db_health.DbHealth): целостность, позиции без категории, одинаковые названия, КП без файла Word. */
 export class DbHealthCard {

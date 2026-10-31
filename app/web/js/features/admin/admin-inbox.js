@@ -1,10 +1,11 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { AdminFeedback } from './admin-feedback.js';
 import { AdminSystem } from './admin-system.js';
 import { ModerationView } from '../catalog/moderation.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /**
  * «Главная» «Настроек» — входящие администратора: всё, что ждёт решения, и решение прямо в строке (правка товара —

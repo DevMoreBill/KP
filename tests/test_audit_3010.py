@@ -153,7 +153,7 @@ class JournalLabels(unittest.TestCase):
                 text = fh.read()
             for pattern in self.CALLS:
                 codes.update(re.findall(pattern, text))
-        with open(os.path.join(self.APP, 'web', 'js', 'features', 'admin', 'admin-core.js'), encoding='utf-8') as fh:
+        with open(os.path.join(self.APP, 'web', 'js', 'core', 'audit-labels.js'), encoding='utf-8') as fh:
             js = fh.read()
         labels = set(re.findall(r"^\s+(\w+): '", js[js.index('static ACT = {'):js.index('static ENT = {')], re.M))
         self.assertGreater(len(codes), 40)

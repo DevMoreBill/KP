@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { BackupTab } from './backup-tab.js';
 import { DataTransfer } from './data-transfer.js';
 import { SettingsWindow } from './settings-window.js';
@@ -7,6 +6,8 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** Все настройки программы в файл и обратно (сервер — data_bundle.SettingsFile): ключи API — по галочке, пароли — никогда. */
 export class SettingsFileCard {

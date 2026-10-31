@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
 import { DirEditor } from './dir-editor.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty } from './settings-tools.js';
@@ -17,6 +16,9 @@ import { $, esc } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from '../kp/kp-tabs.js';
 import { KpForm } from '../../core/kp-form.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
 
 /**
  * Записи базы: КП, товары, клиенты, поставщики, контакты менеджеров — поиск, правка, удаление в корзину (вкладка на каждый

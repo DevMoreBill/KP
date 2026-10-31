@@ -1,4 +1,3 @@
-import { AdminApi, AdminState } from './admin-core.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { AdminNav } from './admin-nav.js';
 import { SettingsSearch, StAutoSave, StDirty, StNav } from './settings-tools.js';
@@ -12,6 +11,8 @@ import { WinSize } from '../../core/win-size.js';
 import { Modal } from '../../core/modal.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminState } from './admin-state.js';
 
 /**
  * Окно «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py): размер окна запоминается, вход,

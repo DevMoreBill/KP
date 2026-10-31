@@ -1,15 +1,15 @@
-import { AdminApi } from './admin-core.js';
 import { BitrixMenu } from './bitrix-menu.js';
 import { BitrixFields, BitrixLog, BitrixManagers, BitrixOld, BitrixStages } from './bitrix-tabs.js';
 import { BitrixFlow, BitrixLink, BitrixSchedule, BitrixSend } from './bitrix-link.js';
 import { BitrixRegs } from './bitrix-regs.js';
 import { BitrixEcon } from './bitrix-econ.js';
 import { StDirty } from './settings-tools.js';
-import { MirrorPanel } from '../crm/mirror-panel.js';
 import { BitrixCompanies, BitrixContacts, BitrixDeals, BitrixTasks } from './bitrix-objects.js';
 import { BitrixGuide } from './bitrix-guide.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { MirrorPanel } from './mirror-panel.js';
 
 /** «Битрикс24»: связь кабинета менеджера с Битрикс24 (app/bitrix.py, правила обмена — app/bitrix_rules.py), вкладка — пункт меню. */
 export class BitrixPanel {

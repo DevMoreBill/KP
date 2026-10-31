@@ -1,4 +1,4 @@
-import { AdminState } from './admin-core.js';
+import { AdminState } from './admin-state.js';
 
 /** Права вошедшего администратора (сервер — admin_rights.py): какие вкладки «Настроек» видны и что только для просмотра. */
 export class AdminRightsView {

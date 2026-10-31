@@ -1,7 +1,7 @@
-import { AdminApi } from './admin-core.js';
 import { BitrixPanel } from './bitrix-panel.js';
 import { FEAT } from '../../core/features.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /**
  * «Экономика сделки»: поля раздела «Экономика сделки» карточки сделки Битрикс24 (найдены по настройке карточки портала) и что

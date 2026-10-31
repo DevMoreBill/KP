@@ -1,6 +1,5 @@
 import { FormView } from './form-view.js';
 import { Toast } from '../core/toast.js';
-import { AdminDialog } from '../features/admin/admin-core.js';
 import { KpFilesPanel } from '../features/kp/kp-files.js';
 import { esc } from '../core/util.js';
 import { DealState } from '../features/deal/deal-state.js';
@@ -10,6 +9,7 @@ import { KpState, S } from '../core/state.js';
 import { KpConditions } from '../core/conditions.js';
 import { CondMemory } from '../core/cond-memory.js';
 import { UiKit } from '../core/ui-kit.js';
+import { AdminDialog } from '../core/admin-dialog.js';
 
 /**
  * Раздел 5 «Условия»: поле и список вариантов ▾ у каждого условия, «Как в прошлом КП»; «Очистить все условия» —

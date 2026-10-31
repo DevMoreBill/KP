@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { BackupTab } from './backup-tab.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { StNav } from './settings-tools.js';
@@ -7,6 +6,8 @@ import { Catalog } from '../catalog/catalog-store.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /**
  * «Обслуживание → Опасная зона»: всё необратимое в одном месте, с объяснением последствий; выполняется только после

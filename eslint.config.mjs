@@ -116,6 +116,11 @@ const STRICT = {
   'max-lines-per-function': ['error', { max: 50, skipBlankLines: true, skipComments: true }], 'max-lines': ['error', { max: 700, skipBlankLines: true, skipComments: true }],
 };
 
+// слои интерфейса (циклы import): запреты разделов — общие; правило для части разделов заменяет общее и повторяет их
+const LAYERS = {
+  ui: { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+  admin: { group: ['../admin/**'], message: '«Настройки» — верхний раздел: окна подтверждения — AdminDialog, запросы /api/admin — AdminApi, подписи журнала — AuditLabels (core/)' },
+};
 // сведения, не отказ (tests/run_all.py и CI — отдельным шагом с KP_ESLINT_REPORT=1): разметка без esc(); сложность и длина
 // функций обычных скриптов (у ES-модулей это уже ошибки STRICT). esc-html — «error», когда все места разобраны
 const REPORT = process.env.KP_ESLINT_REPORT === '1' ? [{
@@ -164,14 +169,20 @@ export default [{
 }, {
   // разделы не подключают форму КП (ui/ выше разделов — циклы import): перерисовать форму, шаг, боковая панель — KpForm
   // (core/kp-form.js, форму подключает ui/index.js), телефонная раскладка — PhoneLayout, общие виджеты — core/
+  // «Настройки» (admin) — верхний раздел: разделы их не подключают; вход администратора с экрана входа и форма входа после
+  // истёкшей сессии — регистрацией в admin/index.js (AuthScreen.openSettings, AdminApi.onExpired)
   files: ['app/web/js/features/**/*.js'],
-  rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' }] }] },
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    LAYERS.ui,
+    LAYERS.admin,
+  ] }] },
 }, {
   // КП не подключает кабинет (кабинет построен поверх КП): открыть кабинет или сделку, сделки и стадии — CabinetLink
-  // (core/cabinet-link.js, подключает features/crm/index.js); правило заменяет общее для этих файлов — запрет ui/ повторён
+  // (core/cabinet-link.js, подключает features/crm/index.js); правило заменяет общее для этих файлов — запреты ui/ и admin/ повторены
   files: ['app/web/js/features/kp/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [
-    { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+    LAYERS.ui,
+    LAYERS.admin,
     { group: ['../crm/**'], message: 'КП не подключает кабинет: CabinetLink (core/cabinet-link.js)' },
   ] }] },
 }, {
@@ -180,13 +191,15 @@ export default [{
   // (view): оттенок по фото — StationEquip.photoTint (подключает view/index.js)
   files: ['app/web/js/features/kit/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [
-    { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+    LAYERS.ui,
+    LAYERS.admin,
     { group: ['../station/**'], message: 'состав станции не подключает подбор: StationPlan, KitView.stationQuick' },
   ] }] },
 }, {
   files: ['app/web/js/features/layout/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [
-    { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
+    LAYERS.ui,
+    LAYERS.admin,
     { group: ['../view/**'], message: 'компоновка не подключает 3D-вид: StationEquip.photoTint' },
   ] }] },
 }, {

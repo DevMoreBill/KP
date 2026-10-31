@@ -21,7 +21,7 @@ import { AdminSession } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { ApiKeys } from '../kp/api-keys.js';
 import { FreightSettings } from '../deal/freight-settings.js';
-import { GoodsTab, TrashTab } from '../catalog/trash-tab.js';
+import { GoodsTab, TrashTab } from './trash-tab.js';
 
 /**
  * Разделы и вкладки «Настроек»: «Главная» отдельной кнопкой и семь разделов по предмету (каталог, люди, документы, справочники,

@@ -1,10 +1,11 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { BitrixPanel } from './bitrix-panel.js';
 import { Money } from '../../core/money.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { BitrixDiffCard } from './bitrix-diff.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** «Менеджеры»: менеджер программы ↔ пользователь Битрикса, участие, своё направление и воронка. */
 export class BitrixManagers {

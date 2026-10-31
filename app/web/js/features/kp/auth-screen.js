@@ -4,7 +4,6 @@ import { LoginForm } from './login-form.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { AdminSession, Api } from '../../core/net.js';
-import { SettingsWindow } from '../admin/settings-window.js';
 import { AppVersion } from '../help.js';
 import { $, esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
@@ -15,6 +14,9 @@ export class AuthScreen {
   static SHORT_HOURS = 12;
   static FOCUS_DELAY = 30;
   static BRAND = '<div class="auth-logo">ПНЕВМО<span>ТЕХ</span></div>';
+
+  /** Открыть «Настройки» поверх экрана входа — подключает раздел «Настройки» (admin/index.js). */
+  static openSettings = () => {};
 
   /** Ответ сервера: смена пароля обязательна (kp:password), сессия закончилась при включённом входе (kp:unauthorized). */
   static listen() {
@@ -146,7 +148,7 @@ export class AuthScreen {
 
   // «Вход администратора»: «Настройки» поверх экрана входа; закрыли — вошёл администратор: программа открывается
   static _admin() {
-    SettingsWindow.open();
+    this.openSettings();
     const dialog = $('#setdlg');
     if (!dialog) return;
     dialog.addEventListener(

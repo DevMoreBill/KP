@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { AlertsCard } from './settings-panels.js';
 import { AiDirect } from '../catalog/ai-chat.js';
 import { TypesEditor } from '../catalog/types-editor.js';
@@ -12,6 +11,8 @@ import { TemplateDesigner } from '../doc/template-designer.js';
 import { TemplateEditor } from '../doc/template-editor.js';
 import { $, esc } from '../../core/util.js';
 import { Templates } from '../doc/templates.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** Шаблоны КП: графический редактор, настройки, новый шаблон для компании, папка шаблонов. */
 export class TemplatesTab {

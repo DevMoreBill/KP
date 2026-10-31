@@ -1,4 +1,4 @@
-import { AdminApi, AdminDialog, AdminState, AuditLabels } from './admin-core.js';
+import { AdminState } from './admin-state.js';
 import { AdminNav } from './admin-nav.js';
 import { AdminSystem } from './admin-system.js';
 import { BackupTab } from './backup-tab.js';
@@ -27,12 +27,13 @@ import { AlertsCard, ChangedPanel, ConnectionsPanel, MirrorCard, SettingsHistory
 import { StDirty, StNav, StRefresh, StVal, SettingsSearch } from './settings-tools.js';
 import { AdminLogin, SettingsWindow } from './settings-window.js';
 import { AccessPanel, AdminsTab, SecurityTab } from './staff-tabs.js';
+import { GoodsTab, TrashTab } from './trash-tab.js';
+import { MirrorPanel } from './mirror-panel.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AuthScreen } from '../kp/auth-screen.js';
 
 export const ADMIN_UI = {
-  AdminApi,
-  AdminDialog,
   AdminState,
-  AuditLabels,
   AdminNav,
   AdminSystem,
   BackupTab,
@@ -100,7 +101,14 @@ export const ADMIN_UI = {
   AccessPanel,
   AdminsTab,
   SecurityTab,
+  GoodsTab,
+  TrashTab,
+  MirrorPanel,
 };
 
 SettingsWindow.listen();
 StDirty.listen();
+// «Настройки» — верхний раздел (КП, каталог, сделка и кабинет их не подключают): вход администратора с экрана входа
+// и форма входа после истёкшей сессии подключаются здесь
+AdminApi.onExpired = () => SettingsWindow.render();
+AuthScreen.openSettings = () => SettingsWindow.open();

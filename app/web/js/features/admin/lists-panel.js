@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { Managers } from '../kp/managers.js';
 import { FEAT } from '../../core/features.js';
 import { Debounce } from '../../core/debounce.js';
@@ -9,6 +8,8 @@ import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { LISTS } from '../../core/lists.js';
 import { KpForm } from '../../core/kp-form.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** «Списки выбора»: слева — списки по группам, справа — строки выбранного (добавить, порядок, удалить, вернуть встроенный). */
 export class ListsPanel {

@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
 import { AdminNav } from './admin-nav.js';
 import { BackupTab } from './backup-tab.js';
 import { DefaultsTab } from './defaults-tab.js';
@@ -14,6 +13,9 @@ import { FEAT } from '../../core/features.js';
 import { DEF_BY, DEF_GROUPS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
 import { ServerDefaults } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
 
 /** Поиск по всем настройкам (вкладки, умолчания, функции, списки, ключи, категории) с переходом к найденному. */
 export class SettingsSearch {

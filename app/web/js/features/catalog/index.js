@@ -38,7 +38,6 @@ import { ModerationList, ModerationView } from './moderation.js';
 import { NewTypeDialog } from './new-type.js';
 import { PageImages } from './page-images.js';
 import { Suppliers } from './suppliers.js';
-import { GoodsTab, TrashTab } from './trash-tab.js';
 import { TypeForm } from './type-form.js';
 import { TypesEditor } from './types-editor.js';
 import { LISTS } from '../../core/lists.js';
@@ -88,7 +87,6 @@ export const CATALOG = {
   DimRow,
   EditorDrag,
   FeedBadge,
-  GoodsTab,
   ImageDrop,
   ImageFiles,
   ImageSlots,
@@ -106,7 +104,6 @@ export const CATALOG = {
   PageImages,
   SpecPaste,
   Suppliers,
-  TrashTab,
   TypeForm,
   TypesEditor,
   XlsId,

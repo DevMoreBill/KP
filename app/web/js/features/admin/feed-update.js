@@ -1,10 +1,10 @@
-import { AdminApi } from './admin-core.js';
 import { FeedFmt, FeedState } from './feed-state.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Modal } from '../../core/modal.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /**
  * «Обновить цены…» / «Обновить остатки…» фида из файлов (сервер — feed_update.py): выбрать новые файлы → полный список

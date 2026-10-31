@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { FeedDiscounts } from './feed-disc.js';
 import { FeedForm, FeedPanel } from './feed-panel.js';
 import { FeedPurgeUi, FeedRulesUi } from './feed-rules.js';
@@ -14,6 +13,8 @@ import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** «Фиды поставщиков»: товарный фид (YML) или фид из файлов (парс сайта + прайс) — загрузка в каталог и сверка цен. */
 export class FeedsTab {

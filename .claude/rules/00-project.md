@@ -46,7 +46,11 @@
   `CabinetLink` (`core/cabinet-link.js`, подключает `features/crm/index.js`); `KpDate`, `CrmFmt`, `DateChips` — в `core/`. (30.10, этап 3) Состав станции (`features/kit`) не подключает подбор
   (`features/station`): расчёт компоновки позиции — `StationPlan` (`kit/station-plan.js`), быстрый подбор под составом —
   `KitView.stationQuick`; компоновка (`features/layout`) не подключает 3D-вид (`features/view`): оттенок по фото —
-  `StationEquip.photoTint` (подключают `station/index.js` и `view/index.js`).
+  `StationEquip.photoTint` (подключают `station/index.js` и `view/index.js`). (31.10, этап 4) «Настройки» (`features/admin`) —
+  верхний раздел: другие разделы их не подключают (ESLint, запреты слоёв — `LAYERS` в `eslint.config.mjs`); окна
+  подтверждения, выбора и формы — `AdminDialog`, запросы `/api/admin` — `AdminApi`, подписи журнала — `AuditLabels` (`core/`);
+  вкладки «Настроек» — в `features/admin` (корзина, «Как в Битрикс24»); вход администратора с экрана входа —
+  `AuthScreen.openSettings`, форма входа после истёкшей сессии — `AdminApi.onExpired` (подключает `admin/index.js`).
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона
@@ -86,7 +90,7 @@
   «только вместе с» — `NEEDS`) и в `app/web/js/core/features.js` (`needs` тот же), подробная инструкция «Где · Как пользоваться ·
   Выключено» — в `app/web/js/core/feature-help.js`; выключенная функция прячется в интерфейсе и закрыта на сервере, данные не
   удаляются. Проверка — `tests/test_features_help.py` (`needs` сверяется в обе стороны с 3.226.6). Новое действие журнала
-  (`admin.log`) — подпись в `AuditLabels.ACT` (`admin-core.js`), проверка `test_audit_3010.JournalLabels`.
+  (`admin.log`) — подпись в `AuditLabels.ACT` (`core/audit-labels.js`), проверка `test_audit_3010.JournalLabels`.
 
 ## База данных
 - Схема меняется только миграциями в `app/storage.py` (атомарно, `MIGRATION_FILL`), без ручной правки рабочей базы

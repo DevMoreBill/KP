@@ -6,8 +6,9 @@ import { Toast } from '../../core/toast.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
-import { AdminApi, AuditLabels } from '../admin/admin-core.js';
 import { AdminSession, Api } from '../../core/net.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AuditLabels } from '../../core/audit-labels.js';
 
 /**
  * Правка на модерации «было → стало» с выделением изменённого, приём целиком или по отмеченным полям, код правки — под

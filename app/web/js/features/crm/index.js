@@ -19,7 +19,6 @@ import { DealClient } from './deal-client.js';
 import { ClientSuggest } from './client-suggest.js';
 import { DealFieldsView } from './deal-fields.js';
 import { LostPick } from './lost-pick.js';
-import { MirrorPanel } from './mirror-panel.js';
 import { PhoneCall } from './phone-call.js';
 import { LISTS } from '../../core/lists.js';
 import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
@@ -50,7 +49,6 @@ export const CRM = {
   ClientSuggest,
   DealFieldsView,
   LostPick,
-  MirrorPanel,
   PhoneCall,
 };
 

@@ -1,5 +1,4 @@
 import { AdminRightsEditor } from './admin-rights-editor.js';
-import { AdminApi, AdminDialog, AdminState } from './admin-core.js';
 import { CopyText } from '../../core/files.js';
 import { Modal } from '../../core/modal.js';
 import { Powers } from '../kp/auth.js';
@@ -8,6 +7,9 @@ import { DefRegistry } from '../../core/defaults.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
 
 /** «Мой пароль»: смена своего пароля и правила доступа. */
 export class SecurityTab {

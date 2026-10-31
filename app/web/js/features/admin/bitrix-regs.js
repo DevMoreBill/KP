@@ -1,6 +1,6 @@
-import { AdminApi } from './admin-core.js';
 import { BitrixPanel } from './bitrix-panel.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
 
 /**
  * «Регламент сделки»: что менеджер обязан заполнить по «Правилам ведения сделки в Битрикс24» — пункт, когда нужен и поле

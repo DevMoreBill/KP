@@ -1,4 +1,3 @@
-import { AdminState } from './admin-core.js';
 import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
 import { DealUi } from '../deal/deal-ui.js';
@@ -11,6 +10,7 @@ import { $, Uid, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
+import { AdminState } from './admin-state.js';
 
 /** Значение по пути «a.b.0.c» в документе: прочитать, записать (недостающее создаётся — массив, если дальше номер). */
 export class DocPath {

@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog } from '../admin/admin-core.js';
 import { LayoutEditor } from './layout-editor.js';
 import { LayoutParams } from '../layout/layout-params.js';
 import { RuleEdit } from './rule-edit.js';
@@ -9,6 +8,8 @@ import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 const JSON_POST = { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' } };
 

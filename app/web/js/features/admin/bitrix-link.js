@@ -1,7 +1,8 @@
-import { AdminApi, AdminDialog } from './admin-core.js';
 import { BitrixPanel } from './bitrix-panel.js';
 import { esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /** «Подключение и состояние»: адрес вебхука (ключ — только на сервере), проверка, обмен кнопками. */
 export class BitrixLink {

@@ -1,4 +1,3 @@
-import { AdminApi, AdminDialog, AuditLabels } from './admin-core.js';
 import { CatFilterPane, DataTransfer, DbHealthCard, SupplierExport } from './data-transfer.js';
 import { DbMaint, MigrationsCard } from './maint-card.js';
 import { SettingsFileCard } from './settings-file.js';
@@ -9,6 +8,9 @@ import { esc } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Fmt } from '../../core/str.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
+import { AuditLabels } from '../../core/audit-labels.js';
 
 /** «База и копии»: сводка плитками и подвкладки Выгрузить · Загрузить · Автокопии · Обслуживание · История. */
 export class BackupTab {

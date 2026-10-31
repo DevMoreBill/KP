@@ -1,6 +1,7 @@
-import { AdminApi, AdminDialog } from '../admin/admin-core.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { AdminDialog } from '../../core/admin-dialog.js';
 
 /**
  * «Настройки → Битрикс24 → Как в Битрикс24»: структура портала (воронки, стадии, поля сделки), загрузка сделок (открытые и
