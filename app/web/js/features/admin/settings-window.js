@@ -1,6 +1,7 @@
 import { AppTabs } from '../../core/app-tabs.js';
 import { AdminNav } from './admin-nav.js';
-import { SettingsSearch, StAutoSave, StDirty, StNav } from './settings-tools.js';
+import { StAutoSave, StDirty, StNav } from './settings-tools.js';
+import { SettingsSearch } from './settings-search.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { LoginForm } from '../kp/login-form.js';
 import { Toast } from '../../core/toast.js';
@@ -121,7 +122,7 @@ export class SettingsWindow {
       return;
     }
     AdminState.tab = AdminNav.route(AdminState.tab);
-    dialog.innerHTML = `${head}<div class="st-b">${AdminNav.html(AdminState.tab)}
+    dialog.innerHTML = `${head}<div class="st-b">${AdminNav.html(AdminState.tab, SettingsSearch.html())}
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
     dialog.querySelector('.st-nav .on')?.scrollIntoView({ block: 'nearest' });
     SettingsSearch.bind(dialog);

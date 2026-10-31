@@ -84,8 +84,15 @@
   Excel) просят окно портом `CatalogLink` (`open`, `moderated`, `say`, `redraw`, `reloadPending`); правка позиции каталога —
   `CatalogSession` (`current`, `moderated`, `saveLabel`), поле цены карточки — `CatalogPrice` (`catalog-price.js`), цена в
   списке — `ListPrice`; совпадения с поиском отборы сверяют по ревизиям `CatalogIndex.rev` (позиции, `changed()`) и
-  `Suppliers.rev` (поставщики) — индекс и поставщики не зовут отбор; фид-источник позиции — `Suppliers.source`.
-- Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
+  `Suppliers.rev` (поставщики) — индекс и поставщики не зовут отбор; фид-источник позиции — `Suppliers.source`. (31.10, этап 13)
+  «Настройки» без внутренних циклов: вкладки и панели просят окно через `AdminState` (`dialog`, `show`, `route`, `tabKey`;
+  подключает `admin/index.js`); поиск по «Настройкам» — `SettingsSearch` (`settings-search.js`, строку поиска окно
+  передаёт в `AdminNav.html`), нормализация текста — `StNav.norm`; вкладки «Битрикс24» — `BitrixViews.of` (регистрацией
+  `BitrixPanel.views`); вкладку фидов перерисовывает `FeedState.redraw`; общее «Базы и копий» — `BackupKit` (сводка и
+  переход к пункту загрузки — регистрацией).
+- Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), циклы `import` (`test_project.test_import_cycles`: не через
+  границы разделов и только в разделах `CYCLES_LEFT`, развязали раздел — убрать его из списка; 31.10), слепки
+  (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона
   (`KP_PROGON_DOM=1 tests/ui/progon.py` кладёт `.html` рядом со снимками, значения полей — как на экране; сравнить с прогоном

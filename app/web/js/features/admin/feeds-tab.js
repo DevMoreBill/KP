@@ -5,7 +5,6 @@ import { FeedState } from './feed-state.js';
 import { FeedJob, FeedLog, FeedPreview } from './feed-view.js';
 import { FeedUpdateUi } from './feed-update.js';
 import { MakerLogoPanel } from './maker-logos.js';
-import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { $ } from '../../core/util.js';
@@ -15,6 +14,7 @@ import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
 
 /** «Фиды поставщиков»: товарный фид (YML) или фид из файлов (парс сайта + прайс) — загрузка в каталог и сверка цен. */
 export class FeedsTab {
@@ -306,7 +306,7 @@ export class FeedsTab {
   static async _export({ button }) {
     StNav.sup = button.dataset.sup || '';
     StNav.select('backup');
-    await SettingsWindow.tab();
+    await AdminState.show();
   }
 
   static async _cancel({ main }) {

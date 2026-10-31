@@ -1,7 +1,5 @@
-import { AdminNav } from './admin-nav.js';
 import { DefaultsTab } from './defaults-tab.js';
 import { ListsPanel } from './lists-panel.js';
-import { SettingsWindow } from './settings-window.js';
 import { StNav, StRefresh, StVal } from './settings-tools.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { LISTS } from '../../core/lists.js';
@@ -14,11 +12,12 @@ import { Fmt } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
 
 /** История изменений настроек с откатом (сервер: app/settings_history.py). */
 export class SettingsHistoryPanel {
   static filter = ''; // вкладка, по которой отфильтрована история (кнопка «История» в заголовке вкладки)
-  // вкладки, у которых есть история (прежние ключи записей истории сводятся через AdminNav.key)
+  // вкладки, у которых есть история (прежние ключи записей истории сводятся через AdminState.tabKey)
   static TABS = {
     params: 'Параметры программы',
     types: 'Категории оборудования',
@@ -55,7 +54,7 @@ export class SettingsHistoryPanel {
   }
 
   static _key() {
-    return SettingsHistoryPanel.filter && AdminNav.key(SettingsHistoryPanel.filter);
+    return SettingsHistoryPanel.filter && AdminState.tabKey(SettingsHistoryPanel.filter);
   }
 
   /**
@@ -64,7 +63,7 @@ export class SettingsHistoryPanel {
    */
   list() {
     const key = SettingsHistoryPanel._key();
-    return key ? this.items.filter(row => AdminNav.key(row.tab) === key) : this.items;
+    return key ? this.items.filter(row => AdminState.tabKey(row.tab) === key) : this.items;
   }
 
   /** Показать список. */
@@ -108,7 +107,7 @@ export class SettingsHistoryPanel {
     const choice = await Modal.ask(this._details(entry));
     if (choice === 'go') {
       StNav.select(entry.tab);
-      SettingsWindow.tab();
+      AdminState.show();
       return;
     }
     if (choice !== 'back') return;
@@ -410,7 +409,7 @@ export class ChangedPanel {
       const entry = this.rows[+open.dataset.chgo];
       if (entry.before) entry.before();
       StNav.select(entry.tab);
-      await SettingsWindow.tab();
+      await AdminState.show();
       StNav.highlight(entry.focus, entry.label);
     };
   }

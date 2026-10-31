@@ -1,5 +1,4 @@
 import { FeedState } from './feed-state.js';
-import { FeedsTab } from './feeds-tab.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
@@ -87,7 +86,7 @@ export class FeedPurgeUi {
       dialog.close();
       Toast.show(`Удалено в корзину: ${Fmt.num(reply.deleted)}`);
       Catalog.refresh();
-      FeedsTab.render(main);
+      FeedState.redraw(main);
     } catch (error) {
       event.target.disabled = false;
       Toast.show(error.message || String(error));

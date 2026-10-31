@@ -11,6 +11,7 @@ import { UiKit } from '../../core/ui-kit.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
 import { AuditLabels } from '../../core/audit-labels.js';
+import { BackupKit } from './backup-kit.js';
 
 /** «База и копии»: сводка плитками и подвкладки Выгрузить · Загрузить · Автокопии · Обслуживание · История. */
 export class BackupTab {
@@ -48,18 +49,7 @@ export class BackupTab {
     ['managers', 'Менеджеров'],
     ['deals', 'Сделок'],
   ];
-  static FMT = [
-    ['xlsx', 'Excel (.xlsx) — таблица, можно править'],
-    ['json', 'JSON — данные как есть'],
-    ['xml', 'XML'],
-    ['yml', 'YML — для сайтов (только каталог, без закупки)'],
-    ['zip', 'Архив .zip — данные и все фото'],
-  ];
-  static SQLITE = ['sqlite', 'Точная копия базы (.sqlite в архиве .zip)'];
-  static FMT_TIP =
-    '<p>У всех вариантов выгрузки — одни и те же форматы, и любой файл загружается обратно: «Загрузить → Копия или правки» (настройки — «Файл настроек»).</p><p><b>Excel</b> — лист на раздел: строка 2 — служебные ключи, столбец «Код» не меняйте; при загрузке можно взять только изменённые строки. <b>JSON</b> и <b>XML</b> — данные как есть. <b>YML</b> — каталог в формате Яндекса для сайтов и маркетплейсов (и данные для загрузки обратно). <b>Архив .zip</b> — JSON и все фото, на которые он ссылается.</p>';
   static ALL = 'catalog,kp,managers,clients,suppliers,audit,settings';
-  static FMT_KEY = 'kp.bk.fmt';
   static LOW_DISK_GB = 2;
   static GIB = 1024 ** 3;
   static SUMMARY_DELAY_MS = 1500;
@@ -78,28 +68,14 @@ export class BackupTab {
   static out = 'db'; // выбранное в «Выгрузить»
   static inn = 'file'; // выбранное в «Загрузить»
   static hist = ''; // фильтр «Истории»
-  static main = null;
   static overview = null; // сводка /api/admin/maint/overview
-  static flt = null; // «Каталог по фильтру»: выбранное (переживает переключение вариантов)
-
-  /**
-   * Строка «что — пояснение — кнопки» (и в «Файле настроек» на вкладке «Файл, изменения, откат»).
-   * @param {string} title
-   * @param {string} note
-   * @param {string} acts
-   * @param {string} [id]
-   * @returns {string}
-   */
-  static row(title, note, acts, id = '') {
-    return `<div class="bk-row"${id ? ` id="${id}"` : ''}><div class="bk-t"><b>${title}</b><small class="muted">${note}</small></div><div class="bk-a">${acts}</div></div>`;
-  }
 
   /**
    * Вкладка.
    * @param {HTMLElement} main
    */
   static async render(main) {
-    this.main = main;
+    BackupKit.main = main;
     if (StNav.sup) {
       this.sub = 'out';
       this.out = 'sup';
@@ -136,7 +112,7 @@ export class BackupTab {
    */
   static switchTo(sub) {
     this.sub = sub;
-    this.main.querySelectorAll('[data-bks]').forEach(button => {
+    BackupKit.main.querySelectorAll('[data-bks]').forEach(button => {
       const current = button.dataset.bks === sub;
       button.classList.toggle('on', current);
       button.setAttribute('aria-selected', current);
@@ -151,10 +127,10 @@ export class BackupTab {
     } catch {
       this.overview = null;
     }
-    const box = this.main && this.main.querySelector('#bkSum');
+    const box = BackupKit.main && BackupKit.main.querySelector('#bkSum');
     if (!box || !this.overview) return;
     box.innerHTML = this.tiles(this.overview);
-    const size = this.main.querySelector('#bkDbSz');
+    const size = BackupKit.main.querySelector('#bkDbSz');
     if (size) size.textContent = Fmt.size(this.overview.dbBytes);
   }
 
@@ -233,7 +209,7 @@ export class BackupTab {
 
   /** Нарисовать открытую подвкладку. */
   static pane() {
-    const pane = this.main.querySelector('#bkPane');
+    const pane = BackupKit.main.querySelector('#bkPane');
     pane.onclick = null;
     pane.onchange = null;
     pane.oninput = null;
@@ -281,72 +257,12 @@ export class BackupTab {
   }
 
   /**
-   * Низ формы: строка состояния и кнопка.
-   * @param {string} button
-   * @param {string} [note]
-   * @returns {string}
-   */
-  static foot(button, note = '') {
-    return `<div class="bk-foot"><span class="bk-note" id="bkSt">${note}</span>${button}</div>`;
-  }
-
-  /**
    * Таблица «название — значение».
    * @param {Array<string[]>} rows
    * @returns {string}
    */
   static table(rows) {
     return `<table class="pv-t bk-kv">${rows.map(([key, value]) => `<tr><td>${key}</td><td>${value}</td></tr>`).join('')}</table>`;
-  }
-
-  /**
-   * Запомненный формат выгрузки.
-   * @returns {string}
-   */
-  static fmt() {
-    try {
-      return localStorage.getItem(this.FMT_KEY) || 'xlsx';
-    } catch {
-      return 'xlsx';
-    }
-  }
-
-  /**
-   * Варианты формата.
-   * @param {{sqlite?: boolean}} [opts] sqlite — и точная копия базы
-   * @returns {string}
-   */
-  static fmtOpts({ sqlite = false } = {}) {
-    const current = this.fmt();
-    const list = [...(sqlite ? [this.SQLITE] : []), ...this.FMT];
-    return list
-      .map(([key, label]) => `<option value="${key}"${key === current ? ' selected' : ''}>${label}</option>`)
-      .join('');
-  }
-
-  /**
-   * Поле «Формат».
-   * @param {{sqlite?: boolean}} [opts]
-   * @returns {string}
-   */
-  static fmtSel(opts) {
-    return `<label class="f"><span class="st-mh">Формат ${UiKit.tip(this.FMT_TIP)}</span><select id="bkFmt" data-nodirty>${this.fmtOpts(opts)}</select></label>`;
-  }
-
-  /**
-   * Выбранный формат (запоминается для всех вариантов, кроме точной копии базы).
-   * @param {HTMLElement} box
-   * @returns {string}
-   */
-  static fmtOf(box) {
-    const value = box.querySelector('#bkFmt').value;
-    if (value !== 'sqlite')
-      try {
-        localStorage.setItem(this.FMT_KEY, value);
-      } catch {
-        // без запоминания
-      }
-    return value;
   }
 
   static _head(title, help = '') {
@@ -371,12 +287,12 @@ export class BackupTab {
         ['Внутри', 'каталог, КП, клиенты, менеджеры, поставщики, настройки, журнал'],
         ['Размер базы', `<span id="bkDbSz">${overview.dbBytes ? Fmt.size(overview.dbBytes) : '…'}</span>`],
       ],
-    )}${this.fmtSel({ sqlite: true })}${this.foot('<button class="btn primary" type="button" data-bkx="db">Скачать</button>')}</div>`;
+    )}${BackupKit.fmtSel({ sqlite: true })}${BackupKit.foot('<button class="btn primary" type="button" data-bkx="db">Скачать</button>')}</div>`;
     side.onclick = event => {
       const button = event.target.closest('[data-bkx]');
       if (!button) return;
-      const fmt = this.fmtOf(side);
-      this._dl(
+      const fmt = BackupKit.fmtOf(side);
+      DataTransfer.downloadBy(
         button,
         fmt === 'sqlite' ? 'export/sqlite' : `export?${new URLSearchParams({ sections: this.ALL, fmt })}`,
       );
@@ -390,7 +306,7 @@ export class BackupTab {
 
   static _outSup(side) {
     side.innerHTML = `<div class="bk-form" id="seBox">${this._head('Каталог поставщика', SupplierExport.TIP)}<label class="f"><span>Поставщик</span><select id="seSup" data-nodirty><option value="">Загружаю…</option></select></label>
-          ${this.fmtSel()}${this.foot('<button class="btn primary" type="button" data-se="go">Скачать</button>', 'Без цен, закупки и остатков — при загрузке они остаются как в программе.')}<p class="muted bk-st" id="seSt"></p></div>`;
+          ${BackupKit.fmtSel()}${BackupKit.foot('<button class="btn primary" type="button" data-se="go">Скачать</button>', 'Без цен, закупки и остатков — при загрузке они остаются как в программе.')}<p class="muted bk-st" id="seSt"></p></div>`;
     SupplierExport.mount(side, StNav.sup || '');
     StNav.sup = '';
   }
@@ -405,7 +321,7 @@ export class BackupTab {
         ['Внутри', 'значения, списки, тексты, функции, тарифы, нормы станций, фиды, почта, права менеджеров'],
         ['Не попадают', 'пароли — никогда; ключи API — только по галочке ниже'],
       ],
-    )}<label class="ck bk-ck"><input type="checkbox" id="sfKeys" data-nodirty> С ключами API ${UiKit.tip('<p>Ключи сервисов: проверка контрагентов, перевозчики, PDF, нейросеть, GitHub. Такой файл храните как пароль.</p>')}</label>${this.fmtSel()}${this.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать</button>')}</div>`;
+    )}<label class="ck bk-ck"><input type="checkbox" id="sfKeys" data-nodirty> С ключами API ${UiKit.tip('<p>Ключи сервисов: проверка контрагентов, перевозчики, PDF, нейросеть, GitHub. Такой файл храните как пароль.</p>')}</label>${BackupKit.fmtSel()}${BackupKit.foot('<button class="btn primary" type="button" data-bkx="settings">Скачать</button>')}</div>`;
     side.querySelector('#sfKeys').onchange = async event => {
       const sure = () =>
         AdminDialog.confirm(
@@ -419,17 +335,8 @@ export class BackupTab {
       const button = event.target.closest('[data-bkx]');
       if (!button) return;
       const keys = side.querySelector('#sfKeys').checked ? { keys: '1' } : {};
-      this._dl(button, `settings-file?${new URLSearchParams({ fmt: this.fmtOf(side), ...keys })}`);
+      DataTransfer.downloadBy(button, `settings-file?${new URLSearchParams({ fmt: BackupKit.fmtOf(side), ...keys })}`);
     };
-  }
-
-  static async _dl(button, url) {
-    button.disabled = true;
-    try {
-      if (await DataTransfer.download(url, this.main.querySelector('#bkSt'))) this.summary();
-    } finally {
-      button.disabled = false;
-    }
   }
 
   /**
@@ -544,7 +451,7 @@ export class BackupTab {
    */
   static redirect(kind, file) {
     this.inn = kind === 'settings' ? 'settings' : 'db';
-    const pane = this.main.querySelector('#bkPane');
+    const pane = BackupKit.main.querySelector('#bkPane');
     this.pane();
     Toast.show(
       kind === 'settings'

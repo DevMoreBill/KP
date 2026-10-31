@@ -1,5 +1,4 @@
 import { DirEditor } from './dir-editor.js';
-import { SettingsWindow } from './settings-window.js';
 import { StDirty } from './settings-tools.js';
 import { XlsImport } from '../catalog/excel-import.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
@@ -252,7 +251,7 @@ export class RecordEdit {
     const state = await Api.request(`/api/kp/${encodeURIComponent(id)}/state`);
     if (!(await KpTabs.prepare({ kpId: id }))) return;
     KpState.replace(Object.assign(KpState.fresh(), state));
-    SettingsWindow.dialog().close();
+    AdminState.dialog().close();
     KpForm.render();
     KpState.persist();
     window.scrollTo({ top: 0 });
@@ -272,7 +271,7 @@ export class CatalogTool {
     if (action === 'exp') return CatalogWindow.win.exportFile();
     if (action === 'xls') return XlsImport.open('');
     if (action === 'open') {
-      SettingsWindow.dialog().close();
+      AdminState.dialog().close();
       return CatalogWindow.open({});
     }
     this._load();
@@ -289,7 +288,7 @@ export class CatalogTool {
       const file = input.files[0];
       input.remove();
       if (!file) return;
-      SettingsWindow.dialog().close();
+      AdminState.dialog().close();
       await CatalogWindow.open({});
       CatalogWindow.win.importFile(file);
     };

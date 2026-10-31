@@ -24,7 +24,8 @@ import { AuditTab, ModerationTab, StatsTab } from './review-tabs.js';
 import { AiTab, MailTab, TemplatesTab, TypesTab } from './service-tabs.js';
 import { SettingsFileCard } from './settings-file.js';
 import { AlertsCard, ChangedPanel, ConnectionsPanel, MirrorCard, SettingsHistoryPanel } from './settings-panels.js';
-import { StDirty, StNav, StRefresh, StVal, SettingsSearch } from './settings-tools.js';
+import { StDirty, StNav, StRefresh, StVal } from './settings-tools.js';
+import { SettingsSearch } from './settings-search.js';
 import { AdminLogin, SettingsWindow } from './settings-window.js';
 import { AccessPanel, AdminsTab, SecurityTab } from './staff-tabs.js';
 import { GoodsTab, TrashTab } from './trash-tab.js';
@@ -34,6 +35,8 @@ import { CarrierApis } from './carrier-apis.js';
 import { KeyBackup } from './key-backup.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AuthScreen } from '../kp/auth-screen.js';
+import { BitrixViews, BitrixMirror } from './bitrix-views.js';
+import { BackupKit } from './backup-kit.js';
 
 export const ADMIN_UI = {
   AdminState,
@@ -110,6 +113,9 @@ export const ADMIN_UI = {
   ApiKeys,
   CarrierApis,
   KeyBackup,
+  BitrixViews,
+  BitrixMirror,
+  BackupKit,
 };
 
 SettingsWindow.listen();
@@ -118,3 +124,17 @@ StDirty.listen();
 // и форма входа после истёкшей сессии подключаются здесь
 AdminApi.onExpired = () => SettingsWindow.render();
 AuthScreen.openSettings = () => SettingsWindow.open();
+// окно «Настроек», вкладки раздела «Битрикс24», вкладка фидов и вкладка «База и копии» — регистрацией (вкладки и панели
+// их не подключают — циклы import)
+AdminState.connect({
+  dialog: () => SettingsWindow.dialog(),
+  show: opts => SettingsWindow.tab(opts),
+  route: key => AdminNav.route(key),
+  tabKey: key => AdminNav.key(key),
+});
+BitrixPanel.views = () => BitrixViews.of();
+FeedState.redraw = main => FeedsTab.render(main);
+BackupKit.connect({
+  summary: () => BackupTab.summary(),
+  redirect: (kind, file) => BackupTab.redirect(kind, file),
+});

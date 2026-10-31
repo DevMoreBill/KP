@@ -1,6 +1,4 @@
-import { BackupTab } from './backup-tab.js';
 import { DataTransfer } from './data-transfer.js';
-import { SettingsWindow } from './settings-window.js';
 import { StRefresh } from './settings-tools.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Toast } from '../../core/toast.js';
@@ -8,6 +6,8 @@ import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { AdminState } from './admin-state.js';
+import { BackupKit } from './backup-kit.js';
 
 /** Все настройки программы в файл и обратно (сервер — data_bundle.SettingsFile): ключи API — по галочке, пароли — никогда. */
 export class SettingsFileCard {
@@ -21,8 +21,8 @@ export class SettingsFileCard {
   static render(main) {
     main.innerHTML = `<div class="st-card sf"><p class="sub">Все настройки — в файл и из файла</p>
       <p class="muted">Значения программы, списки, тексты, функции, категории, тарифы доставки, ставки из Китая, нормы станций, фиды, почта (без пароля), права менеджеров, личные настройки — одним файлом: перенести на другой компьютер или сохранить перед большими правками. Пароли в файл не попадают никогда.</p>
-      ${BackupTab.row('Сохранить', 'Файл КП_настройки_… в любом формате общего списка (как в «База и копии → Выгрузить»). С ключами API — только если отметить: такой файл храните как пароль.', `<label class="cx-ck"><input type="checkbox" id="sfKeys"> с ключами API</label><select id="bkFmt" aria-label="Формат" data-nodirty>${BackupTab.fmtOpts()}</select><button class="btn primary" type="button" data-sf="save">Сохранить все настройки в файл</button>`)}
-      ${BackupTab.row('Загрузить', 'Сначала покажем разделы файла — отметьте, какие заменить. Свои ключи и пароль почты остаются, если в файле их нет.', '<input type="file" id="sfFile" accept=".xlsx,.json,.xml,.yml,.zip" class="sr-file"><label for="sfFile" class="btn">Загрузить настройки из файла…</label>')}
+      ${BackupKit.row('Сохранить', 'Файл КП_настройки_… в любом формате общего списка (как в «База и копии → Выгрузить»). С ключами API — только если отметить: такой файл храните как пароль.', `<label class="cx-ck"><input type="checkbox" id="sfKeys"> с ключами API</label><select id="bkFmt" aria-label="Формат" data-nodirty>${BackupKit.fmtOpts()}</select><button class="btn primary" type="button" data-sf="save">Сохранить все настройки в файл</button>`)}
+      ${BackupKit.row('Загрузить', 'Сначала покажем разделы файла — отметьте, какие заменить. Свои ключи и пароль почты остаются, если в файле их нет.', '<input type="file" id="sfFile" accept=".xlsx,.json,.xml,.yml,.zip" class="sr-file"><label for="sfFile" class="btn">Загрузить настройки из файла…</label>')}
       <div id="sfPrev"></div></div>`;
     main.querySelector('#sfKeys').onchange = async event => {
       if (!event.target.checked) return;
@@ -37,7 +37,7 @@ export class SettingsFileCard {
       if (event.target.closest('[data-sf="save"]')) {
         const keys = main.querySelector('#sfKeys').checked ? { keys: '1' } : {};
         await DataTransfer.download(
-          `settings-file?${new URLSearchParams({ fmt: BackupTab.fmtOf(main), ...keys })}`,
+          `settings-file?${new URLSearchParams({ fmt: BackupKit.fmtOf(main), ...keys })}`,
           null,
         );
         return;
@@ -120,7 +120,7 @@ export class SettingsFileCard {
       );
       await StRefresh.all();
       await EquipTypes.load();
-      SettingsWindow.tab();
+      AdminState.show();
     } catch (error) {
       button.disabled = false;
       Toast.show(`Не загружено: ${error.message || error}`);

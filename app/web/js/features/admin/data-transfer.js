@@ -1,4 +1,3 @@
-import { BackupTab } from './backup-tab.js';
 import { ClientStore } from '../kp/client-store.js';
 import { Managers } from '../kp/managers.js';
 import { Catalog } from '../catalog/catalog-store.js';
@@ -11,6 +10,7 @@ import { esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { BackupKit } from './backup-kit.js';
 
 /** «Проверка базы» (db_health.DbHealth): целостность, позиции без категории, одинаковые названия, КП без файла Word. */
 export class DbHealthCard {
@@ -123,6 +123,20 @@ export class DataTransfer {
   static scope = null; // {rows:[{cat, maker, sup, feed, n}], feeds:{id: название}}
 
   /**
+   * Скачать файл с сервера по кнопке (кнопка недоступна, пока идёт); скачалось — сводка вкладки заново.
+   * @param {HTMLButtonElement} button
+   * @param {string} url адрес /api/admin/…
+   */
+  static async downloadBy(button, url) {
+    button.disabled = true;
+    try {
+      if (await this.download(url, BackupKit.main.querySelector('#bkSt'))) BackupKit.summary();
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  /**
    * «Выгрузить → Разделы базы»: быстрый выбор, разделы, каталог, формат, «Скачать».
    * @returns {string}
    */
@@ -136,8 +150,8 @@ export class DataTransfer {
       <label class="f"><span>Быстрый выбор</span><select id="dtPre" data-nodirty>${presets}<option value="">Свой выбор</option></select></label>
       <div class="f"><span>Разделы</span><div class="bk-cks">${sections}</div></div>
       <div class="f" id="dtCatBox"><span>Каталог</span><div></div></div>
-      ${BackupTab.fmtSel()}
-      ${BackupTab.foot('<button class="btn primary" type="button" data-dx="json">Скачать</button>').replace('id="bkSt"', 'id="dtExpSt"')}</div>`;
+      ${BackupKit.fmtSel()}
+      ${BackupKit.foot('<button class="btn primary" type="button" data-dx="json">Скачать</button>').replace('id="bkSt"', 'id="dtExpSt"')}</div>`;
   }
 
   /**
@@ -384,7 +398,7 @@ export class DataTransfer {
       Toast.show('Отметьте категории, производителей, поставщиков или фиды');
       return '';
     }
-    return `export?${new URLSearchParams({ sections: sections.join(','), fmt: BackupTab.fmtOf(main), ...(catalog ? { pick: JSON.stringify(pick) } : {}) })}`;
+    return `export?${new URLSearchParams({ sections: sections.join(','), fmt: BackupKit.fmtOf(main), ...(catalog ? { pick: JSON.stringify(pick) } : {}) })}`;
   }
 
   static async _export(main, kind, done) {
@@ -473,7 +487,7 @@ export class DataTransfer {
     try {
       const reply = await this._send(`import/file/preview?mode=${mode || 'auto'}`, file);
       this.file = file;
-      if (reply.kind) return BackupTab.redirect(reply.kind, file);
+      if (reply.kind) return BackupKit.redirect(reply.kind, file);
       this.mode = reply.mode || 'all';
       if (reply.patch) {
         box.innerHTML = this._patchHtml(reply);
@@ -573,7 +587,7 @@ export class SupplierExport {
       .join('');
     box.addEventListener('click', event => {
       const button = event.target.closest('[data-se]');
-      if (button && select.value) this.run(button, select.value, BackupTab.fmtOf(box));
+      if (button && select.value) this.run(button, select.value, BackupKit.fmtOf(box));
     });
   }
 
@@ -589,10 +603,10 @@ export class SupplierExport {
       if (
         await DataTransfer.download(
           `export?${new URLSearchParams({ sup: name, fmt })}`,
-          BackupTab.main.querySelector('#bkSt'),
+          BackupKit.main.querySelector('#bkSt'),
         )
       )
-        BackupTab.summary();
+        BackupKit.summary();
     } finally {
       button.disabled = false;
     }
@@ -614,8 +628,8 @@ export class CatFilterPane {
   static TYPE_WAIT_MS = 400;
 
   static _filter() {
-    if (!BackupTab.flt)
-      BackupTab.flt = {
+    if (!BackupKit.flt)
+      BackupKit.flt = {
         cat: '',
         maker: '',
         sup: '',
@@ -624,7 +638,7 @@ export class CatFilterPane {
         instock: false,
         prices: this.PRICES.filter(entry => entry[2]).map(entry => entry[0]),
       };
-    return BackupTab.flt;
+    return BackupKit.flt;
   }
 
   static _html(filter) {
@@ -639,7 +653,7 @@ export class CatFilterPane {
         <label class="f"><span>Поиск</span><input type="search" data-cf="q" value="${esc(filter.q)}" placeholder="модель, артикул, слово" autocomplete="off" data-nodirty></label></div>
       <div class="bk-cks"><label class="ck"><input type="checkbox" data-cf="priced" data-nodirty${filter.priced ? ' checked' : ''}> С ценой</label><label class="ck"><input type="checkbox" data-cf="instock" data-nodirty${filter.instock ? ' checked' : ''}> В наличии</label></div>
       <div class="f"><span>В файл — цены и остатки</span><div class="bk-cks">${prices}</div></div>
-      ${BackupTab.fmtSel()}${BackupTab.foot('<button class="btn primary" type="button" data-bkx="filter">Скачать</button>', '<span id="cfN">Считаю…</span>')}</div>`;
+      ${BackupKit.fmtSel()}${BackupKit.foot('<button class="btn primary" type="button" data-bkx="filter">Скачать</button>', '<span id="cfN">Считаю…</span>')}</div>`;
   }
 
   /**
@@ -658,9 +672,9 @@ export class CatFilterPane {
     side.onclick = event => {
       const button = event.target.closest('[data-bkx]');
       if (!button) return;
-      BackupTab._dl(
+      DataTransfer.downloadBy(
         button,
-        `export?${new URLSearchParams({ sections: 'catalog', fmt: BackupTab.fmtOf(side), flt: JSON.stringify(this.query()), prices: filter.prices.join(',') })}`,
+        `export?${new URLSearchParams({ sections: 'catalog', fmt: BackupKit.fmtOf(side), flt: JSON.stringify(this.query()), prices: filter.prices.join(',') })}`,
       );
     };
     try {
@@ -688,7 +702,7 @@ export class CatFilterPane {
    * @param {HTMLElement} side
    */
   static options(side) {
-    const filter = BackupTab.flt;
+    const filter = BackupKit.flt;
     const rows = this.scope.rows || [];
     const sum = key => DataTransfer._byCount(DataTransfer._sum(rows, key));
     const total = rows.reduce((acc, row) => acc + row.n, 0);
@@ -716,7 +730,7 @@ export class CatFilterPane {
    * @returns {object}
    */
   static query() {
-    const filter = BackupTab.flt;
+    const filter = BackupKit.flt;
     return {
       cat: filter.cat,
       maker: filter.maker,

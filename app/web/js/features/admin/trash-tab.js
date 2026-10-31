@@ -3,7 +3,6 @@ import { CatalogIndex } from '../catalog/catalog-index.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogTool } from './records-tab.js';
 import { EquipWizard } from '../wizard/equip-wizard.js';
-import { SettingsWindow } from './settings-window.js';
 import { Managers } from '../kp/managers.js';
 import { Toast } from '../../core/toast.js';
 import { Debounce } from '../../core/debounce.js';
@@ -12,6 +11,7 @@ import { esc } from '../../core/util.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
 import { AuditLabels } from '../../core/audit-labels.js';
+import { AdminState } from './admin-state.js';
 
 /** Корзина в «Настройках»: восстановить, удалить навсегда, очистить (всё или один вид). */
 export class TrashTab {
@@ -196,7 +196,7 @@ export class GoodsTab {
     const act = button.dataset.gd;
     if (act === 'open') return this.open();
     if (act === 'new') {
-      SettingsWindow.dialog().close();
+      AdminState.dialog().close();
       return EquipWizard.open('catalog', '');
     }
     return CatalogTool.run(act);

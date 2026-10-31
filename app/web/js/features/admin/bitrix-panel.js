@@ -1,15 +1,8 @@
 import { BitrixMenu } from './bitrix-menu.js';
-import { BitrixFields, BitrixLog, BitrixManagers, BitrixOld, BitrixStages } from './bitrix-tabs.js';
-import { BitrixFlow, BitrixLink, BitrixSchedule, BitrixSend } from './bitrix-link.js';
-import { BitrixRegs } from './bitrix-regs.js';
-import { BitrixEcon } from './bitrix-econ.js';
 import { StDirty } from './settings-tools.js';
-import { BitrixCompanies, BitrixContacts, BitrixDeals, BitrixTasks } from './bitrix-objects.js';
-import { BitrixGuide } from './bitrix-guide.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { AdminApi } from '../../core/admin-api.js';
-import { MirrorPanel } from './mirror-panel.js';
 
 /** «Битрикс24»: связь кабинета менеджера с Битрикс24 (app/bitrix.py, правила обмена — app/bitrix_rules.py), вкладка — пункт меню. */
 export class BitrixPanel {
@@ -46,27 +39,11 @@ export class BitrixPanel {
   static STORE = 'kp.bxtab';
   static NO_URL = 'Сначала задайте адрес вебхука в пункте «Обмен → Подключение и состояние».';
 
-  static _views() {
-    return {
-      link: BitrixLink,
-      mirror: BitrixMirror,
-      flow: BitrixFlow,
-      mgr: BitrixManagers,
-      cats: BitrixStages,
-      fields: BitrixFields,
-      regs: BitrixRegs,
-      econ: BitrixEcon,
-      send: BitrixSend,
-      sched: BitrixSchedule,
-      log: BitrixLog,
-      old: BitrixOld,
-      deals: BitrixDeals,
-      company: BitrixCompanies,
-      contacts: BitrixContacts,
-      tasks: BitrixTasks,
-      guide: BitrixGuide,
-    };
-  }
+  /**
+   * Вкладки раздела по ключу: {ключ: класс с html() и bind()} — подключает admin/index.js (вкладки — BitrixViews).
+   * @returns {object}
+   */
+  static views = () => ({});
 
   /**
    * Открытая вкладка.
@@ -246,7 +223,7 @@ export class BitrixPanel {
     const tab = tabs.some(entry => entry[0] === this.tab) ? this.tab : tabs[0][0];
     const need = this.NEED_C.includes(tab) && !this.portal;
     StDirty.set(false); // вкладка нарисована заново из сохранённого — набранное прежде не ждёт сохранения
-    const view = this._views()[tab];
+    const view = this.views()[tab];
     const body = need
       ? `<div class="st-card"><p class="muted">${this.state.hasUrl ? 'Загружаю списки из Битрикс24 (воронки, стадии, пользователи, поля)…' : this.NO_URL}</p></div>`
       : view.html();
@@ -291,7 +268,7 @@ export class BitrixPanel {
 
   // вкладку открыли — то, что у неё не загрузилось, запросить снова (перерисовка сама не повторяет)
   static _again(tab) {
-    const view = this._views()[tab];
+    const view = this.views()[tab];
     if (view && view.again) view.again();
   }
 
@@ -381,24 +358,5 @@ export class BitrixPanel {
     const result = reply.result || {};
     if (result.error) return `Ошибка: ${result.error}`;
     return `Готово: отправлено ${result.sent || 0}, получено изменений ${result.pulled || 0}, новых сделок ${result.created || 0}${result.skipped ? ` (пропущено по правилам ${result.skipped})` : ''}, дел ${result.tasks || 0}`;
-  }
-}
-
-/** «Кабинет как в Битрикс24»: воронки, стадии и поля сделки (features/crm/). */
-class BitrixMirror {
-  /**
-   * Вкладка.
-   * @returns {string}
-   */
-  static html() {
-    return BitrixPanel.state.hasUrl
-      ? '<div id="bxMirror"><p class="muted">Загружаю…</p></div>'
-      : `<div class="st-card"><p class="muted">${BitrixPanel.NO_URL}</p></div>`;
-  }
-
-  /** Подключить панель кабинета. */
-  static bind() {
-    const box = BitrixPanel.one('#bxMirror');
-    if (box) MirrorPanel.open(box);
   }
 }

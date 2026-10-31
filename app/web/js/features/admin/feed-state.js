@@ -16,6 +16,12 @@ export class FeedState {
   static rplan = null; // «Что загрузится…»
   static rpf = ''; // фильтр плана по виду строки
   static roff = new Set(); // строки плана со снятой галочкой (отбор по виду их не возвращает)
+  /**
+   * Перерисовать вкладку фидов — подключает admin/index.js (панели фида вкладку не подключают).
+   * @param {HTMLElement} main
+   * @returns {*}
+   */
+  static redraw = () => {};
 
   static DRIVES = [
     ['any', 'любой'],

@@ -1,5 +1,4 @@
 import { AdminInbox, AdminReadiness } from './admin-inbox.js';
-import { SettingsWindow } from './settings-window.js';
 import { Debounce } from '../../core/debounce.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
@@ -168,7 +167,7 @@ export class StatsTab {
     }
     const quick = event.target.closest('[data-q]');
     if (!quick) return;
-    SettingsWindow.dialog().close();
+    AdminState.dialog().close();
     if (quick.dataset.q === 'report') KpReport.open({});
     else Journal.open();
   }

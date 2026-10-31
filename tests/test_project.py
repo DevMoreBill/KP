@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Правила проекта, которые проверяются без запуска программы: код сервера компилируется, его модули попадают в EXE
-(kp.spec), версия одна в app/version.py и в интерфейсе, все файлы интерфейса подключены, в репозитории нет баз и ключей."""
+(kp.spec), версия одна в app/version.py и в интерфейсе, все файлы интерфейса подключены, циклы import интерфейса — только
+внутри разделов, где они ещё остались, в репозитории нет баз и ключей."""
 import ast
 import os
 import py_compile
@@ -119,6 +120,76 @@ class ProjectRules(unittest.TestCase):
                        'пример: https://bitrix24.example.ru/rest/1/q8w7e6r5t4y3/\n')
         found = [why for _path, why in RepoGuard(folder).run()]
         self.assertEqual(len(found), 2, found)
+
+    # разделы интерфейса, где циклы import ещё остались (каждый — внутри своего раздела); развязали раздел — убрать отсюда
+    CYCLES_LEFT = {'view', 'ui', 'layout', 'kit', 'station', 'doc', 'kp', 'eskd', 'draw', 'tz', 'wizard', 'rules-doc'}
+    IMPORT = re.compile(r"^import (?:[^;']*? from )?'(\.\.?/[^']+)';", re.M)
+
+    def test_import_cycles(self):
+        """Циклы import интерфейса — не через границы разделов и только в разделах CYCLES_LEFT: экономика сделки, каталог,
+        «Настройки», кабинет, core/ и другие развязанные разделы — без циклов (00-project.md, «Оформление кода»)."""
+        cycles = [sorted(part) for part in self._strong(self._imports()) if len(part) > 1]
+        across = [part for part in cycles if len({self._section(path) for path in part}) > 1]
+        self.assertEqual(across, [], 'цикл import через границы разделов')
+        inside = [part for part in cycles if self._section(part[0]) not in self.CYCLES_LEFT]
+        self.assertEqual(inside, [], 'цикл import внутри развязанного раздела')
+
+    def _imports(self):
+        """Граф статических import интерфейса: файл → файлы, которые он подключает (LazyJs.load — не в счёт)."""
+        root = os.path.join(APP, 'web', 'js')
+        graph = {}
+        for folder, _, names in os.walk(root):
+            for name in names:
+                if not name.endswith('.js'):
+                    continue
+                with open(os.path.join(folder, name), encoding='utf-8') as fh:
+                    deps = self.IMPORT.findall(fh.read())
+                graph[self._rel(root, os.path.join(folder, name))] = {self._rel(root, os.path.join(folder, dep)) for dep in deps}
+        return graph
+
+    @staticmethod
+    def _rel(root, path):
+        return os.path.relpath(os.path.normpath(path), root).replace(os.sep, '/')
+
+    @staticmethod
+    def _section(path):
+        parts = path.split('/')
+        return parts[1] if parts[0] == 'features' and len(parts) > 2 else parts[0]
+
+    @staticmethod
+    def _strong(graph):
+        """Сильно связные части графа (алгоритм Тарьяна без рекурсии): часть больше одного файла — цикл import."""
+        order, low, open_, stack, parts = {}, {}, set(), [], []
+
+        def enter(node):
+            order[node] = low[node] = len(order)
+            stack.append(node)
+            open_.add(node)
+            return node, iter(sorted(graph[node] & graph.keys()))
+
+        for start in sorted(graph):
+            if start in order:
+                continue
+            work = [enter(start)]
+            while work:
+                node, deps = work[-1]
+                nxt = next(deps, None)
+                if nxt is not None:
+                    if nxt not in order:
+                        work.append(enter(nxt))
+                    elif nxt in open_:
+                        low[node] = min(low[node], order[nxt])
+                    continue
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[node])
+                if low[node] == order[node]:
+                    part = []
+                    while not part or part[-1] != node:
+                        part.append(stack.pop())
+                        open_.discard(part[-1])
+                    parts.append(part)
+        return parts
 
 
 if __name__ == '__main__':

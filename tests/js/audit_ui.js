@@ -11,6 +11,7 @@ const JS=path.join(ROOT, 'app', 'web', 'js');
 global.document={ addEventListener(){} };
 require('./web.js').load(path.join(JS, 'features', 'crm', 'index.js'));
 require('./web.js').load(path.join(JS, 'features', 'deal', 'index.js')); // части окна экономики перерисовывают его через DealLink — окно подключает себя
+require('./web.js').load(path.join(JS, 'features', 'admin', 'index.js')); // вкладки «Битрикс24» панель находит регистрацией (BitrixPanel.views)
 // классы с одинаковым именем в разных папках (DealWin) — прямо из своего файла
 const mod=file=>require(path.join(JS, file));
 const ticks=async count=>{ for (let i=0; i<count; i++) await new Promise(resolve=>setImmediate(resolve)); };
@@ -293,7 +294,7 @@ check('«Настройки»: вкладка или панель не загр�
 });
 
 check('«Настройки» → поиск: найденный товар или КП, который не открылся, — сообщение (было: необработанный отказ)', async ()=>{
-  const { SettingsSearch }=mod('features/admin/settings-tools.js');
+  const { SettingsSearch }=mod('features/admin/settings-search.js');
   const { RecordEdit }=mod('features/admin/records-tab.js');
   const { Toast }=mod('core/toast.js');
   const said=[];

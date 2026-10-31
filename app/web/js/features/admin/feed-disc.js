@@ -1,5 +1,4 @@
 import { FeedFmt, FeedState } from './feed-state.js';
-import { FeedsTab } from './feeds-tab.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
@@ -206,7 +205,7 @@ export class FeedDiscounts {
     await this._store(ctx);
     Toast.show('Сетка скидок сохранена');
     FeedState.plan = null;
-    return FeedsTab.render(ctx.main);
+    return FeedState.redraw(ctx.main);
   }
 
   static async _apply(ctx) {
@@ -214,6 +213,6 @@ export class FeedDiscounts {
     await AdminApi.post(`feeds/${FeedState.sel}/check`);
     Toast.show('Сетка сохранена, обновляю цены по прайсу');
     FeedState.plan = null;
-    return FeedsTab.render(ctx.main);
+    return FeedState.redraw(ctx.main);
   }
 }

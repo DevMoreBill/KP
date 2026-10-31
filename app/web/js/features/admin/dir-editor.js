@@ -1,4 +1,3 @@
-import { SettingsWindow } from './settings-window.js';
 import { StDirty, StNav } from './settings-tools.js';
 import { DealUi } from '../deal/deal-ui.js';
 import { Managers } from '../kp/managers.js';
@@ -362,7 +361,7 @@ export class DirEditor {
     StNav.sup = doc.name;
     AdminState.editing = null;
     StNav.select('backup');
-    SettingsWindow.tab();
+    AdminState.show();
   }
 
   static _add({ box, button, doc }) {

@@ -15,7 +15,7 @@ import { BackupTab } from './backup-tab.js';
 import { AiTab, MailTab, TemplatesTab, TypesTab } from './service-tabs.js';
 import { AuditTab, ModerationTab, StatsTab } from './review-tabs.js';
 import { ChangedPanel, ConnectionsPanel, SettingsHistoryPanel } from './settings-panels.js';
-import { SettingsSearch, StDirty } from './settings-tools.js';
+import { StDirty } from './settings-tools.js';
 import { esc } from '../../core/util.js';
 import { AdminSession } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -386,13 +386,14 @@ export class AdminNav {
   /**
    * Меню «Настроек».
    * @param {string} current ключ открытой вкладки
+   * @param {string} [search] строка поиска по «Настройкам» (разметка)
    * @returns {string}
    */
-  static html(current) {
+  static html(current, search = '') {
     const groups = this.groups()
       .map(group => this._groupHtml(group, current))
       .join('');
-    return `<nav class="st-nav">${SettingsSearch.html()}${this.btn(this.HOME, current)}${groups}${this._rare(current)}</nav>`;
+    return `<nav class="st-nav">${search}${this.btn(this.HOME, current)}${groups}${this._rare(current)}</nav>`;
   }
 
   static _groupHtml(group, current) {
