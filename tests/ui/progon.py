@@ -907,6 +907,9 @@ class Scenario(UiRun):
             self.errs.append(('deal', 'SCRIPT', 'продавец на УСН 5 %: нет строки «Вычета нет» в «НДС к уплате»'))
         if not self.ev("/Налог УСН «доходы»/.test((document.querySelector('dialog[open] .dl-money') || {}).textContent || '')"):
             self.errs.append(('deal', 'SCRIPT', 'продавец на УСН «доходы»: нет строки «Налог УСН «доходы»» в «Деньгах и налоге»'))
+        # условия из расчёта сделки подставляются при перерисовке окна, а шаги КП за окном — при следующей перерисовке
+        # формы: снимок зависел бы от того, успела ли она
+        self.ev("KpForm.renderSide()")
         self.snap('60_deal_money_usn', root, wait=300)
         pg.select_option(pick, 'pr1')
         self.wait(800)

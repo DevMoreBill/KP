@@ -29,7 +29,7 @@
   (`tz-out/`, `rules-doc/`) не импортируются статически — только `LazyJs.load('…/index.js')`, классы — из его результата.
 - Общие данные — у класса-владельца, а не в общих переменных: открытое КП — `S` (`core/state.js`, `export let`, меняется только
   `KpState.replace(…)`), каталог — `Catalog.cache`, открытая карточка — `ItemEditor.current`, правка позиции каталога —
-  `CatalogEditor.session`, раздел формы — `Steps.current` (разделы — `KpForm.step()`), типы оборудования — `EquipTypes.list`/`.builtin`, клиенты —
+  `CatalogSession.current`, раздел формы — `Steps.current` (разделы — `KpForm.step()`), типы оборудования — `EquipTypes.list`/`.builtin`, клиенты —
   `ClientStore.list`/`.total`, менеджеры — `Managers.list`, «Значения программы» — `DefRegistry.value/num`, `DefRegistry.srv`,
   версия — `AppVersion.current`. Модуль, который выполняет код при загрузке, не должен ждать модулей, подключающих его
   (циклы `import`): реестр значений `core/defaults.js` и условия `core/conditions.js` — без тяжёлых зависимостей.
@@ -79,7 +79,12 @@
   (`DealWin.open`), размер окна — `DealBind`; дни сделки от даты договора — `DealDays` (производственный календарь —
   `DealCal`, без данных сделки); правка кода ТН ВЭД строки — `DealHsEdit`, поставщика — `DealSupEdit` (справочник и
   подбор — `DealSuppliers`); запрос цен перевозчиков — `LgAsk` (сравнение предложений — `LgOffers`); ячейки Excel —
-  `DealXlsxCell`; тарифы из файла возвращаются в «Тарифы доставки» обратным вызовом `onSaved`.
+  `DealXlsxCell`; тарифы из файла возвращаются в «Тарифы доставки» обратным вызовом `onSaved`. (31.10, этап 12) Каталог
+  без внутренних циклов: части ниже окна каталога (карточка позиции, правка, разделы, категории, модерация, загрузка из
+  Excel) просят окно портом `CatalogLink` (`open`, `moderated`, `say`, `redraw`, `reloadPending`); правка позиции каталога —
+  `CatalogSession` (`current`, `moderated`, `saveLabel`), поле цены карточки — `CatalogPrice` (`catalog-price.js`), цена в
+  списке — `ListPrice`; совпадения с поиском отборы сверяют по ревизиям `CatalogIndex.rev` (позиции, `changed()`) и
+  `Suppliers.rev` (поставщики) — индекс и поставщики не зовут отбор; фид-источник позиции — `Suppliers.source`.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

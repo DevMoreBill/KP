@@ -9,8 +9,8 @@ import { $ } from '../core/util.js';
 import { MgrLock } from '../features/kp/managers.js';
 import { Templates } from '../features/doc/templates.js';
 import { AdminGear } from '../core/admin-gear.js';
-import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { KpGuard } from '../features/kp/kp-guard.js';
+import { CatalogSession } from '../features/catalog/catalog-session.js';
 
 /** Перерисовка формы КП: полоса шагов, открытый шаг, фокус в поле, боковая панель. */
 export class FormView {
@@ -25,7 +25,7 @@ export class FormView {
 
   /** Перерисовать форму (во время правки позиции каталога — только её карточку). */
   static render() {
-    if (CatalogEditor.session) {
+    if (CatalogSession.current) {
       this._editor();
       return;
     }

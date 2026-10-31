@@ -7,8 +7,8 @@ import { KpDocx } from './kp-docx.js';
 import { PreviewDocx } from './preview-docx.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
-import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { KpState, S } from '../../core/state.js';
+import { CatalogSession } from '../catalog/catalog-session.js';
 
 /**
  * Графический редактор шаблона: документ в окне (как в Word), масштаб, выделение, места привязки и координаты на странице.
@@ -47,11 +47,11 @@ export class DesignView {
   static async _build() {
     const demo = await DesignDemo.state();
     const previous = S;
-    const editing = CatalogEditor.session;
+    const editing = CatalogSession.current;
     const settings = Object.assign(JSON.parse(JSON.stringify(Design.state.work)), { design: true });
     if (demo) {
       KpState.replace(demo);
-      CatalogEditor.session = 'designer';
+      CatalogSession.current = 'designer';
     }
     try {
       const state = KpDocx.state();
@@ -60,7 +60,7 @@ export class DesignView {
     } finally {
       if (demo) {
         KpState.replace(previous);
-        CatalogEditor.session = editing;
+        CatalogSession.current = editing;
       }
     }
   }

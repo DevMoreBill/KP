@@ -12,7 +12,8 @@ import { CatalogActions } from './catalog-actions.js';
 import { CatalogCache, CatalogSearch } from './catalog-cache.js';
 import { CatalogCard } from './catalog-card.js';
 import { CatalogClicks } from './catalog-clicks.js';
-import { CatalogEditor, CatalogPrice } from './catalog-edit.js';
+import { CatalogEditor } from './catalog-edit.js';
+import { CatalogPrice } from './catalog-price.js';
 import { CatalogChanges, CatalogDrag, CatalogEvents } from './catalog-events.js';
 import { CatalogBin, CatalogExportDlg, ClientsExportDlg } from './catalog-export.js';
 import { CatalogFill, CatalogSync } from './catalog-fill.js';
@@ -49,6 +50,8 @@ import { CoverSync } from './cover-sync.js';
 import { CatFeatures } from './cat-features.js';
 import { QuickFind } from './quick-find.js';
 import { CatalogLink } from '../../core/catalog-link.js';
+import { CatalogSession } from './catalog-session.js';
+import { ListPrice } from './list-price.js';
 
 export const CATALOG = {
   AiChat,
@@ -83,6 +86,7 @@ export const CATALOG = {
   CatalogPanes,
   CatalogPrice,
   CatalogSearch,
+  CatalogSession,
   CatalogSorter,
   CatalogStore,
   CatalogSync,
@@ -102,6 +106,7 @@ export const CATALOG = {
   ItemLinks,
   ItemTabs,
   KpLead,
+  ListPrice,
   Logos,
   MigrationNotice,
   ModerationDiff,
@@ -139,7 +144,7 @@ AiOptions.listen();
 // нейросети для автозаполнения — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
 LISTS.ready(AiChat.LISTS);
 // правка позиции каталога идёт в КП — черновик КП не пишется
-KpState.paused = () => !!CatalogEditor.session;
+KpState.paused = () => !!CatalogSession.current;
 // КП просит каталог (CatalogLink) — без import каталога
 CatalogLink.connect({
   find: id => CatFind.id(id),
@@ -149,4 +154,11 @@ CatalogLink.connect({
   matches: query => QuickFind.matches(query),
   add: card => QuickFind.add(card),
   open: opts => CatalogWindow.open(opts),
+  moderated: () => CatalogWindow.win.mod,
+  say: text => CatalogWindow.win.say(text),
+  redraw: () => CatalogWindow.win.redraw(),
+  reloadPending: () => {
+    const win = CatalogWindow.win;
+    return win.loadPending().then(() => win.redraw());
+  },
 });

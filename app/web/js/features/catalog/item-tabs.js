@@ -1,10 +1,11 @@
 import { AttrsBlock, DimRow } from './attr-choices.js';
-import { CatalogEditor, CatalogPrice } from './catalog-edit.js';
+import { CatalogPrice } from './catalog-price.js';
 import { OptsBlock } from './item-blocks.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { CatalogSession } from './catalog-session.js';
 
 /** Вкладки карточки позиции: «Основное», «Характеристики», «Опции и услуги». */
 export class ItemTabs {
@@ -16,16 +17,16 @@ export class ItemTabs {
    */
   static main(item, i) {
     const path = `items.${i}`;
-    const page = CatalogEditor.session
+    const page = CatalogSession.current
       ? ''
       : `<div class="row" style="margin-top:12px"><button class="sw" type="button" role="switch" aria-checked="${!!item.page}" data-a="togglePage" data-i="${i}"><i></i>Отдельная страница оборудования в КП (фото, описание, характеристики)</button></div>`;
-    const save = CatalogEditor.session
+    const save = CatalogSession.current
       ? ''
       : `<div class="ed-sec row"><button class="btn" type="button" data-a="saveCat" data-i="${i}">Сохранить позицию в каталог</button>${UiKit.tip('Фото, описание, характеристики, изображения и цена будут доступны в следующих КП.')}</div>`;
     return `<div class="ed-sec"><div class="grid g2">${UiKit.field('Наименование в КП', `${path}.name`, { req: 1 })}${UiKit.field('Заголовок страницы оборудования', `${path}.pageTitle`, { ph: item.name || 'Как в наименовании' })}</div>
     <div class="grid" style="margin-top:12px">${UiKit.field('Краткие характеристики — строка под названием в таблице КП', `${path}.spec`, { ph: 'Двигатель · альтернатор · мощность · габариты' })}</div>
     ${page}</div>
-   ${CatalogEditor.session ? CatalogPrice.html(item) : ''}
+   ${CatalogSession.current ? CatalogPrice.html(item) : ''}
    <div class="ed-sec">${AttrsBlock.html(item, i)}</div>
    ${save}`;
   }

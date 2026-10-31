@@ -1,7 +1,6 @@
 import { LivePreview } from '../features/doc/live-preview.js';
 import { OptionCost } from '../features/kp/option-cost.js';
 import { Steps } from './steps.js';
-import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { Templates } from '../features/doc/templates.js';
 import { ShortName } from '../features/kp/journal-row.js';
 import { KpFile } from '../features/doc/kp-file.js';
@@ -20,6 +19,7 @@ import { OptionSale } from '../features/kp/option-sale.js';
 import { Tender } from '../core/tender.js';
 import { Currency } from '../core/currency.js';
 import { StationPlan } from '../features/req/station-plan.js';
+import { CatalogSession } from '../features/catalog/catalog-session.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {
@@ -219,7 +219,7 @@ export class SidePanel {
         document.querySelectorAll(`[data-osum="${i}.${j}"]`).forEach(cell => (cell.textContent = text));
       });
     });
-    if (CatalogEditor.session) return;
+    if (CatalogSession.current) return;
     this.render();
     KpState.persist();
   }

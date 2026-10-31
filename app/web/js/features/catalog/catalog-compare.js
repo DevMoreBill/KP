@@ -1,10 +1,10 @@
-import { CatalogCard } from './catalog-card.js';
 import { CatalogIndex } from './catalog-index.js';
 import { Catalog } from './catalog-store.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Modal } from '../../core/modal.js';
 import { SpecValues } from '../../core/spec-values.js';
 import { esc } from '../../core/util.js';
+import { ListPrice } from './list-price.js';
 
 /** Сравнение 2–4 моделей каталога таблицей: параметры их категорий, отличия подсвечены, «В КП» у каждой. */
 export class CatalogCompare {
@@ -32,7 +32,7 @@ export class CatalogCompare {
   static _html(cards) {
     const head = cards.map(card => `<th scope="col">${esc(card.name)}</th>`).join('');
     const rows = [
-      this._row('Цена', cards, card => CatalogCard.priceHtml(card) || '—', { raw: true }),
+      this._row('Цена', cards, card => ListPrice.html(card) || '—', { raw: true }),
       this._row('Наличие', cards, card => (CatalogIndex.inStock(card) ? 'в наличии' : 'под заказ')),
       ...this._fields(cards).map(field =>
         this._row(field.label + (field.unit ? `, ${field.unit}` : ''), cards, card =>
@@ -111,7 +111,7 @@ export class CatalogSimilar {
       ? list
           .map(
             other =>
-              `<button class="md-r sim-r" type="button" data-simopen="${esc(other.id)}"><div><b>${esc(other.name)}</b><span class="muted">${CatalogCard.priceHtml(other)} · в наличии</span></div><span aria-hidden="true">›</span></button>`,
+              `<button class="md-r sim-r" type="button" data-simopen="${esc(other.id)}"><div><b>${esc(other.name)}</b><span class="muted">${ListPrice.html(other)} · в наличии</span></div><span aria-hidden="true">›</span></button>`,
           )
           .join('')
       : '<p class="empty">В этой категории нет позиций в наличии с ценой.</p>';

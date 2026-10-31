@@ -10,6 +10,7 @@ import { ItemSpec } from '../../core/item-spec.js';
 import { Str } from '../../core/str.js';
 import { $, Uid } from '../../core/util.js';
 import { WizardLink } from '../../core/wizard-link.js';
+import { CatalogSession } from '../catalog/catalog-session.js';
 
 /**
  * Части сборного изделия, которых нет в каталоге: новая карточка каталога всеми способами окна «Добавить оборудование»
@@ -37,7 +38,7 @@ export class AsmCatalog {
     const dialog = $('#dlg');
     if (dialog.open) dialog.close(); // окно изделия ждёт: карточка каталога — сверху без него
     CatalogEditor.openNew(part._doc, onSaved);
-    if (CatalogEditor.session && (part.need || []).length) CatalogEditor.askMissing(0, part.need); // что не хватает — красным
+    if (CatalogSession.current && (part.need || []).length) CatalogEditor.askMissing(0, part.need); // что не хватает — красным
   }
 
   /**

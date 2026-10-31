@@ -1,7 +1,7 @@
-import { CatalogEditor } from './catalog-edit.js';
 import { S } from '../../core/state.js';
 import { Kit } from '../../core/kit.js';
 import { CoverHint } from '../../core/cover-hint.js';
+import { CatalogSession } from './catalog-session.js';
 
 /**
  * Заголовок КП по оборудованию: пока менеджер не правил поля сам (cover.touched), они соответствуют текущим позициям —
@@ -12,7 +12,7 @@ export class CoverSync {
 
   /** Обновить титул по оборудованию. */
   static run() {
-    if (CatalogEditor.session || S.cover.touched) return;
+    if (CatalogSession.current || S.cover.touched) return;
     const named = item => String(item.name || '').trim();
     const item = S.items.find(one => one.id === S.cover.photoFrom && named(one)) || S.items.find(named);
     const hint = item ? this._hint(item) : { title: '', model: '', desc: '', kpis: [] };

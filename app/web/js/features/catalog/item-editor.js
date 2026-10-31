@@ -1,20 +1,18 @@
 import { AiTab } from './ai-tab.js';
 import { CardGaps } from './card-gaps.js';
 import { AppTabs } from '../../core/app-tabs.js';
-import { CatalogEditor } from './catalog-edit.js';
-import { CatalogWindow } from './catalog-window.js';
 import { Logos } from './image-slots.js';
 import { DescTab } from './item-desc.js';
 import { ItemLinks } from './item-links.js';
 import { ItemTabs } from './item-tabs.js';
 import { Morph } from '../../core/morph.js';
-import { AdminSession } from '../../core/net.js';
 import { $, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Kit } from '../../core/kit.js';
 import { StationLink } from '../../core/station-link.js';
+import { CatalogSession } from './catalog-session.js';
 
 /**
  * Карточка позиции (окно с вкладками): основное, состав и компоновка станции, автозаполнение, описание и фото,
@@ -93,12 +91,11 @@ export class ItemEditor {
   }
 
   static _head(item, i) {
-    if (CatalogEditor.session) {
-      const note =
-        CatalogWindow.win.mod && !AdminSession.on
-          ? '<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>'
-          : '';
-      return `<h3><span class="ed-cat">Каталог</span>${esc(item.name || 'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${note}<button class="btn primary" type="button" data-catsave>${CatalogEditor.saveLabel()}</button>`;
+    if (CatalogSession.current) {
+      const note = CatalogSession.moderated()
+        ? '<span class="muted ed-modnote">Изменения будут отправлены на модерацию</span>'
+        : '';
+      return `<h3><span class="ed-cat">Каталог</span>${esc(item.name || 'Новая позиция')}</h3><button class="btn" type="button" data-catcancel>Отмена</button>${note}<button class="btn primary" type="button" data-catsave>${CatalogSession.saveLabel()}</button>`;
     }
     const nav =
       S.items.length > 1
@@ -144,7 +141,7 @@ export class ItemEditor {
 
   static _prepare(item) {
     if (!this.tabs(item).some(([key]) => key === ItemEditor.current.tab)) ItemEditor.current.tab = 'main';
-    if (!CatalogEditor.session && ItemEditor.current.tab !== 'layout' && StationLink.enabled(item))
+    if (!CatalogSession.current && ItemEditor.current.tab !== 'layout' && StationLink.enabled(item))
       StationLink.soonImages(item); // 3D и листы — сразу по составу
   }
 
@@ -163,7 +160,7 @@ export class ItemEditor {
     const top = dialog.querySelector('.ed-b')?.scrollTop || 0;
     const body = (this.BODIES[ItemEditor.current.tab] || this.BODIES.ai)(item, i);
     const head = this._head(item, i);
-    dialog.classList.toggle('catmode', !!CatalogEditor.session);
+    dialog.classList.toggle('catmode', !!CatalogSession.current);
     const active = document.activeElement;
     const switched = dialog.dataset.tab !== ItemEditor.current.tab;
     dialog.dataset.tab = ItemEditor.current.tab;
@@ -246,9 +243,9 @@ export class ItemEditor {
   // закрытие пришло позже повторного открытия — не сбрасывать
   static _closed(event) {
     if (event.target.id !== 'edlg' || event.target.open) return;
-    if (CatalogEditor.session) {
-      S.items = CatalogEditor.session.items; // окно закрыто не кнопками карточки каталога — правки не сохраняются
-      CatalogEditor.session = null;
+    if (CatalogSession.current) {
+      S.items = CatalogSession.current.items; // окно закрыто не кнопками карточки каталога — правки не сохраняются
+      CatalogSession.current = null;
       ItemEditor.current = null;
       KpForm.render();
       return;

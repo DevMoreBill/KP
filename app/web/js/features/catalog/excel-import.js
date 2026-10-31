@@ -1,5 +1,4 @@
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
-import { CatalogWindow } from './catalog-window.js';
 import { Toast } from '../../core/toast.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { FileSave } from '../../core/files.js';
@@ -8,6 +7,7 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { Price, Str } from '../../core/str.js';
 import { Currency } from '../../core/currency.js';
 import { CoverHint } from '../../core/cover-hint.js';
+import { CatalogLink } from '../../core/catalog-link.js';
 
 /**
  * Код позиции из строки прайса: прежняя схема (её коды уже в каталоге — повторная загрузка обновляет те же позиции), но у
@@ -361,6 +361,6 @@ export class XlsImport {
     Toast.show(
       `Импортировано позиций: ${count}${skipped.length ? `, пропущено строк без наименования: ${skipped.length}` : ''}${stopped}`,
     );
-    CatalogWindow.open({ cat: type.id });
+    CatalogLink.open({ cat: type.id });
   }
 }

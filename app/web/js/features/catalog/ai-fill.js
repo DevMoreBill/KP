@@ -5,7 +5,6 @@ import { AiOptions } from './ai-options.js';
 import { Str } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { CatalogEditor } from './catalog-edit.js';
 import { Uid, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -15,6 +14,7 @@ import { KpForm } from '../../core/kp-form.js';
 import { Kit } from '../../core/kit.js';
 import { CoverSync } from './cover-sync.js';
 import { StationLink } from '../../core/station-link.js';
+import { CatalogSession } from './catalog-session.js';
 
 /**
  * Заполнение карточки с ИИ: объём — как у карточек этой категории в каталоге (образец — /api/ai/profile), недостающее
@@ -395,7 +395,7 @@ class AiApply {
 
   // титул, параметры, станция по ТЗ
   static _rest(item, data, keep) {
-    if (data.cover && typeof data.cover === 'object' && !CatalogEditor.session) {
+    if (data.cover && typeof data.cover === 'object' && !CatalogSession.current) {
       item.hint = data.cover;
       CoverSync.run();
     }

@@ -1,4 +1,3 @@
-import { CatalogFilter } from './catalog-filter.js';
 import { Suppliers } from './suppliers.js';
 import { Str } from '../../core/str.js';
 import { Attrs } from '../../core/item-attrs.js';
@@ -44,6 +43,8 @@ export class CatalogIndex {
   };
   static HOMOGLYPH = { а: 'a', в: 'b', е: 'e', к: 'k', м: 'm', н: 'h', о: 'o', р: 'p', с: 'c', т: 't', у: 'y', х: 'x' };
   static MIN_FOLD = 2;
+  /** ревизия поисковых строк: позиция изменилась — отборы считают совпадения с поиском заново */
+  static rev = 0;
 
   /**
    * Транслит.
@@ -96,16 +97,12 @@ export class CatalogIndex {
     delete card._hay;
     delete card._sup;
     delete card._pq;
-    CatalogFilter.dropQueries();
+    this.changed();
   }
 
-  /**
-   * Фид-источник: облегчённая карточка несёт src, полная (после сохранения) — feed.id.
-   * @param {object} card
-   * @returns {string}
-   */
-  static src(card) {
-    return card.src || card.feed?.id || '';
+  /** Позиции изменились (правка, загружен список) — отборы считают совпадения с поиском заново. */
+  static changed() {
+    this.rev++;
   }
 
   /**

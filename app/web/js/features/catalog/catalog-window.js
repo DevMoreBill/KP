@@ -586,7 +586,7 @@ export class CatalogWindow {
           Toast.show(`Каталог не загрузился: ${error.message || error}`);
           return [];
         });
-    CatalogFilter.dropQueries();
+    CatalogIndex.changed();
     await Promise.all([this.loadPending(), this.loadSources()]);
     this.warm();
     this.redraw();

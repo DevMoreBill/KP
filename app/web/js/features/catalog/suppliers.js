@@ -1,14 +1,15 @@
-import { CatalogFilter } from './catalog-filter.js';
-import { CatalogIndex } from './catalog-index.js';
 import { Catalog } from './catalog-store.js';
 import { Api } from '../../core/net.js';
 import { Str } from '../../core/str.js';
+import { Attrs } from '../../core/item-attrs.js';
 
 /** Поставщик позиции: фид-источник (или поставщик, к которому фид привязан), иначе — по производителю из справочника. */
 export class Suppliers {
   static src = {}; // фиды-источники: id → поставщик
   static sups = []; // справочник поставщиков
   static srcKey = '';
+  /** ревизия: поставщики изменились — отборы считают совпадения с поиском заново */
+  static rev = 0;
 
   /**
    * Поставщик позиции (с запоминанием на позиции).
@@ -17,13 +18,22 @@ export class Suppliers {
    */
   static of(card) {
     if (card._sup !== undefined) return card._sup;
-    const src = CatalogIndex.src(card);
+    const src = this.source(card);
     card._sup = src ? (this.src[src] || {}).name || src : this._byMaker(card);
     return card._sup;
   }
 
+  /**
+   * Фид-источник: облегчённая карточка несёт src, полная (после сохранения) — feed.id.
+   * @param {object} card
+   * @returns {string}
+   */
+  static source(card) {
+    return card.src || card.feed?.id || '';
+  }
+
   static _byMaker(card) {
-    const maker = Str.norm(CatalogIndex.attrs(card).maker);
+    const maker = Str.norm(Attrs.of(card).maker);
     if (!maker) return '';
     const found =
       this.sups.find(sup => Str.norm(sup.name) === maker) ||
@@ -53,6 +63,6 @@ export class Suppliers {
         delete card._hay;
       });
     }
-    CatalogFilter.dropQueries();
+    this.rev++;
   }
 }

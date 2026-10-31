@@ -4,7 +4,6 @@ import { Attrs } from '../core/item-attrs.js';
 import { EquipTypes } from '../core/equip-types.js';
 import { CatalogFill } from '../features/catalog/catalog-fill.js';
 import { CatFind, Catalog } from '../features/catalog/catalog-store.js';
-import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { Toast } from '../core/toast.js';
 import { Logos } from '../features/catalog/image-slots.js';
 import { Discount, KpCurrency } from '../features/kp/currency.js';
@@ -17,6 +16,7 @@ import { OptionSale } from '../features/kp/option-sale.js';
 import { RateSource } from '../features/kp/rate-source.js';
 import { Tender } from '../core/tender.js';
 import { TenderBlock } from './tender.js';
+import { CatalogSession } from '../features/catalog/catalog-session.js';
 
 /** Ввод в поля формы КП: поля по пути (data-p), цены, скидки, цены опций, курсы валют. */
 export class FieldEvents {
@@ -179,7 +179,7 @@ export class FieldEvents {
       return;
     }
     const name = /^items\.(\d+)\.name$/.exec(path);
-    if (!name || CatalogEditor.session) return;
+    if (!name || CatalogSession.current) return;
     const item = S.items[+name[1]];
     const card = CatFind.name(item.name);
     if (!card || item.price || item.photo) return;

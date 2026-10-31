@@ -3,6 +3,7 @@ import { CatalogIndex } from './catalog-index.js';
 import { CatalogSearch } from './catalog-cache.js';
 import { Str } from '../../core/str.js';
 import { CatSections } from './cat-sections.js';
+import { Suppliers } from './suppliers.js';
 
 /** Условия отбора окна каталога: поиск, раздел, категория, производитель, поставщик, параметры категории. */
 export class CatalogFilter {
@@ -21,12 +22,6 @@ export class CatalogFilter {
     return !!range && ((range.min ?? '') !== '' || (range.max ?? '') !== '');
   }
 
-  /** Сбросить совпадения с поиском у обоих отборов (позиции изменились). */
-  static dropQueries() {
-    this.items.dropQuery();
-    this.options.dropQuery();
-  }
-
   constructor() {
     Object.assign(this, {
       q: '',
@@ -43,11 +38,6 @@ export class CatalogFilter {
       sort: 'best',
       dir: 1,
     });
-  }
-
-  /** Совпадения с поиском — заново. */
-  dropQuery() {
-    this._qs = null;
   }
 
   _category(cat) {
@@ -187,9 +177,15 @@ export class CatalogFilter {
     );
   }
 
+  // позиции или поставщики изменились с прошлого раза — совпадения с поиском считаются заново
+  _rev() {
+    return `${CatalogIndex.rev}.${Suppliers.rev}`;
+  }
+
   _prepare() {
-    if (this._qs === this.q) return;
+    if (this._qs === this.q && this._qr === this._rev()) return;
     this._qs = this.q;
+    this._qr = this._rev();
     this._qw = Str.norm(this.q)
       .split(' ')
       .filter(Boolean)
@@ -226,7 +222,7 @@ export class CatalogFilter {
    * @returns {number} сколько добавилось, −1 — пересчитать
    */
   addServer(query, ids) {
-    if (this._qs !== query || !this._qm) return -1;
+    if (this._qs !== query || !this._qm || this._qr !== this._rev()) return -1;
     let added = 0;
     for (const id of ids) {
       if (this._qm.get(id) === false) {
@@ -245,7 +241,7 @@ export class CatalogFilter {
   rel(card) {
     const query = Str.norm(this.q);
     if (!query) return 2;
-    const fold = this._qs === this.q ? this._qf : CatalogIndex.fold(query);
+    const fold = this._qs === this.q && this._qr === this._rev() ? this._qf : CatalogIndex.fold(query);
     const hay = CatalogIndex.hay(card);
     const model = hay.m0.startsWith(fold) || hay.model.includes(fold) || hay.model2.includes(fold);
     if (fold.length >= CatalogIndex.MIN_FOLD && model) return 0;

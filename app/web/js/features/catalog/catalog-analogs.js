@@ -1,4 +1,3 @@
-import { CatalogCard } from './catalog-card.js';
 import { CatalogIndex } from './catalog-index.js';
 import { Catalog } from './catalog-store.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -6,6 +5,7 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { Modal } from '../../core/modal.js';
 import { Str } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { ListPrice } from './list-price.js';
 
 /**
  * «Аналоги других производителей»: та же категория, другой производитель, главные параметры категории (мощность, давление,
@@ -135,6 +135,6 @@ export class CatalogAnalogs {
   static _row(other) {
     const maker = CatalogIndex.attrs(other).maker || '';
     const stock = CatalogIndex.inStock(other) ? 'в наличии' : 'под заказ';
-    return `<button class="md-r sim-r" type="button" data-simopen="${esc(other.id)}"><div><b>${esc(other.name)}</b><span class="muted">${esc(maker)} · ${CatalogCard.priceHtml(other)} · ${stock}</span></div><span aria-hidden="true">›</span></button>`;
+    return `<button class="md-r sim-r" type="button" data-simopen="${esc(other.id)}"><div><b>${esc(other.name)}</b><span class="muted">${esc(maker)} · ${ListPrice.html(other)} · ${stock}</span></div><span aria-hidden="true">›</span></button>`;
   }
 }

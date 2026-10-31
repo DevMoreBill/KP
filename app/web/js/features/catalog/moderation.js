@@ -1,5 +1,4 @@
 import { Catalog } from './catalog-store.js';
-import { CatalogWindow } from './catalog-window.js';
 import { ModerationDiff } from './moderation-diff.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
@@ -9,6 +8,7 @@ import { esc } from '../../core/util.js';
 import { AdminSession, Api } from '../../core/net.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AuditLabels } from '../../core/audit-labels.js';
+import { CatalogLink } from '../../core/catalog-link.js';
 
 /**
  * Правка на модерации «было → стало» с выделением изменённого, приём целиком или по отмеченным полям, код правки — под
@@ -263,10 +263,7 @@ export class ModerationList {
       const button = event.target.closest('[data-pend]');
       if (!button) return;
       modal.close();
-      const win = CatalogWindow.win;
-      ModerationView.open(+button.dataset.pend, () => {
-        win.loadPending().then(() => win.redraw());
-      });
+      ModerationView.open(+button.dataset.pend, () => CatalogLink.reloadPending());
     });
   }
 }

@@ -11,6 +11,7 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { SpecValues } from '../../core/spec-values.js';
 import { Auth } from '../../core/auth.js';
 import { Currency } from '../../core/currency.js';
+import { ListPrice } from './list-price.js';
 
 /** Строка списка и карточка-предпросмотр окна каталога. */
 export class CatalogCard {
@@ -26,17 +27,6 @@ export class CatalogCard {
    */
   static webUrl(url) {
     return SafeLink.web(url);
-  }
-
-  /**
-   * Цена в списке: цена, иначе закупка, иначе «без цены».
-   * @param {object} card
-   * @returns {string}
-   */
-  static priceHtml(card) {
-    if (card.price) return `${KPGen.money(card.price)} ${Currency.short(card.priceCur || 'RUB')}`;
-    if (card.cost) return `<small>закупка</small>${KPGen.money(card.cost)} ${Currency.short(card.costCur || 'RUB')}`;
-    return '<small>без цены</small>';
   }
 
   static _facetTag(field, attrs) {
@@ -88,7 +78,7 @@ export class CatalogCard {
       <label class="ck" title="Отметить (Shift — диапазон)"><input type="checkbox" data-ck ${sel ? 'checked' : ''} aria-label="Отметить"></label>
       ${card.photo ? `<img src="${esc(card.photo.src)}" alt="" loading="lazy">` : '<i class="ph"></i>'}
       <div class="cw-mn"><b>${esc(card.name)}</b>${win.pend.has(id) ? '<span class="modb">На модерации</span>' : ''}${this.tags(win, card)}</div>
-      <div class="cw-pr">${this.priceHtml(card)}${FeedBadge.html(card)}${count ? `<small>в КП ${count} ${KPGen.plural(count, 'раз', 'раза', 'раз')}</small>` : ''}</div>
+      <div class="cw-pr">${ListPrice.html(card)}${FeedBadge.html(card)}${count ? `<small>в КП ${count} ${KPGen.plural(count, 'раз', 'раза', 'раз')}</small>` : ''}</div>
       <button class="btn sm${inKp ? ' in' : ''}" type="button" data-add title="${this._addTitle(win, inKp)}">${win.addLabel(id)}</button></div>`;
   }
 

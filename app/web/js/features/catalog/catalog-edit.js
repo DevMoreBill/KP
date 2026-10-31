@@ -1,17 +1,18 @@
 import { CatalogCache } from './catalog-cache.js';
 import { CatalogStore } from './catalog-store.js';
-import { CatalogWindow } from './catalog-window.js';
-import { Price } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { AdminSession } from '../../core/net.js';
 import { ItemEditor } from './item-editor.js';
-import { $, Uid, esc } from '../../core/util.js';
+import { $, Uid } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Makers } from './makers.js';
 import { CardRules } from './card-rules.js';
 import { CardGaps } from './card-gaps.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Kit } from '../../core/kit.js';
+import { CatalogLink } from '../../core/catalog-link.js';
+import { CatalogPrice } from './catalog-price.js';
+import { CatalogSession } from './catalog-session.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.
@@ -20,7 +21,6 @@ import { Kit } from '../../core/kit.js';
  */
 export class CatalogEditor {
   // правка позиции каталога: пока она открыта, S.items подменены — черновик не сохраняется
-  static session = null;
   static TEMP = ['_light', '_a', '_nv', '_hay', '_sup', '_pq', 'pricesCount', 'st', 'src', 'art']; // служебные поля карточки
   static FOCUS_DELAY = 30;
 
@@ -134,14 +134,14 @@ export class CatalogEditor {
 
   static _open(doc, onSave, isNew) {
     if (!doc || doc._light) {
-      CatalogWindow.win.say('Не удалось загрузить позицию целиком — повторите');
+      CatalogLink.say('Не удалось загрузить позицию целиком — повторите');
       return;
     }
-    if (CatalogEditor.session || ItemEditor.current) return;
+    if (CatalogSession.current || ItemEditor.current) return;
     const item = this.toItem(doc);
-    CatalogEditor.session = { items: S.items, base: doc, onSave, snap: '', isNew };
+    CatalogSession.current = { items: S.items, base: doc, onSave, snap: '', isNew };
     S.items = [item];
-    CatalogEditor.session.snap = JSON.stringify(this.toDoc(item, doc));
+    CatalogSession.current.snap = JSON.stringify(this.toDoc(item, doc));
     ItemEditor.open(0, 'main');
   }
 
@@ -164,27 +164,19 @@ export class CatalogEditor {
   }
 
   /**
-   * Надпись кнопки сохранения: при модерации правка уходит администратору (правки администратора — сразу).
-   * @returns {string}
-   */
-  static saveLabel() {
-    return CatalogWindow.win.mod && !AdminSession.on ? 'Отправить на модерацию' : 'Сохранить в каталог';
-  }
-
-  /**
    * Есть несохранённые правки.
    * @returns {boolean}
    */
   static dirty() {
     return (
-      !!CatalogEditor.session &&
-      (CatalogEditor.session.isNew ||
-        JSON.stringify(this.toDoc(S.items[0], CatalogEditor.session.base)) !== CatalogEditor.session.snap)
+      !!CatalogSession.current &&
+      (CatalogSession.current.isNew ||
+        JSON.stringify(this.toDoc(S.items[0], CatalogSession.current.base)) !== CatalogSession.current.snap)
     );
   }
 
   static async _put(item) {
-    let doc = this.toDoc(item, CatalogEditor.session.base);
+    let doc = this.toDoc(item, CatalogSession.current.base);
     doc.updatedAt = new Date().toISOString();
     const button = $('#edlg [data-catsave]');
     if (button) {
@@ -209,9 +201,9 @@ export class CatalogEditor {
   }
 
   static async _finish(doc) {
-    const after = CatalogEditor.session.onSave;
-    S.items = CatalogEditor.session.items;
-    CatalogEditor.session = null;
+    const after = CatalogSession.current.onSave;
+    S.items = CatalogSession.current.items;
+    CatalogSession.current = null;
     ItemEditor.current = null;
     const dialog = $('#edlg');
     if (dialog.open) dialog.close();
@@ -221,7 +213,7 @@ export class CatalogEditor {
 
   /** «Сохранить в каталог». */
   static async save() {
-    if (!CatalogEditor.session) return;
+    if (!CatalogSession.current) return;
     const item = S.items[0];
     if (!String(item.name || '').trim()) {
       ItemEditor.current.tab = 'main';
@@ -230,7 +222,7 @@ export class CatalogEditor {
       Toast.show('Укажите наименование позиции');
       return;
     }
-    if (CatalogEditor.session.isNew && !Makers.ensure(item)) {
+    if (CatalogSession.current.isNew && !Makers.ensure(item)) {
       this.askMaker(0);
       return;
     }
@@ -242,7 +234,7 @@ export class CatalogEditor {
   // обязательное у основного оборудования и похожие позиции (сервер проверит то же самое)
   static async _quality(item) {
     CardRules.fill(item);
-    const base = CatalogEditor.session.base;
+    const base = CatalogSession.current.base;
     let found;
     try {
       found = await CardRules.check(this.toDoc(item, base), base.id);
@@ -283,7 +275,7 @@ export class CatalogEditor {
 
   /** «Отмена» и Esc — с вопросом, если есть несохранённые правки. */
   static async cancel() {
-    if (!CatalogEditor.session) return;
+    if (!CatalogSession.current) return;
     if (this.dirty() && !confirm('Закрыть без сохранения? Изменения позиции каталога будут потеряны.')) return;
     await this._finish(null);
   }
@@ -291,87 +283,19 @@ export class CatalogEditor {
   /** Обработчики карточки каталога (вешаются один раз). */
   static listen() {
     document.addEventListener('click', event => {
-      if (!CatalogEditor.session || !event.target.closest('#edlg')) return;
+      if (!CatalogSession.current || !event.target.closest('#edlg')) return;
       if (event.target.closest('[data-catsave]')) this.save();
       else if (event.target.closest('[data-catcancel]')) this.cancel();
     });
     document.addEventListener(
       'cancel',
       event => {
-        if (event.target.id !== 'edlg' || !CatalogEditor.session) return;
+        if (event.target.id !== 'edlg' || !CatalogSession.current) return;
         event.preventDefault();
         this.cancel();
       },
       true,
     );
     CatalogPrice.listen();
-  }
-}
-
-/** Цена в карточке каталога: продажа и закупка с валютами; ручная цена — фид её больше не трогает. */
-export class CatalogPrice {
-  // закупка из фида по сетке скидок поставщика: «РРЦ − 30 % (Компрессоры с ременным приводом до 75 кВт)»
-  static _disc(card) {
-    const disc = card.costDisc;
-    if (!(disc && disc.pct && card.costSrc === 'feed')) return '';
-    return ` Закупка — из фида поставщика: ${card.rrc && card.rrc.price ? 'РРЦ' : 'цена прайса'} − ${String(disc.pct).replace('.', ',')} %${disc.label ? ` (${esc(disc.label)})` : ''}.`;
-  }
-
-  static _cur(card, key) {
-    const opts = Object.keys(KPGen.CURS)
-      .map(
-        code =>
-          `<option value="${code}"${(card[key] || 'RUB') === code ? ' selected' : ''}>${esc(KPGen.CURS[code].sh)}</option>`,
-      )
-      .join('');
-    return `<select data-ccur="${key}" aria-label="Валюта">${opts}</select>`;
-  }
-
-  /**
-   * Блок «Цена в каталоге».
-   * @param {object} card
-   * @returns {string}
-   */
-  static html(card) {
-    const priceText = card._priceText ?? (card.price ? KPGen.money(card.price) : '');
-    const costText = card._costText ?? (card.cost ? KPGen.money(card.cost) : '');
-    return `<div class="ed-sec"><p class="sub">Цена в каталоге</p><div class="cprice">
-      <label class="f"><span>Цена продажи</span><input type="text" inputmode="decimal" class="num" data-cprice="price" value="${esc(priceText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта</span>${this._cur(card, 'priceCur')}</label>
-      <label class="f"><span>Закупка</span><input type="text" inputmode="decimal" class="num" data-cprice="cost" value="${esc(costText)}" placeholder="не указана" autocomplete="off"></label><label class="f"><span>Валюта закупки</span>${this._cur(card, 'costCur')}</label>
-      <label class="f"><span>Срок поставки</span><input type="text" data-clead value="${esc(card.lead || '')}" maxlength="80" placeholder="под заказ 6–8 недель" autocomplete="off"></label></div>
-    <p class="muted" style="margin:6px 0 0">Цена подставляется в новые КП. При сохранении КП цена позиции в каталоге обновляется сама. Срок поставки — в «Условия» КП, если позиции нет в наличии (пусто — по поставщику).${this._disc(card)}</p></div>`;
-  }
-
-  static _input(field) {
-    const card = S.items[0];
-    const key = field.dataset.cprice;
-    const value = Price.parse(field.value);
-    card[`_${key}Text`] = field.value;
-    card[key] = Number.isNaN(value) ? 0 : value;
-    card[`${key}Src`] = 'manual';
-    field.classList.toggle('bad', Number.isNaN(value));
-  }
-
-  static _blur(field) {
-    const card = S.items[0];
-    const value = Price.parse(field.value);
-    if (Number.isNaN(value)) return;
-    delete card[`_${field.dataset.cprice}Text`];
-    field.value = value ? KPGen.money(value) : '';
-  }
-
-  /** Ввод цены и валюты. */
-  static listen() {
-    document.addEventListener('input', event => {
-      if (event.target.dataset.cprice != null && CatalogEditor.session) this._input(event.target);
-      if (event.target.dataset.clead != null && CatalogEditor.session) S.items[0].lead = event.target.value;
-    });
-    document.addEventListener('focusout', event => {
-      if (event.target.dataset.cprice != null && CatalogEditor.session) this._blur(event.target);
-    });
-    document.addEventListener('change', event => {
-      const field = event.target;
-      if (field.dataset.ccur != null && CatalogEditor.session) S.items[0][field.dataset.ccur] = field.value;
-    });
   }
 }

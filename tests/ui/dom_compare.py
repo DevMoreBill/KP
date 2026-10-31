@@ -54,7 +54,7 @@ class DomCompare:
         (re.compile(r'<span class="saved"[^>]*>[^<]*</span>'), '<span class="saved"></span>'),
         (re.compile(r'<span class="dk-saved[^"]*"([^>]*)>[^<]*</span>'), r'<span class="dk-saved"\1></span>'),
         (re.compile(r'<div class="cab-tip" role="note">.*?</button></div>', re.S), ''),
-        (re.compile(r'<h3>(?:Доброй ночи|Доброе утро|Добрый день|Добрый вечер)!</h3>'), '<h3>GREETING</h3>'),
+        (re.compile(r'<h3>(?:Доброй ночи|Доброе утро|Добрый день|Добрый вечер)(?:, [^<!]*)?!</h3>'), '<h3>GREETING</h3>'),
         (re.compile(r'(<body[^>]*class="[^"]*?) top-hide'), r'\1'),
     )
     # строки, меняющиеся от стенда и времени работы: папки и адрес сервера, время работы, размер базы, журнал действий

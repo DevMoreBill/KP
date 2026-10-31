@@ -1,4 +1,3 @@
-import { CatalogWindow } from './catalog-window.js';
 import { TypeForm } from './type-form.js';
 import { Catalog } from './catalog-store.js';
 import { ObjPath } from '../../core/str.js';
@@ -8,6 +7,7 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { $, esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Translit } from '../../core/translit.js';
+import { CatalogLink } from '../../core/catalog-link.js';
 
 /**
  * Категории оборудования (справочник типов): слева — список по разделам каталога, справа — форма категории. Свои
@@ -444,7 +444,7 @@ class TypeSave {
     Catalog.cache.forEach(card => delete card._a);
     KpForm.render();
     TypesEditor.state.dirty = false;
-    if ($('#catdlg')?.open) CatalogWindow.win.redraw(); // открыт каталог — категории и фильтры обновляются сразу
+    if ($('#catdlg')?.open) CatalogLink.redraw(); // открыт каталог — категории и фильтры обновляются сразу
     Toast.show(note || 'Справочник категорий сохранён');
   }
 
