@@ -34,7 +34,29 @@ export class StNav {
       dialog
         .querySelectorAll('.st-nav [data-sttab]')
         .forEach(button => button.classList.toggle('on', button.dataset.sttab === AdminState.tab));
-    dialog?.querySelector('.st-nav .on')?.scrollIntoView({ block: 'nearest' });
+    this.showActive(dialog);
+  }
+
+  /**
+   * Показать выбранную вкладку, прокрутив только меню (полосу разделов на телефоне, список на ПК): на телефоне окно
+   * прокручивается целиком, и прокрутка до кнопки в прилипшей полосе сдвигала бы всё окно.
+   * @param {HTMLElement|null} dialog
+   */
+  static showActive(dialog) {
+    const button = dialog?.querySelector('.st-nav .on');
+    const nav = button?.closest('.st-nav');
+    if (!nav || !button.getClientRects().length) return;
+    const box = nav.getBoundingClientRect();
+    const item = button.getBoundingClientRect();
+    nav.scrollLeft += this._shift([item.left, item.right], [box.left, box.right]);
+    nav.scrollTop += this._shift([item.top, item.bottom], [box.top, box.bottom]);
+  }
+
+  // насколько сдвинуть, чтобы отрезок кнопки оказался в отрезке меню (как scrollIntoView «nearest»)
+  static _shift([start, end], [min, max]) {
+    if (start < min) return start - min;
+    if (end > max) return Math.min(end - max, start - min);
+    return 0;
   }
 
   /**

@@ -323,6 +323,26 @@ html.mob dialog.tabwin.cabwin[open]{scroll-padding-top:var(--cab-stuck,0px);back
 html.mob dialog.tabwin.cabwin .cab-h{position:sticky;top:calc(-1 * var(--cab-lift,0px));z-index:5;background:var(--card)}
 html.mob dialog.tabwin.cabwin .cab-b{overflow:visible}
 html.mob dialog.tabwin.cabwin .tbl-wrap{overflow-x:auto}  /* сводка «Отдела» шире экрана листается вбок сама, окно — на месте */
+/* «Экономика сделки» и «Настройки» — так же: шапка уходит, вкладки шагов и разделы «Настроек» прилипают сами (--dl-stuck
+   и --st-stuck считает StickyHead); только в одну колонку — при меню «Настроек» слева (телефон боком) всё как было */
+@media (max-width:1000px){
+  html.mob dialog.tabwin.dealwin:not(.tab-off)[open]{display:block;overflow-y:auto;overscroll-behavior:contain;scroll-padding-top:var(--dl-stuck,0px)}
+  html.mob dialog.tabwin.dealwin>.dlg-h{position:static}
+  html.mob dialog.tabwin.dealwin .dl-b{overflow:visible}
+}
+@media (max-width:900px){
+  /* смена раздела заменяет всё содержимое — привязка прокрутки браузера (overflow-anchor) уводила окно к началу */
+  html.mob dialog.tabwin.setwin:not(.tab-off):not(.login)[open]{display:block;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain;scroll-padding-top:var(--st-stuck,0px)}
+  html.mob dialog.tabwin.setwin:not(.login)>.dlg-h{position:static}
+  html.mob dialog.tabwin.setwin:not(.login) .st-b{display:block}
+  html.mob dialog.tabwin.setwin:not(.login) .st-nav{position:sticky;top:0;z-index:5}
+  html.mob dialog.tabwin.setwin:not(.login) .st-main{overflow:visible}
+  html.mob dialog.tabwin.setwin .st-ed-h{top:calc(var(--st-stuck,0px) - 1px)}  /* «Сохранить» карточки клиента — под разделами */
+  /* шире экрана — только своя прокрутка вбок (таблицы правил компоновки), длинная подпись галочки — переносится */
+  html.mob dialog.tabwin.setwin .df-main{grid-template-columns:minmax(0,1fr)}
+  html.mob dialog.tabwin.setwin .cab-ck{white-space:normal}
+  html.mob dialog.tabwin.setwin .tbl-wrap{overflow-x:auto}  /* «Как в Битрикс24»: таблица воронок */
+}
 .mob .catwin .pv-scroll{padding:14px max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
 .mob .catwin .pv-photo{height:220px}
 .mob .catwin .pv-cat{grid-template-columns:minmax(0,1fr)}

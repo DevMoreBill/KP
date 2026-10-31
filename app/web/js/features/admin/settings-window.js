@@ -14,6 +14,7 @@ import { UiKit } from '../../core/ui-kit.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminState } from './admin-state.js';
+import { StickyHead } from '../../core/sticky-head.js';
 
 /**
  * Окно «Настройки» — админ-панель под паролем администратора (сервер: app/admin.py): размер окна запоминается, вход,
@@ -23,6 +24,8 @@ export class SettingsWindow {
   static RESIZE_WAIT = 600;
   static MIN_WIDTH = 300;
   static STORE = 'kp.setwin';
+  // телефон: прокручивается всё окно — заголовок уходит вверх, строка разделов (с поиском) остаётся у края
+  static HEAD = { head: '.st-nav', prefix: '--st' };
 
   /**
    * Окно (создаётся один раз): размер запоминается, «⤢» — во весь экран.
@@ -124,7 +127,8 @@ export class SettingsWindow {
     AdminState.tab = AdminNav.route(AdminState.tab);
     dialog.innerHTML = `${head}<div class="st-b">${AdminNav.html(AdminState.tab, SettingsSearch.html())}
     <section class="st-main" id="stMain"><p class="empty">Загружаю…</p></section></div>`;
-    dialog.querySelector('.st-nav .on')?.scrollIntoView({ block: 'nearest' });
+    StickyHead.watch(dialog, this.HEAD);
+    StNav.showActive(dialog);
     SettingsSearch.bind(dialog);
     StDirty.watch(dialog);
     StAutoSave.watch(dialog);
@@ -170,6 +174,8 @@ export class SettingsWindow {
     if (!(await StDirty.leave())) return;
     const find = $('#stFind');
     if (find) find.value = '';
+    const main = $('#stMain');
+    if (main) StickyHead.reveal(this.dialog(), main); // телефон: другой раздел — с начала, под строкой разделов
     StNav.select(key);
     this.tab({ click: true });
   }

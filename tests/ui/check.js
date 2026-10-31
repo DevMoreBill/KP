@@ -53,9 +53,13 @@
   const clip=e=>{ const r=e.getBoundingClientRect(); let L=r.left,T=r.top,Rt=r.right,B=r.bottom; for(let a=e.parentElement;a&&a!==document.documentElement;a=a.parentElement){ const cs=getComputedStyle(a); if(cs.overflowX==='visible'&&cs.overflowY==='visible') continue; const q=a.getBoundingClientRect(); L=Math.max(L,q.left); T=Math.max(T,q.top); Rt=Math.min(Rt,q.right); B=Math.min(B,q.bottom); } return {left:L,top:T,right:Rt,bottom:B}; };
   const rs=ints.map(clip);
   // закреплённая панель (sticky): содержимое проходит под ней при прокрутке — наложение, только если его нельзя прокрутить выше
-  const bar=e=>{ for(let a=e,k=0;a&&k<4;a=a.parentElement,k++) if(getComputedStyle(a).position==='sticky') return a; return null; };
+  const bar=e=>{ for(let a=e,k=0;a&&k<4;a=a.parentElement,k++) if(getComputedStyle(a).position==='sticky'&&stuck(a)) return a; return null; };
   const scroller=e=>{ for(let a=e.parentElement;a;a=a.parentElement){ const cs=getComputedStyle(a); if(/auto|scroll/.test(cs.overflowY)&&a.scrollHeight>a.clientHeight) return a; } return document.scrollingElement; };
-  const under=(e,h,stick)=>{ const s=scroller(e); return s.contains(stick)&&s.scrollHeight-s.clientHeight-s.scrollTop>=h; };
+  // панель прижата к краю прокрутки; дошедшая до конца своего блока уходит вместе с ним, как обычное содержимое
+  const stuck=a=>{ const cs=getComputedStyle(a), r=a.getBoundingClientRect(), s=scroller(a), q=s===document.scrollingElement?{top:0,bottom:innerHeight}:s.getBoundingClientRect();
+    return cs.top!=='auto'?Math.abs(r.top-q.top-parseFloat(cs.top))<1.5:Math.abs(q.bottom-parseFloat(cs.bottom)-r.bottom)<1.5; };
+  // панель сверху (top задан) — открыть то, что под ней, можно прокруткой назад, снизу — дальше вниз
+  const under=(e,h,stick)=>{ const s=scroller(e); if(!s.contains(stick)) return false; const room=getComputedStyle(stick).top!=='auto'?s.scrollTop:s.scrollHeight-s.clientHeight-s.scrollTop; return room>=h; };
   const passes=(a,b,h)=>{ const ba=bar(a), bb=bar(b); if(!ba===!bb) return false; return ba?under(b,h,ba):under(a,h,bb); };
   for(let i=0;i<ints.length;i++) for(let j=i+1;j<ints.length;j++){ const a=ints[i],b=ints[j]; if(a.contains(b)||b.contains(a)) continue; const p=rs[i],q=rs[j];
     const w=Math.min(p.right,q.right)-Math.max(p.left,q.left), h=Math.min(p.bottom,q.bottom)-Math.max(p.top,q.top); if(w>3&&h>3&&!passes(a,b,h)){

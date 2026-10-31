@@ -53,11 +53,11 @@ export class DealTimeline {
     return `<i class="${cls}" style="left:${this._left(from)};width:${this._width(from, target)}" title="${esc(title)}: ${days} дн."><span>${days > 0 ? `${days} дн.` : ''}</span></i>`;
   }
 
-  // подпись даты — под лентой у конца отрезка
+  // подпись даты — под лентой у конца отрезка; длиннее места до него (телефон) — от начала ленты, не за краем
   _endLabel(day, text, badge) {
     const left = day / this.end < DealTimeline.LEFT ? 'l' : '';
     const crit = badge && badge.text ? ` <b class="dlo-crit" title="${esc(badge.title || '')}">${badge.text}</b>` : '';
-    return `<em class="${left}" style="left:${this._left(day)}">${text}${crit}</em>`;
+    return `<em class="${left}" style="--at:${this._left(day)}"><span>${text}${crit}</span></em>`;
   }
 
   _payText(sup) {

@@ -1,37 +1,46 @@
 /**
  * Телефон: шапка окна уходит вверх вместе с прокруткой, у края остаётся её нижняя строка (поиск каталога, разделы
- * кабинета) — шапка прилипает, поднявшись на строки над ней. Насколько поднять и сколько остаётся видно, ставят
- * CSS-свойства окна `<prefix>-lift` и `<prefix>-stuck`; на ПК шапка не прилипает — свойства не ставятся.
+ * кабинета) — шапка прилипает, поднявшись на строки над ней, — или строка, которая прилипает сама (вкладки шагов
+ * экономики сделки, разделы «Настроек»). Насколько поднять и сколько остаётся видно, ставят CSS-свойства окна
+ * `<prefix>-lift` и `<prefix>-stuck`; на ПК шапка не прилипает — свойства не ставятся.
  */
 export class StickyHead {
-  static observers = new Map();
+  static watched = new Map();
 
   /**
-   * Следить за высотой шапки окна (окно перерисовано — шапка новая).
+   * Следить за высотой шапки окна (окно перерисовано — шапка новая; та же — слежка прежняя).
    * @param {HTMLElement} host окно
-   * @param {{head: string, keep: string, prefix: string}} spec шапка, строка, которая остаётся, начало имён свойств
+   * @param {{head: string, keep?: string, prefix: string}} spec шапка, строка, которая остаётся (нет — шапка остаётся
+   *   целиком), начало имён свойств
    */
   static watch(host, spec) {
-    this.observers.get(host)?.disconnect();
     const head = host.querySelector(spec.head);
+    const was = this.watched.get(host);
+    if (was && was.head === head) return;
+    was?.observer.disconnect();
+    this.watched.delete(host);
     if (!head) return;
     const observer = new ResizeObserver(() => this._lift(host, head, spec));
     observer.observe(head);
-    this.observers.set(host, observer);
+    this.watched.set(host, { head, observer });
+  }
+
+  static _lift(host, head, spec) {
+    const style = getComputedStyle(head);
+    const keep = spec.keep ? head.querySelector(spec.keep) : head;
+    if (!keep || !head.offsetHeight || style.position !== 'sticky') return;
+    const lift = keep === head ? 0 : this._rise(head, keep, style);
+    host.style.setProperty(`${spec.prefix}-lift`, `${lift}px`);
+    host.style.setProperty(`${spec.prefix}-stuck`, `${head.offsetHeight - lift}px`);
   }
 
   // строка, которая остаётся, — на прежнем отступе от края окна, но не выше пустого места над ней: край строк выше
   // (кнопки вплотную к разделам кабинета) не выглядывает из-под края
-  static _lift(host, head, spec) {
-    const keep = head.querySelector(spec.keep);
-    const style = getComputedStyle(head);
-    if (!keep || !head.offsetHeight || style.position !== 'sticky') return;
+  static _rise(head, keep, style) {
     const above = [...head.children].filter(row => row.offsetHeight && row.offsetTop < keep.offsetTop);
     const roof = Math.max(parseFloat(style.paddingTop), ...above.map(row => row.offsetTop + row.offsetHeight));
     const gap = Math.min(parseFloat(style.paddingTop), Math.max(0, keep.offsetTop - roof));
-    const lift = Math.max(0, keep.offsetTop - gap);
-    host.style.setProperty(`${spec.prefix}-lift`, `${lift}px`);
-    host.style.setProperty(`${spec.prefix}-stuck`, `${head.offsetHeight - lift}px`);
+    return Math.max(0, keep.offsetTop - gap);
   }
 
   /**

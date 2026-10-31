@@ -34,6 +34,7 @@ import { LgAsk } from './lg-ask.js';
 import { LgView } from './lg-view.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
+import { StickyHead } from '../../core/sticky-head.js';
 
 /**
  * Окно «Экономика сделки»: шапка с датой договора и Excel, вкладки шагов по порядку заполнения (открыта одна), правая
@@ -42,6 +43,8 @@ import { Toast } from '../../core/toast.js';
 export class DealWin {
   static TAB_SHORT = { sched: 'График' };
   static TAB_ICON = { ok: '✓', need: '!' };
+  // телефон: прокручивается всё окно — шапка и строка с прибылью уходят вверх, вкладки шагов остаются у края
+  static HEAD = { head: '.dl-tabw', prefix: '--dl' };
   static DATE_Q =
     'Ориентировочная дата заключения договора (день 0). От неё считаются сроки поставки и даты всех платежей; рабочие (банковские) дни — по производственному календарю РФ.';
 
@@ -127,6 +130,7 @@ export class DealWin {
       <div class="dl-foot"><span class="muted">Пересчёт — сразу при вводе. Закупка сохраняется в КП и каталоге.</span></div>
     </div><aside class="dl-side">${DealResult.html(calc)}</aside></div>`,
     );
+    StickyHead.watch(dlg, DealWin.HEAD);
     LgAsk.autoQuote();
   }
 

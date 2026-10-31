@@ -30,6 +30,7 @@ import { DealHsEdit } from './deal-hs-edit.js';
 import { DealLink } from '../../core/deal-link.js';
 import { DealSupEdit } from './deal-sup-edit.js';
 import { LgBind } from './lg-bind.js';
+import { StickyHead } from '../../core/sticky-head.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
@@ -573,6 +574,7 @@ export class DealClicks {
     const tabs = dlg.querySelector('.dl-tabs');
     if (form) form.scrollTop = 0;
     if (box && wrap && box.scrollTop > wrap.offsetTop) box.scrollTop = wrap.offsetTop;
+    if (form) StickyHead.reveal(dlg, form); // телефон: прокручивается всё окно — шаг с начала, под вкладками
     const active = tabs && tabs.querySelector('.dl-tab.on');
     if (active) tabs.scrollLeft = Math.max(0, active.offsetLeft - tabs.clientWidth / 2 + active.offsetWidth / 2);
   }

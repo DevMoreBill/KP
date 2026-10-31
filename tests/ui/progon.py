@@ -708,7 +708,7 @@ class Scenario(UiRun):
 
     def _tab_scroll(self, name, spec):
         """Телефон: окно-вкладка пальцем — шапка уходит вверх вместе со списком, строка spec['keep'] (если есть) остаётся у
-        края (31.10: журнал КП и кабинет, как каталог); затем — снова к началу."""
+        края (31.10: журнал КП и кабинет, как каталог; затем экономика сделки и «Настройки»); затем — снова к началу."""
         if spec.get('fill'):
             self.ev(self.FILL, spec['fill'])
             self.wait(300)
@@ -977,7 +977,7 @@ class Scenario(UiRun):
 
     def _open_deal(self):
         b = self.pg.locator('#form [data-a=deal]').first
-        b.click() if b.count() else self.ev("DealWin.open()")
+        b.click() if b.count() else self.ev("DealLink.open()")  # DealWin — два класса с этим именем (сделка в кабинете)
 
     def _deal_seller(self, root):
         """«Деньги и налог» → «Продавец»: на УСН с НДС 5 % (второе юрлицо стенда) вычета нет — строка «Вычета нет»."""
@@ -1047,9 +1047,16 @@ class Scenario(UiRun):
             self.wait(1500)
             self.snap('60_deal_' + t, root, wait=300)
             if self.ev("(()=>{const d=document.querySelector('dialog[open]'); return d.scrollHeight>d.clientHeight})()"):
-                self.ev("[...document.querySelectorAll('dialog[open] *')].filter(e=>e.scrollHeight>e.clientHeight+20&&"
+                # на телефоне прокручивается само окно (31.10), на ПК — части окна
+                self.ev("[...document.querySelectorAll('dialog[open], dialog[open] *')].filter(e=>e.scrollHeight>e.clientHeight+20&&"
                         "/(auto|scroll)/.test(getComputedStyle(e).overflowY)).forEach(e=>e.scrollTop=e.scrollHeight)")
                 self.snap('60_deal_%s_bottom' % t, root, wait=300)
+        if self.phone and tabs:
+            pg.locator('dialog[open] .dl-tab[data-id="%s"]' % tabs[0]).first.click()
+            self.wait(1200)
+            self.ev("document.querySelector('#dealdlg').scrollTop = 0")
+            self._tab_scroll('экономика сделки', {'win': '#dealdlg', 'title': '.dlg-h', 'keep': '.dl-tabw',
+                                                   'shot': '60b_deal_scrolled', 'fill': '#dealdlg .dl-form'})
         self._deal_seller(root)
         self._deal_addr_to_kp(tabs)
         self.closeall()
@@ -1373,6 +1380,9 @@ class Scenario(UiRun):
             pg.fill('#stPw', self.cfg['admin'][1])
             pg.keyboard.press('Enter')
             self.wait(2000)
+        if self.phone:
+            self._tab_scroll('«Настройки»', {'win': '#setdlg', 'title': '.dlg-h', 'keep': '.st-nav',
+                                             'shot': 'c0b_settings_scrolled', 'fill': '#stMain'})
         tabs = self.ev("AdminNav.tabs().map(t=>t.key)")
         self.meta()['set_tabs'] = tabs
         for t in tabs:
