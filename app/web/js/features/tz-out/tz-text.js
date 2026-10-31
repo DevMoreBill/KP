@@ -21,6 +21,7 @@ import { StationReq } from '../req/station-req.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { ReqLine } from '../req/req-line.js';
+import { EquipField } from '../layout/equip-field.js';
 
 /** Текст ТЗ на сборку станции: разделы по порядку, нумерация — сквозная. */
 export class TzText {
@@ -166,7 +167,7 @@ export class TzText {
 
   static _ourRow(spec, part) {
     const unit = spec.pos.get(part.id) || {};
-    const kw = StationEquip.num((part.attrs || {}).kw);
+    const kw = EquipField.num((part.attrs || {}).kw);
     return [
       String(unit.pos || '—'),
       part.name || '',

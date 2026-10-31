@@ -1,6 +1,6 @@
 import { Mm } from './mm.js';
-import { StationEquip } from './station-equip.js';
 import { StationMatrix } from './station-matrix.js';
+import { EquipField } from './equip-field.js';
 
 /**
  * Дополнительный топливный бак без своих габаритов — прямоугольный по расчётному объёму: начальные высота и ширина по
@@ -50,9 +50,9 @@ export class TankSize {
     const attrs = (product && product.attrs) || {};
     const row = this.volumeRow(product);
     return (
-      StationEquip.num(attrs.tank) ||
-      StationEquip.num(attrs.volume) ||
-      (row ? StationEquip.num(this.firstNumber(row.v)) : null)
+      EquipField.num(attrs.tank) ||
+      EquipField.num(attrs.volume) ||
+      (row ? EquipField.num(this.firstNumber(row.v)) : null)
     );
   }
 

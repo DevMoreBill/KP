@@ -122,7 +122,7 @@ class ProjectRules(unittest.TestCase):
         self.assertEqual(len(found), 2, found)
 
     # разделы интерфейса, где циклы import ещё остались (каждый — внутри своего раздела); развязали раздел — убрать отсюда
-    CYCLES_LEFT = {'view', 'ui', 'layout', 'kit', 'station', 'doc', 'kp', 'eskd', 'draw', 'tz', 'wizard', 'rules-doc'}
+    CYCLES_LEFT = {'ui', 'kit', 'station', 'doc', 'kp', 'tz', 'wizard'}
     IMPORT = re.compile(r"^import (?:[^;']*? from )?'(\.\.?/[^']+)';", re.M)
 
     def test_import_cycles(self):

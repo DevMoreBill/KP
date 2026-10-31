@@ -6,6 +6,7 @@ import { StationEquip } from '../layout/station-equip.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { EquipField } from '../layout/equip-field.js';
 
 /**
  * Станция в документе КП: какие элементы состава — карточками с описанием (основные агрегаты), какие характеристики —
@@ -81,12 +82,12 @@ export class StationDoc {
   static _flowRow(part, kind, list) {
     if (!/^(compressor|dryer)$/.test(kind) || list.some(row => this.PRIO[0].test(String(row.k)))) return null;
     const attrs = part.attrs || {};
-    const value = StationEquip.num(attrs.flow);
+    const value = EquipField.num(attrs.flow);
     if (!(value > 0)) return null;
     const gas = kind === 'dryer' && AirChain.info(part, kind).type === 'gen';
     return {
       k: kind === 'dryer' && !gas ? 'Пропускная способность' : 'Производительность',
-      v: `${Mm.dec(value)} ${FieldUnit.unit(StationEquip.cat(part), 'flow') || this.FLOW_UNIT}`,
+      v: `${Mm.dec(value)} ${FieldUnit.unit(EquipField.cat(part), 'flow') || this.FLOW_UNIT}`,
     };
   }
 

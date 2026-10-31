@@ -1,9 +1,26 @@
 import { Mm } from '../layout/mm.js';
 import { EskdSheet } from '../eskd/eskd-sheet.js';
-import { StationDrawing } from './station-drawing.js';
+import { EskdFrame } from '../eskd/eskd-frame.js';
 
 /** Компоновка листов. */
 export class DrawSheets {
+  static TITLE_TOP = 237;
+  static TOP = 22; // ниже графы 26
+  /** Разрез А–А на листе 1 мельче 1:100 (технические требования длинные) — отдельным листом 2. */
+  static MIN_N = 100;
+  /** Поле изображений. */
+  static FLD = { L0: 25, L1: 200, TOP: 22, BOT: 274 };
+  static ROT = { L0: 0, L1: 252, TOP: 0, BOT: 175, rot: true };
+  /** Наибольший масштаб из ряда, при котором ok(k). */
+  static scaleFor(ok) {
+    for (const denom of EskdSheet.SCALES.filter(value => value >= 10)) {
+      const res = ok(1 / denom);
+      if (res) return Object.assign({ N: denom, k: 1 / denom }, res);
+    }
+    const denom = EskdSheet.SCALES[EskdSheet.SCALES.length - 1];
+    return Object.assign({ N: denom, k: 1 / denom }, ok(1 / denom, true) || {});
+  }
+
   constructor(drawing) {
     this.drawing = drawing;
   }
@@ -59,7 +76,7 @@ export class DrawSheets {
     const two =
       !col &&
       this.drawing.nPos > 1 &&
-      ((this.drawing.field || StationDrawing.FLD).L1 - (this.drawing.field || StationDrawing.FLD).L0 - 10) /
+      ((this.drawing.field || DrawSheets.FLD).L1 - (this.drawing.field || DrawSheets.FLD).L0 - 10) /
         (this.drawing.nPos - 1) <
         EskdSheet.shelfMin([{ n: this.drawing.nPos }]); // номера — на двух полках
     const top = this.drawing.planView.chainTop(k);
@@ -112,7 +129,7 @@ export class DrawSheets {
   /** Лист: книжный или с изображением, повёрнутым на 90°; fn(sh) рисует в поле F. */
   page(field, draw) {
     const sheet = new EskdSheet('A4');
-    const box = StationDrawing.FLD;
+    const box = DrawSheets.FLD;
     const was = this.drawing.field;
     this.drawing.field = field;
     if (field.rot) sheet.group(`translate(${box.L1},${box.TOP}) rotate(90)`, () => draw(sheet));
@@ -122,20 +139,19 @@ export class DrawSheets {
   }
   /** Из книжного и повёрнутого — где масштаб крупнее (pick(F) → {N, …}). */
   best(pick) {
-    const upright = pick(StationDrawing.FLD);
-    const rotated = pick(StationDrawing.ROT);
+    const upright = pick(DrawSheets.FLD);
+    const rotated = pick(DrawSheets.ROT);
     return rotated.N < upright.N
-      ? Object.assign(rotated, { F: StationDrawing.ROT })
-      : Object.assign(upright, { F: StationDrawing.FLD });
+      ? Object.assign(rotated, { F: DrawSheets.ROT })
+      : Object.assign(upright, { F: DrawSheets.FLD });
   }
 
   /** Листы чертежа (SVG), число не ограничено (решение ПНЕВМОТЕХ). */
   sheets() {
-    const spec = StationDrawing;
-    this.drawing.field = spec.FLD;
+    this.drawing.field = DrawSheets.FLD;
     const on1 = this.pickMain(this.lay1().room);
     const sepA = this.best(field => this.pickA(field));
-    const sep = (this.drawing.sepA = on1.N > spec.MIN_N || on1.N > sepA.N);
+    const sep = (this.drawing.sepA = on1.N > DrawSheets.MIN_N || on1.N > sepA.N);
     const both = this.pick2();
     const alone = this.best(field => this.pickPlan(field));
     const split = both.N > alone.N;
@@ -150,7 +166,7 @@ export class DrawSheets {
     const total = 1 + jobs.length;
     this.drawing.slingNo = sling ? total : null;
     const rest = jobs.map((job, j) => job(j + 2, total)); // листы с разрезом — раньше первого
-    this.drawing.field = spec.FLD;
+    this.drawing.field = DrawSheets.FLD;
     return [this.sheet1(total, sep), ...rest];
   }
   /** Основная надпись: первый лист — форма 1 (масштаб — главного изображения), следующие — форма 2а. */
@@ -179,7 +195,6 @@ export class DrawSheets {
 
   /** Раскладка листа 1: требования, характеристика, перечень позиций. */
   lay1() {
-    const spec = StationDrawing;
     const reqs = this.drawing.text.reqs();
     const tech = this.drawing.text.tech();
     const rows = this.drawing.text.rows();
@@ -197,23 +212,23 @@ export class DrawSheets {
     const hTC = tech.length ? 5 + nTC * 3.8 + 0.8 : 0;
     const half = Math.ceil(rows.length / 2);
     const hTab = rows.length ? 5 + half * 4 : 0;
-    const yTT = spec.TITLE_TOP - 2.5 - hTT;
+    const yTT = DrawSheets.TITLE_TOP - 2.5 - hTT;
     const yTTh = yTT - (tech.length ? 4.6 : 0);
     const yTC = yTTh - hTC;
     const yTab = yTC - (hTab ? hTab + 3 : 0);
-    return { tt: reqs, tc: tech, tcL, ind, rows, twoCol, half, yTT, yTTh, yTC, yTab, room: yTab - 3 - spec.TOP };
+    return { tt: reqs, tc: tech, tcL, ind, rows, twoCol, half, yTT, yTTh, yTC, yTab, room: yTab - 3 - DrawSheets.TOP };
   }
   /** Разрез А–А в наибольшем масштабе, который помещается в room по высоте (лист 1, книжный). */
   pickMain(room) {
     const field = this.drawing.field;
-    return StationDrawing.scaleFor((k, last) => {
+    return DrawSheets.scaleFor((k, last) => {
       const box = this.mainBox(k);
       return (box.w <= field.L1 - field.L0 && box.h <= room) || last ? { b: box } : null;
     });
   }
   /** Разрез А–А своим листом в поле F, не крупнее 1:20. */
   pickA(field) {
-    return StationDrawing.scaleFor((k, last) => {
+    return DrawSheets.scaleFor((k, last) => {
       const box = this.mainBox(k);
       return (1 / k >= 20 && box.w <= field.L1 - field.L0 && box.h <= field.BOT - field.TOP) || last
         ? { b: box }
@@ -235,11 +250,10 @@ export class DrawSheets {
   /** Лист 1. */
   sheet1(total, sepA) {
     const sheet = new EskdSheet('A4');
-    const spec = StationDrawing;
     const lay = this.lay1();
     const { tt: reqs, tc: tech, rows, half } = lay;
     // без разреза — текстовая часть сверху листа
-    const dy = sepA ? lay.yTab - spec.TOP - 2 : 0;
+    const dy = sepA ? lay.yTab - DrawSheets.TOP - 2 : 0;
     const yTT = lay.yTT - dy;
     const yTTh = lay.yTTh - dy;
     const yTC = lay.yTC - dy;
@@ -247,12 +261,12 @@ export class DrawSheets {
     if (!sepA) {
       const pick = this.pickMain(lay.room);
       this.drawing.mainScale = pick.N;
-      this.drawMain(sheet, spec.TOP, pick);
+      this.drawMain(sheet, DrawSheets.TOP, pick);
     }
     if (rows.length) DrawSheets.parts(sheet, rows, half, yTab);
     if (tech.length) DrawSheets.techBlock(sheet, lay, [yTC, yTTh]);
     sheet.paras([25, yTT, 175], reqs, 2.5);
-    sheet.frame(this.titleBlock(1, total, this.drawing.mainScale));
+    EskdFrame.draw(sheet, this.titleBlock(1, total, this.drawing.mainScale));
     return sheet.svg();
   }
   /** Перечень составных частей — в две колонки. */
@@ -298,20 +312,19 @@ export class DrawSheets {
     const sheet = this.page(pick.F, sheet =>
       this.drawMain(sheet, pick.F.TOP + Math.max(0, (pick.F.BOT - pick.F.TOP - pick.b.h) / 2), pick),
     );
-    sheet.frame(this.titleBlock(i, total));
+    EskdFrame.draw(sheet, this.titleBlock(i, total));
     return sheet.svg();
   }
   /** План и виды с торцов на одном книжном листе. */
   pick2() {
-    const spec = StationDrawing;
-    const field = spec.FLD;
+    const field = DrawSheets.FLD;
     const room = field.BOT - field.TOP;
     const width = field.L1 - field.L0;
     const minE = this.endsBox(1 / 100).h;
     const was = this.drawing.field;
     this.drawing.field = field;
     try {
-      return spec.scaleFor((k, last) => {
+      return DrawSheets.scaleFor((k, last) => {
         for (const col of [false, true]) {
           const box = this.planBox(k, col);
           if (
@@ -332,7 +345,7 @@ export class DrawSheets {
     const was = this.drawing.field;
     this.drawing.field = field;
     try {
-      return StationDrawing.scaleFor((k, last) => {
+      return DrawSheets.scaleFor((k, last) => {
         for (const col of [false, true]) {
           const box = this.planBox(k, col);
           if (
@@ -362,10 +375,9 @@ export class DrawSheets {
   }
   /** Виды с торцов В (у входа) и Г (дальний) с верхом на yE — в наибольшем масштабе, который помещается до yMax (не крупнее 1:20). */
   drawEnds(sheet, top, yMax) {
-    const spec = StationDrawing;
     const field = this.drawing.field;
     const room = field.L1 - field.L0;
-    const endPick = spec.scaleFor((endK, last) => {
+    const endPick = DrawSheets.scaleFor((endK, last) => {
       const ends = this.endsBox(endK);
       return (1 / endK >= 20 && ends.w <= room && top + ends.h <= yMax) || last ? { E: ends } : null;
     });
@@ -383,12 +395,12 @@ export class DrawSheets {
   }
   /** Лист: план, под ним — виды с торцов. */
   sheet2(i, total, pick) {
-    const sheet = this.page(StationDrawing.FLD, sheet => {
+    const sheet = this.page(DrawSheets.FLD, sheet => {
       const field = this.drawing.field;
       this.drawPlan(sheet, field.TOP, pick);
       this.drawEnds(sheet, field.TOP + pick.P.h + 8, field.BOT);
     });
-    sheet.frame(this.titleBlock(i, total));
+    EskdFrame.draw(sheet, this.titleBlock(i, total));
     return sheet.svg();
   }
   /** Лист: план один (книжный или повёрнутый на 90°). */
@@ -396,15 +408,15 @@ export class DrawSheets {
     const sheet = this.page(pick.F, sheet =>
       this.drawPlan(sheet, pick.F.TOP + Math.max(0, (pick.F.BOT - pick.F.TOP - pick.P.h) / 2), pick),
     );
-    sheet.frame(this.titleBlock(i, total));
+    EskdFrame.draw(sheet, this.titleBlock(i, total));
     return sheet.svg();
   }
   /** Лист: виды с торцов (книжный). */
   sheetEnds(i, total) {
-    const sheet = this.page(StationDrawing.FLD, sheet =>
+    const sheet = this.page(DrawSheets.FLD, sheet =>
       this.drawEnds(sheet, this.drawing.field.TOP, this.drawing.field.BOT),
     );
-    sheet.frame(this.titleBlock(i, total));
+    EskdFrame.draw(sheet, this.titleBlock(i, total));
     return sheet.svg();
   }
   /** Схема строповки в поле F: вид сбоку и с торца рядом или друг под другом. */
@@ -427,10 +439,9 @@ export class DrawSheets {
   }
   /** Масштаб схемы строповки в поле field. */
   pickSling(field) {
-    const spec = StationDrawing;
     const width = field.L1 - field.L0;
     const room = field.BOT - field.TOP - 8 - this.drawing.sling.legendH(new EskdSheet('A4'));
-    return spec.scaleFor((k, last) => {
+    return DrawSheets.scaleFor((k, last) => {
       for (const stack of [false, true]) {
         const slingBox = this.slingBox(k, stack);
         if ((slingBox.w <= width && slingBox.h <= room) || (last && stack)) return { B: slingBox, stack, room };
@@ -441,14 +452,14 @@ export class DrawSheets {
   /** Лист схемы строповки: вид сбоку и с торца, знаки № 9 и № 12, центр тяжести и масса. */
   sheet3(i, total, pick) {
     const sheet = this.page(pick.F, page => this.slingSheet(page, pick));
-    sheet.frame(this.titleBlock(i, total));
+    EskdFrame.draw(sheet, this.titleBlock(i, total));
     return sheet.svg();
   }
 
   /** Друг под другом — вид с торца в своём масштабе, крупнее, если помещается (не крупнее 1:20): {E, N}. */
   endScale({ k, B: slingBox, stack, room, N: denom }, width) {
     if (!stack) return { E: slingBox, N: denom };
-    const endPick = StationDrawing.scaleFor((endK, last) => {
+    const endPick = DrawSheets.scaleFor((endK, last) => {
       const ends = this.slingBox(endK, true);
       return (1 / endK >= 20 && endK >= k && ends.we <= width && slingBox.hv + 6 + ends.hv <= room) || last
         ? { E: ends }

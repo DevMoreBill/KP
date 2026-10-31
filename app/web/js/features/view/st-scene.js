@@ -14,18 +14,6 @@ import { StOutfit } from './st-outfit.js';
 import { StV } from './st-v.js';
 
 export class StScene {
-  static INS = '#d9c48a'; // разрез стены: минеральная вата
-
-  static DARK = '#2b3036'; // рамы, решётки, основания
-
-  static GALV = '#b9c0c6'; // оцинковка
-
-  static INOX = '#c9cfd5';
-
-  static SEA_P = [0.278, 0.036]; // гофр морского контейнера
-
-  static WELD_P = [0.2, 0.02]; // профлист цельносварного
-
   /** Место логотипа на лицевой стороне: u0, u1, v0, v1 (доли длины и высоты). */
   static BADGE = {
     compressor: [0.04, 0.66, 0.76, 0.95],
@@ -259,7 +247,7 @@ export class StScene {
   /** Труба к ресиверам снаружи. */
   outPipe(outside, piping, line) {
     const air = { c: PipeMaterial.idColor('air', piping.color), r: 0.38, m: 0.35 };
-    const mesh = this.meshFor(piping.mat === 'inox' ? StMat.metal(StScene.INOX, 0.22) : air);
+    const mesh = this.meshFor(piping.mat === 'inox' ? StMat.metal(StMat.INOX, 0.22) : air);
     const red = this.meshFor(StMat.paint('#c83a2e', 0.4));
     const bore = +(String(piping.dn || '').match(/\d+/) || [0])[0];
     const radius = Math.max(0.012, Math.min(0.08, (bore || 50) / 2000 + 0.006));
@@ -452,23 +440,5 @@ export class StScene {
       return u >= Math.min(from, till) && u <= Math.max(from, till) && v >= tone.v0 && v <= tone.v1;
     });
     return tone ? tone.hex : item.color;
-  }
-
-  /** Построитель, рисующий через преобразование точек f (поворот и зеркало по осям). */
-  static mapMesh(mesh, map) {
-    const origin = map([0, 0, 0]);
-    const mapVec = vec => {
-      const mapped = map(vec);
-      return [mapped[0] - origin[0], mapped[1] - origin[1], mapped[2] - origin[2]];
-    };
-    return {
-      box: (low, high, radius) => mesh.box(map(low), map(high), radius),
-      tube: (start, end, radius, seg, opts) => mesh.tube(map(start), map(end), radius, seg, opts),
-      sphere: (center, radius, seg) => mesh.sphere(map(center), radius, seg),
-      obox: (corner, u, v, wVec) => mesh.obox(map(corner), mapVec(u), mapVec(v), mapVec(wVec)),
-      quad: (first, second, third, fourth, normal) =>
-        mesh.quad(map(first), map(second), map(third), map(fourth), normal && mapVec(normal)),
-      tri: (first, second, third, normal) => mesh.tri(map(first), map(second), map(third), normal && mapVec(normal)),
-    };
   }
 }

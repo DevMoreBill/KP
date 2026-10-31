@@ -1,11 +1,14 @@
 import { RalColor } from '../layout/ral-color.js';
 import { StationMods } from '../layout/station-mods.js';
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { StV } from './st-v.js';
 
 /** Корпус контейнера снаружи. */
 export class SceneHull {
+  static SEA_P = [0.278, 0.036]; // гофр морского контейнера
+
+  static WELD_P = [0.2, 0.02]; // профлист цельносварного
+
   constructor(scene) {
     this.scene = scene;
   }
@@ -110,10 +113,10 @@ export class SceneHull {
           const dark = this.scene.meshFor(StMat.paint('#15181b', 0.8));
           dark.box([x + 0.05, y - 0.006, z + 0.035], [x + 0.13, y + 0.004, z + 0.085], 0.01);
         }
-    if (this.scene.doorsBack.length) this.scene.room.backWall(wall, z0 + rail, topZ - 0.11, StScene.SEA_P);
+    if (this.scene.doorsBack.length) this.scene.room.backWall(wall, z0 + rail, topZ - 0.11, SceneHull.SEA_P);
     else wall.corr(0, [post, Le - post], [We - 0.03, 1], [z0 + rail, topZ - 0.11]);
     wall.corr(1, [post, We - post], [Le - 0.03, 1], [z0 + 0.2, topZ - 0.12], [0.28, 0.045]);
-    if (!this.scene.cut) this.scene.room.frontWall(wall, z0 + rail, topZ - 0.11, StScene.SEA_P);
+    if (!this.scene.cut) this.scene.room.frontWall(wall, z0 + rail, topZ - 0.11, SceneHull.SEA_P);
     // крыша: лист с неглубокими поперечными гофрами
     const roof = this.scene.meshFor(StMat.paint(this.scene.roofColor, 0.5));
     roof.box([post, 0.06, topZ - 0.02], [Le - post, We - 0.06, topZ - 0.004]);
@@ -128,7 +131,7 @@ export class SceneHull {
     const z0 = this.scene.dz + 0.2;
     const z1 = this.scene.dz + this.scene.He - 0.12;
     const leaf = this.scene.meshFor(StMat.paint(this.scene.door, 0.5));
-    const bar = this.scene.meshFor(StMat.metal(StScene.GALV, 0.4));
+    const bar = this.scene.meshFor(StMat.metal(StMat.GALV, 0.4));
     const dark = this.scene.meshFor(StMat.paint('#202428', 0.6));
     leaf.corr(1, [0.15, We / 2 - 0.01], [0.0, -1], [z0, z1], [0.32, 0.03]);
     leaf.corr(1, [We / 2 + 0.01, We - 0.15], [0.0, -1], [z0, z1], [0.32, 0.03]);
@@ -220,7 +223,7 @@ export class SceneHull {
     const wall = this.scene.meshFor(StMat.paint(this.scene.wall, 0.45));
     const thick = 0.12;
     const band = 0.2;
-    const pitch = StScene.WELD_P;
+    const pitch = SceneHull.WELD_P;
     for (const x of [0, Le - thick])
       for (const y of [0, We - thick]) frame.box([x, y, z0], [x + thick, y + thick, topZ], 0.006);
     for (const y of [0, We - thick]) {

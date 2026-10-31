@@ -19,8 +19,6 @@ export class StationDrawing {
   static get HEIGHT() {
     return EskdSheet.FMT.A4[1] * EskdSheet.DOTS_PER_MM;
   }
-  static TITLE_TOP = 237;
-  static TOP = 22; // ниже графы 26
   // морские контейнеры
   static FIT = { 2991: 2787, 6058: 5853, 9125: 8918, 12192: 11985 };
   static FIT_W = 2259;
@@ -144,20 +142,6 @@ export class StationDrawing {
     this.nPos = this.posPlan.length + this.posRoof.length + (this.pipePos ? 1 : 0);
   }
 
-  /** Поле изображений. */
-  static FLD = { L0: 25, L1: 200, TOP: 22, BOT: 274 };
-  static ROT = { L0: 0, L1: 252, TOP: 0, BOT: 175, rot: true };
-  /** Наибольший масштаб из ряда, при котором ok(k). */
-  static scaleFor(ok) {
-    for (const denom of EskdSheet.SCALES.filter(value => value >= 10)) {
-      const res = ok(1 / denom);
-      if (res) return Object.assign({ N: denom, k: 1 / denom }, res);
-    }
-    const denom = EskdSheet.SCALES[EskdSheet.SCALES.length - 1];
-    return Object.assign({ N: denom, k: 1 / denom }, ok(1 / denom, true) || {});
-  }
-  /** Разрез А–А на листе 1 мельче 1:100 (технические требования длинные) — отдельным листом 2. */
-  static MIN_N = 100;
   /** Разрез А–А: x вдоль контейнера → лист. */
   sheetX(x) {
     return this.left + x * this.scale;

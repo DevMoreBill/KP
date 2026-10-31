@@ -1,8 +1,8 @@
 import { PipeMaterial } from '../layout/pipe-material.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { StV } from './st-v.js';
+import { StMesh } from './st-mesh.js';
 
 /** Трубопровод (линии, отводы, арматура, выход с фланцем), маркировка потока, глушители ДГУ на крыше. */
 export class ScenePipes {
@@ -51,7 +51,7 @@ export class ScenePipes {
 
   /** Трубопровод: все линии. */
   piping(piping) {
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     const red = this.scene.meshFor(StMat.paint('#c83a2e', 0.4));
     const bore =
       +(String(piping.dn || '').match(/\d+/) || [0])[0] || (this.scene.plan.pipe && this.scene.plan.pipe.dn) || 0;
@@ -61,7 +61,7 @@ export class ScenePipes {
   /** Материал линии: цвет среды или нержавейка. */
   lineMat(piping, line) {
     const id = PipeMaterial.idColor(line.medium, '');
-    if (!id && piping.mat === 'inox') return this.scene.meshFor(StMat.metal(StScene.INOX, 0.22));
+    if (!id && piping.mat === 'inox') return this.scene.meshFor(StMat.metal(StMat.INOX, 0.22));
     const color = id || piping.color;
     return this.scene.meshFor(piping.mat === 'pp' ? StMat.paint(color, 0.32) : { c: color, r: 0.38, m: 0.35 });
   }
@@ -281,7 +281,7 @@ export class ScenePipes {
         muffler.exhaust
           ? [from + till - (this.scene.ox + meters(muffler.exhaust.x)), this.scene.oy + meters(muffler.exhaust.y)]
           : null,
-        [k => StScene.mapMesh(this.scene.meshFor(k), map), null],
+        [k => StMesh.mapped(this.scene.meshFor(k), map), null],
       );
     }
     const map = point => [point[1], point[0], point[2]];
@@ -295,7 +295,7 @@ export class ScenePipes {
       [spanY[0], this.scene.ox + meters(muffler.x)],
       meters(muffler.ly),
       muffler.exhaust ? [this.scene.oy + meters(muffler.exhaust.y), this.scene.ox + meters(muffler.exhaust.x)] : null,
-      [k => StScene.mapMesh(this.scene.meshFor(k), map), roofZ],
+      [k => StMesh.mapped(this.scene.meshFor(k), map), roofZ],
     );
   }
 
@@ -315,7 +315,7 @@ export class ScenePipes {
     const radius = meters(muffler.d) / 2;
     const midY = y0 + radius;
     const body = meshFor(StMat.paint(muffler.color, 0.5));
-    const dark = meshFor(StMat.paint(StScene.DARK, 0.55));
+    const dark = meshFor(StMat.paint(StMat.DARK, 0.55));
     const own = zr0 == null && (muffler.dir || 'x+') !== 'y+';
     const [roofZ, baseZ] = this.mufflerRoof(midY, radius, zr0);
     const axisZ = roofZ + meters(muffler.gap) + radius;

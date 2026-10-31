@@ -165,7 +165,7 @@ class RulesFileTest(unittest.TestCase):
         web = os.path.join(REPO, 'tests', 'js', 'web.js')
         code = ("require(process.argv[2]).load(process.argv[1]);StationRules.ok=()=>false;const o={},d=[];"
                 "for(const [k,f] of LayoutParams.all())o[k]=[f.lo,f.hi];"
-                "const D=StationMatrix.DEF;for(const g of Object.keys(D))for(const k of Object.keys(D[g]))"
+                "const D=MatrixDefaults.DEF;for(const g of Object.keys(D))for(const k of Object.keys(D[g]))"
                 "if(typeof D[g][k]==='number'&&!LayoutParams.field(g,k))d.push(g+'.'+k);"
                 "console.log(JSON.stringify({o,d,def:D}))")
         r = subprocess.run([node, '-e', code, js, web], capture_output=True, text=True, encoding='utf-8')

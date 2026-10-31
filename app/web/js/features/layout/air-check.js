@@ -8,6 +8,18 @@ import { StationRules } from '../rules/station-rules.js';
 
 /** Проверка цепочки подготовки воздуха и что добавить в состав (рекомендации для подбора в каталоге). */
 export class AirCheck {
+  /**
+   * Проверка и подбор цепочки: {chain, q, bar, dryer, issues, recs, cls, units, cond} или null без компрессоров.
+   * @param {object[]} equip StationEquip.list
+   * @param {string} cls класс чистоты
+   * @param {object} req StationReq.recvIn
+   * @param {object} [dryer] StationReq.dryer — условия поправок осушителя
+   * @returns {object|null}
+   */
+  static of(equip, cls, req, dryer) {
+    return new AirCheck(equip, cls, req, dryer).run();
+  }
+
   static _pos = unit => `поз. ${unit.pos}`;
 
   static _sumFlow = list => list.reduce((acc, unit) => acc + unit.air.flow * unit.qty, 0);

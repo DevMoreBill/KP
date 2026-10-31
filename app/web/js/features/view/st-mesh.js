@@ -304,4 +304,22 @@ export class StMesh {
     const normal = [tangent[1], -tangent[0], 0];
     return StV.norm(StV.dot(normal, along === 0 ? [0, out, 0] : [out, 0, 0]) < 0 ? StV.mul(normal, -1) : normal);
   }
+
+  /** Построитель, рисующий через преобразование точек f (поворот и зеркало по осям). */
+  static mapped(mesh, map) {
+    const origin = map([0, 0, 0]);
+    const mapVec = vec => {
+      const mapped = map(vec);
+      return [mapped[0] - origin[0], mapped[1] - origin[1], mapped[2] - origin[2]];
+    };
+    return {
+      box: (low, high, radius) => mesh.box(map(low), map(high), radius),
+      tube: (start, end, radius, seg, opts) => mesh.tube(map(start), map(end), radius, seg, opts),
+      sphere: (center, radius, seg) => mesh.sphere(map(center), radius, seg),
+      obox: (corner, u, v, wVec) => mesh.obox(map(corner), mapVec(u), mapVec(v), mapVec(wVec)),
+      quad: (first, second, third, fourth, normal) =>
+        mesh.quad(map(first), map(second), map(third), map(fourth), normal && mapVec(normal)),
+      tri: (first, second, third, normal) => mesh.tri(map(first), map(second), map(third), normal && mapVec(normal)),
+    };
+  }
 }

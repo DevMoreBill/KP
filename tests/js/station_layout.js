@@ -1754,8 +1754,8 @@ Check.run('ресиверы стоят: «высота × Ø × Ø» без ис
 // решение ПНЕВМОТЕХ: «все значения — с возможностью менять в админке» — числа станции из правил (матрица расстановки),
 // у каждого — подпись, единица и пределы формы; правка в правилах доходит до расчёта
 Check.run('прочие числа станции — из правил: конструкция, подбор, жалюзи, масса, свет, пожаротушение (14.10)', ()=>{
-  for (const g of ['shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power']) for (const k of Object.keys(StationMatrix.DEF[g])){
-    const f=LayoutParams.field(g, k); assert.ok(f && f.t && (f.u || f.opt), `поле формы ${g}.${k}`); assert.ok(f.lo<=StationMatrix.DEF[g][k] && StationMatrix.DEF[g][k]<=f.hi, `пределы ${g}.${k}`); }
+  for (const g of ['shell', 'pick', 'pipe', 'pumps', 'grille', 'mass', 'light', 'fire', 'power']) for (const k of Object.keys(MatrixDefaults.DEF[g])){
+    const f=LayoutParams.field(g, k); assert.ok(f && f.t && (f.u || f.opt), `поле формы ${g}.${k}`); assert.ok(f.lo<=MatrixDefaults.DEF[g][k] && MatrixDefaults.DEF[g][k]<=f.hi, `пределы ${g}.${k}`); }
   assert.deepStrictEqual([StationGeo.FLEX.block.wall, StationGeo.LINING, StationVent.STEP, StationVent.INLET.h, StationMass.LUG, StationLight.LAMP.w, StationFire.MOD.area, StationLayout.AIR_Y, StationMatrix.grp('pick').max, StationHeat.UNITS[0]],
     [20, 15, 50, [300, 1200], [90, 60], 36, 7, 150, 4, [0.5, 460]], 'значения по умолчанию — прежние');
   const base=JSON.parse(JSON.stringify(StationRules.data));

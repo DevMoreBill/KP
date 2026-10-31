@@ -1,7 +1,7 @@
 import { LayoutForm } from './layout-form.js';
 import { LayoutParams } from '../layout/layout-params.js';
 import { RuleEdit } from './rule-edit.js';
-import { StationMatrix } from '../layout/station-matrix.js';
+import { LayoutData } from './layout-data.js';
 
 /** Правила компоновки станций («Настройки → Нормы станций»): рабочая копия, чтение формы, новая версия правил. */
 export class LayoutEditor {
@@ -19,45 +19,25 @@ export class LayoutEditor {
     return LayoutForm.label(k);
   }
 
-  /** Правило id из файла правил data. */
-  static rule(data, id) {
-    return (data?.rules || []).find(entry => entry.id === id);
-  }
-
-  static _copy(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  /** Матрица v поверх значений программы (недостающее — из StationMatrix.DEF). */
-  static merge(value) {
-    const defs = StationMatrix.DEF;
-    const src = value && typeof value === 'object' ? value : {};
-    const merged = {};
-    for (const k of Object.keys(defs)) {
-      merged[k] = LayoutEditor._copy(src[k] && typeof src[k] === 'object' ? { ...defs[k], ...src[k] } : defs[k]);
-    }
-    return merged;
-  }
-
   /** Значения по умолчанию — из файла поставки (сервер: layoutDef), без него — заложенные в программу. */
   defs() {
     const layoutDef = this.panel.layoutDef || {};
     return {
-      m: LayoutEditor.merge(layoutDef['layout.matrix']),
-      a: LayoutEditor._copy(layoutDef['norm.aisle'] || LayoutEditor.AISLE),
+      m: LayoutData.merge(layoutDef['layout.matrix']),
+      a: LayoutData.copy(layoutDef['norm.aisle'] || LayoutEditor.AISLE),
       t: Number(layoutDef['norm.aisle_tight'] || LayoutEditor.TIGHT),
-      c: LayoutEditor._copy(layoutDef['clear.kind'] || this.work?.c || {}),
+      c: LayoutData.copy(layoutDef['clear.kind'] || this.work?.c || {}),
     };
   }
 
   /** Рабочая копия: матрица, проходы, отступы. */
   load() {
-    const ruleValue = id => LayoutEditor.rule(this.panel.data, id)?.value;
+    const ruleValue = id => LayoutData.rule(this.panel.data, id)?.value;
     this.work = {
-      m: LayoutEditor.merge(ruleValue('layout.matrix')),
-      a: LayoutEditor._copy(ruleValue('norm.aisle') || LayoutEditor.AISLE),
+      m: LayoutData.merge(ruleValue('layout.matrix')),
+      a: LayoutData.copy(ruleValue('norm.aisle') || LayoutEditor.AISLE),
       t: Number(ruleValue('norm.aisle_tight') || LayoutEditor.TIGHT),
-      c: LayoutEditor._copy(ruleValue('clear.kind') || {}),
+      c: LayoutData.copy(ruleValue('clear.kind') || {}),
     };
   }
 
@@ -174,7 +154,7 @@ export class LayoutEditor {
       defs = this.defs();
     if (type === 'm') {
       const [group, k] = key.split('.');
-      this.work.m[group][k] = LayoutEditor._copy(defs.m[group][k]);
+      this.work.m[group][k] = LayoutData.copy(defs.m[group][k]);
     } else if (type === 'a') this.work.a[+key] = defs.a[+key];
     else if (type === 't') this.work.t = defs.t;
   }

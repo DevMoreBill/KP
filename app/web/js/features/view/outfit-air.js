@@ -1,5 +1,4 @@
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { RalColor } from '../layout/ral-color.js';
 import { StationVent } from '../layout/station-vent.js';
 
@@ -56,7 +55,7 @@ export class OutfitAir {
     const midZ = (louver.z0 + louver.z1) / 2;
     const radius = Math.min(du, louver.z1 - louver.z0) * 0.42;
     const plate = scene.meshFor(StMat.paint('#b9bfc5', 0.45));
-    const ring = scene.meshFor(StMat.metal(StScene.GALV, 0.35));
+    const ring = scene.meshFor(StMat.metal(StMat.GALV, 0.35));
     const dark = scene.meshFor(StMat.paint('#2a2f34', 0.55));
     this.outfit.box(
       plate,
@@ -109,7 +108,7 @@ export class OutfitAir {
    *  клапан (у компрессора — его воздуховод доходит до потолка) */
   roofHood(hood) {
     const scene = this.outfit.scene;
-    const galv = scene.meshFor(StMat.metal(StScene.GALV, 0.38));
+    const galv = scene.meshFor(StMat.metal(StMat.GALV, 0.38));
     const slats = scene.meshFor(StMat.paint('#5d646b', 0.55));
     const near = scene.point(hood.x0, hood.y0, 0);
     const far = scene.point(hood.x1, hood.y1, 0);
@@ -270,7 +269,7 @@ export class OutfitAir {
     if (!wallExhausts.length) return;
     const wrap = scene.meshFor(StMat.metal('#c4c9cd', 0.55));
     const steel = scene.meshFor(StMat.metal('#a7adb3', 0.4));
-    const dark = scene.meshFor(StMat.paint(StScene.DARK, 0.55));
+    const dark = scene.meshFor(StMat.paint(StMat.DARK, 0.55));
     const radius = 55;
     for (const exhaust of wallExhausts) {
       const dgu = plan.items.find(i => i.kind === 'dgu' && i.pos === exhaust.pos && i.unit === exhaust.unit);

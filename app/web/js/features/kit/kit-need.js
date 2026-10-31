@@ -24,6 +24,7 @@ import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
 import { TzPick } from './tz-pick.js';
+import { AirCheck } from '../layout/air-check.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -55,7 +56,7 @@ export class KitNeed {
       recv: StationReq.recv(item),
       recvOut: StationReq.recvOut(item),
     });
-    return AirChain.check(equipment, StationPlan.opts(item).air, StationReq.recvIn(item), StationReq.dryer(item));
+    return AirCheck.of(equipment, StationPlan.opts(item).air, StationReq.recvIn(item), StationReq.dryer(item));
   }
 
   /**

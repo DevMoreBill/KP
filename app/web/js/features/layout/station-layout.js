@@ -34,6 +34,7 @@ import { StationTidy } from './station-tidy.js';
 import { StationVent } from './station-vent.js';
 import { AppVersion } from '../help.js';
 import { StationRules } from '../rules/station-rules.js';
+import { AirCheck } from './air-check.js';
 
 /**
  * Компоновка станции в контейнере: оборудование рядами с проходом обслуживания, двери и ворота, трубопровод, подбор размера
@@ -332,7 +333,7 @@ export class StationLayout {
   /** Проверка воздушной цепочки. */
   air(plan) {
     const req = this.input.req || {};
-    const air = AirChain.check(this.equip, this.input.air, req.recvIn, req.dryer);
+    const air = AirCheck.of(this.equip, this.input.air, req.recvIn, req.dryer);
     if (air && plan.level !== 'error') {
       plan.air = air;
       plan.issues.push(...air.issues);

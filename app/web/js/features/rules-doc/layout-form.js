@@ -1,9 +1,9 @@
 import { LayoutDigest } from '../layout/layout-digest.js';
-import { LayoutEditor } from './layout-editor.js';
 import { LayoutParams } from '../layout/layout-params.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { esc } from '../../core/util.js';
 import { StationEquip } from '../layout/station-equip.js';
+import { LayoutData } from './layout-data.js';
 
 /** Разметка формы «Правила компоновки станций»: разделы чисел, таблицы матрицы, готовые наборы. */
 export class LayoutForm {
@@ -263,8 +263,8 @@ export class LayoutForm {
 
   /** Готовые наборы: какой действует (сохранённые правила) и кнопки — применить сразу. */
   presets() {
-    const matrix = LayoutEditor.rule(this.editor.panel.data, 'layout.matrix');
-    const act = LayoutParams.which(LayoutEditor.merge(matrix?.value));
+    const matrix = LayoutData.rule(this.editor.panel.data, 'layout.matrix');
+    const act = LayoutParams.which(LayoutData.merge(matrix?.value));
     const cur = LayoutParams.which(this.editor.work.m);
     const name = preset => (preset ? `«${preset.title}»` : 'свои значения');
     const diff = act?.id !== cur?.id ? ` <span class="warn-t">(в форме — ${esc(name(cur))}, не сохранено)</span>` : '';

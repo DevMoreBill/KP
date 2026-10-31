@@ -1,7 +1,7 @@
 import { RalColor } from '../layout/ral-color.js';
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { StV } from './st-v.js';
+import { StMesh } from './st-mesh.js';
 
 /** Насосы, ДГУ (радиатор, генератор, рама), баки, шкафы управления и прочее оборудование. */
 export class SceneUnits {
@@ -15,7 +15,7 @@ export class SceneUnits {
     const len = x1 - x0;
     const height = z1 - z0;
     const color = item.color;
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     const mot = this.scene.meshFor(StMat.paint(color, 0.38));
     const cast = this.scene.meshFor(StMat.paint(RalColor.shade(color, 0.78), 0.5));
     const fin = this.scene.meshFor(StMat.paint(RalColor.shade(color, 0.85), 0.45));
@@ -50,9 +50,7 @@ export class SceneUnits {
         18,
       );
     }
-    this.scene
-      .meshFor(StMat.metal(StScene.INOX, 0.28))
-      .tube([midX, midY, baseZ], [midX, midY, motorZ], radius * 0.8, 28);
+    this.scene.meshFor(StMat.metal(StMat.INOX, 0.28)).tube([midX, midY, baseZ], [midX, midY, motorZ], radius * 0.8, 28);
     cast.tube([midX, midY, motorZ], [midX, midY, motorZ + height * 0.05], radius * 1.05, 28);
     mot.tube([midX, midY, motorZ + height * 0.05], [midX, midY, z1 - height * 0.06], radius * 1.1, 32);
     for (let z = motorZ + height * 0.09; z < z1 - height * 0.1; z += height * 0.035)
@@ -142,7 +140,7 @@ export class SceneUnits {
     return this.dgu0(
       item,
       rad === 'left' ? box : [fromY, fromX, box[2], tillY, tillX, box[5]],
-      mat => StScene.mapMesh(this.scene.meshFor(mat), map),
+      mat => StMesh.mapped(this.scene.meshFor(mat), map),
       map,
       false,
     );
@@ -157,7 +155,7 @@ export class SceneUnits {
     const meshes = {
       M: meshFor,
       body: meshFor(StMat.paint(color, 0.4)),
-      dk: meshFor(StMat.paint(StScene.DARK, 0.6)),
+      dk: meshFor(StMat.paint(StMat.DARK, 0.6)),
       alt: meshFor(StMat.paint('#4a5259', 0.42)),
       cap: meshFor(StMat.paint(RalColor.shade(color, 0.62), 0.42)),
       st: meshFor(StMat.metal('#8d949a', 0.45)),
@@ -322,13 +320,13 @@ export class SceneUnits {
   tank(item) {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const mesh = this.scene.meshFor(StMat.paint(item.color, 0.42));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     dark.box([x0 - 0.02, y0 - 0.02, z0], [x1 + 0.02, y1 + 0.02, z0 + 0.06], 0.004);
     mesh.box([x0, y0, z0 + 0.06], [x1, y1, z1], 0.03);
     this.scene.tones(item, [x0, y0, z0 + 0.06], [x1, y1, z1], 0.03);
     dark.tube([x0 + (x1 - x0) * 0.2, (y0 + y1) / 2, z1], [x0 + (x1 - x0) * 0.2, (y0 + y1) / 2, z1 + 0.09], 0.07, 20);
     this.scene
-      .meshFor(StMat.metal(StScene.GALV, 0.35))
+      .meshFor(StMat.metal(StMat.GALV, 0.35))
       .tube([x0 + (x1 - x0) * 0.75, (y0 + y1) / 2, z1], [x0 + (x1 - x0) * 0.75, (y0 + y1) / 2, z1 + 0.15], 0.015, 10);
     const gauge = this.scene.front(item, 0.88, 0.15, 0.015);
     this.scene
@@ -344,8 +342,8 @@ export class SceneUnits {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const color = item.color;
     const body = this.scene.meshFor(StMat.paint(color, 0.38));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
-    const steel = this.scene.meshFor(StMat.metal(StScene.GALV, 0.45));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
+    const steel = this.scene.meshFor(StMat.metal(StMat.GALV, 0.45));
     if (item.mount === 'floor') dark.box([x0 + 0.01, y0 + 0.01, z0], [x1 - 0.01, y1 - 0.01, z0 + 0.1], 0.004);
     body.box([x0, y0, z0 + (item.mount === 'floor' ? 0.1 : 0)], [x1, y1, z1], 0.012);
     this.scene.tones(item, [x0, y0, z0 + (item.mount === 'floor' ? 0.1 : 0)], [x1, y1, z1], 0.012);
@@ -416,7 +414,7 @@ export class SceneUnits {
     const color = item.color;
     const body = this.scene.meshFor(StMat.paint(color, 0.42));
     this.scene
-      .meshFor(StMat.paint(StScene.DARK, 0.6))
+      .meshFor(StMat.paint(StMat.DARK, 0.6))
       .box([x0 + 0.02, y0 + 0.02, z0], [x1 - 0.02, y1 - 0.02, z0 + 0.06], 0.004);
     body.box([x0, y0, z0 + 0.06], [x1, y1, z1], 0.015);
     this.scene.tones(item, [x0, y0, z0 + 0.06], [x1, y1, z1], 0.015);

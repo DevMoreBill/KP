@@ -1,4 +1,4 @@
-import { StationMatrix } from './station-matrix.js';
+import { MatrixDefaults } from './matrix-defaults.js';
 
 /**
  * Поля формы «Настройки → Правила компоновки»: подпись, единица, пределы (сервер проверяет те же — LayoutValues.SCALAR в
@@ -278,7 +278,7 @@ export class LayoutParams {
 
   static #fields = null;
 
-  /** Значения набора: «g.k» → число (без своих значений — по умолчанию StationMatrix.DEF). */
+  /** Значения набора: «g.k» → число (без своих значений — по умолчанию MatrixDefaults.DEF). */
   static preset(id) {
     const preset = this.PRESETS.find(item => item.id === id);
     if (!preset) return null;
@@ -289,7 +289,7 @@ export class LayoutParams {
   /** Значение параметра матрицы по умолчанию («группа.поле»). */
   static def(key) {
     const [group, field] = key.split('.');
-    return StationMatrix.DEF[group][field];
+    return MatrixDefaults.DEF[group][field];
   }
 
   /** Набор, совпадающий с матрицей M, или null — свои значения. */

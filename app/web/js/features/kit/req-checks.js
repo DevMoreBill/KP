@@ -6,6 +6,7 @@ import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { Kit } from '../../core/kit.js';
 import { AirDemand } from '../calc/air-demand.js';
+import { EquipField } from '../layout/equip-field.js';
 
 /**
  * Что даёт состав станции против требований: производительность, давление, безмасляные компрессоры, шкафы АВР и АСУ ТП,
@@ -158,7 +159,7 @@ export class ReqChecks {
   }
 
   static _litres(part) {
-    const tank = StationEquip.num((part.attrs || {}).tank);
+    const tank = EquipField.num((part.attrs || {}).tank);
     if (StationEquip.kindOf(part) === 'tank') return AirChain.volume(part) || tank || 0;
     return tank || 0;
   }

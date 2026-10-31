@@ -1,6 +1,5 @@
 import { StMat } from './st-mat.js';
 import { StV } from './st-v.js';
-import { StScene } from './st-scene.js';
 import { StationHeat } from '../layout/station-heat.js';
 import { StationLight } from '../layout/station-light.js';
 
@@ -52,7 +51,7 @@ export class OutfitInside {
     const [len, wid, height] = this.outfit.plan.int;
     const x0 = scene.geo.x0 || 0;
     if (this.outfit.sys.power === false || !this.outfit.inside) return;
-    const tray = scene.meshFor(StMat.metal(StScene.GALV, 0.45));
+    const tray = scene.meshFor(StMat.metal(StMat.GALV, 0.45));
     tray.box(scene.point(x0 + 150, wid - 220, height - 260), scene.point(len - 150, wid - 20, height - 210), 0.003);
     for (let x = x0 + 600; x < len - 300; x += 1500)
       tray.box(scene.point(x, wid - 240, height - 280), scene.point(x + 30, wid, height - 260));

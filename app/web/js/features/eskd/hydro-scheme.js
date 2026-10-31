@@ -1,5 +1,6 @@
 import { EskdSheet } from './eskd-sheet.js';
 import { PneuSymbol } from './pneu-symbol.js';
+import { EskdFrame } from './eskd-frame.js';
 
 /** Схема гидравлическая принципиальная насосной станции (ГОСТ 2.704). */
 export class HydroScheme {
@@ -34,7 +35,7 @@ export class HydroScheme {
     const { sheet, meta } = this;
     const notesY = this.texts();
     this.scheme(this.fit(notesY));
-    sheet.frame({
+    EskdFrame.draw(sheet, {
       name: meta.title || 'Станция насосная',
       doc: 'Схема гидравлическая принципиальная',
       code: EskdSheet.code(meta.org, this.plan.hash, 'Г3'),

@@ -5,6 +5,7 @@ import { StationMatrix } from './station-matrix.js';
 import { StationNorms } from './station-norms.js';
 import { TankSize } from './tank-size.js';
 import { LgCargo } from '../../core/lg-cargo.js';
+import { EquipField } from './equip-field.js';
 
 /** Оборудование из состава станции: вид, габариты, масса, цвет, форма, подписи. */
 export class StationEquip {
@@ -77,15 +78,10 @@ export class StationEquip {
   static DIM2 = /(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)(?:\s*×\s*(\d+(?:[.,]\d+)?))?/;
   static DIM3 = /(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)\s*×\s*(\d+(?:[.,]\d+)?)/;
 
-  /** Категория позиции каталога. */
-  static cat(part) {
-    return String((part.attrs && part.attrs.cat) || part.cat || '');
-  }
-
   /** Вид оборудования: по категории каталога, иначе по названию. */
   static kindOf(part) {
     if (part.role === 'container') return 'container';
-    const cat = this.cat(part);
+    const cat = EquipField.cat(part);
     const name = String(part.name || '');
     const main = part.role === 'main';
     const byCat = cat && this.KINDS.find(([, pattern]) => pattern && pattern.test(cat));
@@ -95,16 +91,6 @@ export class StationEquip {
     const byWord = this.KINDS.find(([, , pattern]) => pattern.test(name));
     if (byWord) return byWord[0];
     return main ? 'other' : '';
-  }
-
-  /** Число из текста («1 200,5 кг» → 1200.5). */
-  static num(v) {
-    const value = parseFloat(
-      String(v ?? '')
-        .replace(/\s+/g, '')
-        .replace(',', '.'),
-    );
-    return Number.isFinite(value) ? value : null;
   }
 
   /** Число поля каталога; диапазон или «до 40» — верхняя граница: {v, range} или null. */
@@ -119,10 +105,10 @@ export class StationEquip {
    * @returns {{lo: number|null, hi: number, range: boolean}|null}
    */
   static span(v) {
-    const value = this.num(v);
+    const value = EquipField.num(v);
     if (value != null && /^\s*[\d.,\s]+\s*$/.test(String(v))) return { lo: value, hi: value, range: false };
     const all = (String(v ?? '').match(/\d[\d\s]*(?:[.,]\d+)?/g) || [])
-      .map(token => this.num(token))
+      .map(token => EquipField.num(token))
       .filter(x => x != null);
     if (!all.length) return null;
     return { lo: all.length > 1 ? Math.min(...all) : null, hi: Math.max(...all), range: true };
@@ -156,7 +142,7 @@ export class StationEquip {
   /** Тепловыделение по паспорту, кВт (рекуперируемая доля — не всё тепло, не берётся). */
   static heatRow(out, row) {
     const heat = String(row.v || '').match(/(\d+(?:[.,]\d+)?)\s*(квт|kw)/i);
-    if (heat && !out.heat) out.heat = this.num(heat[1]);
+    if (heat && !out.heat) out.heat = EquipField.num(heat[1]);
   }
 
   static PER_HOUR = [
@@ -172,7 +158,7 @@ export class StationEquip {
     if (!match) return null;
     const unit = match[3].toLowerCase();
     const per = this.PER_HOUR.find(([pattern]) => pattern.test(unit));
-    return Math.round(this.num(match[1]) * (per ? per[1] : 1));
+    return Math.round(EquipField.num(match[1]) * (per ? per[1] : 1));
   }
 
   /** «1090 × 790 × 870», «1150*430», «109 х 79 х 87 см» → 2 или 3 числа в мм. */
@@ -306,9 +292,9 @@ export class StationEquip {
   /** Условные габариты, мм — по мощности, объёму или виду. */
   static guess(part, kind) {
     const attrs = part.attrs || {};
-    const kw = this.num(attrs.kw);
+    const kw = EquipField.num(attrs.kw);
     const row = TankSize.volumeRow(part);
-    const vol = this.num(attrs.volume) ?? (row ? this.num(TankSize.firstNumber(row.v)) : null);
+    const vol = EquipField.num(attrs.volume) ?? (row ? EquipField.num(TankSize.firstNumber(row.v)) : null);
     const guessRule = this.GUESS;
     const byKind = {
       compressor: () => StationEquip._step(guessRule.compressor, kw),
@@ -318,7 +304,7 @@ export class StationEquip {
         return [dims, dims, height];
       },
       tank: () => {
-        const dims = TankSize.of(this.num(attrs.tank) || vol || 1000);
+        const dims = TankSize.of(EquipField.num(attrs.tank) || vol || 1000);
         return [dims.l, dims.w, dims.h];
       },
       muffler: () => this.guessMuffler(kw),
@@ -350,7 +336,7 @@ export class StationEquip {
 
   /** Масса позиции, кг. */
   static mass(part) {
-    const massKg = this.num((part.attrs || {}).mass);
+    const massKg = EquipField.num((part.attrs || {}).mass);
     if (massKg > 0) return massKg;
 
     const cargo = LgCargo.of([{ rows: part.rows || [] }]);
@@ -424,7 +410,7 @@ export class StationEquip {
 
   /** Тип компрессора для расчёта тепла: screw / piston / centrifugal / scroll. */
   static ctype(part) {
-    const cat = this.cat(part);
+    const cat = EquipField.cat(part);
     const name = String(part.name || '');
     const hit = this.CTYPES.find(([, catKey, pattern]) => cat === catKey || pattern.test(name));
     return hit ? hit[0] : 'screw';
@@ -432,7 +418,7 @@ export class StationEquip {
 
   /** Вид изделия на чертеже: поршневой компрессор (на ресивере) — 'piston', иначе ''. */
   static look(part, kind) {
-    const piston = this.cat(part) === 'comp_piston' || /поршнев/i.test(String(part.name || ''));
+    const piston = EquipField.cat(part) === 'comp_piston' || /поршнев/i.test(String(part.name || ''));
     return kind === 'compressor' && piston ? 'piston' : '';
   }
 
@@ -491,7 +477,7 @@ export class StationEquip {
   static entry(part, pos) {
     const kind = this.kindOf(part);
     const name = String(part.name || '').trim() || this.LABEL[kind] || 'Элемент';
-    const qty = Math.max(1, Math.min(20, Math.round(this.num(part.qty) || 1)));
+    const qty = Math.max(1, Math.min(20, Math.round(EquipField.num(part.qty) || 1)));
     const base = { id: part.id, name, kind, qty, place: false };
     const special = this.special(part, base);
     if (special) return special(pos);
@@ -575,7 +561,7 @@ export class StationEquip {
       known: dims.known,
       src: dims.src,
       mass: this.mass(part),
-      kw: this.num(attrs.kw),
+      kw: EquipField.num(attrs.kw),
       maker: String(attrs.maker || '').trim(),
       color: color.hex,
       colorKnown: color.known,

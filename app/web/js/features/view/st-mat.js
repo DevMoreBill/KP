@@ -2,6 +2,14 @@ import { RalColor } from '../layout/ral-color.js';
 
 // 3 — наклейка (tex — описание картинки в сцене: логотип, знак, табло)
 export class StMat {
+  static INS = '#d9c48a'; // разрез стены: минеральная вата
+
+  static DARK = '#2b3036'; // рамы, решётки, основания
+
+  static GALV = '#b9c0c6'; // оцинковка
+
+  static INOX = '#c9cfd5';
+
   /** Краска. */
   static paint(color, rough = 0.45) {
     return { c: color, r: rough, m: 0 };

@@ -1,7 +1,6 @@
 import { RalColor } from '../layout/ral-color.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { StV } from './st-v.js';
 
 /** Стены с проёмами, двери и ворота (полотна, створки), помещение внутри: обшивка, пол, потолок, перегородки. */
@@ -75,7 +74,7 @@ export class SceneRoom {
       return;
     }
     for (let k = 0; k < cut.n; k++) this.openLeaf(cut, k === 0, meshes, side);
-    const ins = this.scene.meshFor(StMat.paint(StScene.INS, 0.9));
+    const ins = this.scene.meshFor(StMat.paint(StMat.INS, 0.9));
     ins.quad([cut.a, y0, cut.h], [cut.b, y0, cut.h], [cut.b, y1, cut.h], [cut.a, y1, cut.h], [0, 0, -1]);
   }
 
@@ -316,7 +315,7 @@ export class SceneRoom {
   /** Разрез на месте срезанной стены: крыша, пол и торцевые стены в сечении — утеплитель между обшивками. */
   section() {
     const { ox, base: base, ceil: ceil } = this.scene;
-    const ins = this.scene.meshFor(StMat.paint(StScene.INS, 0.9));
+    const ins = this.scene.meshFor(StMat.paint(StMat.INS, 0.9));
     const y = 0.002;
     const normal = [0, -1, 0];
     const x0 = 0.15;

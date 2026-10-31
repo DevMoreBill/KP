@@ -27,6 +27,7 @@ import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
 import { StationSup } from './station-sup.js';
 import { TzFit } from './tz-fit.js';
+import { EquipField } from '../layout/equip-field.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -91,7 +92,7 @@ export class TzPick {
 
   /** Число из значения характеристики. */
   static num(value) {
-    return StationEquip.num(value);
+    return EquipField.num(value);
   }
 
   /** Производительность позиции каталога: компрессоры и осушители — м³/мин, насосы — м³/ч (из единицы поля категории). */

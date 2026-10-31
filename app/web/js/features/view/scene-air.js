@@ -1,7 +1,6 @@
 import { RalColor } from '../layout/ral-color.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { StV } from './st-v.js';
 
 /** Оборудование сжатого воздуха. */
@@ -52,7 +51,7 @@ export class SceneAir {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const color = item.color;
     const body = this.scene.meshFor(StMat.paint(color, 0.42));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.65));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.65));
     const baseH = Math.min(0.1, (z1 - z0) * 0.07);
     dark.box([x0 + 0.02, y0 + 0.02, z0], [x1 - 0.02, y1 - 0.02, z0 + baseH], 0.005);
     for (const u of [0.18, 0.72])
@@ -105,7 +104,7 @@ export class SceneAir {
     dark.box([midX - ductW / 2, midY - ductD / 2, z1], [midX + ductW / 2, midY + ductD / 2, z1 + 0.006]);
     const { to: target, grp } = this.louvers(item);
     if (ductH < 0.18 || !target) return;
-    const galv = this.scene.meshFor(StMat.metal(StScene.GALV, 0.42));
+    const galv = this.scene.meshFor(StMat.metal(StMat.GALV, 0.42));
     const topZ = this.scene.ceil - 0.09;
     const ductZ = topZ - ductH;
     const lowest = grp.length ? Math.min(ductZ, ...grp.map(group => this.scene.base + group.z0 / 1000 + 0.05)) : null;
@@ -167,7 +166,7 @@ export class SceneAir {
 
   /** Клапан рециркуляции на воздуховоде компрессора. */
   recirc(item, [midX, midY], [ductW, ductD], z) {
-    const galv = this.scene.meshFor(StMat.metal(StScene.GALV, 0.36));
+    const galv = this.scene.meshFor(StMat.metal(StMat.GALV, 0.36));
     const dark = this.scene.meshFor(StMat.paint('#23272b', 0.55));
     const act = this.scene.meshFor(StMat.paint('#3a4048', 0.5));
     const height = 0.22;
@@ -193,7 +192,7 @@ export class SceneAir {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const color = item.color;
     const body = this.scene.meshFor(StMat.paint(color, 0.4));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     dark.box([x0 + 0.02, y0 + 0.02, z0], [x1 - 0.02, y1 - 0.02, z0 + 0.05], 0.004);
     body.box([x0, y0, z0 + 0.05], [x1, y1, z1], 0.016);
     this.scene.tones(item, [x0, y0, z0 + 0.05], [x1, y1, z1], 0.016);
@@ -201,7 +200,7 @@ export class SceneAir {
     this.scene.panel(this.scene.meshFor(StMat.glow('#9fe0a6', 1.2)), item, [0.13, 0.25], [0.77, 0.85], [0.012, 0]);
     this.grille(item, [0.1, 0.9], [0.12, 0.5], 7);
     this.grille(item, [0.15, 0.85], [0.2, 0.7], 7, 1);
-    const galv = this.scene.meshFor(StMat.metal(StScene.GALV, 0.35));
+    const galv = this.scene.meshFor(StMat.metal(StMat.GALV, 0.35));
     const side = this.scene.side(item);
     const backY = side < 0 ? y1 - 0.12 : y0 + 0.12;
     for (const u of [0.25, 0.75]) {
@@ -216,8 +215,8 @@ export class SceneAir {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const color = item.color;
     const tower = this.scene.meshFor(StMat.paint(color, 0.38));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
-    const galv = this.scene.meshFor(StMat.metal(StScene.GALV, 0.35));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
+    const galv = this.scene.meshFor(StMat.metal(StMat.GALV, 0.35));
     dark.box([x0, y0, z0], [x1, y1, z0 + 0.08], 0.004);
     const radius = Math.min((x1 - x0) / 4.6, (y1 - y0) / 2.3);
     const midY = (y0 + y1) / 2;
@@ -243,7 +242,7 @@ export class SceneAir {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const color = item.color;
     const mesh = this.scene.meshFor(StMat.paint(color, 0.38));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     const midX = (x0 + x1) / 2;
     const midY = (y0 + y1) / 2;
     const radius = Math.min(x1 - x0, y1 - y0) / 2;
@@ -262,7 +261,7 @@ export class SceneAir {
     mesh.dish([midX, midY, bottomZ], radius, -1, 36);
     const side = this.scene.side(item);
     const brass = this.scene.meshFor(StMat.metal('#b8924f', 0.35));
-    const galv = this.scene.meshFor(StMat.metal(StScene.GALV, 0.35));
+    const galv = this.scene.meshFor(StMat.metal(StMat.GALV, 0.35));
     brass.tube([midX, midY, z1 - 0.02], [midX, midY, z1 + 0.07], 0.02, 12);
     brass.sphere([midX, midY, z1 + 0.09], 0.025, 10); // предохранительный клапан
     galv.tube(
@@ -290,7 +289,7 @@ export class SceneAir {
   receiverH(item) {
     const [x0, y0, z0, x1, y1, z1] = this.scene.extent(item);
     const mesh = this.scene.meshFor(StMat.paint(item.color, 0.38));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     const midY = (y0 + y1) / 2;
     const radius = (Math.min(y1 - y0, z1 - z0) / 2) * 0.95;
     const axisZ = z1 - radius;
@@ -340,7 +339,7 @@ export class SceneAir {
     const headH = Math.max(0.05, (z1 - z0) * 0.14);
     const head = this.scene.meshFor(StMat.metal('#b6bcc2', 0.32));
     const bowl = this.scene.meshFor(StMat.paint(item.color, 0.35));
-    const dark = this.scene.meshFor(StMat.paint(StScene.DARK, 0.6));
+    const dark = this.scene.meshFor(StMat.paint(StMat.DARK, 0.6));
     head.box(
       [midX - width * 0.55, midY - width * 0.45, z1 - headH],
       [midX + width * 0.55, midY + width * 0.45, z1],

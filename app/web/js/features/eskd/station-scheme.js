@@ -3,6 +3,7 @@ import { EskdSheet } from './eskd-sheet.js';
 import { PneuSymbol } from './pneu-symbol.js';
 import { SchemeLayout } from './scheme-layout.js';
 import { SchemeUnits } from './scheme-units.js';
+import { EskdFrame } from './eskd-frame.js';
 
 /** Схема пневматическая принципиальная компрессорной станции (ГОСТ 2.701, 2.704). */
 export class StationScheme {
@@ -48,7 +49,7 @@ export class StationScheme {
     const state = this.line(placed, grid);
     this.outlet(state, grid);
     this.drains(state.drains, grid);
-    sheet.frame({
+    EskdFrame.draw(sheet, {
       name: meta.title || 'Станция компрессорная',
       doc: 'Схема пневматическая принципиальная',
       code: EskdSheet.code(meta.org, this.plan.hash, 'П3'),

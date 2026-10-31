@@ -1,5 +1,4 @@
 import { StMat } from './st-mat.js';
-import { StScene } from './st-scene.js';
 import { RalColor } from '../layout/ral-color.js';
 import { OutfitBase } from './outfit-base.js';
 
@@ -20,7 +19,7 @@ export class OutfitFuel {
     const tanks = plan.items.filter(i => i.tank);
     const meshes = {
       dk: scene.meshFor(StMat.paint('#2b3036', 0.6)),
-      st: scene.meshFor(StMat.metal(StScene.GALV, 0.4)),
+      st: scene.meshFor(StMat.metal(StMat.GALV, 0.4)),
     };
     const tank = tanks[0];
     if (this.outfit.inside) this.room(fuel, tanks, meshes);
@@ -44,7 +43,7 @@ export class OutfitFuel {
     if (scene.cut) {
       const y = scene.oy - 0.001;
       scene
-        .meshFor(StMat.paint(StScene.INS, 0.9))
+        .meshFor(StMat.paint(StMat.INS, 0.9))
         .quad([near[0], y, near[2]], [far[0], y, near[2]], [far[0], y, far[2]], [near[0], y, far[2]], [0, -1, 0]);
     }
     for (const item of tanks) this.pan(item, meshes.dk, wid);

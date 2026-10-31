@@ -1,4 +1,3 @@
-import { StationGeo } from './station-geo.js';
 import { StationMatrix } from './station-matrix.js';
 
 /** Станция из нескольких блок-модулей: раскладка a × b, стыки, стойки каркаса, что в каком модуле. */
@@ -15,7 +14,7 @@ export class StationMods {
 
   /** Ширины модуля, мм: wMin, кратные 100 между ними и wMax (не шире габарита перевозки). */
   static widths() {
-    const road = StationGeo.ROAD_W;
+    const road = StationMatrix.fit().roadW; // как StationGeo.ROAD_W (StationGeo подключает модули)
     const low = Math.min(this.RULES.wMin || 2448, road);
     const high = Math.max(low, Math.min(this.RULES.wMax || 2550, road));
     const out = [low];

@@ -1,7 +1,7 @@
 import { AirChain } from './air-chain.js';
 import { Mm } from './mm.js';
-import { StationEquip } from './station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
+import { EquipField } from './equip-field.js';
 
 /**
  * Нормы станции: шум (СанПиН 1.2.3685-21), климатическое исполнение (ГОСТ 15150-69), отопление и вентиляция, щиты длиннее
@@ -46,7 +46,7 @@ export class StationNorms {
 
   /** Уровень звука по паспорту, дБА: поле «noise» или строка «Уровень шума (звука)». */
   static dba(product) {
-    const own = StationEquip.num((product.attrs || {}).noise);
+    const own = EquipField.num((product.attrs || {}).noise);
     if (own > 20 && own < 160) return own;
     const row = (product.rows || []).find(
       x => x && /шум|звук/i.test(String(x.k || '')) && /д\s*б/i.test(`${String(x.k || '')} ${String(x.v || '')}`),

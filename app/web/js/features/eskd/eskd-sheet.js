@@ -1,5 +1,3 @@
-import { EskdFrame } from './eskd-frame.js';
-
 /** Лист ЕСКД А4 в SVG (мм листа): линии (ГОСТ 2.303), шрифт (2.304), сечения (2.306), размеры (2.307), позиции на полках
  *  (ГОСТ Р 2.109), текстовая часть (2.316), рамка и основная надпись (EskdFrame). */
 export class EskdSheet {
@@ -503,11 +501,6 @@ export class EskdSheet {
       });
     });
     return totalH;
-  }
-
-  /** Рамка и основная надпись (EskdFrame). */
-  frame(titleBlock) {
-    EskdFrame.draw(this, titleBlock);
   }
 
   /** Документ SVG: лист в мм, растр — K точек на мм. */

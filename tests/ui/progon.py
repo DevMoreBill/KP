@@ -526,6 +526,9 @@ class Scenario(UiRun):
 
     # картинки станций собраны: нет пересборки и отложенной (3D-вид и листы — в фоне, по очереди)
     IMAGES = "StationImages.busy.size === 0 && StationImages.timers.size === 0"
+    # предпросмотр КП собран (документ или ошибка вместо «Собираю документ…»): под нагрузкой сборка дольше 6 с
+    PREVIEW = ("(() => { const body = document.querySelector('#pvBody'); "
+               "return !!body && !/^Собираю документ/.test(body.textContent.trim()); })()")
     # миниатюра титула построена (или пустая / с ошибкой)
     COVER = ("(() => { const box = document.querySelector('#cvThumb'); return !box || (!box.classList.contains('loading') "
              "&& !!box.querySelector('section.docx, .cv-empty')); })()")
@@ -1006,10 +1009,12 @@ class Scenario(UiRun):
         else:
             self.pg.locator('#side [data-a=kpPreview]').first.click()
         self.pg.wait_for_selector('#pvdlg[open]', timeout=20000)
-        self.snap('80_preview', '#pvdlg', wait=6000)
+        self.settle('предпросмотр КП', self.PREVIEW)
+        self.snap('80_preview', '#pvdlg', wait=1000)
         self.closeall()
         self.ev("KpPreview.open()")
-        self.snap('81_preview_reopen', '#pvdlg', wait=5000)
+        self.settle('предпросмотр КП заново', self.PREVIEW)
+        self.snap('81_preview_reopen', '#pvdlg', wait=1000)
         self.closeall()
 
     def s_save(self):

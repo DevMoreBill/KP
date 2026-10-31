@@ -1,9 +1,8 @@
-import { AirCheck } from './air-check.js';
 import { PressureVessel } from './pressure-vessel.js';
-import { StationEquip } from './station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
 import { FieldUnit } from '../../core/field-unit.js';
 import { Attrs } from '../../core/item-attrs.js';
+import { EquipField } from './equip-field.js';
 
 /**
  * Подготовка сжатого воздуха по ходу воздуха: компрессоры → (влагоотделитель) → «мокрый» ресивер → фильтры →
@@ -142,7 +141,7 @@ export class AirChain {
   /** Первое число строки характеристики. */
   static first(v) {
     const match = String(v ?? '').match(/\d[\d\s]*(?:[.,]\d+)?/);
-    return match ? StationEquip.num(match[0]) : null;
+    return match ? EquipField.num(match[0]) : null;
   }
 
   /**
@@ -163,8 +162,8 @@ export class AirChain {
 
   /** Производительность, м³/мин: поле каталога (в единице своей категории) или строка «Производительность» (л/мин, м³/ч, л/с). */
   static flow(part) {
-    const own = StationEquip.num((part.attrs || {}).flow);
-    if (own > 0) return own * FieldUnit.factor(StationEquip.cat(part), 'flow', 'м³/мин');
+    const own = EquipField.num((part.attrs || {}).flow);
+    if (own > 0) return own * FieldUnit.factor(EquipField.cat(part), 'flow', 'м³/мин');
     for (const row of (part.rows || []).filter(
       x => x && /производительн|пропускн|расход воздух/i.test(AirChain._key(x)),
     )) {
@@ -178,8 +177,8 @@ export class AirChain {
 
   /** Рабочее давление, бар (поле каталога — в единице своей категории, МПа пересчитываются). */
   static bar(part) {
-    const own = StationEquip.num((part.attrs || {}).pressure);
-    if (own > 0) return own * FieldUnit.factor(StationEquip.cat(part), 'pressure', 'бар');
+    const own = EquipField.num((part.attrs || {}).pressure);
+    if (own > 0) return own * FieldUnit.factor(EquipField.cat(part), 'pressure', 'бар');
     const row = (part.rows || []).find(x => x && /давлени/i.test(AirChain._key(x)));
     const v = row ? this.first(row.v) : null;
     if (!(v > 0)) return null;
@@ -188,7 +187,7 @@ export class AirChain {
 
   /** Объём, л (м³ пересчитываются). */
   static volume(part) {
-    const own = StationEquip.num((part.attrs || {}).volume);
+    const own = EquipField.num((part.attrs || {}).volume);
     if (own > 0) return own;
     const row = (part.rows || []).find(x => x && /^объ[её]м/i.test(AirChain._key(x).trim()));
     const v = row ? this.first(row.v) : null;
@@ -229,7 +228,7 @@ export class AirChain {
   static micron(part) {
     const pattern2 = /(\d+(?:[.,]\d+)?)\s*мк[мн]/i;
     const own = String((part.attrs || {}).fineness || '').match(pattern2);
-    if (own) return StationEquip.num(own[1]);
+    if (own) return EquipField.num(own[1]);
     const rows = (part.rows || []).filter(
       row =>
         row &&
@@ -240,7 +239,7 @@ export class AirChain {
       const x =
         AirChain._val(row).match(pattern2) ||
         (/мк[мн]/i.test(AirChain._key(row)) ? AirChain._val(row).match(/(\d+(?:[.,]\d+)?)/) : null);
-      if (x) return StationEquip.num(x[1]);
+      if (x) return EquipField.num(x[1]);
     }
     return null;
   }
@@ -311,7 +310,7 @@ export class AirChain {
       vsd: AirChain._isSet(attrs.vsd)
         ? AirChain._isYes(attrs.vsd)
         : /частотн|инвертор|(?:^|[^a-z])VSD(?:[^a-z]|$)|(?:^|\s)ПЧ(?:\s|$)|переменн\S*\s+скорост/i.test(text),
-      recv: StationEquip.num(attrs.receiver) > 0 || /на ресивере/i.test(text),
+      recv: EquipField.num(attrs.receiver) > 0 || /на ресивере/i.test(text),
     };
   }
 
@@ -524,17 +523,5 @@ export class AirChain {
     if (!(vol > 0) || !(bar > 0) || !PressureVessel.registered(bar, vol)) return null;
     const v = this._RECV_SIZES.filter(x => !PressureVessel.registered(bar, x)).pop();
     return v ? { n: Math.ceil(vol / v - 1e-9), v } : null;
-  }
-
-  /**
-   * Проверка и подбор цепочки: {chain, q, bar, dryer, issues, recs, cls, units, cond} или null без компрессоров.
-   * @param {object[]} equip StationEquip.list
-   * @param {string} cls класс чистоты
-   * @param {object} req StationReq.recvIn
-   * @param {object} [dryer] StationReq.dryer — условия поправок осушителя
-   * @returns {object|null}
-   */
-  static check(equip, cls, req, dryer) {
-    return new AirCheck(equip, cls, req, dryer).run();
   }
 }
