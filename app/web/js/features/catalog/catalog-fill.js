@@ -6,10 +6,8 @@ import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Str } from '../../core/str.js';
 import { KpState, S } from '../../core/state.js';
-import { CatFeatures } from '../kit/kit-part.js';
 import { PriceCalc } from '../kp/price-calc.js';
 import { ItemSpec } from '../../core/item-spec.js';
-import { CoverHint } from '../kit/cover-hint.js';
 import { Uid } from '../../core/util.js';
 import { RecentModels } from '../kp/quick-search.js';
 import { Makers } from './makers.js';
@@ -17,12 +15,14 @@ import { CatalogEditor } from './catalog-edit.js';
 import { ItemEditor } from './item-editor.js';
 import { CardRules } from './card-rules.js';
 import { AdminSession } from '../../core/net.js';
-import { CoverSync } from '../kit/cover-sync.js';
 import { KpForm } from '../../core/kp-form.js';
 import { KpLead } from './kp-lead.js';
 import { Kit } from '../../core/kit.js';
 import { Auth } from '../../core/auth.js';
 import { Currency } from '../../core/currency.js';
+import { CatFeatures } from './cat-features.js';
+import { CoverHint } from '../../core/cover-hint.js';
+import { CoverSync } from './cover-sync.js';
 
 /** Позиция КП из карточки каталога: всё содержимое карточки, цена — в валюте КП, без следов прежнего оборудования. */
 export class CatalogFill {

@@ -1,16 +1,6 @@
 import { Attrs } from '../../core/item-attrs.js';
 import { Kit } from '../../core/kit.js';
-
-/** Блоки описания позиции каталога, которые уходят в КП: без «Опций по прайсу поставщика» (там закупочные цены). */
-export class CatFeatures {
-  /**
-   * @param {object[]} list
-   * @returns {object[]}
-   */
-  static forKp(list) {
-    return (list || []).filter(feature => feature && !feature.feedOpts);
-  }
-}
+import { CatFeatures } from '../catalog/cat-features.js';
 
 /** Элемент сборки из позиции каталога: название, закупка, поставщик, суть описания, основные характеристики, фото. */
 export class KitPart {

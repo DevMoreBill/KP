@@ -13,7 +13,7 @@ import { KitContainer } from './kit-container.js';
 import { KitDoc } from './kit-doc.js';
 import { KitCabinet, KitPipe } from './kit-fields.js';
 import { KitNeed } from './kit-need.js';
-import { CatFeatures, KitPart } from './kit-part.js';
+import { KitPart } from './kit-part.js';
 import { KitPick, PickFilter, PickFind } from './kit-pick.js';
 import { KitScope } from './kit-scope.js';
 import { KitView } from './kit-view.js';
@@ -26,7 +26,8 @@ import { SupplyDocs } from './supply-docs.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpState } from '../../core/state.js';
-import { CoverHint } from './cover-hint.js';
+import { StationPlan } from './station-plan.js';
+import { StationLink } from '../../core/station-link.js';
 import { Kit } from '../../core/kit.js';
 
 export const KIT = {
@@ -37,12 +38,9 @@ export const KIT = {
   AsmFacts,
   AsmItem,
   AsmTab,
-  CatFeatures,
   ContainerKind,
   ContainerPart,
-  CoverHint,
   DrawPic,
-  Kit,
   KitActions,
   KitCabinet,
   KitContainer,
@@ -78,4 +76,14 @@ KpState.onItem(item => {
   Kit.sync(item);
   StationAuto.fill(item);
   StationName.apply(item);
+});
+// каталог (карточка позиции, заполнение с ИИ) просит состав станции (StationLink) — без import состава
+StationLink.connect({
+  enabled: item => StationPlan.enabled(item),
+  kitTab: (item, i) => (Kit.simple(item) ? AsmTab.html(item, i) : KitView.render(item, i)),
+  kitLabel: (item, label) => AsmTab.label(item, label),
+  drawHtml: (item, i) => DrawPic.forItem(item, i),
+  uploadDraw: (draw, doc) => DrawPic.upload(draw, doc),
+  autoFill: item => StationAuto.fill(item),
+  container: kind => ContainerPart.create(kind),
 });

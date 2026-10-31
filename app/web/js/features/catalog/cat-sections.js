@@ -1,4 +1,3 @@
-import { EquipWizard } from '../wizard/equip-wizard.js';
 import { CatalogWindow } from './catalog-window.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
@@ -6,6 +5,7 @@ import { DefRegistry } from '../../core/defaults.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Catalog } from './catalog-store.js';
+import { WizardLink } from '../../core/wizard-link.js';
 /**
  * Разделы каталога: в разделе «Оборудование» — плитки разделов (группа категории) с пиктограммой, числом позиций и
  * крупнейшими подкатегориями; маленькие разделы (меньше cat.sectionMin позиций) — одной плиткой «Другое оборудование».
@@ -176,7 +176,7 @@ export class CatSections {
     const section = this.get(key);
     if (!section) return CatalogWindow.open({});
     const full = section.types.filter(type => type.n);
-    if (!full.length) return EquipWizard.open('kp', section.types[0].id);
+    if (!full.length) return WizardLink.open('kp', section.types[0].id);
     if (full.length === 1) return CatalogWindow.open({ cat: full[0].id });
     return CatalogWindow.open({ grp: key });
   }

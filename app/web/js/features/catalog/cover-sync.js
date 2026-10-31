@@ -1,7 +1,7 @@
-import { CoverHint } from './cover-hint.js';
-import { CatalogEditor } from '../catalog/catalog-edit.js';
+import { CatalogEditor } from './catalog-edit.js';
 import { S } from '../../core/state.js';
 import { Kit } from '../../core/kit.js';
+import { CoverHint } from '../../core/cover-hint.js';
 
 /**
  * Заголовок КП по оборудованию: пока менеджер не правил поля сам (cover.touched), они соответствуют текущим позициям —

@@ -3,9 +3,9 @@ import { EquipTypes } from '../../core/equip-types.js';
 import { $, esc } from '../../core/util.js';
 import { Attrs, CatAttrs } from '../../core/item-attrs.js';
 import { Str } from '../../core/str.js';
-import { DrawPic } from '../kit/draw-pic.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Api, ImgUpload } from '../../core/net.js';
+import { StationLink } from '../../core/station-link.js';
 
 /** Каталог на сервере: список, позиция целиком, сохранение (картинки — файлами на сервер отдела). */
 export class CatalogStore {
@@ -47,7 +47,7 @@ export class CatalogStore {
           })),
         )
       : doc.gallery;
-    const draw = doc.draw ? await DrawPic.upload(doc.draw, doc) : doc.draw;
+    const draw = doc.draw ? await StationLink.uploadDraw(doc.draw, doc) : doc.draw;
     return { ...doc, photo, logo, gallery, draw };
   }
 

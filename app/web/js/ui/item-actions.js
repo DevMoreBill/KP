@@ -50,17 +50,17 @@ import { StationImages } from '../features/station/station-images.js';
 import { PageImages } from '../features/catalog/page-images.js';
 import { ImageFiles } from '../features/catalog/images.js';
 import { ItemSpec } from '../core/item-spec.js';
-import { CoverHint } from '../features/kit/cover-hint.js';
 import { ItemLinks } from '../features/catalog/item-links.js';
 import { $, Uid } from '../core/util.js';
 import { EquipTypes } from '../core/equip-types.js';
 import { Toast } from '../core/toast.js';
 import { KpState, S } from '../core/state.js';
-import { CoverSync } from '../features/kit/cover-sync.js';
 import { Tender } from '../core/tender.js';
 import { PhoneLayout } from '../core/phone-layout.js';
 import { StationParams } from '../features/kit/station-params.js';
 import { Kit } from '../core/kit.js';
+import { CoverHint } from '../core/cover-hint.js';
+import { CoverSync } from '../features/catalog/cover-sync.js';
 
 // действие изменило КП — форма перерисовывается и черновик сохраняется (что вернули окна и загрузки — не в счёт)
 const RENDER = Symbol('render');

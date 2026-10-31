@@ -24,10 +24,10 @@ import { BigMode } from './big-mode.js';
 import { PicView } from './pic-view.js';
 import { KpState } from '../core/state.js';
 import { DatePicker } from '../core/date-picker.js';
-import { CoverSync } from '../features/kit/cover-sync.js';
 import { UiKit } from '../core/ui-kit.js';
 import { KpForm } from '../core/kp-form.js';
 import { DealLogistics } from '../features/deal/deal-logistics.js';
+import { CoverSync } from '../features/catalog/cover-sync.js';
 
 export const UI_PARTS = {
   AdminGearClicks,

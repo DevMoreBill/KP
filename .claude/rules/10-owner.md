@@ -266,4 +266,5 @@ Windows 10 (один EXE, папка программы C:\KP), менеджер
   раздел (`AdminDialog`, `AdminApi`, `AuditLabels` — в `core/`, корзина и «Как в Битрикс24» — в `admin/`), цикл 226 → 175, пар 25 → 21;
   3.252.0 — этап 5: экономика сделки поверх КП и состава станции (`DealLink`, общее — в `core/`, ключи API — в `admin/`),
   цикл → 151, пар → 17; 3.253.0 — этап 6: КП основой (`DocLink`, `CatalogLink`, события `kp:leave` / `kp:enter`; `Auth`,
-  `Currency`, `Kit`, `Translit` — в `core/`), цикл → 85, пар → 13]
+  `Currency`, `Kit`, `Translit` — в `core/`), цикл → 85, пар → 13; 3.254.0 — этап 7: каталог под станциями и мастером
+  (`StationLink`, `WizardLink`), цикл → 43, пар → 10]

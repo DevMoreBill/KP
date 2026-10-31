@@ -5,10 +5,10 @@ import { CatalogTree } from './catalog-nav.js';
 import { ModerationList } from './moderation.js';
 import { TypesEditor } from './types-editor.js';
 import { XlsImport } from './excel-import.js';
-import { EquipWizard } from '../wizard/equip-wizard.js';
 import { $ } from '../../core/util.js';
 import { CatalogExportDlg } from './catalog-export.js';
 import { KpForm } from '../../core/kp-form.js';
+import { WizardLink } from '../../core/wizard-link.js';
 
 /** Щелчки в окне каталога: отметки, вкладки, плашки, категории, пакетные действия, карточка, меню. */
 export class CatalogClicks {
@@ -67,7 +67,7 @@ export class CatalogClicks {
         Object.assign(win.F, { cat: id, f: {}, rng: {} });
         win.redraw();
       }),
-    new: win => EquipWizard.open('catalog', win.F.cat || ''),
+    new: win => WizardLink.open('catalog', win.F.cat || ''),
     xls: win => XlsImport.open(win.F.cat),
     types: win => TypesEditor.open(win.F.cat || undefined),
     exp: win => win.exportFile(),

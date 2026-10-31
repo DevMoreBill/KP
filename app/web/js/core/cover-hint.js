@@ -1,7 +1,7 @@
-import { EquipTypes } from '../../core/equip-types.js';
-import { Attrs } from '../../core/item-attrs.js';
-import { ItemSpec } from '../../core/item-spec.js';
-import { Kit } from '../../core/kit.js';
+import { EquipTypes } from './equip-types.js';
+import { Attrs } from './item-attrs.js';
+import { ItemSpec } from './item-spec.js';
+import { Kit } from './kit.js';
 
 /**
  * Заголовок титула по позиции: вид оборудования, модель, ключевые параметры. Станция в контейнере — по основному

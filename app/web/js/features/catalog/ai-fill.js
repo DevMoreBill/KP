@@ -2,8 +2,6 @@ import { AiChat, AiDirect, AiSource } from './ai-chat.js';
 import { AiParse } from './ai-parse.js';
 import { AiPrompt } from './ai-prompt.js';
 import { AiOptions } from './ai-options.js';
-import { StationAuto } from '../kit/station-auto.js';
-import { ContainerPart } from '../kit/container-part.js';
 import { Str } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -13,9 +11,10 @@ import { KpState, S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Api } from '../../core/net.js';
 import { Attrs } from '../../core/item-attrs.js';
-import { CoverSync } from '../kit/cover-sync.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Kit } from '../../core/kit.js';
+import { CoverSync } from './cover-sync.js';
+import { StationLink } from '../../core/station-link.js';
 
 /**
  * Заполнение карточки с ИИ: объём — как у карточек этой категории в каталоге (образец — /api/ai/profile), недостающее
@@ -477,7 +476,7 @@ class AiAttrs {
     if (!rows.length) return;
     let container = parts.find(part => part.role === 'container');
     if (!container) {
-      container = ContainerPart.create('welded');
+      container = StationLink.container('welded');
       parts.push(container);
     }
     for (const row of rows) {
@@ -509,6 +508,6 @@ class AiAttrs {
         }),
       );
     }
-    StationAuto.fill(item);
+    StationLink.autoFill(item);
   }
 }

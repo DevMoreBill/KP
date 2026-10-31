@@ -45,6 +45,8 @@ import { DefRegistry } from '../../core/defaults.js';
 import { KpState } from '../../core/state.js';
 import { AiOptions } from './ai-options.js';
 import { KpLead } from './kp-lead.js';
+import { CoverSync } from './cover-sync.js';
+import { CatFeatures } from './cat-features.js';
 import { QuickFind } from './quick-find.js';
 import { CatalogLink } from '../../core/catalog-link.js';
 
@@ -60,6 +62,7 @@ export const CATALOG = {
   AiTab,
   AttrChoices,
   AttrsBlock,
+  CatFeatures,
   CatFind,
   CatSections,
   Catalog,
@@ -86,6 +89,7 @@ export const CATALOG = {
   CatalogTree,
   CatalogWindow,
   ClientsExportDlg,
+  CoverSync,
   DescTab,
   DimRow,
   EditorDrag,

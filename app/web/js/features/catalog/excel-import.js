@@ -2,12 +2,12 @@ import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { CatalogWindow } from './catalog-window.js';
 import { Toast } from '../../core/toast.js';
 import { ItemSpec } from '../../core/item-spec.js';
-import { CoverHint } from '../kit/cover-hint.js';
 import { FileSave } from '../../core/files.js';
 import { $ } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Price, Str } from '../../core/str.js';
 import { Currency } from '../../core/currency.js';
+import { CoverHint } from '../../core/cover-hint.js';
 
 /**
  * Код позиции из строки прайса: прежняя схема (её коды уже в каталоге — повторная загрузка обновляет те же позиции), но у

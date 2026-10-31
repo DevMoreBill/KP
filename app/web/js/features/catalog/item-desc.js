@@ -2,16 +2,14 @@ import { ImageFiles } from './images.js';
 import { Logos } from './image-slots.js';
 import { ImageDrop } from './item-blocks.js';
 import { ItemLinks } from './item-links.js';
-import { DrawPic } from '../kit/draw-pic.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Str } from '../../core/str.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { esc } from '../../core/util.js';
 import { CardGaps } from './card-gaps.js';
 import { UiKit } from '../../core/ui-kit.js';
-import { StationBrief } from '../station/station-brief.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationLink } from '../../core/station-link.js';
 
 /** Вкладка «Описание и фото»: главное фото и логотип, блоки описания со своими фото, схемы и другие изображения. */
 export class DescTab {
@@ -34,7 +32,7 @@ export class DescTab {
       return 'Сейчас — 3D-вид с вкладки «Компоновка»: он сам обновляется при изменении состава и контейнера.';
     }
     if (cur) return 'Сейчас — своё фото.';
-    return StationPlan.enabled(item)
+    return StationLink.enabled(item)
       ? 'Фото пока нет — 3D-вид станции вставляется с вкладки «Компоновка».'
       : 'Фото пока нет.';
   }
@@ -196,10 +194,10 @@ export class DescTab {
     const feats = this._feats(item, i, { type, station }); // коды блоков описания — до привязки изображений
     const gallery = this._gallery(item, i, type);
     const media = this._media(item, i, station);
-    const brief = station ? StationBrief.html(item, i) : '';
+    const brief = station ? StationLink.brief(item, i) : '';
     return `${media}
    ${brief}
    ${feats}
-   ${gallery}${DrawPic.forItem(item, i)}`;
+   ${gallery}${StationLink.drawHtml(item, i)}`;
   }
 }

@@ -9,16 +9,12 @@ import { ItemLinks } from './item-links.js';
 import { ItemTabs } from './item-tabs.js';
 import { Morph } from '../../core/morph.js';
 import { AdminSession } from '../../core/net.js';
-import { StationImages } from '../station/station-images.js';
 import { $, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
-import { StationUi } from '../station/station-ui.js';
-import { AsmTab } from '../kit/asm-tab.js';
-import { KitView } from '../kit/kit-view.js';
 import { KpForm } from '../../core/kp-form.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationLink } from '../../core/station-link.js';
 
 /**
  * Карточка позиции (окно с вкладками): основное, состав и компоновка станции, автозаполнение, описание и фото,
@@ -39,8 +35,8 @@ export class ItemEditor {
   static STATION_FIRST = ['kit', 'layout'];
   static BODIES = {
     main: (item, i) => ItemTabs.main(item, i),
-    kit: (item, i) => (Kit.simple(item) ? AsmTab.html(item, i) : KitView.render(item, i)),
-    layout: (item, i) => StationUi.tab(item, i),
+    kit: (item, i) => StationLink.kitTab(item, i),
+    layout: (item, i) => StationLink.layoutTab(item, i),
     desc: (item, i) => DescTab.html(item, i),
     spec: (item, i) => ItemTabs.spec(item, i),
     opts: (item, i) => ItemTabs.opts(item, i),
@@ -50,7 +46,7 @@ export class ItemEditor {
   static _shown(item, station) {
     return ([key]) =>
       (key !== 'kit' || Kit.can(item)) &&
-      (key !== 'layout' || StationPlan.enabled(item)) &&
+      (key !== 'layout' || StationLink.enabled(item)) &&
       (key !== 'ai' || (FEAT.on('ai') && !station));
   }
 
@@ -91,7 +87,7 @@ export class ItemEditor {
     if (dialog.open) dialog.close();
     KpForm.render();
     KpState.persist();
-    StationImages.syncAll().then(changed => {
+    StationLink.syncImages().then(changed => {
       if (changed) KpForm.render();
     });
   }
@@ -141,15 +137,15 @@ export class ItemEditor {
     return this.tabs(item)
       .map(
         ([key, label]) =>
-          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${key === 'kit' ? AsmTab.label(item, label) : label}${key === 'layout' ? StationUi.badge(item) : ''}${CardGaps.tabMark(item, key)}</button>`,
+          `<button type="button" class="ed-tab${ItemEditor.current.tab === key ? ' on' : ''}" data-edtab="${key}">${key === 'kit' ? StationLink.kitLabel(item, label) : label}${key === 'layout' ? StationLink.layoutBadge(item) : ''}${CardGaps.tabMark(item, key)}</button>`,
       )
       .join('');
   }
 
   static _prepare(item) {
     if (!this.tabs(item).some(([key]) => key === ItemEditor.current.tab)) ItemEditor.current.tab = 'main';
-    if (!CatalogEditor.session && ItemEditor.current.tab !== 'layout' && StationPlan.enabled(item))
-      StationImages.soon(item); // 3D и листы — сразу по составу
+    if (!CatalogEditor.session && ItemEditor.current.tab !== 'layout' && StationLink.enabled(item))
+      StationLink.soonImages(item); // 3D и листы — сразу по составу
   }
 
   /** Перерисовать карточку (фокус и прокрутка сохраняются). */
