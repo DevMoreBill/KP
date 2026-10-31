@@ -9,7 +9,8 @@ import time
 import zlib
 from typing import Any
 
-from config import APP_DIR
+from config import APP_DIR, store
+from features import FeatureAccess
 from web_base import Controller, NotFound, route
 
 WEB_DIR = os.path.join(APP_DIR, 'web')  # интерфейс: index.html, css/, js/, vendor/
@@ -123,6 +124,38 @@ class WebIndex:
         return hit
 
 
+class AppManifest:
+    """Описание программы для значка на экране «Домой»: значки — app/web/img (рисует tests/ui/app_icon.py), цвета —
+    фон и шапка светлой темы (base.css)."""
+
+    TYPE = 'application/manifest+json; charset=utf-8'
+    NAME = 'Конструктор КП — ПНЕВМОТЕХ'
+    SHORT = 'КП ПНЕВМОТЕХ'
+    ICONS = (180, 192, 512)
+    PAPER = '#F3F6FB'
+    CARD = '#FFFFFF'
+    FULL = 'standalone'  # на весь экран, без адресной строки
+    BROWSER = 'browser'  # значок открывает браузер
+
+    @classmethod
+    def of(cls, display: str) -> dict[str, Any]:
+        """display — FULL или BROWSER."""
+        icons = [
+            {'src': f'/web/img/app-{side}.png', 'sizes': f'{side}x{side}', 'type': 'image/png'} for side in cls.ICONS
+        ]
+        return {
+            'name': cls.NAME,
+            'short_name': cls.SHORT,
+            'lang': 'ru',
+            'start_url': '/',
+            'scope': '/',
+            'display': display,
+            'background_color': cls.PAPER,
+            'theme_color': cls.CARD,
+            'icons': icons,
+        }
+
+
 class StaticController(Controller):
     YEAR = 'public, max-age=31536000, immutable'
 
@@ -139,6 +172,14 @@ class StaticController(Controller):
         return self.send_file(
             path, WEB_TYPES[os.path.splitext(path)[1].lower()], self.YEAR if self.query.get('v') else 'no-cache'
         )
+
+    @route(r'/manifest\.webmanifest')
+    def manifest(self) -> Any:
+        """Программа значком на экране «Домой» (телефон, планшет): название, значки и вид — на весь экран, без адресной
+        строки (функция «homeApp»; выключена — значок открывает браузер). Без входа: значок ставится и до него."""
+        display = AppManifest.FULL if FeatureAccess(store()).is_on('homeApp') else AppManifest.BROWSER
+        body = json.dumps(AppManifest.of(display), ensure_ascii=False)
+        return self.send(200, AppManifest.TYPE, body.encode('utf-8'), {'Cache-Control': 'no-cache'})
 
     @route(r'/favicon\.ico')
     def favicon(self) -> Any:

@@ -314,6 +314,15 @@ span.mb-back{border:0}
 .mob .catwin .cw-mid{display:block}
 .mob .catwin:is(.pvon,.navon) :is(.cw-main,.cw-f){visibility:hidden}     /* под карточкой и «Фильтрами» — скрыто (и для диктора), прокрутка на месте */
 .mob .catwin :is(.cw-pv,.cw-nav){visibility:visible}
+/* журнал КП и кабинет: прокручивается всё окно — шапка уходит вверх вместе со списком; у кабинета разделы остаются у края —
+   шапка прилипает, поднявшись на строку приветствия (--cab-lift и --cab-stuck считает StickyHead) */
+html.mob dialog.tabwin:is(.jrnwin,.cabwin):not(.tab-off)[open]{display:block;overflow-y:auto;overscroll-behavior:contain}
+html.mob dialog.tabwin.jrnwin>.dlg-h{position:static}
+html.mob dialog.tabwin.jrnwin>.dlg-b{overflow:visible}
+html.mob dialog.tabwin.cabwin[open]{scroll-padding-top:var(--cab-stuck,0px);background:var(--bg,var(--soft))}
+html.mob dialog.tabwin.cabwin .cab-h{position:sticky;top:calc(-1 * var(--cab-lift,0px));z-index:5;background:var(--card)}
+html.mob dialog.tabwin.cabwin .cab-b{overflow:visible}
+html.mob dialog.tabwin.cabwin .tbl-wrap{overflow-x:auto}  /* сводка «Отдела» шире экрана листается вбок сама, окно — на месте */
 .mob .catwin .pv-scroll{padding:14px max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
 .mob .catwin .pv-photo{height:220px}
 .mob .catwin .pv-cat{grid-template-columns:minmax(0,1fr)}

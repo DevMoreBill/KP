@@ -21,6 +21,8 @@ import { $ } from '../core/util.js';
 import { PhoneLayout } from '../core/phone-layout.js';
 import { DealWin } from '../features/deal/deal-win.js';
 import { KpForm } from '../core/kp-form.js';
+import { FEAT } from '../core/features.js';
+import { WebApp } from '../core/web-app.js';
 /**
  * Телефон (Safari iOS, Chrome Android): режим «mob» на <html> (ставится ещё в <head>, чтобы не мигала настольная
  * раскладка), меню «☰», поле названия по высоте текста, пустые поля дат, шапка прячется при прокрутке вниз.
@@ -50,6 +52,7 @@ export class Mobile {
     report: () => ProblemReport.open(),
     big: () => BigMode.toggle(),
     tour: () => Tour.start(),
+    home: () => HelpWindow.open('mobile'),
     settings: () => SettingsWindow.open(),
   };
 
@@ -92,9 +95,15 @@ export class Mobile {
       ${item('catalog', '▦', 'Каталог оборудования', 'Подбор и своё оборудование')}
       ${item('preview', '▤', 'Предпросмотр КП', 'Документ целиком')}
       ${DealDefaults.allowed() ? item('deal', '₽', 'Экономика сделки', 'Прибыль, финансирование, Excel') : ''}
-      ${item('help', '?', 'Руководство', 'Как пользоваться, история версий')}${item('tour', '➜', 'Обзор программы', 'Короткий тур по главным кнопкам')}
+      ${item('help', '?', 'Руководство', 'Как пользоваться, история версий')}${item('tour', '➜', 'Обзор программы', 'Короткий тур по главным кнопкам')}${this._homeItem(item)}
       <hr>${item('prefs', '☺', 'Мои настройки', 'Тема, кабинет, мои условия, подпись в письмах')}${item('theme', dark ? '☀' : '☾', dark ? 'Светлая тема' : 'Тёмная тема', '')}${item('big', 'А', BigMode.active() ? 'Обычный размер' : 'Крупный режим', BigMode.active() ? 'Вернуть обычный текст и кнопки' : 'Крупнее текст и кнопки на этом телефоне')}${item('report', '⚑', 'Сообщить о проблеме', 'Администратору — с тем, где это случилось')}
       ${AuthMenu.mobileItems(item)}${item('settings', '⚙', 'Настройки', 'Для администратора')}${AdminSession.on ? item('uitexts', '✎', 'Тексты интерфейса', 'Правка надписей и подсказок') : ''}`;
+  }
+
+  // значок на экране «Домой» — на iPhone и iPad, пока программа открыта не им
+  static _homeItem(item) {
+    if (!FEAT.on('homeApp') || !WebApp.offer()) return '';
+    return item('home', '📲', 'На весь экран', 'Значок на экране «Домой» — без адресной строки браузера');
   }
 
   static _menuClick(dialog, event) {

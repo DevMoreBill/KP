@@ -28,6 +28,7 @@ import { MyDay } from '../kp/my-day.js';
 import { BrowserNotify } from './browser-notify.js';
 import { Modal } from '../../core/modal.js';
 import { CabState } from './cab-state.js';
+import { StickyHead } from '../../core/sticky-head.js';
 
 /**
  * Окно кабинета менеджера: почти весь экран, шапка в одну строку (приветствие, разделы, чей кабинет, «＋ Дело / Сделка / КП»),
@@ -58,6 +59,8 @@ export class Cabinet {
   static _seenNew = 0;
   static _shownTab = '';
   static _typing = null;
+  // телефон: шапка уходит вверх вместе с прокруткой, разделы остаются у края
+  static HEAD = { head: '.cab-h', keep: '.cab-tabs', prefix: '--cab' };
 
   /**
    * Окно кабинета (создаётся один раз).
@@ -127,11 +130,14 @@ export class Cabinet {
     if (!CrmData.board) return;
     const dialog = this.dlg();
     const old = dialog.querySelector('.cab-b');
-    const scroll = old && this._shownTab === CabState.tab ? old.scrollTop : 0;
+    const same = this._shownTab === CabState.tab;
+    const scroll = old && same ? old.scrollTop : 0;
     const view = this._view();
     dialog.innerHTML = `${this._head()}<div class="cab-b cab-${CabState.tab}">${view.html()}</div>`;
+    StickyHead.watch(dialog, this.HEAD);
     const body = dialog.querySelector('.cab-b');
     body.scrollTop = scroll;
+    if (!same) StickyHead.reveal(dialog, body); // телефон: прокручивается всё окно — другой раздел с начала, под вкладками
     this._shownTab = CabState.tab;
     if (view.after) view.after(body);
     this._tabCount();

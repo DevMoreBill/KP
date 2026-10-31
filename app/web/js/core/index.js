@@ -18,6 +18,7 @@ import { AdminSession, Api, ImgUpload, RemoteResult, Srv } from './net.js';
 import { SpecValues } from './spec-values.js';
 import { Fmt, ObjPath, Price, Str } from './str.js';
 import { Toast } from './toast.js';
+import { WebApp } from './web-app.js';
 import { XlsxBook, XlsxSheet } from './xlsx.js';
 import { XlsxStyles } from './xlsx-styles.js';
 
@@ -52,6 +53,7 @@ export const CORE = {
   Srv,
   Str,
   Toast,
+  WebApp,
   XlsxBook,
   XlsxSheet,
   XlsxStyles,
@@ -61,3 +63,4 @@ DblClickGuard.listen();
 ImgMiss.listen();
 DimInput.listen();
 Phone.listen();
+WebApp.listen();

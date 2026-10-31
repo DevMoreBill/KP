@@ -1,3 +1,4 @@
+import { StickyHead } from '../../core/sticky-head.js';
 import { $ } from '../../core/util.js';
 
 /**
@@ -5,28 +6,14 @@ import { $ } from '../../core/util.js';
  * отбор и «Найдено» уходят вверх вместе со списком, строка поиска с «Фильтрами» остаётся у верхнего края.
  */
 export class CatalogScroll {
-  static observer = null;
+  static HEAD = { head: '.cw-h', keep: '.cw-q', prefix: '--cw' };
 
   /**
    * Следить за высотой шапки окна: каталог открыт заново — шапка новая.
    * @param {HTMLDialogElement} dialog
    */
   static watch(dialog) {
-    this.observer?.disconnect();
-    const head = dialog.querySelector('.cw-h');
-    if (!head) return;
-    this.observer = new ResizeObserver(() => this._lift(dialog, head));
-    this.observer.observe(head);
-  }
-
-  // насколько шапка уходит вверх: строка заголовка скрыта, строка поиска — на прежнем отступе от края окна
-  static _lift(dialog, head) {
-    const search = head.querySelector('.cw-q');
-    const style = getComputedStyle(head);
-    if (!search || !head.offsetHeight || style.position !== 'sticky') return;
-    const lift = Math.max(0, search.offsetTop - parseFloat(style.paddingTop));
-    dialog.style.setProperty('--cw-lift', `${lift}px`);
-    dialog.style.setProperty('--cw-stuck', `${head.offsetHeight - lift}px`);
+    StickyHead.watch(dialog, this.HEAD);
   }
 
   /** В начало списка: новый отбор или сортировка. */
@@ -49,9 +36,6 @@ export class CatalogScroll {
   static results() {
     const main = this.box();
     const list = $('#cwList');
-    if (!list || main === list) return;
-    const stuck = parseFloat(getComputedStyle(main).scrollPaddingTop) || 0;
-    const target = main.scrollTop + list.getBoundingClientRect().top - main.getBoundingClientRect().top - stuck;
-    if (main.scrollTop > target) main.scrollTop = Math.max(0, target);
+    if (list && main !== list) StickyHead.reveal(main, list);
   }
 }

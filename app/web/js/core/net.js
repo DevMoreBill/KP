@@ -1,6 +1,7 @@
 import { ServerLink } from './server-link.js';
 import { CopyText, FileSave } from './files.js';
 import { Toast } from './toast.js';
+import { WebApp } from './web-app.js';
 import { S } from './state.js';
 import { DefRegistry } from './defaults.js';
 
@@ -205,7 +206,12 @@ export class RemoteResult {
     }
   }
 
+  // значком с экрана «Домой» iPhone не скачивает переходом (рамка — тоже переход) — файл без перехода
   static _download(url) {
+    if (WebApp.standalone()) {
+      WebApp.download(url);
+      return;
+    }
     const frame = document.createElement('iframe');
     frame.hidden = true;
     frame.src = url;

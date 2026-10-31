@@ -51,6 +51,38 @@ export class FileSave {
   }
 
   /**
+   * Скачать файл сервера без перехода по ссылке: запрос → файл в памяти → ссылка на него.
+   * @param {string} url
+   * @param {string} [name] имя, если сервер его не сообщил
+   * @returns {Promise<void>}
+   */
+  static async fromUrl(url, name = '') {
+    const reply = await fetch(url, { credentials: 'same-origin' });
+    if (!reply.ok) throw new Error(`сервер ответил ${reply.status}`);
+    const fallback = name || decodeURIComponent(new URL(url, location.href).pathname.split('/').pop() || 'file');
+    this.download(this.nameOf(reply.headers.get('Content-Disposition'), fallback), await reply.blob());
+  }
+
+  /**
+   * Имя файла из заголовка Content-Disposition: сначала filename* (UTF-8), затем filename, иначе — запасное.
+   * @param {string|null} header
+   * @param {string} fallback
+   * @returns {string}
+   */
+  static nameOf(header, fallback) {
+    const utf = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header || '');
+    if (utf) {
+      try {
+        return decodeURIComponent(utf[1].trim());
+      } catch {
+        // испорченное %-кодирование — ниже простое имя
+      }
+    }
+    const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header || '');
+    return plain ? plain[1].trim() : fallback;
+  }
+
+  /**
    * data: URL → Blob.
    * @param {string} url
    * @returns {Promise<Blob>}

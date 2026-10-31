@@ -48,8 +48,18 @@ export class AppTabs {
     }
     dialog.classList.add('tabwin');
     dialog.dataset.apptab = key;
-    if (!dialog.open) dialog.show();
+    if (!dialog.open) {
+      dialog.show();
+      this._touchFocus(dialog);
+    }
     this._activate(key);
+  }
+
+  // пальцем: окно-вкладка открывается без фокуса — он ставил рамку на первую кнопку («Фильтры» каталога выглядели
+  // включёнными) и открывал клавиатуру у поля поиска (журнал КП)
+  static _touchFocus(dialog) {
+    const active = document.activeElement;
+    if (matchMedia('(pointer:coarse)').matches && active && dialog.contains(active)) active.blur();
   }
 
   /**

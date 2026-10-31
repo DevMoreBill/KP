@@ -699,6 +699,32 @@ class Scenario(UiRun):
         self.ev("document.querySelector('#catdlg .cw-main').scrollTop = 0")
         self.wait(300)
 
+    # телефон: окно-вкладка — прокрутка, сколько можно листать, низ заголовка и верх строки, которая остаётся (px от верха экрана)
+    TAB_GEO = ("spec => { const win = document.querySelector(spec.win); const box = sel => win.querySelector(sel).getBoundingClientRect(); "
+               "return {scroll: win.scrollTop, room: win.scrollHeight - win.clientHeight, title: box(spec.title).bottom, "
+               "keep: spec.keep ? box(spec.keep).top : 0}; }")
+    # высокий отступ под содержимым раздела — листать есть что при любых данных стенда
+    FILL = "sel => { const tag = document.createElement('style'); tag.id = 'progonFill'; tag.textContent = sel + '::after{content:\"\";display:block;height:1500px}'; document.head.append(tag); }"
+
+    def _tab_scroll(self, name, spec):
+        """Телефон: окно-вкладка пальцем — шапка уходит вверх вместе со списком, строка spec['keep'] (если есть) остаётся у
+        края (31.10: журнал КП и кабинет, как каталог); затем — снова к началу."""
+        if spec.get('fill'):
+            self.ev(self.FILL, spec['fill'])
+            self.wait(300)
+        before = self.ev(self.TAB_GEO, spec)
+        self.touch_drag(215, 650, -400)
+        after = self.ev(self.TAB_GEO, spec)
+        self.snap(spec['shot'], spec['win'])
+        moved = after['scroll'] > before['scroll']
+        gone = after['title'] <= after['keep'] + 1
+        kept = not spec.get('keep') or 0 <= after['keep'] < before['keep']
+        if before['room'] < 400 or not (moved and gone and kept):
+            self.errs.append((self.cur, 'ERR', '%s на телефоне: при прокрутке шапка не уходит или нужная строка не остаётся у '
+                                               'края — %s → %s' % (name, before, after)))
+        self.ev("sel => { document.querySelector(sel).scrollTop = 0; document.getElementById('progonFill')?.remove(); }", spec['win'])
+        self.wait(300)
+
     def _kp_swipe(self):
         """Телефон: страница КП прокручивается пальцем, когда вкладки разделов открыты в фоне — как у менеджера: кабинет открыт с
         запуска, на КП — нижней панелью (31.10: правило «под открытым окном страница не прокручивается» срабатывало и на спрятанных
@@ -1124,6 +1150,8 @@ class Scenario(UiRun):
         self.wait(2500)
         root = self.topdlg()
         self.snap('a0_journal', root)
+        if self.phone:
+            self._tab_scroll('журнал КП', {'win': 'dialog.jrnwin', 'title': '.dlg-h', 'shot': 'a0b_journal_scrolled'})
         q = pg.locator('#jQ')
         if q.count():
             q.fill('2026')
@@ -1482,6 +1510,11 @@ class Scenario(UiRun):
             loc.click()
             self.wait(900)
             self.snap('f_cab_' + tab, '#cabWin', wait=200)
+        if self.phone:
+            pg.locator('#cabWin [data-ctab="today"]').click()
+            self.wait(900)
+            self._tab_scroll('кабинет', {'win': '#cabWin', 'title': '.cab-t', 'keep': '.cab-tabs', 'shot': 'f_cab_scrolled',
+                                         'fill': '#cabWin .cab-b'})
         pg.locator('#cabWin [data-ctab="deals"]').click()
         self.wait(800)
         other = 'board' if self.ev("CabDeals.view") == 'list' else 'list'

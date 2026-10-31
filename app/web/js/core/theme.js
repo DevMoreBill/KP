@@ -61,6 +61,14 @@ export class Theme {
       delete root.dataset.theme;
       root.style.colorScheme = '';
     }
+    this._statusBar();
+  }
+
+  // строка состояния телефона и панель браузера — цветом шапки программы в этой теме
+  static _statusBar() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const card = getComputedStyle(document.documentElement).getPropertyValue('--card').trim();
+    if (meta && card) meta.content = card;
   }
 
   /** Переключить светлую и тёмную (запомнят «Мои настройки» — событие kp:theme). */
@@ -83,7 +91,11 @@ export class Theme {
       // без хранилища браузера
     }
     $('#btnTheme').addEventListener('click', () => Theme.toggle());
-    this.SYSTEM.addEventListener('change', () => Theme.paintButton());
+    this.SYSTEM.addEventListener('change', () => {
+      Theme.paintButton();
+      Theme._statusBar();
+    });
     this.paintButton();
+    this._statusBar();
   }
 }

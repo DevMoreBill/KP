@@ -496,6 +496,15 @@ check('ТЗ заказчика, «Копировать вопросы» — че
   assert.deepStrictEqual(said, ['Вопросы скопированы']);
 });
 
+check('файл сервера без перехода (значок с экрана «Домой»): имя — из Content-Disposition, сначала UTF-8', ()=>{
+  const { FileSave }=mod('core/files.js');
+  const header=`attachment; filename="KP_2026-005.docx"; filename*=UTF-8''${encodeURIComponent('КП № 2026-005 ООО «Пример».docx')}`;
+  assert.strictEqual(FileSave.nameOf(header, 'x'), 'КП № 2026-005 ООО «Пример».docx');
+  assert.strictEqual(FileSave.nameOf('attachment; filename="kp.pdf"', 'x'), 'kp.pdf');
+  assert.strictEqual(FileSave.nameOf("attachment; filename*=UTF-8''%E0%A4%A", 'x'), 'x', 'испорченное %-кодирование — запасное имя');
+  assert.strictEqual(FileSave.nameOf(null, 'запасное.docx'), 'запасное.docx');
+});
+
 (async ()=>{
   let passed=0;
   for (const [name, fn] of checks) {
