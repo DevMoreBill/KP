@@ -1,11 +1,9 @@
-import { DealCal } from './deal-cal.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealCombo } from './deal-combo.js';
 import { DealDefaults } from './deal-defaults.js';
 import { DealDrag } from './deal-drag.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealHs } from './deal-hs.js';
-import { DealLogistics } from './deal-logistics.js';
 import { DealPresets } from './deal-presets.js';
 import { DealRows } from './deal-rows.js';
 import { DealSeller } from './deal-seller.js';
@@ -13,7 +11,6 @@ import { DealState } from './deal-state.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
-import { DealWin } from './deal-win.js';
 import { DealXlsx } from './deal-xlsx.js';
 import { CbrRates } from '../kp/cbr-rates.js';
 import { Toast } from '../../core/toast.js';
@@ -28,12 +25,18 @@ import { PhoneLayout } from '../../core/phone-layout.js';
 import { InputNum } from '../../core/input-num.js';
 import { Currency } from '../../core/currency.js';
 import { KpCurrency } from '../kp/currency.js';
+import { DealDays } from './deal-days.js';
+import { DealHsEdit } from './deal-hs-edit.js';
+import { DealLink } from '../../core/deal-link.js';
+import { DealSupEdit } from './deal-sup-edit.js';
+import { LgBind } from './lg-bind.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты
  * оплаты, список поставщиков и стран с клавиатуры, перетаскивание этапов и строк графика, кнопки действий.
  */
 export class DealBind {
+  static SIZE_STORE = 'kp.dealwin2';
   static KOPECKS = 100;
   static SUP = /^sup\.(\d+)\./;
   static RESIZE_MS = 600;
@@ -46,8 +49,8 @@ export class DealBind {
    */
   static bind(dlg) {
     const bind = new DealBind(dlg);
-    DealWin.winRestore(dlg);
-    DealLogistics.bind(dlg, () => bind.touch());
+    DealBind.winRestore(dlg);
+    LgBind.bind(dlg, () => bind.touch());
     bind.watchSize();
     bind.listen();
   }
@@ -75,7 +78,7 @@ export class DealBind {
 
   _done() {
     this.touch();
-    DealWin.render();
+    DealLink.render();
   }
 
   /** Размер окна, изменённый потягиванием за угол, запоминается. */
@@ -94,7 +97,35 @@ export class DealBind {
     const rect = dlg.getBoundingClientRect();
     if (!(rect.width > DealBind.MIN_W)) return;
     WinSize.set(dlg, { width: `${Math.round(rect.width)}px`, height: `${Math.round(rect.height)}px` });
-    DealWin.winSave(dlg);
+    DealBind.winSave(dlg);
+  }
+
+  /**
+   * Восстановить размер окна.
+   * @param {HTMLDialogElement} dlg
+   */
+  static winRestore(dlg) {
+    try {
+      const size = JSON.parse(localStorage.getItem(DealBind.SIZE_STORE) || '{}') || {};
+      dlg.classList.toggle('max', !!size.max);
+      if (size.w) WinSize.set(dlg, { width: size.w });
+      if (size.h) WinSize.set(dlg, { height: size.h });
+    } catch {
+      // нет сохранённого размера — по умолчанию
+    }
+  }
+
+  /**
+   * Запомнить размер окна.
+   * @param {HTMLDialogElement} dlg
+   */
+  static winSave(dlg) {
+    try {
+      const size = { max: dlg.classList.contains('max'), w: WinSize.get(dlg, 'width'), h: WinSize.get(dlg, 'height') };
+      localStorage.setItem(DealBind.SIZE_STORE, JSON.stringify(size));
+    } catch {
+      // хранилище браузера недоступно — размер не запоминается
+    }
   }
 
   /** Обработчики событий окна. */
@@ -130,14 +161,14 @@ export class DealBind {
     const hit = DealBind.INPUT.find(([key]) => field.dataset[key] != null);
     if (hit) {
       this[hit[1]](field);
-      DealWin.render();
+      DealLink.render();
       return;
     }
     const path = field.dataset.dl;
     if (!path || field.tagName === 'SELECT') return;
     this._setField(path, field.value);
     if (field.dataset.combo) Object.assign(DealUi, { combo: path, comboAll: false, comboIx: -1 });
-    DealSuppliers.changed(path);
+    DealSupEdit.changed(path);
     this._saveSupOf(path);
     this._done();
   }
@@ -149,7 +180,7 @@ export class DealBind {
 
   _saveSupOf(path) {
     const match = DealBind.SUP.exec(path);
-    if (match) DealSuppliers.save(DealState.deal().sup[+match[1]]);
+    if (match) DealSupEdit.save(DealState.deal().sup[+match[1]]);
   }
 
   _cost(field) {
@@ -187,14 +218,14 @@ export class DealBind {
   }
 
   _hs(field) {
-    DealHs.set(field.dataset.hsI, { [field.dataset.f]: field.value });
+    DealHsEdit.set(field.dataset.hsI, { [field.dataset.f]: field.value });
     this.touch();
   }
 
   _focusIn(field) {
     if (!field.dataset.combo || DealUi.combo === field.dataset.combo) return;
     Object.assign(DealUi, { combo: field.dataset.combo, comboAll: true, comboIx: -1 });
-    DealWin.render();
+    DealLink.render();
   }
 
   _focusOut(field) {
@@ -207,15 +238,15 @@ export class DealBind {
       const item = S.items[+field.dataset.costI];
       if (!Number.isNaN(InputNum.parse(item._costText))) delete item._costText;
       KpState.persist();
-      DealWin.render();
+      DealLink.render();
     }
-    if (field.dataset.oprice != null) DealWin.render(); // цена опции — итоги, маржа и график
+    if (field.dataset.oprice != null) DealLink.render(); // цена опции — итоги, маржа и график
     if (field.dataset.kppI != null) {
       const item = S.items[+field.dataset.kppI];
       if (!Number.isNaN(Price.parse(item._priceText))) delete item._priceText;
       KpState.persist();
       KpForm.render();
-      DealWin.render();
+      DealLink.render();
     }
   }
 
@@ -234,7 +265,7 @@ export class DealBind {
     if (DealUi.combo !== field.dataset.combo) Object.assign(DealUi, { combo: field.dataset.combo, comboAll: true });
     const step = event.key === 'ArrowDown' ? 1 : -1;
     DealUi.comboIx = count ? ((DealUi.comboIx ?? -1) + step + count) % count : -1;
-    DealWin.render();
+    DealLink.render();
     this.dlg.querySelector('.dl-cbl [aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -306,10 +337,10 @@ export class DealBind {
   }
 
   _rowDate(field) {
-    const day = DealCal.isoDay(field.value);
+    const day = DealDays.isoDay(field.value);
     if (day == null || day < 0) {
       Toast.show('Дата раньше дня 0 — укажите дату не раньше подписания договора');
-      DealWin.render();
+      DealLink.render();
       return;
     }
     Toast.show(DealRows.setRowDay(field.dataset.dldate, day));
@@ -320,7 +351,7 @@ export class DealBind {
     const day = InputNum.parse(field.value);
     if (!(Number.isInteger(day) && day >= 0)) {
       Toast.show('День — целое число от 0');
-      DealWin.render();
+      DealLink.render();
       return;
     }
     Toast.show(DealRows.setRowDay(field.dataset.dlday, day));
@@ -346,7 +377,7 @@ export class DealBind {
       if (!preset) return;
       const sup = deal.sup[+field.dataset.k];
       sup.pay = JSON.parse(JSON.stringify(preset[1]));
-      DealSuppliers.save(sup);
+      DealSupEdit.save(sup);
       Toast.show(`Оплата поставщику: ${preset[0]}`);
     }
     this._done();
@@ -356,17 +387,17 @@ export class DealBind {
   _termDate(field) {
     if (!field.value) return;
     const deal = DealState.deal();
-    if (!DealCal.contractDate()) {
+    if (!DealDays.contractDate()) {
       deal.start = today();
       deal.startAuto = true;
       Toast.show('Дата договора — сегодня. Её можно изменить вверху окна');
     }
     const base = +field.dataset.base || 0;
-    const day = DealCal.isoDay(field.value);
+    const day = DealDays.isoDay(field.value);
     const count = DealBind._daysFrom(field.dataset.kind, base, day);
     if (!(count >= 0)) {
-      Toast.show(`Дата раньше события, от которого считается срок (${DealCal.dayRu(base)}) — выберите дату позже`);
-      DealWin.render();
+      Toast.show(`Дата раньше события, от которого считается срок (${DealDays.dayRu(base)}) — выберите дату позже`);
+      DealLink.render();
       return;
     }
     ObjPath.set(deal, field.dataset.dldd, String(count));
@@ -376,7 +407,7 @@ export class DealBind {
 
   static _daysFrom(kind, base, day) {
     if (kind !== 'work') return day - base;
-    return day >= base ? DealCal.countWork(base, day) : -1;
+    return day >= base ? DealDays.countWork(base, day) : -1;
   }
 
   _cashStage(field) {
@@ -393,7 +424,7 @@ export class DealBind {
     S.items[+field.dataset.costcurI].costCur = field.value;
     if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     this._touchLive();
-    DealWin.render();
+    DealLink.render();
   }
 
   _kpDone() {
@@ -403,11 +434,11 @@ export class DealBind {
   _hsPick(field) {
     const cat = DealHs.cats().find(row => row.key === field.value);
     if (cat) {
-      DealHs.set(field.dataset.hspick, { code: cat.code, duty: cat.duty });
+      DealHsEdit.set(field.dataset.hspick, { code: cat.code, duty: cat.duty });
       this.touch();
       Toast.show(`Код ${cat.code || '—'}, пошлина ${cat.duty === '' ? '— уточните' : `${cat.duty} %`} — «${cat.name}»`);
     }
-    DealWin.render();
+    DealLink.render();
   }
 
   _toggle(event) {
@@ -477,7 +508,7 @@ export class DealClicks {
 
   static _max(button, bind) {
     bind.dlg.classList.toggle('max');
-    DealWin.winSave(bind.dlg);
+    DealBind.winSave(bind.dlg);
   }
 
   static _combo(button, bind) {
@@ -487,7 +518,7 @@ export class DealClicks {
       return;
     }
     Object.assign(DealUi, { combo: path, comboAll: true, comboIx: -1 });
-    DealWin.render();
+    DealLink.render();
     bind.dlg.querySelector(`[data-combo="${path}"]`)?.focus();
   }
 
@@ -512,11 +543,11 @@ export class DealClicks {
       bind.touch();
       Toast.show(message);
     }
-    DealWin.render();
+    DealLink.render();
   }
 
   static _hsRef(button, bind) {
-    DealClicks._report(DealHs.useRef(button.dataset.id), bind);
+    DealClicks._report(DealHsEdit.useRef(button.dataset.id), bind);
   }
 
   static _apply(button) {
@@ -534,7 +565,7 @@ export class DealClicks {
   // новая вкладка — с начала, без анимации прокрутки; на телефоне вкладки прилипают к верху прокрутки
   static _step(button, bind) {
     DealUi.open = button.dataset.id;
-    DealWin.render();
+    DealLink.render();
     const dlg = bind.dlg;
     const form = dlg.querySelector('.dl-form');
     const box = dlg.querySelector('.dl-b');
@@ -581,13 +612,13 @@ export class DealClicks {
       sup.cusMode = 'calc';
       sup.vatIn = false;
     }
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
   }
 
   static _noVat(button, deal) {
     const sup = deal.sup[+button.dataset.k];
     sup.noVat = button.dataset.v === '1';
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
   }
 
   static _asmOn(button, deal) {
@@ -599,7 +630,7 @@ export class DealClicks {
   static _cusMode(button, deal) {
     const sup = deal.sup[+button.dataset.k];
     sup.cusMode = button.dataset.v;
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
   }
 
   static _trMode(button, deal) {
@@ -619,13 +650,13 @@ export class DealClicks {
   static _addSp(button, deal) {
     const sup = deal.sup[+button.dataset.k];
     sup.pay.splice(sup.pay.length - 1, 0, { name: '', pct: '', ev: 'ready', off: '0' });
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
   }
 
   static _delSp(button, deal) {
     const sup = deal.sup[+button.dataset.k];
     sup.pay.splice(+button.dataset.j, 1);
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
   }
 
   static _addTr(button, deal) {

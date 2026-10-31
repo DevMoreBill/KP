@@ -5,10 +5,10 @@ import { AdminNav } from '../features/admin/admin-nav.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { CatalogWindow } from '../features/catalog/catalog-window.js';
 import { Cabinet } from '../features/crm/cabinet.js';
-import { DealState } from '../features/deal/deal-state.js';
 import { Journal } from '../features/kp/journal.js';
 import { AdminState } from '../features/admin/admin-state.js';
 import { CabState } from '../features/crm/cab-state.js';
+import { DealWin } from '../features/deal/deal-win.js';
 
 /**
  * После обновления страницы — тот же раздел, где был человек (вкладка, раздел кабинета, вкладка «Настроек»).
@@ -22,7 +22,7 @@ export class SectionMemory {
     jrn: () => Journal.open(),
     [AppTabs.HOME]: () => AppTabs.open(AppTabs.HOME),
     set: saved => SettingsWindow.open(saved.set),
-    deal: () => (S.items.length ? DealState.open() : null),
+    deal: () => (S.items.length ? DealWin.open() : null),
   };
 
   /** Запоминать раздел, когда страница уходит (обновление, закрытие). */

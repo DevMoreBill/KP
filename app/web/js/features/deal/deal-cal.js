@@ -1,13 +1,11 @@
-import { DealState } from './deal-state.js';
 import { DealUi } from './deal-ui.js';
-import { DealWin } from './deal-win.js';
 import { esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { KpForm } from '../../core/kp-form.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
- * Производственный календарь (/api/calendar: '1' — нерабочий день) и дни сделки: день 0 — дата договора, рабочие дни,
- * дата дня от начала сделки.
+ * Производственный календарь (/api/calendar: '1' — нерабочий день): годы от даты договора, нерабочие и рабочие дни.
  */
 export class DealCal {
   static WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
@@ -41,14 +39,20 @@ export class DealCal {
         .then(res => {
           if (!(res && res.days)) return;
           DealUi.cal[year] = res;
-          DealWin.render();
+          DealLink.render();
           KpForm.renderSide();
         })
         .catch(error => console.warn(`Производственный календарь ${year} не загружен:`, error));
     }
   }
 
-  static _date(startIso, day) {
+  /**
+   * Дата дня сделки от даты договора.
+   * @param {string} startIso
+   * @param {number} day
+   * @returns {Date}
+   */
+  static date(startIso, day) {
     const [year, month, date] = startIso.split('-').map(Number);
     return new Date(Date.UTC(year, month - 1, date + (+day || 0)));
   }
@@ -61,7 +65,7 @@ export class DealCal {
    */
   static off(startIso, day) {
     if (!startIso) return false;
-    const date = DealCal._date(startIso, day);
+    const date = DealCal.date(startIso, day);
     const year = date.getUTCFullYear();
     const cal = DealUi.cal[year];
     if (!cal) return false;
@@ -97,76 +101,12 @@ export class DealCal {
   }
 
   /**
-   * Помощники календаря для DealTerms.addDays (без календаря — пусто).
-   * @returns {object}
-   */
-  static fns() {
-    const start = DealCal.contractDate();
-    return start && DealCal.ready(start) ? { addWork: DealCal.addWorkFn(start) } : {};
-  }
-
-  /**
-   * Рабочих дней между днями; без календаря — приблизительно.
-   * @param {number} base
-   * @param {number} target
-   * @returns {number}
-   */
-  static countWork(base, target) {
-    if (!(target > base)) return 0;
-    const start = DealCal.contractDate();
-    if (!(start && DealCal.ready(start))) return Math.round(((target - base) * DealCal.WORK_WEEK) / DealCal.WEEK);
-    let count = 0;
-    for (let day = base + 1; day <= target; day++) if (!DealCal.off(start, day)) count++;
-    return count;
-  }
-
-  /**
-   * Дата договора (день 0) или пусто.
-   * @returns {string}
-   */
-  static contractDate() {
-    const value = String((DealState.deal() || {}).start || '');
-    return DealCal.ISO.test(value) ? value : '';
-  }
-
-  /**
-   * Дата дня сделки: «2026-10-20».
-   * @param {number} day
-   * @returns {string}
-   */
-  static dayIso(day) {
-    const start = DealCal.contractDate();
-    if (!start) return '';
-    return DealCal._date(start, day).toISOString().slice(0, 10);
-  }
-
-  /**
    * «2026-10-20» → «20.10.2026».
    * @param {string} iso
    * @returns {string}
    */
   static isoRu(iso) {
     return iso ? iso.split('-').reverse().join('.') : '';
-  }
-
-  /**
-   * Дата дня сделки по-русски.
-   * @param {number} day
-   * @returns {string}
-   */
-  static dayRu(day) {
-    return DealCal.isoRu(DealCal.dayIso(day));
-  }
-
-  /**
-   * День сделки по дате.
-   * @param {string} iso
-   * @returns {number|null}
-   */
-  static isoDay(iso) {
-    const start = DealCal.contractDate();
-    if (!start || !iso) return null;
-    return Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DealCal.DAY_MS);
   }
 
   /**
@@ -181,15 +121,5 @@ export class DealCal {
     const approx = cals.some(cal => cal.approx);
     const tail = approx ? '. Праздники с переносами учтены не полностью.' : '';
     return `<span class="muted${approx ? ' warn-t' : ''}">Даты платежей — только рабочие (банковские) дни: ${esc(cals[0].src)}${tail}</span>`;
-  }
-
-  /**
-   * День недели дня сделки: «пн».
-   * @param {number} day
-   * @returns {string}
-   */
-  static weekday(day) {
-    const iso = DealCal.dayIso(day);
-    return iso ? DealCal.WEEKDAYS[new Date(`${iso}T00:00:00Z`).getUTCDay()] : '';
   }
 }

@@ -10,6 +10,7 @@ const ROOT=path.resolve(__dirname, '..', '..');
 const JS=path.join(ROOT, 'app', 'web', 'js');
 global.document={ addEventListener(){} };
 require('./web.js').load(path.join(JS, 'features', 'crm', 'index.js'));
+require('./web.js').load(path.join(JS, 'features', 'deal', 'index.js')); // части окна экономики перерисовывают его через DealLink — окно подключает себя
 // классы с одинаковым именем в разных папках (DealWin) — прямо из своего файла
 const mod=file=>require(path.join(JS, file));
 const ticks=async count=>{ for (let i=0; i<count; i++) await new Promise(resolve=>setImmediate(resolve)); };

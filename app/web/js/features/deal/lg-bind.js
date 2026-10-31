@@ -1,12 +1,13 @@
 import { DealLogistics } from './deal-logistics.js';
 import { DealState } from './deal-state.js';
-import { DealSuppliers } from './deal-suppliers.js';
-import { DealWin } from './deal-win.js';
 import { LgCargoIn } from './lg-cargo-in.js';
 import { LgMoney } from './lg-money.js';
 import { LgOffers } from './lg-offers.js';
 import { LgState } from './lg-state.js';
 import { Toast } from '../../core/toast.js';
+import { DealLink } from '../../core/deal-link.js';
+import { DealSupEdit } from './deal-sup-edit.js';
+import { LgAsk } from './lg-ask.js';
 
 /** Ввод на вкладке «Логистика»: адреса и подсказки, расстояние, груз, разгрузка, выбор перевозчика, своя сумма. */
 export class LgBind {
@@ -20,7 +21,7 @@ export class LgBind {
   static bind(dlg, touch) {
     const done = () => {
       touch();
-      DealWin.render();
+      DealLink.render();
     };
     dlg.addEventListener('input', event => LgBind._input(event.target, done));
     dlg.addEventListener('geo:pick', event => LgBind._geo(event, done));
@@ -82,7 +83,7 @@ export class LgBind {
     if (field.dataset.lgf === 'wh') {
       sup.wh = geo.value;
       sup.whGeo = geo;
-      DealSuppliers.save(sup);
+      DealSupEdit.save(sup);
     } else if (field.dataset.lgf === 'to') {
       sup.lg.to = geo.value;
       sup.lg.toGeo = geo;
@@ -119,10 +120,10 @@ export class LgBind {
     const action = button.dataset.lgx;
     if (action === 'quote') {
       delete LgState.tried[LgOffers.quoteKey(LgState.res[sup.id] || { vehicles: [] })];
-      LgOffers.quote(k);
+      LgAsk.quote(k);
     } else if (action === 'savecargo')
       DealLogistics.saveCargo(sup)
-        .then(() => DealWin.render())
+        .then(() => DealLink.render())
         .catch(error => Toast.show(`Не сохранено: ${error.message || error}`));
     else if (action === 'mode') LgBind._mode(sup, { button, dlg, done });
     else if (action === 'tokp') {

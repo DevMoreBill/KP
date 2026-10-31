@@ -214,7 +214,12 @@ export class FreightSettings {
       const rows = /\.xlsx$/i.test(file.name)
         ? await LgTariffFile.readXlsx(await file.arrayBuffer())
         : XlsTable.parse(await file.text());
-      LgTariffFile.preview(this.box, { imp: LgTariffFile.parse(rows), fname: file.name, tariffs: this.tariffs });
+      LgTariffFile.preview(this.box, {
+        imp: LgTariffFile.parse(rows),
+        fname: file.name,
+        tariffs: this.tariffs,
+        onSaved: () => FreightSettings.open(this.box),
+      });
     } catch (err) {
       Toast.show(`Файл не прочитан: ${err.message || err}`);
     }

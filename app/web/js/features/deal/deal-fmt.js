@@ -1,10 +1,10 @@
-import { DealCal } from './deal-cal.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { Fmt, ObjPath } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { Money } from '../../core/money.js';
+import { DealDays } from './deal-days.js';
 
 /** Числа и поля ввода окна «Экономика сделки»: рубли, проценты, поле с отметкой источника, срок днями или датой. */
 export class DealFmt {
@@ -192,8 +192,8 @@ export class DealFmt {
   static dateIn(path, spec) {
     const { base, val, label, kind } = spec;
     const iso =
-      DealCal.contractDate() && Number.isFinite(+val)
-        ? DealCal.dayIso(DealTerms.addDays(DealCal.fns(), +base || 0, +val || 0, kind))
+      DealDays.contractDate() && Number.isFinite(+val)
+        ? DealDays.dayIso(DealTerms.addDays(DealDays.fns(), +base || 0, +val || 0, kind))
         : '';
     return `<span class="dl-ddt"><em>или дата</em><input type="date" data-dldd="${esc(path)}" data-base="${+base || 0}" data-kind="${kind === 'work' ? 'work' : ''}" value="${iso}" aria-label="${esc(label)}: дата"></span>`;
   }

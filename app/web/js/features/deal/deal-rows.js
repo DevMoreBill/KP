@@ -1,11 +1,11 @@
-import { DealCal } from './deal-cal.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealScheduleView } from './deal-schedule-view.js';
 import { DealState } from './deal-state.js';
-import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { KpDate } from '../../core/kp-date.js';
+import { DealDays } from './deal-days.js';
+import { DealSupEdit } from './deal-sup-edit.js';
 
 /**
  * Перестановка этапов оплаты (перетаскивание за «⠿» или ↑↓: этап занимает срок своего нового места, доли сохраняются,
@@ -65,7 +65,7 @@ export class DealRows {
     items.splice(target, 0, moved);
     items.forEach((stage, i) => DealRows._slot(stage, slots[i], i === items.length - 1));
     list.splice(0, list.length, ...items);
-    if (k >= 0) DealSuppliers.save(deal.sup[k]);
+    if (k >= 0) DealSupEdit.save(deal.sup[k]);
     return DealRows._movedText(grp, items[target]);
   }
 
@@ -126,12 +126,12 @@ export class DealRows {
 
   static _manual({ key, day, deal }) {
     deal.days = { ...deal.days, [key]: String(day) };
-    return `Дата платежа изменена вручную: ${DealCal.dayRu(day) || `день ${day}`}`;
+    return `Дата платежа изменена вручную: ${DealDays.dayRu(day) || `день ${day}`}`;
   }
 
   static _count({ day, kpData }, base, kind) {
     if (kind !== 'work') return day - base;
-    let count = DealCal.countWork(base, day);
+    let count = DealDays.countWork(base, day);
     if (DealTerms.addDays(kpData, base, count, 'work') < day) count++;
     return count;
   }
@@ -177,7 +177,7 @@ export class DealRows {
     if (count < 0) return '';
     stage.ev = event;
     stage.off = String(count);
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
     return `Оплата поставщику: ${DealTerms.SUP_EVENTS[event]}${DealRows._plus(count, stage.offK)}`;
   }
 
@@ -192,7 +192,7 @@ export class DealRows {
     const sup = deal.sup[k];
     const count = DealRows._count(ctx, 0, sup.prodK);
     sup.prod = String(count);
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
     return `Срок изготовления${DealRows._whose(deal, calc, k)}: ${KpDate.daysText(count, sup.prodK)} — сдвинуты и платежи, привязанные к готовности и поставке`;
   }
 
@@ -205,7 +205,7 @@ export class DealRows {
     const count = DealRows._count(ctx, calc.sup[k].rdy, sup.shipK);
     if (count < 0) return '';
     sup.ship = String(count);
-    DealSuppliers.save(sup);
+    DealSupEdit.save(sup);
     return `Срок доставки${DealRows._whose(deal, calc, k)}: ${KpDate.daysText(count, sup.shipK)} после готовности — сдвинуты платежи при поставке`;
   }
 

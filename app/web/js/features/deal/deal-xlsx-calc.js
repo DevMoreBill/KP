@@ -11,18 +11,13 @@ import { XlsxBook } from '../../core/xlsx.js';
 import { Fmt } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { InputNum } from '../../core/input-num.js';
+import { DealXlsxCell } from './deal-xlsx-cell.js';
 
 /**
  * Лист Excel «Расчёт»: все исходные данные (жёлтые ячейки можно менять) и формулы — цена и курсы, поставщики (позиции,
  * логистика, таможня, этапы оплаты, сроки, НДС к вычету), монтаж и прочие расходы, оплата заказчика, итог.
  */
 export class DealXlsxCalc {
-  static GRP = [
-    { v: '', s: 'grp' },
-    { v: '', s: 'grp' },
-    { v: '', s: 'grp' },
-    { v: '', s: 'grp' },
-  ];
   static X_LABEL = { net: '% от чистой прибыли', sale: '% от выручки без НДС', salevat: '% от суммы продажи с НДС' };
   static PCT = 100;
   static EPS = 0.005;
@@ -73,35 +68,8 @@ export class DealXlsxCalc {
     return `B${this.rows.length + 1}`;
   }
 
-  /**
-   * Ячейка пояснения.
-   * @param {string} text
-   * @returns {object}
-   */
-  static note(text) {
-    return { v: text, s: 'note' };
-  }
-
-  /**
-   * Число или 0.
-   * @param {number} value
-   * @returns {number}
-   */
-  static num(value) {
-    return Number.isFinite(value) ? value : 0;
-  }
-
   _group(title) {
-    this.row(DealXlsxCalc.group(title));
-  }
-
-  /**
-   * Строка-заголовок группы.
-   * @param {string} title
-   * @returns {object[]}
-   */
-  static group(title) {
-    return [{ v: title, s: 'grp' }, ...DealXlsxCalc.GRP.map(cell => ({ ...cell }))];
+    this.row(DealXlsxCell.group(title));
   }
 
   /** Заголовок, цена, НДС, курсы, поставщики, расходы, оплата заказчика, деньги и налог. */
@@ -131,7 +99,7 @@ export class DealXlsxCalc {
         { v: calc.sv, s: 'inp' },
         '%',
         '',
-        DealXlsxCalc.note('Вычет и цены «без НДС» поставщиков — по этой ставке'),
+        DealXlsxCell.note('Вычет и цены «без НДС» поставщиков — по этой ставке'),
       ],
       'sv',
     );
@@ -147,7 +115,7 @@ export class DealXlsxCalc {
   // курсы — всех валют расчёта (в т. ч. с нулевой суммой: на них ссылаются формулы)
   _rates() {
     const { calc, deal, kpData } = this;
-    const num = DealXlsxCalc.num;
+    const num = DealXlsxCell.num;
     const fromDeal = deal.sup.flatMap(sup => [
       sup.log && sup.log.cur,
       sup.extra && sup.extra.cur,
@@ -163,7 +131,7 @@ export class DealXlsxCalc {
     for (const cur of curs) {
       const src = calc.rateSrc[cur] === 'deal' ? 'Указан в расчёте' : 'Из КП (курс ЦБ)';
       this.row(
-        [`Курс рубля за 1 ${cur}`, { v: num(calc.rate(cur)), s: 'inp' }, '₽', '', DealXlsxCalc.note(src)],
+        [`Курс рубля за 1 ${cur}`, { v: num(calc.rate(cur)), s: 'inp' }, '₽', '', DealXlsxCell.note(src)],
         `rate_${cur}`,
       );
     }
@@ -178,7 +146,7 @@ export class DealXlsxCalc {
   rub(key, cur) {
     if (cur === 'RUB') return this.ref(key);
     if (this.at[`rate_${cur}`]) return `${this.ref(key)}*${this.ref(`rate_${cur}`)}`;
-    return `${this.ref(key)}*${DealXlsxCalc.num(this.calc.rate(cur)) || 0}`;
+    return `${this.ref(key)}*${DealXlsxCell.num(this.calc.rate(cur)) || 0}`;
   }
 
   /**
@@ -193,10 +161,10 @@ export class DealXlsxCalc {
     const cur = spec.cur || (field && field.cur) || 'RUB';
     const value = InputNum.parse(field && field.v) || 0;
     const line = this.row(
-      [label, { v: value, s: 'inpMoney' }, cur, '', spec.note ? DealXlsxCalc.note(spec.note) : ''],
+      [label, { v: value, s: 'inpMoney' }, cur, '', spec.note ? DealXlsxCell.note(spec.note) : ''],
       key,
     );
-    this.rows[line - 1][3] = { f: this.rub(key, cur), v: value * DealXlsxCalc.num(this.calc.rate(cur)), s: 'money' };
+    this.rows[line - 1][3] = { f: this.rub(key, cur), v: value * DealXlsxCell.num(this.calc.rate(cur)), s: 'money' };
     return cur;
   }
 
@@ -209,7 +177,7 @@ export class DealXlsxCalc {
 
   _costs() {
     const calc = this.calc;
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     this._group('Монтаж, прочие расходы, оплата заказчика');
     this._plain('Монтаж и ПНР', 'M', calc.M);
     this._plain('Прочие расходы', 'E', calc.E);
@@ -261,7 +229,7 @@ export class DealXlsxCalc {
     const vat = active.reduce((total, line) => total + line.vat, 0);
     if (Math.abs(sum) < DealBxFix.EPS && Math.abs(vat) < DealBxFix.EPS) return false;
     const what = active.map(line => line.label).join(', ');
-    this._plain('Поправки из Битрикс24 — к прямым платежам', 'BXF', sum, DealXlsxCalc.note(what));
+    this._plain('Поправки из Битрикс24 — к прямым платежам', 'BXF', sum, DealXlsxCell.note(what));
     this._plain(
       this.vatWord('Поправки из Битрикс24 — НДС к вычету в них', 'Поправки из Битрикс24 — НДС в них (без вычета)'),
       'BXV',
@@ -284,7 +252,7 @@ export class DealXlsxCalc {
   // способ расчёта — как в программе, значение и стоимость наличных можно менять
   _cash() {
     const { calc, xMode } = this;
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     const sum = xMode === 'sum';
     this.row(
       [
@@ -335,7 +303,7 @@ export class DealXlsxCalc {
   }
 
   _customer() {
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     this.trKeys = [];
     this.calc.trs.forEach((stage, j) => {
       const key = `TR${j}`;
@@ -368,7 +336,7 @@ export class DealXlsxCalc {
 
   _money() {
     const { calc, deal } = this;
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     const key = DealUi.key;
     const auto =
       calc.moneyAuto && key
@@ -412,8 +380,6 @@ export class DealXlsxCalc {
 
 /** Блок поставщика на листе «Расчёт»: позиции, прочая закупка, логистика, таможня, этапы оплаты, сроки, НДС к вычету. */
 export class DealXlsxSupplier {
-  static DUTY_NOTE = 'С таможенной стоимости позиции (доля логистики и страхования — по цене)';
-
   /**
    * @param {DealXlsxCalc} sheet
    * @param {number} k номер поставщика
@@ -436,8 +402,8 @@ export class DealXlsxSupplier {
   /** Строки поставщика. */
   build() {
     const { sheet, sup, own, k } = this;
-    const note = DealXlsxCalc.note;
-    sheet.row(DealXlsxCalc.group(`Поставщик: ${sup.name}${sup.country ? ` · ${sup.country}` : ''}`));
+    const note = DealXlsxCell.note;
+    sheet.row(DealXlsxCell.group(`Поставщик: ${sup.name}${sup.country ? ` · ${sup.country}` : ''}`));
     sup.lines.forEach((line, j) => this._line(line, j));
     this._extra();
     sheet.row(
@@ -478,7 +444,7 @@ export class DealXlsxSupplier {
         { v: item.cost || 0, s: 'inpMoney' },
         `${cur} за ед.`,
         '',
-        line.code ? DealXlsxCalc.note(`ТН ВЭД ${line.code}`) : '',
+        line.code ? DealXlsxCell.note(`ТН ВЭД ${line.code}`) : '',
       ],
       key,
     );
@@ -501,14 +467,14 @@ export class DealXlsxSupplier {
         { v: value, s: 'inpMoney' },
         cur,
         '',
-        DealXlsxCalc.note('Опции, ЗИП — то, чего нет в позициях КП'),
+        DealXlsxCell.note('Опции, ЗИП — то, чего нет в позициях КП'),
       ],
       key,
     );
     const vatK = sup.noVat ? 1 + sheet.calc.sv / DealXlsxCalc.PCT : 1;
     sheet.rows[index - 1][3] = {
       f: sheet.rub(key, cur) + this.vf,
-      v: value * DealXlsxCalc.num(sheet.calc.rate(cur)) * vatK,
+      v: value * DealXlsxCell.num(sheet.calc.rate(cur)) * vatK,
       s: 'money',
     };
     this.eqKeys.push(key);
@@ -548,7 +514,7 @@ export class DealXlsxSupplier {
 
   _stages() {
     const { sheet, sup, k } = this;
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     const keys = [];
     sup.stages.forEach(stage => {
       const key = `sp${k}_${stage.j}`;
@@ -580,7 +546,7 @@ export class DealXlsxSupplier {
 
   _vat() {
     const { sheet, own, sup, k } = this;
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     const vatK = sheet.vatK;
     if (own.vatIn) {
       const value = sup.voAuto

@@ -1,10 +1,10 @@
-import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { DealValues } from './deal-values.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
+import { DealDays } from './deal-days.js';
 
 /**
  * Вкладка «График платежей»: деньги по дням — кто, когда и сколько платит; день или дата платежа правится, строка
@@ -58,9 +58,9 @@ export class DealScheduleView {
    * @returns {string}
    */
   static html(calc) {
-    const start = DealCal.contractDate();
+    const start = DealDays.contractDate();
     const days = `${calc.Tend} ${KPGen.plural(calc.Tend, 'день', 'дня', 'дней')}`;
-    const until = start ? ` · до ${DealCal.dayRu(calc.Tend)}` : '';
+    const until = start ? ` · до ${DealDays.dayRu(calc.Tend)}` : '';
     const reset = Object.keys(DealState.deal().days || {}).length
       ? '<div class="dl-d0"><span class="muted">Даты некоторых платежей изменены вручную.</span><button type="button" class="btn ghost" data-dlx="resetdays">↺ Вернуть даты по срокам</button></div>'
       : '';
@@ -87,8 +87,8 @@ export class DealScheduleView {
   }
 
   static _tiles(calc) {
-    const start = DealCal.contractDate();
-    const when = day => `день ${day}${start ? ` · ${DealCal.dayRu(day)}` : ''}`;
+    const start = DealDays.contractDate();
+    const when = day => `день ${day}${start ? ` · ${DealDays.dayRu(day)}` : ''}`;
     const sum = pick => calc.rows.filter(pick).reduce((total, row) => total + Math.abs(row.amount), 0);
     const count = list => `${list.length} ${KPGen.plural(list.length, 'платёж', 'платежа', 'платежей')}`;
     const out = calc.rows.filter(row => !row.inflow);
@@ -125,8 +125,8 @@ export class DealScheduleView {
 
   static _day(row, start) {
     if (start) {
-      if (row.fixed) return `<span class="dl-dt">${DealCal.dayRu(row.day)}</span>`;
-      return `<input type="date" class="dl-date" data-dldate="${esc(row.key)}" value="${DealCal.dayIso(row.day)}" min="${start}" aria-label="Дата: ${esc(row.label)}" title="${DealScheduleView._title(row)}">`;
+      if (row.fixed) return `<span class="dl-dt">${DealDays.dayRu(row.day)}</span>`;
+      return `<input type="date" class="dl-date" data-dldate="${esc(row.key)}" value="${DealDays.dayIso(row.day)}" min="${start}" aria-label="Дата: ${esc(row.label)}" title="${DealScheduleView._title(row)}">`;
     }
     if (row.fixed) return `<span class="dl-day fx">${row.day}</span>`;
     return `<input type="text" inputmode="numeric" class="dl-day" data-dlday="${esc(row.key)}" value="${row.day}" aria-label="День: ${esc(row.label)}" title="${DealScheduleView._title(row)}">`;
@@ -141,9 +141,9 @@ export class DealScheduleView {
   static _weekday(row) {
     const shifted =
       row.shiftedFrom != null
-        ? ` · <span title="По сроку — ${DealCal.dayRu(row.shiftedFrom)} (${DealCal.weekday(row.shiftedFrom)}), нерабочий день">↷ с ${DealCal.dayRu(row.shiftedFrom).slice(0, 5)}</span>`
+        ? ` · <span title="По сроку — ${DealDays.dayRu(row.shiftedFrom)} (${DealDays.weekday(row.shiftedFrom)}), нерабочий день">↷ с ${DealDays.dayRu(row.shiftedFrom).slice(0, 5)}</span>`
         : '';
-    return `<small class="dl-wd${row.offDay ? ' bad-t' : ''}">день ${row.day} · ${DealCal.weekday(row.day)}${shifted}${row.offDay ? ' · нерабочий' : ''}</small>`;
+    return `<small class="dl-wd${row.offDay ? ' bad-t' : ''}">день ${row.day} · ${DealDays.weekday(row.day)}${shifted}${row.offDay ? ' · нерабочий' : ''}</small>`;
   }
 
   static _row(row, start) {

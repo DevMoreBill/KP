@@ -1,16 +1,11 @@
 import { DealCal } from './deal-cal.js';
-import { DealSeen } from './deal-seen.js';
-import { AppTabs } from '../../core/app-tabs.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealDefaults } from './deal-defaults.js';
 import { DealHs } from './deal-hs.js';
 import { DealSeller } from './deal-seller.js';
-import { DealLogistics } from './deal-logistics.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
-import { DealWin } from './deal-win.js';
-import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { today } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -23,6 +18,7 @@ import { KpDate } from '../../core/kp-date.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
 import { InputNum } from '../../core/input-num.js';
 import { Currency } from '../../core/currency.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
  * Данные сделки: входы расчёта из КП, расчёт КП (новый — из «Умолчаний» и справочника поставщиков), цены позиций под цену
@@ -288,30 +284,8 @@ export class DealState {
     deal.touched = true;
     KpForm.render();
     KpState.persist();
-    DealWin.render();
+    DealLink.render();
     Toast.show(`Цены позиций перенесены: итог КП ${KPGen.money(plan.total)} ${Currency.short(plan.cur)}`);
-  }
-
-  /** Открыть окно «Экономика сделки»: сразу, содержимое — после загрузки справочников. */
-  static async open() {
-    if (!DealDefaults.allowed()) {
-      Toast.show('Экономика сделки доступна автору КП и администратору');
-      return;
-    }
-    DealUi.open = undefined;
-    const dlg = Modal.host('dealdlg', 'dealwin', 'Экономика сделки', box => {
-      DealWin.bind(box);
-      box.addEventListener('close', () => DealSeen.close(DealState.deal()));
-    });
-    if (!dlg.open) {
-      dlg.innerHTML =
-        '<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>';
-    }
-    AppTabs.show(dlg, 'deal');
-    await Promise.all([DealSuppliers.loadDirs(), DealLogistics.loadAll(), DealSeller.load()]);
-    DealSeller.sync(DealState.ensure());
-    dlg.innerHTML = '';
-    DealWin.show();
   }
 
   /**

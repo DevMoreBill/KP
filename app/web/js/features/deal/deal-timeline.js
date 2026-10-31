@@ -3,6 +3,7 @@ import { DealFmt } from './deal-fmt.js';
 import { DealTerms } from './deal-terms.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { DealDays } from './deal-days.js';
 
 /**
  * Лента «Поставщики и сроки» на вкладке «Кратко»: у поставщика — производство и доставка (у сборщика — контейнер, ожидание
@@ -163,14 +164,14 @@ export class DealTimeline {
 
   _axis() {
     const ticks = this._ticks();
-    const start = DealCal.contractDate();
+    const start = DealDays.contractDate();
     // подпись вплотную к предыдущей — второй строкой
     const low = ticks.map((day, k) => k > 0 && (day - ticks[k - 1]) / this.end < DealTimeline.LOW_GAP);
     const marks = ticks
       .map((day, k) => {
         const right = day / this.end > DealTimeline.RIGHT ? ' r' : '';
         const second = low[k] && !low[k - 1] ? ' lo' : '';
-        const text = start ? DealCal.isoRu(DealCal.dayIso(day)).slice(0, 5) : `день ${day}`;
+        const text = start ? DealCal.isoRu(DealDays.dayIso(day)).slice(0, 5) : `день ${day}`;
         return `<span class="dlo-tk${right}${second}" style="left:${this._left(day)}">${text}</span>`;
       })
       .join('');

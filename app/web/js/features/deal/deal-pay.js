@@ -1,4 +1,3 @@
-import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealPresets } from './deal-presets.js';
 import { DealRows } from './deal-rows.js';
@@ -6,6 +5,7 @@ import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { DealDays } from './deal-days.js';
 
 /**
  * Этапы оплаты поставщику и заказчику — одинаковой строкой: ⠿ № название · доля · когда + дней (кал./раб.) · дата · сумма;
@@ -61,7 +61,7 @@ export class DealPay {
   }
 
   static _sum({ P: path, t: stage, base, off, dateLab, sum, day }) {
-    const date = DealCal.contractDate()
+    const date = DealDays.contractDate()
       ? DealFmt.dateIn(`${path}.off`, { base, val: off, label: dateLab, kind: stage.offK })
       : `<small>день ${day}</small>`;
     return `<span class="dl-trr"><b>${Fmt.rub(sum)}</b>${date}</span>`;
@@ -116,7 +116,7 @@ export class DealPay {
       off: parsed.off || 0,
       dateLab: 'Оплата поставщику',
       sum: ((customs.equip + customs.fxE) * parsed.p) / DealPay.PCT,
-      day: scheduled ? scheduled.day : DealTerms.addDays(DealCal.fns(), base, parsed.off || 0, stage.offK),
+      day: scheduled ? scheduled.day : DealTerms.addDays(DealDays.fns(), base, parsed.off || 0, stage.offK),
       bad: calc.err[`${path}.pct`] || calc.err[`${path}.off`],
       ph: DealPay._supPh(j, last, count),
       del: `data-dlx="delsp" data-k="${k}" data-j="${j}"`,

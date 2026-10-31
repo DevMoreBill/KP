@@ -1,16 +1,13 @@
 import { DealState } from './deal-state.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealUi } from './deal-ui.js';
-import { DealWin } from './deal-win.js';
 import { Freight } from './freight.js';
-import { LgBind } from './lg-bind.js';
 import { LgCargoIn } from './lg-cargo-in.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgMoney } from './lg-money.js';
 import { LgOffers } from './lg-offers.js';
 import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
-import { LgView } from './lg-view.js';
 import { Toast } from '../../core/toast.js';
 import { Catalog, CatalogStore } from '../catalog/catalog-store.js';
 import { StationMods } from '../layout/station-mods.js';
@@ -21,6 +18,8 @@ import { KpForm } from '../../core/kp-form.js';
 import { LgCargo } from '../../core/lg-cargo.js';
 import { Currency } from '../../core/currency.js';
 import { Kit } from '../../core/kit.js';
+import { DealLink } from '../../core/deal-link.js';
+import { DealSupEdit } from './deal-sup-edit.js';
 
 /**
  * Вкладка «Логистика» экономики сделки: тарифы, груз позиций и станций, маршрут, расчёт перед каждой отрисовкой окна —
@@ -289,36 +288,11 @@ export class DealLogistics {
         sup.lg = sup.lg || {};
         sup.lg.route = { key, km: reply.km, hours: reply.hours, src: reply.src };
         KpState.persist();
-        DealWin.render();
+        DealLink.render();
       })
       .catch(error => {
         LgState.routes[key] = error.message || 'нет связи';
       });
-  }
-
-  /**
-   * Вкладка «Логистика».
-   * @param {object} calc
-   * @returns {string}
-   */
-  static view(calc) {
-    return LgView.html(calc);
-  }
-
-  /**
-   * Цены перевозчиков — сами, когда открыта вкладка и груз посчитан.
-   */
-  static autoQuote() {
-    LgOffers.autoQuote();
-  }
-
-  /**
-   * Ввод на вкладке (обработчики окна «Экономики сделки»).
-   * @param {HTMLDialogElement} dlg
-   * @param {Function} touch
-   */
-  static bind(dlg, touch) {
-    LgBind.bind(dlg, touch);
   }
 
   /**
@@ -433,6 +407,6 @@ export class DealLogistics {
    */
   static saveWarehouse(sup) {
     clearTimeout(LgState.whTimer);
-    LgState.whTimer = setTimeout(() => DealSuppliers.save(sup), DealLogistics.SAVE_MS);
+    LgState.whTimer = setTimeout(() => DealSupEdit.save(sup), DealLogistics.SAVE_MS);
   }
 }

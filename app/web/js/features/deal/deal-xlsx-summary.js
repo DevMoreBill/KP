@@ -7,6 +7,7 @@ import { DealXlsxSummaryTables } from './deal-xlsx-tables.js';
 import { Fmt } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { InputNum } from '../../core/input-num.js';
+import { DealXlsxCell } from './deal-xlsx-cell.js';
 
 /**
  * Лист Excel «Сводка» — одна страница для коммерческого директора: ключевые показатели и вывод, позиции, структура
@@ -242,7 +243,7 @@ export class DealXlsxSummary {
     this.merge(row, 'C', 'D');
     this.merge(row, 'E', 'F');
     row = this.put([
-      DealXlsxCalc.note(
+      DealXlsxCell.note(
         'Подробный расчёт с формулами — лист «Расчёт»; движение денег по дням — лист «График платежей».',
       ),
     ]);

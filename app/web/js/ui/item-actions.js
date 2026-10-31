@@ -10,7 +10,6 @@ import { Str } from '../core/str.js';
 import { MailDlg } from '../features/kp/mail-dlg.js';
 import { KpFile } from '../features/doc/kp-file.js';
 import { Api, RemoteResult } from '../core/net.js';
-import { DealState } from '../features/deal/deal-state.js';
 import { ClientsExportDlg } from '../features/catalog/catalog-export.js';
 import { MyPrefs } from '../features/kp/my-prefs.js';
 import { ProblemReport } from './problem-report.js';
@@ -61,6 +60,7 @@ import { StationParams } from '../features/kit/station-params.js';
 import { Kit } from '../core/kit.js';
 import { CoverHint } from '../core/cover-hint.js';
 import { CoverSync } from '../features/catalog/cover-sync.js';
+import { DealWin } from '../features/deal/deal-win.js';
 
 // действие изменило КП — форма перерисовывается и черновик сохраняется (что вернули окна и загрузки — не в счёт)
 const RENDER = Symbol('render');
@@ -308,7 +308,7 @@ export class ItemActions {
     report: () => ProblemReport.open(),
     tour: () => Tour.start(),
     clientsExport: () => ClientsExportDlg.open(),
-    deal: () => DealState.open(),
+    deal: () => DealWin.open(),
     docsFolder: () =>
       Api.request(`/api/folder?dir=${encodeURIComponent(KpFile.folder())}`, { method: 'POST' })
         .then(reply => RemoteResult.show(reply))

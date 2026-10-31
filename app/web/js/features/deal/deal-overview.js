@@ -1,10 +1,10 @@
-import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealTimeline } from './deal-timeline.js';
 import { DealUi } from './deal-ui.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
 import { MarginLight } from '../../core/margin-light.js';
+import { DealDays } from './deal-days.js';
 
 /** Вкладка «Кратко»: итог простыми словами, чего не хватает, поставщики и сроки на одной ленте, деньги в обороте. */
 export class DealOverview {
@@ -37,8 +37,8 @@ export class DealOverview {
    */
   static html(calc) {
     if (DealUi.open !== 'sum') return '';
-    const start = DealCal.contractDate();
-    const when = day => (start ? DealCal.dayRu(day) : `день ${day}`);
+    const start = DealDays.contractDate();
+    const when = day => (start ? DealDays.dayRu(day) : `день ${day}`);
     const timeline = new DealTimeline(calc, when).html();
     const note = start
       ? 'от даты договора'

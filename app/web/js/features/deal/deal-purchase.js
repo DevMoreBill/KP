@@ -1,4 +1,3 @@
-import { DealCal } from './deal-cal.js';
 import { DealCombo } from './deal-combo.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealPay } from './deal-pay.js';
@@ -12,6 +11,7 @@ import { KitDoc } from '../kit/kit-doc.js';
 import { esc } from '../../core/util.js';
 import { InputNum } from '../../core/input-num.js';
 import { Money } from '../../core/money.js';
+import { DealDays } from './deal-days.js';
 
 /**
  * Вкладка «Закупка»: сборка станции у производителя контейнера, карточки поставщиков — где покупаем, позиции с ценой
@@ -92,7 +92,7 @@ export class DealPurchase {
 
   static _asmFlow(asm) {
     if (!asm) return '<p class="msg warn">Выберите, кто собирает станцию.</p>';
-    const when = day => (DealCal.contractDate() ? DealCal.dayRu(day) : `день ${day}`);
+    const when = day => (DealDays.contractDate() ? DealDays.dayRu(day) : `день ${day}`);
     const rows = asm.toAsm
       .map(
         sup =>
@@ -276,7 +276,7 @@ export class DealSupplierCard {
   }
 
   _day(day) {
-    return DealCal.contractDate() ? ` · ${DealCal.dayRu(day)}` : '';
+    return DealDays.contractDate() ? ` · ${DealDays.dayRu(day)}` : '';
   }
 
   _asmTerms() {

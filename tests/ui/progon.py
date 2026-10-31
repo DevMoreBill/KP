@@ -891,7 +891,7 @@ class Scenario(UiRun):
 
     def _open_deal(self):
         b = self.pg.locator('#form [data-a=deal]').first
-        b.click() if b.count() else self.ev("DealState.open()")
+        b.click() if b.count() else self.ev("DealWin.open()")
 
     def _deal_seller(self, root):
         """«Деньги и налог» → «Продавец»: на УСН с НДС 5 % (второе юрлицо стенда) вычета нет — строка «Вычета нет»."""

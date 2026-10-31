@@ -59,6 +59,11 @@ import { TnVed } from './tn-ved.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { DealLink } from '../../core/deal-link.js';
+import { DealDays } from './deal-days.js';
+import { DealHsEdit } from './deal-hs-edit.js';
+import { DealSupEdit } from './deal-sup-edit.js';
+import { DealXlsxCell } from './deal-xlsx-cell.js';
+import { LgAsk } from './lg-ask.js';
 
 export const DEAL = {
   DealBind,
@@ -70,11 +75,13 @@ export const DEAL = {
   DealConds,
   DealCosts,
   DealCustoms,
+  DealDays,
   DealDefaults,
   DealDrag,
   DealFmt,
   DealHs,
   DealHsDir,
+  DealHsEdit,
   DealLeadTime,
   DealLogistics,
   DealMoney,
@@ -92,6 +99,7 @@ export const DEAL = {
   DealSide,
   DealState,
   DealSteps,
+  DealSupEdit,
   DealSupplierCard,
   DealSuppliers,
   DealTerms,
@@ -101,6 +109,7 @@ export const DEAL = {
   DealWin,
   DealXlsx,
   DealXlsxCalc,
+  DealXlsxCell,
   DealXlsxCustoms,
   DealXlsxGraph,
   DealXlsxResult,
@@ -115,6 +124,7 @@ export const DEAL = {
   FreightSettingsView,
   FreightTariffs,
   KpLines,
+  LgAsk,
   LgBind,
   LgCard,
   LgCargoIn,
@@ -142,7 +152,7 @@ DefRegistry.options(DealPresets.DEF_OPTS);
 // КП и состав станции просят экономику сделки (DealLink) — без import экономики
 DealLink.connect({
   render: () => DealWin.render(),
-  open: () => DealState.open(),
+  open: () => DealWin.open(),
   summary: () => DealState.summary(),
   suppliers: () => DealUi.sups,
 });

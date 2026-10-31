@@ -2,6 +2,7 @@ import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { XlsxBook } from '../../core/xlsx.js';
 import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
+import { DealXlsxCell } from './deal-xlsx-cell.js';
 
 /** Лист Excel «График платежей»: деньги по дням — день, дата, событие, платёж (формулой от листа «Расчёт»), остаток, финансирование. */
 export class DealXlsxGraph {
@@ -220,7 +221,7 @@ export class DealXlsxResult {
    * @returns {object}
    */
   static note(text) {
-    return DealXlsxCalc.note(text);
+    return DealXlsxCell.note(text);
   }
 
   /** Строки итога. */

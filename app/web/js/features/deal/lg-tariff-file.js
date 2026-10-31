@@ -1,5 +1,4 @@
 import { FreightFields } from './freight-fields.js';
-import { FreightSettings } from './freight-settings.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
 import { Toast } from '../../core/toast.js';
@@ -249,7 +248,7 @@ export class LgTariffFile {
   /**
    * Предпросмотр изменений из файла и запись после «Применить».
    * @param {HTMLElement} box раздел настроек
-   * @param {{imp: object, fname: string, tariffs: object}} spec
+   * @param {{imp: object, fname: string, tariffs: object, onSaved: Function}} spec onSaved — тарифы записаны
    */
   static preview(box, spec) {
     const { imp, fname, tariffs } = spec;
@@ -330,7 +329,7 @@ export class LgTariffFile {
     return list.sort((left, right) => left.max - right.max);
   }
 
-  static async _apply(box, { imp, fname, tariffs }) {
+  static async _apply(box, { imp, fname, tariffs, onSaved }) {
     const src = `файл «${fname}», ${new Date().toLocaleDateString('ru-RU')}`;
     const saved = LgState.saved || {};
     const keep = Object.fromEntries(
@@ -351,7 +350,7 @@ export class LgTariffFile {
         body: JSON.stringify(out),
       });
       Toast.show('Тарифы из файла сохранены');
-      FreightSettings.open(box);
+      onSaved();
     } catch (err) {
       Toast.show(`Не сохранено: ${err.message || err}`);
     }

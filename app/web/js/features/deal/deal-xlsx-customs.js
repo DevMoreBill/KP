@@ -1,8 +1,9 @@
 import { DealValues } from './deal-values.js';
-import { DealXlsxCalc, DealXlsxSupplier } from './deal-xlsx-calc.js';
+import { DealXlsxCell } from './deal-xlsx-cell.js';
 
 /** Таможня поставщика на листе «Расчёт» — по режиму: расчёт по ТН ВЭД, ЕАЭС, нет, суммой целиком. */
 export class DealXlsxCustoms {
+  static DUTY_NOTE = 'С таможенной стоимости позиции (доля логистики и страхования — по цене)';
   static MODES = { calc: '_calc', eaeu: '_eaeu', none: '_none' };
 
   /**
@@ -31,7 +32,7 @@ export class DealXlsxCustoms {
 
   _calc() {
     const { sheet, sup, k } = this;
-    const note = DealXlsxCalc.note;
+    const note = DealXlsxCell.note;
     sheet.row(
       [
         'Таможенная стоимость',
@@ -50,7 +51,7 @@ export class DealXlsxCustoms {
         '',
         '',
         { f: keys.map(key => this._rub(key)).join('+') || '0', v: sup.dutyA, s: 'money' },
-        note(DealXlsxSupplier.DUTY_NOTE),
+        note(DealXlsxCustoms.DUTY_NOTE),
       ],
       `DU${k}`,
     );
@@ -99,7 +100,7 @@ export class DealXlsxCustoms {
           v: line.dutyA,
           s: 'money',
         },
-        DealXlsxCalc.note(text),
+        DealXlsxCell.note(text),
       ],
       key,
     );
@@ -121,7 +122,7 @@ export class DealXlsxCustoms {
     const own = DealValues.feeOwn() ? ' (шкала изменена в «Настройках»)' : '';
     const text = sup.feeAuto ? `По шкале ${DealValues.FEE_TITLE}${own}` : 'Вписан вручную';
     sheet.row(
-      ['Таможенный сбор', value, '₽', { f: this._self(), v: sup.fee, s: 'money' }, DealXlsxCalc.note(text)],
+      ['Таможенный сбор', value, '₽', { f: this._self(), v: sup.fee, s: 'money' }, DealXlsxCell.note(text)],
       `FE${k}`,
     );
   }
@@ -134,7 +135,7 @@ export class DealXlsxCustoms {
         { v: sup.ivP, s: 'inp' },
         '%',
         { f: `${this._rub(`EQ${k}`)}*${this._self()}/100`, v: sup.ivatA, s: 'money' },
-        DealXlsxCalc.note('Пошлины и сбора нет; НДС платится в налоговую и возвращается вычетом'),
+        DealXlsxCell.note('Пошлины и сбора нет; НДС платится в налоговую и возвращается вычетом'),
       ],
       `IV${k}`,
     );
@@ -148,7 +149,7 @@ export class DealXlsxCustoms {
   _none() {
     const { sheet, k } = this;
     sheet.row(
-      ['Таможенные платежи', '', '', { v: 0, s: 'money' }, DealXlsxCalc.note('Поставка по России — таможни нет')],
+      ['Таможенные платежи', '', '', { v: 0, s: 'money' }, DealXlsxCell.note('Поставка по России — таможни нет')],
       `T${k}`,
     );
     sheet.row(['Ввозной НДС к вычету', '', '', { v: 0, s: 'money' }], `vi${k}`);
@@ -167,7 +168,7 @@ export class DealXlsxCustoms {
         unknown ? { v: '', s: 'inpMoney' } : { v: sup.vi, s: 'inpMoney' },
         '₽',
         { f: this._self(), v: sup.vi || 0, s: 'money' },
-        unknown ? DealXlsxCalc.note('Не указан: в файле считается 0 — прибыль минимальная') : '',
+        unknown ? DealXlsxCell.note('Не указан: в файле считается 0 — прибыль минимальная') : '',
       ],
       `vi${k}`,
     );

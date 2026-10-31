@@ -1,8 +1,8 @@
-import { DealCal } from './deal-cal.js';
 import { DealRows } from './deal-rows.js';
 import { DealUi } from './deal-ui.js';
-import { DealWin } from './deal-win.js';
 import { Toast } from '../../core/toast.js';
+import { DealDays } from './deal-days.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /** Перетаскивание мышью: этапы оплаты (за «⠿» в строке этапа) и строки графика (платёж получит дату строки рядом). */
 export class DealDrag {
@@ -92,7 +92,7 @@ export class DealDrag {
       this.touch();
       Toast.show(message);
     }
-    DealWin.render();
+    DealLink.render();
   }
 
   _startRow(event) {
@@ -116,7 +116,7 @@ export class DealDrag {
     row.title =
       row.dataset.skey === DealUi.sdrag
         ? ''
-        : `Платёж получит дату ${DealCal.dayRu(+row.dataset.sday) || `день ${row.dataset.sday}`}`;
+        : `Платёж получит дату ${DealDays.dayRu(+row.dataset.sday) || `день ${row.dataset.sday}`}`;
   }
 
   _dropRow(event) {
@@ -126,13 +126,13 @@ export class DealDrag {
     const key = DealUi.sdrag;
     DealUi.sdrag = null;
     if (row.dataset.skey === key) {
-      DealWin.render();
+      DealLink.render();
       return;
     }
     const message = DealRows.setRowDay(key, +row.dataset.sday);
     this.touch();
     Toast.show(message);
-    DealWin.render();
+    DealLink.render();
   }
 
   _endRow() {

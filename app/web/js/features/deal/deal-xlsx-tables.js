@@ -5,6 +5,7 @@ import { XlsxBook } from '../../core/xlsx.js';
 import { IncomeTax } from '../../core/income-tax.js';
 import { S } from '../../core/state.js';
 import { Currency } from '../../core/currency.js';
+import { DealXlsxCell } from './deal-xlsx-cell.js';
 
 /** Таблицы листа «Сводка»: позиции, себестоимость, поставщики, оплата заказчика, деньги и налоги, замечания. */
 export class DealXlsxSummaryTables {
@@ -62,7 +63,7 @@ export class DealXlsxSummaryTables {
     const tail = sheet.unknown ? ' Ввозной НДС не указан — показана минимальная прибыль.' : '';
     const row = sheet.put(
       [
-        DealXlsxCalc.note(
+        DealXlsxCell.note(
           `* Себестоимость позиции — её закупка плюс доля логистики, таможни, монтажа, финансирования и прочих расходов (распределены пропорционально закупке), за вычетом НДС к вычету.${tail}`,
         ),
       ],
@@ -218,7 +219,7 @@ export class DealXlsxSummaryTables {
       ]);
     });
     const row = sheet.put([
-      DealXlsxCalc.note('Срок: изготовление + доставка. Логистика: до границы, по России, брокер и СВХ.'),
+      DealXlsxCell.note('Срок: изготовление + доставка. Логистика: до границы, по России, брокер и СВХ.'),
     ]);
     sheet.merge(row, 'A', 'H');
   }
@@ -276,7 +277,7 @@ export class DealXlsxSummaryTables {
       });
     const when = start ? ` (${start.split('-').reverse().join('.')}, ориентировочно)` : '';
     row = sheet.put([
-      DealXlsxCalc.note(
+      DealXlsxCell.note(
         `День 0 — подписание договора${when}. Готовность к отгрузке — день ${calc.Rdy}, поставка — день ${calc.D}.`,
       ),
     ]);

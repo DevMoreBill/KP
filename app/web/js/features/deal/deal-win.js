@@ -24,19 +24,48 @@ import { $, esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
 import { HelpLink } from '../../core/help-link.js';
 import { DealSeen } from './deal-seen.js';
-import { WinSize } from '../../core/win-size.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
+import { AppTabs } from '../../core/app-tabs.js';
+import { DealDays } from './deal-days.js';
+import { DealDefaults } from './deal-defaults.js';
+import { DealSeller } from './deal-seller.js';
+import { DealSuppliers } from './deal-suppliers.js';
+import { LgAsk } from './lg-ask.js';
+import { LgView } from './lg-view.js';
+import { Modal } from '../../core/modal.js';
+import { Toast } from '../../core/toast.js';
 
 /**
  * Окно «Экономика сделки»: шапка с датой договора и Excel, вкладки шагов по порядку заполнения (открыта одна), правая
  * колонка с подбором цены и итогом; размер окна запоминается в браузере.
  */
 export class DealWin {
-  static SIZE_STORE = 'kp.dealwin2';
   static TAB_SHORT = { sched: 'График' };
   static TAB_ICON = { ok: '✓', need: '!' };
   static DATE_Q =
     'Ориентировочная дата заключения договора (день 0). От неё считаются сроки поставки и даты всех платежей; рабочие (банковские) дни — по производственному календарю РФ.';
+
+  /** Открыть окно «Экономика сделки»: сразу, содержимое — после загрузки справочников. */
+  static async open() {
+    if (!DealDefaults.allowed()) {
+      Toast.show('Экономика сделки доступна автору КП и администратору');
+      return;
+    }
+    DealUi.open = undefined;
+    const dlg = Modal.host('dealdlg', 'dealwin', 'Экономика сделки', box => {
+      DealWin.bind(box);
+      box.addEventListener('close', () => DealSeen.close(DealState.deal()));
+    });
+    if (!dlg.open) {
+      dlg.innerHTML =
+        '<div class="dlg-h"><h3>Экономика сделки</h3><button class="icon" type="button" data-dlx="close" aria-label="Закрыть">✕</button></div><p class="empty">Загружаю…</p>';
+    }
+    AppTabs.show(dlg, 'deal');
+    await Promise.all([DealSuppliers.loadDirs(), DealLogistics.loadAll(), DealSeller.load()]);
+    DealSeller.sync(DealState.ensure());
+    dlg.innerHTML = '';
+    DealWin.show();
+  }
 
   /** Перерисовать открытое окно. */
   static render() {
@@ -88,7 +117,7 @@ export class DealWin {
       `${DealWin._head(mob ? '' : date)}${DealWin._banner(kpData)}${DealSeen.html(deal, calc)}<div class="dl-mini">${mob ? date : ''}${DealWin._mini(calc)}</div><div class="dl-b"><div class="dl-tabw">${tabs}</div><div class="dl-form">
       ${DealOverview.html(calc)}
       ${DealPurchase.html(calc)}
-      ${DealLogistics.view(calc)}
+      ${LgView.html(calc)}
       ${customs}
       ${customer}
       ${DealCosts.step(calc)}
@@ -98,11 +127,11 @@ export class DealWin {
       <div class="dl-foot"><span class="muted">Пересчёт — сразу при вводе. Закупка сохраняется в КП и каталоге.</span></div>
     </div><aside class="dl-side">${DealResult.html(calc)}</aside></div>`,
     );
-    DealLogistics.autoQuote();
+    LgAsk.autoQuote();
   }
 
   static _date(deal) {
-    const start = DealCal.contractDate();
+    const start = DealDays.contractDate();
     const note = start ? DealCal.note(start).replace(/<[^>]+>/g, '') : '';
     const auto = deal.startAuto;
     const warn = auto
@@ -180,7 +209,7 @@ export class DealWin {
 
   static _customer(calc) {
     const pays = calc.trs.filter(stage => stage.p > 0).length;
-    const start = DealCal.contractDate();
+    const start = DealDays.contractDate();
     return DealSteps.html({
       n: 0,
       title: 'Оплата заказчика',
@@ -189,38 +218,10 @@ export class DealWin {
       tot: [
         'Итого заплатит заказчик',
         calc.rows.filter(row => row.inflow).reduce((sum, row) => sum + row.amount, 0),
-        `${pays} ${KPGen.plural(pays, 'платёж', 'платежа', 'платежей')}, последний — ${start ? DealCal.dayRu(calc.Tend) : `день ${calc.Tend}`}`,
+        `${pays} ${KPGen.plural(pays, 'платёж', 'платежа', 'платежей')}, последний — ${start ? DealDays.dayRu(calc.Tend) : `день ${calc.Tend}`}`,
       ],
       id: 'cust',
     });
-  }
-
-  /**
-   * Восстановить размер окна.
-   * @param {HTMLDialogElement} dlg
-   */
-  static winRestore(dlg) {
-    try {
-      const size = JSON.parse(localStorage.getItem(DealWin.SIZE_STORE) || '{}') || {};
-      dlg.classList.toggle('max', !!size.max);
-      if (size.w) WinSize.set(dlg, { width: size.w });
-      if (size.h) WinSize.set(dlg, { height: size.h });
-    } catch {
-      // нет сохранённого размера — по умолчанию
-    }
-  }
-
-  /**
-   * Запомнить размер окна.
-   * @param {HTMLDialogElement} dlg
-   */
-  static winSave(dlg) {
-    try {
-      const size = { max: dlg.classList.contains('max'), w: WinSize.get(dlg, 'width'), h: WinSize.get(dlg, 'height') };
-      localStorage.setItem(DealWin.SIZE_STORE, JSON.stringify(size));
-    } catch {
-      // хранилище браузера недоступно — размер не запоминается
-    }
   }
 
   /**

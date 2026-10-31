@@ -1,4 +1,3 @@
-import { DealCal } from './deal-cal.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
@@ -9,6 +8,7 @@ import { KitDoc } from '../kit/kit-doc.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { IncomeTax } from '../../core/income-tax.js';
+import { DealDays } from './deal-days.js';
 
 /**
  * Шаги окна «Экономика сделки» — вкладки: карточка шага с итогом и переходом к соседним; состояние и краткий итог каждого
@@ -45,8 +45,8 @@ export class DealSteps {
    * @returns {object} { id: { st, sum } }
    */
   static info(calc) {
-    const start = DealCal.contractDate();
-    const when = day => (start ? DealCal.dayRu(day) : `день ${day}`);
+    const start = DealDays.contractDate();
+    const when = day => (start ? DealDays.dayRu(day) : `день ${day}`);
     return {
       buy: DealSteps._buy(calc, when),
       log: DealSteps._log(calc),

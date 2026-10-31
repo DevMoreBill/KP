@@ -1,15 +1,11 @@
 import { DealDefaults } from './deal-defaults.js';
-import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
-import { DealWin } from './deal-win.js';
 import { Str } from '../../core/str.js';
 import { KitDoc } from '../kit/kit-doc.js';
-import { KpState, S } from '../../core/state.js';
-import { Uid } from '../../core/util.js';
-import { Toast } from '../../core/toast.js';
+import { S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
-import { Auth } from '../../core/auth.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
  * Поставщики сделки: справочники отдела (поставщики, коды ТН ВЭД, ключевая ставка ЦБ), условия из справочника, страна →
@@ -35,9 +31,6 @@ export class DealSuppliers {
     'fx',
   ];
   static WAIT_MS = 2500;
-  static SAVE_MS = 1200;
-  static ID_LEN = 24;
-  static JSON_HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
 
   /** Справочники: поставщики, коды ТН ВЭД, ключевая ставка ЦБ (окно не ждёт дольше паузы). */
   static async loadDirs() {
@@ -73,7 +66,7 @@ export class DealSuppliers {
       .then(res => {
         if (res && res.rate > 0) DealUi.key = res;
         else DealUi.keyErr = (res && res.error) || 'нет данных';
-        DealWin.render();
+        DealLink.render();
       })
       .catch(error => {
         DealUi.keyErr = error.message || 'нет связи';
@@ -149,61 +142,6 @@ export class DealSuppliers {
   }
 
   /**
-   * Сохранить поставщика в справочник отдела (по названию); правят администратор и менеджеры с правом «Без модерации».
-   * @param {object} sup
-   */
-  static save(sup) {
-    if (!String(sup.name || '').trim()) return;
-    if (!Auth.can('catSelfMod')) {
-      if (!DealUi.supNote) {
-        DealUi.supNote = true;
-        Toast.show('Поставщик сохранится в этом КП. В общий справочник его вносит администратор');
-      }
-      return;
-    }
-    clearTimeout(DealUi.saveT[sup.id]);
-    DealUi.saveT[sup.id] = setTimeout(() => DealSuppliers._put(sup), DealSuppliers.SAVE_MS);
-  }
-
-  // поля справочника, которых нет в расчёте (реквизиты, склады, контакты, оборудование), — не трогаем; номер правки — чтобы
-  // не затереть изменения коллеги
-  static async _put(sup) {
-    const id = sup.dirId || `sup_${Uid.next()}${Uid.next()}`.slice(0, DealSuppliers.ID_LEN);
-    const kpData = DealState.kpInputs();
-    const makers = [
-      ...new Set(
-        kpData.items
-          .filter(item => DealSuppliers.of(item.id) === sup.id)
-          .map(item => item.maker)
-          .filter(Boolean),
-      ),
-    ];
-    const was = (DealUi.sups || []).find(dir => dir.id === id);
-    const doc = {
-      ...(was || {}),
-      name: sup.name.trim(),
-      ...Object.fromEntries(DealSuppliers.KEYS.map(key => [key, sup[key] ?? ''])),
-      makers: [...new Set([...((was && was.makers) || []), ...makers])],
-      ...(was && was._rev != null ? { _rev: was._rev } : {}),
-    };
-    delete doc.id;
-    delete doc.updatedAt;
-    try {
-      const body = JSON.stringify(doc);
-      const saved = await Api.request(`/api/suppliers/${id}`, {
-        method: 'PUT',
-        headers: DealSuppliers.JSON_HEAD,
-        body,
-      });
-      sup.dirId = id;
-      DealUi.sups = (DealUi.sups || []).filter(dir => dir.id !== id).concat(saved);
-      KpState.persist();
-    } catch {
-      // не сохранилось в справочник — поставщик остаётся в КП
-    }
-  }
-
-  /**
    * Поставщик позиции (без своего — первый).
    * @param {string} itemId
    * @returns {string}
@@ -271,23 +209,5 @@ export class DealSuppliers {
     if (deal.asm.on === false || deal.sup.some(sup => sup.id === deal.asm.sup)) return;
     const container = parts.find(line => line.part.role === 'container');
     if (container) deal.asm.sup = DealSuppliers.of(container.id);
-  }
-
-  /**
-   * Изменены название или страна поставщика: подстановка из справочника, таможня и валюта по стране.
-   * @param {string} path
-   */
-  static changed(path) {
-    const deal = DealState.deal();
-    const match = /^sup\.(\d+)\.(name|country)$/.exec(path);
-    if (!match) return;
-    const sup = deal.sup[+match[1]];
-    if (match[2] === 'country') {
-      DealSuppliers.applyCountry(sup);
-      return;
-    }
-    if (DealSuppliers.norm(sup.name) === sup._dir) return;
-    const dir = DealSuppliers.dir(sup.name);
-    if (dir && DealSuppliers.applyDir(sup, dir)) Toast.show('Поставщик из справочника: условия подставлены');
   }
 }

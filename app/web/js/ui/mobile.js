@@ -11,7 +11,6 @@ import { ProblemReport } from './problem-report.js';
 import { BigMode } from './big-mode.js';
 import { Tour } from './tour.js';
 import { HelpWindow } from '../features/kp/help-window.js';
-import { DealState } from '../features/deal/deal-state.js';
 import { KpPreview } from '../features/doc/kp-preview.js';
 import { CatalogWindow } from '../features/catalog/catalog-window.js';
 import { Reminders } from '../features/kp/reminders.js';
@@ -21,6 +20,7 @@ import { Journal } from '../features/kp/journal.js';
 import { UiTexts } from '../features/kp/ui-texts.js';
 import { $ } from '../core/util.js';
 import { PhoneLayout } from '../core/phone-layout.js';
+import { DealWin } from '../features/deal/deal-win.js';
 /**
  * Телефон (Safari iOS, Chrome Android): режим «mob» на <html> (ставится ещё в <head>, чтобы не мигала настольная
  * раскладка), меню «☰», поле названия по высоте текста, пустые поля дат, шапка прячется при прокрутке вниз.
@@ -43,7 +43,7 @@ export class Mobile {
     reminders: () => Reminders.open(),
     catalog: () => CatalogWindow.open({}),
     preview: () => KpPreview.open(),
-    deal: () => DealState.open(),
+    deal: () => DealWin.open(),
     help: () => HelpWindow.open(),
     theme: () => $('#btnTheme').click(),
     prefs: () => MyPrefs.open(),

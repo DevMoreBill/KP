@@ -1,9 +1,9 @@
-import { DealCal } from './deal-cal.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { S } from '../../core/state.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CondAuto } from '../../core/cond-auto.js';
+import { DealDays } from './deal-days.js';
 
 /**
  * Условия КП из экономики сделки: срок поставки, этапы оплаты, монтаж и ПНР, документация — человеческим текстом.
@@ -68,8 +68,8 @@ export class DealConds {
     const deal = DealState.deal();
     const lead = DealLeadTime.of(calc);
     if (lead) {
-      const start = DealCal.contractDate();
-      const until = start && !deal.startAuto ? ` (ориентировочно до ${DealCal.dayRu(calc.D)})` : '';
+      const start = DealDays.contractDate();
+      const until = start && !deal.startAuto ? ` (ориентировочно до ${DealDays.dayRu(calc.D)})` : '';
       out['Срок поставки'] = `${KpDate.daysText(lead.n, lead.kind)} с даты подписания договора${until}`;
     }
     const pay = DealConds._payment(calc);

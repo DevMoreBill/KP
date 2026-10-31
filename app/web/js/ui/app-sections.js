@@ -7,10 +7,10 @@ import { Journal } from '../features/kp/journal.js';
 import { KpTabs } from '../features/kp/kp-tabs.js';
 import { NewKp } from '../features/kp/new-kp.js';
 import { MyDay } from '../features/kp/my-day.js';
-import { DealState } from '../features/deal/deal-state.js';
 import { SettingsWindow } from '../features/admin/settings-window.js';
 import { Mobile } from './mobile.js';
 import { PhoneLayout } from '../core/phone-layout.js';
+import { DealWin } from '../features/deal/deal-win.js';
 
 /** Разделы программы во вкладках: постоянные (Кабинет — главный экран, Каталог, Журнал, КП — по вкладке на каждое открытое) и открытые «по месту». */
 export class AppSections {
@@ -46,7 +46,7 @@ export class AppSections {
       menu: () => KpTabs.menu(),
     });
     document.addEventListener('kp:new-tab', () => NewKp.tab());
-    AppTabs.register('deal', { label: 'Экономика', icon: '₽', open: () => DealState.open() });
+    AppTabs.register('deal', { label: 'Экономика', icon: '₽', open: () => DealWin.open() });
     AppTabs.register('item', { label: 'Позиция', icon: '✎' });
     AppTabs.register('set', { label: 'Настройки', icon: '⚙', open: () => SettingsWindow.open() });
     AppTabs.register('more', {
