@@ -1,5 +1,3 @@
-import { Templates } from './templates.js';
-
 /** Латинское имя из русского названия: для папок шаблонов, ключей категорий и параметров. */
 export class Translit {
   static MAX = 40;
@@ -51,18 +49,5 @@ export class Translit {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, this.MAX);
-  }
-
-  /**
-   * Свободное имя шаблона: base, base-2, base-3 …
-   * @param {string} name название шаблона
-   * @returns {string}
-   */
-  static templateId(name) {
-    const base = this.slug(name) || 'tpl';
-    let id = base;
-    let count = 1;
-    while (Templates.list.some(row => row.id === id)) id = `${base}-${++count}`;
-    return id;
   }
 }

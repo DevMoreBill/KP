@@ -21,12 +21,10 @@ import { DealFieldsView } from './deal-fields.js';
 import { LostPick } from './lost-pick.js';
 import { PhoneCall } from './phone-call.js';
 import { LISTS } from '../../core/lists.js';
-import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
 
 export const CRM = {
-  CrmFmt,
-  DateChips,
   CrmStages,
   CrmData,
   CrmFunnel,

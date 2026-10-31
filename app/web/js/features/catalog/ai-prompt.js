@@ -1,8 +1,8 @@
 import { AiOptions } from './ai-options.js';
-import { Kit } from '../kit/kit.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { Kit } from '../../core/kit.js';
 /**
  * Запросы к ИИ для карточки оборудования: основной (объём — как у карточек категории в каталоге) и «дополнить» (только
  * недостающее, только с источником). Чего не хватает — по сравнению с образцом категории (/api/ai/profile).

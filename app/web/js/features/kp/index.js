@@ -1,11 +1,10 @@
-import { Auth, Powers } from './auth.js';
 import { AuthMenu, AuthScreen } from './auth-screen.js';
 import { CbrRates, PricingBlock } from './cbr-rates.js';
 import { ClientCard } from './client-card.js';
 import { ClientFind, ClientMatchText } from './client-find.js';
 import { ClientFields, ClientStore, Inn, OrgName, PartyFind } from './client-store.js';
 import { ClientsImport } from './clients-import.js';
-import { Currency, Discount } from './currency.js';
+import { Discount } from './currency.js';
 import { Drafts } from './drafts.js';
 import { HelpWindow } from './help-window.js';
 import { Journal, KpVersions } from './journal.js';
@@ -14,7 +13,6 @@ import { KpFilesPanel } from './kp-files.js';
 import { KpDiff, KpReport } from './kp-report.js';
 import { KpReportView } from './kp-report-view.js';
 import { KpRepeat } from './kp-repeat.js';
-import { KpSaved } from './kp-saved.js';
 import { KpTrack } from './kp-track.js';
 import { LoginForm } from './login-form.js';
 import { MailDlg } from './mail-dlg.js';
@@ -38,13 +36,11 @@ import { KpGuard } from './kp-guard.js';
 import { OptionCost } from './option-cost.js';
 import { OptionSale } from './option-sale.js';
 import { BackGuard } from '../../core/back-guard.js';
-import { KpDate } from '../../core/kp-date.js';
+import { Currency } from '../../core/currency.js';
 
 export const KP_PARTS = {
   OptionCost,
   OptionSale,
-  Auth,
-  Powers,
   AuthMenu,
   AuthScreen,
   CbrRates,
@@ -67,13 +63,11 @@ export const KP_PARTS = {
   JournalEcon,
   JournalRow,
   ShortName,
-  KpDate,
   KpFilesPanel,
   KpDiff,
   KpReport,
   KpReportView,
   KpRepeat,
-  KpSaved,
   KpTrack,
   LoginForm,
   MailDlg,

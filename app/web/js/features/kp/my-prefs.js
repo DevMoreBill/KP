@@ -1,6 +1,5 @@
 import { Managers } from './managers.js';
 import { MyDay } from './my-day.js';
-import { Templates } from '../doc/templates.js';
 import { DEF_BY, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
 import { esc } from '../../core/util.js';
 import { Modal } from '../../core/modal.js';
@@ -8,7 +7,7 @@ import { Toast } from '../../core/toast.js';
 import { Theme } from '../../core/theme.js';
 import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
-import { LivePreview } from '../doc/live-preview.js';
+import { DocLink } from '../../core/doc-link.js';
 
 /**
  * «Мои настройки» — личные настройки менеджера (сервер: app/user_prefs.py), действуют на любом компьютере: тема,
@@ -75,7 +74,7 @@ export class MyPrefs {
   /** Тема, предпросмотр рядом и шаблон — в этот браузер. */
   static apply() {
     if (Theme.NAMES.includes(this.prefs.theme)) Theme.set(this.prefs.theme);
-    if (typeof this.prefs.livePreview === 'boolean') LivePreview.want(this.prefs.livePreview);
+    if (typeof this.prefs.livePreview === 'boolean') DocLink.wantPreview(this.prefs.livePreview);
     if (!this.prefs.template) return;
     try {
       localStorage.setItem('kp.template', this.prefs.template);
@@ -121,7 +120,7 @@ export class MyPrefs {
     const answer = await Api.request('/api/me/prefs', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ livePreview: LivePreview.wanted(), ...prefs }),
+      body: JSON.stringify({ livePreview: DocLink.previewWanted(), ...prefs }),
     });
     this.prefs = answer.prefs || {};
     this.uid = answer.id || this.uid;
@@ -190,7 +189,7 @@ export class MyPrefs {
   static _main() {
     const prefs = this.prefs;
     const defs = prefs.defaults || {};
-    const templates = Templates.list
+    const templates = DocLink.templates()
       .filter(tpl => !tpl.error)
       .map(
         tpl =>
@@ -201,7 +200,7 @@ export class MyPrefs {
       ([key, label]) => `<option value="${key}"${defs['kp.cur'] === key ? ' selected' : ''}>${label}</option>`,
     ).join('');
     return `<p class="sub mp-h">Вид и новые КП</p><div class="grid g2"><label class="f"><span>Тема</span><select id="mpTheme">${this._options(this.THEME, prefs.theme)}</select></label>
-        <label class="mp-ck mp-pv"><input type="checkbox" id="mpLive"${LivePreview.wanted() ? ' checked' : ''}> Предпросмотр КП рядом с формой (экран от ${LivePreview.MIN_WIDTH} px)</label>
+        <label class="mp-ck mp-pv"><input type="checkbox" id="mpLive"${DocLink.previewWanted() ? ' checked' : ''}> Предпросмотр КП рядом с формой (экран от ${DocLink.previewMinWidth()} px)</label>
         <label class="f"><span>Шаблон новых КП</span><select id="mpTpl"><option value="">Как в программе</option>${templates}</select></label>
         <label class="f"><span>Валюта новых КП</span><select id="mpCur"><option value="">Как у отдела (${esc(this._company('kp.cur'))})</option>${currencies}</select></label>
         <label class="f"><span>Город в КП</span><input type="text" id="mpCity" value="${esc(defs['kp.city'] || '')}" placeholder="${esc(this._company('kp.city'))}" autocomplete="off"></label></div>`;

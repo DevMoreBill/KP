@@ -1,10 +1,10 @@
 import { Str } from '../../core/str.js';
-import { Kit } from '../kit/kit.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { S } from '../../core/state.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { CoverHint } from '../kit/cover-hint.js';
+import { Kit } from '../../core/kit.js';
 /**
  * Модели КП для титула: позиции одной модели — одной строкой (количество суммируется), комплектующие не считаются;
  * станция в контейнере — по основному оборудованию и с типом контейнера; kind — вид оборудования (для сводки на титуле).

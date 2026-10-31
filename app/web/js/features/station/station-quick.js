@@ -17,13 +17,13 @@ import { AirChain } from '../layout/air-chain.js';
 import { StationUi } from './station-ui.js';
 import { ReqNum } from '../req/req-num.js';
 import { esc } from '../../core/util.js';
-import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { StationSteps } from './station-steps.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Spoiler } from '../../core/spoiler.js';
 import { StationParams } from '../kit/station-params.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна

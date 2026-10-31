@@ -1,12 +1,12 @@
 import { AiChat, AiDirect } from './ai-chat.js';
 import { AiParse } from './ai-parse.js';
-import { Kit } from '../kit/kit.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { $, esc } from '../../core/util.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Kit } from '../../core/kit.js';
 
 /** Окно «Заполнить с ИИ» для элемента станции: описание и характеристики элемента. */
 export class AiPart {

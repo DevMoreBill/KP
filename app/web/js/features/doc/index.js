@@ -14,7 +14,9 @@ import { TemplateDesigner } from './template-designer.js';
 import { TemplateEditor } from './template-editor.js';
 import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
-import { Translit } from './translit.js';
+import { KpSaved } from './kp-saved.js';
+import { DocsGen } from './docs-gen.js';
+import { DocLink } from '../../core/doc-link.js';
 import { LISTS } from '../../core/lists.js';
 
 export const DOC = {
@@ -33,7 +35,7 @@ export const DOC = {
   TemplateEditor,
   TemplateFields,
   Templates,
-  Translit,
+  KpSaved,
 };
 
 Templates.listen();
@@ -44,3 +46,12 @@ KpPreview.listen();
 LivePreview.listen();
 DesignMouse.listen();
 LISTS.ready(TemplateFields.LISTS);
+// КП просит документ (DocLink) — без import документа
+DocLink.connect({
+  docs: kpId => DocsGen.open(kpId),
+  saving: () => KpSave.busy,
+  templates: () => Templates.list,
+  wantPreview: shown => LivePreview.want(shown),
+  previewWanted: () => LivePreview.wanted(),
+  previewMinWidth: () => LivePreview.MIN_WIDTH,
+});

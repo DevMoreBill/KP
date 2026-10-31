@@ -1,8 +1,8 @@
-import { Kit } from './kit.js';
 import { StationReq } from '../req/station-req.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { FEAT } from '../../core/features.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Компоновка станции в позиции КП: исходные (контейнер, состав, класс воздуха, ресивер), расчёт с кэшем по отпечатку,

@@ -1,5 +1,5 @@
 import { ImageFiles } from '../catalog/images.js';
-import { Kit } from '../kit/kit.js';
+import { Kit } from '../../core/kit.js';
 /** Цвета RGB: расстояние, насыщенность, запись #rrggbb. */
 class Rgb {
   /** Расстояние между цветами (сумма разностей каналов). */

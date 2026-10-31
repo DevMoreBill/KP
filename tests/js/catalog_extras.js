@@ -1,4 +1,4 @@
-// Каталог 3.199.0 (features/catalog/price-age.js, catalog-analogs.js, features/kp/kp-lead.js, features/wizard/station-library.js):
+// Каталог 3.199.0 (features/catalog/price-age.js, catalog-analogs.js, features/catalog/kp-lead.js, features/wizard/station-library.js):
 // возраст цены и «цена устарела», аналоги других производителей в допуске, срок поставки в условия КП (своё, по поставщику,
 // в наличии — нет, вписанное вручную не меняется), типовые станции.
 // Запуск из корня репозитория: node tests/js/catalog_extras.js — код выхода 0, если всё прошло (tests/test_catalog_extras.py).
@@ -11,7 +11,7 @@ const { PriceAge }=require(JS('features/catalog/price-age.js'));
 const { CatalogAnalogs }=require(JS('features/catalog/catalog-analogs.js'));
 const { Catalog }=require(JS('features/catalog/catalog-store.js'));
 const { Suppliers }=require(JS('features/catalog/suppliers.js'));
-const { KpLead }=require(JS('features/kp/kp-lead.js'));
+const { KpLead }=require(JS('features/catalog/kp-lead.js'));
 const { StationLibrary }=require(JS('features/wizard/station-library.js'));
 const { EquipTypes }=require(JS('core/equip-types.js'));
 const { Attrs }=require(JS('core/item-attrs.js'));

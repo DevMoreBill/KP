@@ -177,15 +177,22 @@ export default [{
     LAYERS.admin,
   ] }] },
 }, {
-  // КП не подключает кабинет (кабинет построен поверх КП): открыть кабинет или сделку, сделки и стадии — CabinetLink
-  // (core/cabinet-link.js, подключает features/crm/index.js); экономику сделки — тоже (DealLink, подключает
-  // features/deal/index.js); правило заменяет общее для этих файлов — запреты ui/ и admin/ повторены
+  // КП — основа: другие разделы построены поверх него и подключают себя портами core/ — кабинет (CabinetLink),
+  // экономика сделки (DealLink), документ (DocLink), каталог (CatalogLink); переключение вкладок КП — события kp:leave,
+  // kp:enter; правило заменяет общее для этих файлов — запреты ui/ и admin/ повторены
   files: ['app/web/js/features/kp/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [
     LAYERS.ui,
     LAYERS.admin,
-    { group: ['../crm/**'], message: 'КП не подключает кабинет: CabinetLink (core/cabinet-link.js)' },
-    { group: ['../deal/**'], message: 'КП не подключает экономику сделки: DealLink (core/deal-link.js); валюты цен — Money.CURS, сроки — KpDate.daysText, условие подстановкой — CondAuto, «Светофор маржи» — MarginLight' },
+    { group: ['../*/**', '!../../**'], message: 'КП — основа: другие разделы не подключает — кабинет, экономика сделки, документ и каталог КП просит через CabinetLink, DealLink, DocLink, CatalogLink (core/)' },
+  ] }] },
+}, {
+  // каталог не подключает документ КП (документ построен поверх каталога): имя латиницей — Translit (core/)
+  files: ['app/web/js/features/catalog/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    LAYERS.ui,
+    LAYERS.admin,
+    { group: ['../doc/**'], message: 'каталог не подключает документ КП: Translit — в core/' },
   ] }] },
 }, {
   // состав станции (kit) не подключает подбор станции (station): расчёт компоновки позиции — StationPlan (kit), быстрый

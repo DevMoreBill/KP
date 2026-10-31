@@ -1,11 +1,11 @@
 import { FieldUnit } from '../../core/field-unit.js';
 import { Mm } from '../layout/mm.js';
 import { ContainerKind } from './container-kind.js';
-import { Kit } from './kit.js';
 import { TankSize } from '../layout/tank-size.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationPlan } from './station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Станция в документе КП: какие элементы состава — карточками с описанием (основные агрегаты), какие характеристики —

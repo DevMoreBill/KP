@@ -1,4 +1,3 @@
-import { Auth } from './auth.js';
 import { MyPrefs } from './my-prefs.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { Str } from '../../core/str.js';
@@ -8,6 +7,7 @@ import { FEAT } from '../../core/features.js';
 import { Toast } from '../../core/toast.js';
 import { KpGuard } from './kp-guard.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Менеджеры: справочник в базе программы (общий для отдела), выбор менеджера в разделе «Менеджер». Выбранный менеджер

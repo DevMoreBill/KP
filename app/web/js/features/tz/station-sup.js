@@ -2,9 +2,9 @@ import { StationEquip } from '../layout/station-equip.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Catalog } from '../catalog/catalog-store.js';
-import { Kit } from '../kit/kit.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Str } from '../../core/str.js';
+import { Kit } from '../../core/kit.js';
 /** Один поставщик в станции: при равных условиях — оборудование того же поставщика, что и основные агрегаты. */
 export class StationSup {
   static ctx = ''; // поставщик основного оборудования станции, под которую идёт подбор

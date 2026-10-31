@@ -5,7 +5,6 @@ import { SpecPaste } from '../catalog/ai-parse.js';
 import { CatalogWindow } from '../catalog/catalog-window.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
 import { AiDirect } from '../catalog/ai-chat.js';
 import { ItemSpec } from '../../core/item-spec.js';
@@ -13,10 +12,11 @@ import { Catalog } from '../catalog/catalog-store.js';
 import { FEAT } from '../../core/features.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { Auth } from '../kp/auth.js';
 import { CatPicker } from './cat-picker.js';
 import { QuickFind } from '../catalog/quick-find.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Kit } from '../../core/kit.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Окно «Добавить оборудование» — один порядок для КП и для каталога: что добавляем (найти в каталоге — только в КП,

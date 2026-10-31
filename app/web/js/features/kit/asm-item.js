@@ -1,4 +1,3 @@
-import { Kit } from './kit.js';
 import { KitPart } from './kit-part.js';
 import { StationPurpose } from './station-spec.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -6,7 +5,8 @@ import { FieldUnit } from '../../core/field-unit.js';
 import { SpecValues } from '../../core/spec-values.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Str } from '../../core/str.js';
-import { Currency } from '../kp/currency.js';
+import { Kit } from '../../core/kit.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Сборное изделие без компоновки: контейнер и оборудование из каталога (от разных поставщиков) → одна позиция КП с

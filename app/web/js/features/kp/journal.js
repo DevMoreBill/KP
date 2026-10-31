@@ -1,13 +1,10 @@
 import { KpReportView } from './kp-report-view.js';
-import { Auth } from './auth.js';
 import { ClientFields } from './client-store.js';
-import { Currency } from './currency.js';
 import { Drafts } from './drafts.js';
 import { JournalEcon, JournalRow } from './journal-row.js';
 import { KpDiff, KpReport } from './kp-report.js';
 import { KpFilesPanel } from './kp-files.js';
 import { KpRepeat } from './kp-repeat.js';
-import { DocsGen } from '../doc/docs-gen.js';
 import { KpTrack } from './kp-track.js';
 import { MailDlg } from './mail-dlg.js';
 import { Managers } from './managers.js';
@@ -27,6 +24,9 @@ import { KpTransferView } from './kp-transfer.js';
 import { KpForm } from '../../core/kp-form.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
 import { DealLink } from '../../core/deal-link.js';
+import { Auth } from '../../core/auth.js';
+import { Currency } from '../../core/currency.js';
+import { DocLink } from '../../core/doc-link.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -321,7 +321,7 @@ export class Journal {
       },
     ],
     ['[data-jkf]', (ctx, button) => Journal._files(ctx, button)],
-    ['[data-jdg]', (ctx, button) => DocsGen.open(button.dataset.jdg)],
+    ['[data-jdg]', (ctx, button) => DocLink.docs(button.dataset.jdg)],
     ['[data-jt]', (ctx, button) => KpTransferView.open(button.dataset.jt, () => Journal._load(ctx))],
     [
       '[data-jr]',

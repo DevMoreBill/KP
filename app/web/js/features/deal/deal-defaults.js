@@ -2,10 +2,10 @@ import { DealUi } from './deal-ui.js';
 import { DealValues } from './deal-values.js';
 import { Managers } from '../kp/managers.js';
 import { AdminSession } from '../../core/net.js';
-import { Auth } from '../kp/auth.js';
 import { FEAT } from '../../core/features.js';
 import { S } from '../../core/state.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Последние значения менеджера в этом браузере (стоимость денег, налог, цель; заданное администратором в «Значениях

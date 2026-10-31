@@ -6,14 +6,14 @@ import { KpCover } from './kp-cover.js';
 import { Templates } from './templates.js';
 import { ImageFiles } from '../catalog/images.js';
 import { FileSave } from '../../core/files.js';
-import { Kit } from '../kit/kit.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { Attrs } from '../../core/item-attrs.js';
-import { Currency } from '../kp/currency.js';
 import { RateSource } from '../kp/rate-source.js';
 import { ItemLinks } from '../catalog/item-links.js';
 import { S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
+import { Kit } from '../../core/kit.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Сборка файла .docx КП: основа Word из шаблона + страницы по скелету шаблона с настройками; картинки — в пакет

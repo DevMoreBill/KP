@@ -1,9 +1,9 @@
-import { Kit } from './kit.js';
 import { esc } from '../../core/util.js';
 import { PipeMaterial } from '../layout/pipe-material.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Kit } from '../../core/kit.js';
 
 /** Поле состава станции `data-…="i.j"` → позиция КП и элемент. */
 class PartField {

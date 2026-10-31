@@ -1,5 +1,4 @@
 import { ContainerKind } from './container-kind.js';
-import { Kit } from './kit.js';
 import { StationReq } from '../req/station-req.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { StationPower } from '../layout/station-power.js';
@@ -7,6 +6,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { StationParams } from './station-params.js';
 import { StationPlan } from './station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Таблица характеристик станции: вместо «Производитель / Модель», угаданных по названию станции, — строка основного

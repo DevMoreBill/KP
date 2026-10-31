@@ -1,5 +1,5 @@
-import { CatalogIndex } from '../catalog/catalog-index.js';
-import { Suppliers } from '../catalog/suppliers.js';
+import { CatalogIndex } from './catalog-index.js';
+import { Suppliers } from './suppliers.js';
 import { FEAT } from '../../core/features.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';

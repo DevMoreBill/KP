@@ -4,7 +4,6 @@ import { ReqNum } from './req-num.js';
 import { StationReq } from './station-req.js';
 import { StationQuick } from '../station/station-quick.js';
 import { Toast } from '../../core/toast.js';
-import { Kit } from '../kit/kit.js';
 import { KpState, S } from '../../core/state.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { Mm } from '../layout/mm.js';
@@ -16,6 +15,7 @@ import { StationSize } from '../kit/station-size.js';
 import { StationParams } from '../kit/station-params.js';
 import { Spoiler } from '../../core/spoiler.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Форма «Все требования, условия расчёта и проверки» (под раскрывающимся блоком «Подбора станции»): проверки состава,

@@ -1,5 +1,5 @@
-import { Auth } from './auth.js';
 import { esc } from '../../core/util.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Поля и отправка форм входа — у менеджера (экран входа) и у администратора («Настройки»): показать пароль, Caps Lock,

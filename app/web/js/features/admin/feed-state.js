@@ -1,6 +1,6 @@
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
-import { Currency } from '../kp/currency.js';
+import { Currency } from '../../core/currency.js';
 /** Состояние вкладки «Фиды поставщиков» (пока открыта программа). */
 export class FeedState {
   static sel = null; // открытый фид

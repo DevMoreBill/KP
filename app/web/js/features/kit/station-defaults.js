@@ -1,12 +1,12 @@
 import { ContainerKind } from './container-kind.js';
 import { ContainerPart } from './container-part.js';
-import { Kit } from './kit.js';
 import { KitPipe } from './kit-fields.js';
 import { StationReq } from '../req/station-req.js';
 import { CalcInput } from '../calc/calc-input.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Элементы станции, без которых её не бывает: мастер кладёт их в состав сразу (ДГУ — глушитель на крыше, дополнительный

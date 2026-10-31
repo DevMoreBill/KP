@@ -6,10 +6,10 @@ import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { AdminSession, Api } from '../../core/net.js';
-import { Auth } from '../kp/auth.js';
 import { esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { Auth } from '../../core/auth.js';
 
 /** Выгрузка отобранного в окне каталога: Excel, JSON, XML, YML; цены, остатки, картинки, параметры — галочками. */
 export class CatalogExportDlg {

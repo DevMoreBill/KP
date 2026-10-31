@@ -1,6 +1,5 @@
 import { CatalogWindow } from './catalog-window.js';
 import { TypeForm } from './type-form.js';
-import { Translit } from '../doc/translit.js';
 import { Catalog } from './catalog-store.js';
 import { ObjPath } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
@@ -8,6 +7,7 @@ import { AdminSession, Api } from '../../core/net.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { $, esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Translit } from '../../core/translit.js';
 
 /**
  * Категории оборудования (справочник типов): слева — список по разделам каталога, справа — форма категории. Свои

@@ -8,10 +8,10 @@ import { StationReq } from '../req/station-req.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { Kit } from '../kit/kit.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { StationDesign } from '../kit/station-design.js';
 import { StationDoc } from '../kit/station-doc.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Краткое описание станции нейросетью (вкладка «Описание и фото»): встроенная нейросеть программы или запрос в буфер для

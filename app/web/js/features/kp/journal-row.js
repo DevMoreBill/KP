@@ -1,6 +1,5 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { ClientCard } from './client-card.js';
-import { Currency } from './currency.js';
 import { KpTrack } from './kp-track.js';
 import { Srv } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
@@ -9,6 +8,7 @@ import { FEAT } from '../../core/features.js';
 import { KpTransferView } from './kp-transfer.js';
 import { Managers } from './managers.js';
 import { KpDate } from '../../core/kp-date.js';
+import { Currency } from '../../core/currency.js';
 
 /** «Иванов И. П.» из полного ФИО. */
 export class ShortName {

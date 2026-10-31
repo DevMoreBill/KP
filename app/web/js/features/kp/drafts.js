@@ -1,16 +1,15 @@
-import { Currency } from './currency.js';
 import { Modal } from '../../core/modal.js';
 import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
-import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from './kp-tabs.js';
 import { KpGuard } from './kp-guard.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Черновики КП на сервере (DraftsController, таблица drafts): незаконченное КП или несохранённые правки сохранённого,
@@ -112,7 +111,7 @@ export class Drafts {
    * @returns {{state: object, sig: string}|null}
    */
   static pending() {
-    if (CatalogEditor.session || KpGuard.locked()) return null;
+    if (KpState.paused() || KpGuard.locked()) return null;
     const state = this.clean();
     const sig = this.sig(state);
     const kpId = S.kpId || '';

@@ -18,7 +18,6 @@ export const STATION = {
   ExpertFix,
   IssueSpot,
   LayoutTab,
-  Spoiler,
   StationBrief,
   StationDesign,
   StationDoc,
@@ -36,5 +35,6 @@ StationQuick.listen();
 StationSteps.listen();
 StationBrief.listen();
 StationUi.listen();
+StationImages.listen();
 // быстрый подбор под составом станции — раздел подбора подключает себя (состав не подключает подбор)
 KitView.stationQuick = (item, index) => StationQuick.html(item, index);

@@ -2,11 +2,9 @@ import { AsmAi } from './asm-ai.js';
 import { EquipWizard } from '../wizard/equip-wizard.js';
 import { StationWays } from '../wizard/station-ways.js';
 import { AsmItem } from './asm-item.js';
-import { Kit } from './kit.js';
 import { PickFilter, PickFind } from './kit-pick.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { Currency } from '../kp/currency.js';
 import { Toast } from '../../core/toast.js';
 import { FEAT } from '../../core/features.js';
 import { EquipTypes } from '../../core/equip-types.js';
@@ -15,6 +13,8 @@ import { ItemSpec } from '../../core/item-spec.js';
 import { KpState, S } from '../../core/state.js';
 import { $, esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Kit } from '../../core/kit.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Окно «Сборное изделие» (в окне «Добавить оборудование», `#dlg`, та же ширина и шапка, что у подбора станции):

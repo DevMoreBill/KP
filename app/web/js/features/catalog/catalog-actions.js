@@ -6,12 +6,12 @@ import { Catalog, CatalogStore } from './catalog-store.js';
 import { FileSave } from '../../core/files.js';
 import { Api } from '../../core/net.js';
 import { CatalogBin } from './catalog-export.js';
-import { Auth } from '../kp/auth.js';
 import { $, Uid, esc, today } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Auth } from '../../core/auth.js';
 
 /** Действия окна каталога: добавить в КП, перенести в категорию (с отменой), правка, копия, корзина, файл каталога. */
 export class CatalogActions {

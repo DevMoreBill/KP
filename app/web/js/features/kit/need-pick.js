@@ -4,13 +4,13 @@ import { Attrs } from '../../core/item-attrs.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
 import { PickFilter } from './kit-pick.js';
 import { AirChain } from '../layout/air-chain.js';
-import { Kit } from './kit.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { StationSup } from '../tz/station-sup.js';
 import { StationReq } from '../req/station-req.js';
 import { KitNeed } from './kit-need.js';
 import { ReqNum } from '../req/req-num.js';
 import { StationPlan } from './station-plan.js';
+import { Kit } from '../../core/kit.js';
 /**
  * Подбор из каталога по строке «Нужно: …»: рекомендуемая позиция (тот же расчёт, что у автоподбора TzPick), фильтры и
  * подсказка окна каталога; основное оборудование — по требованиям «Подбора станции».

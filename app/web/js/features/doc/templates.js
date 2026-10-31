@@ -5,6 +5,7 @@ import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Translit } from '../../core/translit.js';
 
 /**
  * Шаблоны КП (папка templates): выбор шаблона и загрузка всего, что в папке шаблона — настроек (template.json), скелета
@@ -182,5 +183,18 @@ export class Templates {
       KpState.persist();
       Toast.show(`Шаблон КП: ${(this.current() || {}).name || ''}`);
     });
+  }
+
+  /**
+   * Свободное имя шаблона: base, base-2, base-3 …
+   * @param {string} name название шаблона
+   * @returns {string}
+   */
+  static freeId(name) {
+    const base = Translit.slug(name) || 'tpl';
+    let id = base;
+    let count = 1;
+    while (this.list.some(row => row.id === id)) id = `${base}-${++count}`;
+    return id;
   }
 }

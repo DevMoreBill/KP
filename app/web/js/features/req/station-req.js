@@ -9,9 +9,9 @@ import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { SummerTemp } from '../layout/summer-temp.js';
 import { StationDefaults } from '../kit/station-defaults.js';
-import { Kit } from '../kit/kit.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { StationRules } from '../rules/station-rules.js';
+import { Kit } from '../../core/kit.js';
 
 /** Требования к станции (из ТЗ заказчика или вручную): вид станции, значения для подбора, расчёта и чертежа. */
 export class StationReq {

@@ -4,9 +4,10 @@ import { Price } from '../core/str.js';
 import { DealDefaults } from '../features/deal/deal-defaults.js';
 import { PricingBlock } from '../features/kp/cbr-rates.js';
 import { KpState, S } from '../core/state.js';
-import { Currency, Discount } from '../features/kp/currency.js';
+import { Discount } from '../features/kp/currency.js';
 import { OptionSale } from '../features/kp/option-sale.js';
 import { UiKit } from '../core/ui-kit.js';
+import { Currency } from '../core/currency.js';
 
 /**
  * Раздел 3 «Цены и валюта»: цены продажи вводятся вручную, одна строка на позицию; скидка попадает в КП. Закупка,

@@ -17,7 +17,7 @@ const { DocxFill }=mod('features/doc/docx-fill.js');
 const { KpDate }=mod('core/kp-date.js');
 const { KpReport }=mod('features/kp/kp-report.js');
 const { KpReportView }=mod('features/kp/kp-report-view.js');
-const { Currency }=mod('features/kp/currency.js');
+const { Currency }=mod('core/currency.js');
 const { WorkCalendar }=mod('core/date-picker.js');
 const { FEAT }=mod('core/features.js');
 

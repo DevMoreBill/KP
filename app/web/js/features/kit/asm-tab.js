@@ -1,8 +1,8 @@
-import { Kit } from './kit.js';
 import { AsmItem } from './asm-item.js';
-import { Currency } from '../kp/currency.js';
 import { FEAT } from '../../core/features.js';
 import { esc } from '../../core/util.js';
+import { Kit } from '../../core/kit.js';
+import { Currency } from '../../core/currency.js';
 
 /** Вкладка «Состав изделия» у сборного изделия: части из каталога, цена и закупка частей, «Изменить состав…». */
 export class AsmTab {

@@ -13,14 +13,14 @@ import { LgValues } from './lg-values.js';
 import { LgView } from './lg-view.js';
 import { Toast } from '../../core/toast.js';
 import { Catalog, CatalogStore } from '../catalog/catalog-store.js';
-import { Currency } from '../kp/currency.js';
 import { StationMods } from '../layout/station-mods.js';
-import { Kit } from '../kit/kit.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { KpForm } from '../../core/kp-form.js';
 import { LgCargo } from '../../core/lg-cargo.js';
+import { Currency } from '../../core/currency.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Вкладка «Логистика» экономики сделки: тарифы, груз позиций и станций, маршрут, расчёт перед каждой отрисовкой окна —

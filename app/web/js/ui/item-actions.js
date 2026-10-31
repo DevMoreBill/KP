@@ -3,7 +3,6 @@ import { Steps } from './steps.js';
 import { KpSave } from '../features/doc/kp-save.js';
 import { Discount } from '../features/kp/currency.js';
 import { Templates } from '../features/doc/templates.js';
-import { Kit } from '../features/kit/kit.js';
 import { SpecValues } from '../core/spec-values.js';
 import { Attrs, ItemParse } from '../core/item-attrs.js';
 import { CatFind, Catalog } from '../features/catalog/catalog-store.js';
@@ -61,6 +60,7 @@ import { CoverSync } from '../features/kit/cover-sync.js';
 import { Tender } from '../core/tender.js';
 import { PhoneLayout } from '../core/phone-layout.js';
 import { StationParams } from '../features/kit/station-params.js';
+import { Kit } from '../core/kit.js';
 
 // действие изменило КП — форма перерисовывается и черновик сохраняется (что вернули окна и загрузки — не в счёт)
 const RENDER = Symbol('render');

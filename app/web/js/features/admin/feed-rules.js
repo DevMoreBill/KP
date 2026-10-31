@@ -1,6 +1,5 @@
 import { FeedState } from './feed-state.js';
 import { FeedsTab } from './feeds-tab.js';
-import { Currency } from '../kp/currency.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
@@ -9,6 +8,7 @@ import { esc } from '../../core/util.js';
 import { Fmt, Str } from '../../core/str.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { Currency } from '../../core/currency.js';
 
 /** Удаление позиций, загруженных фидом: все или одной категории фида — в корзину; «не загружать снова» (feeds.FeedPurge). */
 export class FeedPurgeUi {

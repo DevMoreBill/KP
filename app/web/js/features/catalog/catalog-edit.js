@@ -5,13 +5,13 @@ import { Price } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { AdminSession } from '../../core/net.js';
 import { ItemEditor } from './item-editor.js';
-import { Kit } from '../kit/kit.js';
 import { $, Uid, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Makers } from './makers.js';
 import { CardRules } from './card-rules.js';
 import { CardGaps } from './card-gaps.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Правка позиции каталога прямо из окна каталога — в той же карточке, что и позиция КП, плюс цена в каталоге.

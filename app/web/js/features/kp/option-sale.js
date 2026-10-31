@@ -3,10 +3,10 @@ import { KpState, S } from '../../core/state.js';
 import { Price } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { CbrRates } from './cbr-rates.js';
-import { Currency } from './currency.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Money } from '../../core/money.js';
 import { DealLink } from '../../core/deal-link.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Цена продажи опции или услуги в своей валюте (option.sale, option.saleCur), как закупка. В КП, итоги, документ и

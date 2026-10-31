@@ -6,11 +6,11 @@ import { PriceAge } from './price-age.js';
 import { CatalogIndex } from './catalog-index.js';
 import { FeedBadge } from './feed-badge.js';
 import { Attrs } from '../../core/item-attrs.js';
-import { Auth } from '../kp/auth.js';
 import { esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { SpecValues } from '../../core/spec-values.js';
-import { Currency } from '../kp/currency.js';
+import { Auth } from '../../core/auth.js';
+import { Currency } from '../../core/currency.js';
 
 /** Строка списка и карточка-предпросмотр окна каталога. */
 export class CatalogCard {

@@ -59,8 +59,6 @@ import { TnVed } from './tn-ved.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { DealLink } from '../../core/deal-link.js';
-import { InputNum } from '../../core/input-num.js';
-import { LgCargo } from '../../core/lg-cargo.js';
 
 export const DEAL = {
   DealBind,
@@ -116,11 +114,9 @@ export const DEAL = {
   FreightSettings,
   FreightSettingsView,
   FreightTariffs,
-  InputNum,
   KpLines,
   LgBind,
   LgCard,
-  LgCargo,
   LgCargoIn,
   LgCarrier,
   LgCities,

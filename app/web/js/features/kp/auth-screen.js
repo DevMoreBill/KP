@@ -1,4 +1,3 @@
-import { Auth } from './auth.js';
 import { HelpWindow } from './help-window.js';
 import { LoginForm } from './login-form.js';
 import { Toast } from '../../core/toast.js';
@@ -7,6 +6,7 @@ import { AdminSession, Api } from '../../core/net.js';
 import { AppVersion } from '../help.js';
 import { $, esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { Auth } from '../../core/auth.js';
 
 /** Экран входа менеджера (вход по паролю включён, сессии нет). */
 export class AuthScreen {

@@ -6,7 +6,6 @@ import { KpSave } from './kp-save.js';
 import { TemplateDraft } from './template-draft.js';
 import { TemplateEditor } from './template-editor.js';
 import { Templates } from './templates.js';
-import { Translit } from './translit.js';
 import { $ } from '../../core/util.js';
 import { S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
@@ -121,7 +120,7 @@ export class TemplateDesigner {
   }
 
   static async _copy(from, name) {
-    const id = Translit.templateId(name);
+    const id = Templates.freeId(name);
     await Api.request(
       `/api/templates/${encodeURIComponent(from)}/copy?to=${encodeURIComponent(id)}&title=${encodeURIComponent(name.trim())}`,
       {

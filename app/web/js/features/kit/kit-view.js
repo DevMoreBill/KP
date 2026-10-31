@@ -1,4 +1,3 @@
-import { Kit } from './kit.js';
 import { KitCabinet, KitPipe } from './kit-fields.js';
 import { KitContainer } from './kit-container.js';
 import { KitNeed } from './kit-need.js';
@@ -23,6 +22,7 @@ import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
 import { StationPlan } from './station-plan.js';
 import { DealLink } from '../../core/deal-link.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Вкладка «Состав станции»: подбор станции, контейнер одной строкой, оборудование двумя группами по стороне поставки

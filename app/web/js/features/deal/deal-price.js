@@ -3,9 +3,9 @@ import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
-import { Currency } from '../kp/currency.js';
 import { Fmt, Price } from '../../core/str.js';
 import { OptionSale } from '../kp/option-sale.js';
+import { Currency } from '../../core/currency.js';
 
 /** Вкладка «Цена КП и валюта»: цены позиций, валюта и курсы ЦБ правятся здесь же и сразу меняют КП; прикидка другой цены. */
 export class DealPrice {

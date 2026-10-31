@@ -13,10 +13,10 @@ import { Templates } from '../doc/templates.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { KpState, S } from '../../core/state.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { Kit } from '../kit/kit.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Компоновка станции в программе: расстановка (с кэшем), что вставлять в КП, вкладка «Компоновка», метка в разделе

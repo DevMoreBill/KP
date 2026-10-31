@@ -54,7 +54,11 @@
   (`features/deal`) — поверх КП, состава станции и компоновки: они её не подключают; окно экономики (перерисовать, открыть),
   сводка расчёта и справочник поставщиков — `DealLink` (`core/deal-link.js`, подключает `deal/index.js`); валюты цен —
   `Money.CURS`, срок словами — `KpDate.daysText`, условие подстановкой — `CondAuto`, «Светофор маржи» — `MarginLight`,
-  `InputNum`, `LgCargo` — в `core/`.
+  `InputNum`, `LgCargo` — в `core/`. (31.10, этап 6) КП (`features/kp`) — основа: другие разделы не подключает (ESLint
+  `../*/**`, кроме `core/`); документ КП — `DocLink`, каталог — `CatalogLink` (`core/`, подключают `doc/index.js` и
+  `catalog/index.js`); переключение вкладок КП — события `kp:leave`, `kp:enter`; правка позиции каталога — `KpState.paused()`;
+  в `core/` — `Auth`, `Currency` (смена валюты КП — `KpCurrency`), `Kit`, `Translit`; каталог не подключает документ КП.
+  Перечни разделов (`index.js`) — только классы своего раздела.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

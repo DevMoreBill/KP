@@ -10,7 +10,6 @@ import { ItemEditor } from '../catalog/item-editor.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { AiDirect } from '../catalog/ai-chat.js';
 import { AirChain } from '../layout/air-chain.js';
-import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
@@ -23,6 +22,7 @@ import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
 import { Spoiler } from '../../core/spoiler.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {

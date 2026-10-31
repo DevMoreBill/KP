@@ -1,13 +1,12 @@
-import { Currency } from './currency.js';
 import { Toast } from '../../core/toast.js';
 import { Modal } from '../../core/modal.js';
 import { FEAT } from '../../core/features.js';
-import { CatFind, Catalog } from '../catalog/catalog-store.js';
-import { FeedBadge } from '../catalog/feed-badge.js';
 import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
+import { Currency } from '../../core/currency.js';
+import { CatalogLink } from '../../core/catalog-link.js';
 
 /** Подсказка под строкой цены: скидка для заказчика, контроль РРЦ, цена в каталоге, цены в прошлых КП. */
 export class PriceHints {
@@ -41,14 +40,14 @@ export class PriceHints {
 
   static _rrcText(card, rrc) {
     return {
-      stock: card.stock ? ` · ${esc(FeedBadge.stockText(card.stock))}` : '',
+      stock: card.stock ? ` · ${esc(CatalogLink.stockText(card.stock))}` : '',
       rrcText: `РРЦ ${KPGen.money(rrc.price)} ${Currency.short(rrc.cur || 'RUB')}`,
     };
   }
 
   // контроль РРЦ: цена для заказчика против рекомендованной розничной цены поставщика (позиции из товарного фида)
   static _rrc(item, unit) {
-    const card = item.catId ? CatFind.id(item.catId) : null;
+    const card = item.catId ? CatalogLink.find(item.catId) : null;
     const rrc = card && card.rrc;
     if (!rrc || !(rrc.price > 0)) return '';
     const kpRate = Currency.rate(Currency.current());
@@ -72,7 +71,7 @@ export class PriceHist {
    * @returns {object|null}
    */
   static doc(item) {
-    return CatFind.id(item.catId) || (item.name ? CatFind.name(item.name) : null);
+    return CatalogLink.find(item.catId) || (item.name ? CatalogLink.findByName(item.name) : null);
   }
 
   static _rows(card) {
@@ -129,7 +128,7 @@ export class PriceHist {
     if (!item) return;
     const lite = this.doc(item);
     if (!lite) return;
-    const rows = this._rows(await Catalog.fullDoc(lite));
+    const rows = this._rows(await CatalogLink.fullDoc(lite));
     const short = Currency.short(Currency.current());
     const modal = new Modal(
       `<div class="dlg-h"><h3>Цены в прошлых КП</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>

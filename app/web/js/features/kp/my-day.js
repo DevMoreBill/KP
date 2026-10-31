@@ -1,8 +1,8 @@
 import { MyPrefs } from './my-prefs.js';
-import { Auth } from './auth.js';
 import { Managers } from './managers.js';
 import { FEAT } from '../../core/features.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
+import { Auth } from '../../core/auth.js';
 
 /** Кабинет менеджера — главный экран и точка входа: открывается при запуске всегда. */
 export class MyDay {

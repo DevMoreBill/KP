@@ -7,7 +7,6 @@ import { AsmItem } from './asm-item.js';
 import { AsmTab } from './asm-tab.js';
 import { ContainerKind } from './container-kind.js';
 import { ContainerPart, StationModsText } from './container-part.js';
-import { Kit } from './kit.js';
 import { DrawPic } from './draw-pic.js';
 import { KitActions } from './kit-actions.js';
 import { KitContainer } from './kit-container.js';
@@ -28,6 +27,7 @@ import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpState } from '../../core/state.js';
 import { CoverHint } from './cover-hint.js';
+import { Kit } from '../../core/kit.js';
 
 export const KIT = {
   AsmActions,

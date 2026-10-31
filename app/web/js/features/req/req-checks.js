@@ -5,7 +5,7 @@ import { GensetSizing } from '../calc/genset-sizing.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
-import { Kit } from '../kit/kit.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Что даёт состав станции против требований: производительность, давление, безмасляные компрессоры, шкафы АВР и АСУ ТП,

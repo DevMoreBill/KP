@@ -1,6 +1,6 @@
 import { esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { Translit } from '../doc/translit.js';
+import { Translit } from '../../core/translit.js';
 /** Форма категории оборудования: основное, параметры таблицей с галочками, быстрые опции, кнопки фото, JSON. */
 export class TypeForm {
   static OTHER = 'Прочее';

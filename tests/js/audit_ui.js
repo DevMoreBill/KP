@@ -183,7 +183,7 @@ check('сохранение КП: сделка, которую назначил 
 
 check('строка журнала по номеру — седьмой среди похожих номеров («КП сохранено», «Ход сделки» из напоминаний; было: первые 5 и 1)', async ()=>{
   const { Api }=mod('core/net.js');
-  const { KpSaved }=mod('features/kp/kp-saved.js');
+  const { KpSaved }=mod('features/doc/kp-saved.js');
   const rows=Array.from({ length:7 }, (_, i)=>({ id:'k'+i, number:'2026-100'+(i ? i : ''), client:'ООО «А»', status:'sent' }));
   // сервер отдаёт не больше limit строк, найденных по части номера
   const answer=async url=>({ items:rows.slice(0, Number(new URL(url, 'http://kp').searchParams.get('limit'))) });

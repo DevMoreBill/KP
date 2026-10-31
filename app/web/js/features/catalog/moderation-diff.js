@@ -1,8 +1,8 @@
-import { Currency } from '../kp/currency.js';
 import { Fmt } from '../../core/str.js';
 import { SpecValues } from '../../core/spec-values.js';
 import { esc } from '../../core/util.js';
 import { EquipTypes } from '../../core/equip-types.js';
+import { Currency } from '../../core/currency.js';
 /** Правка на модерации «было → стало»: значения полей с выделением изменённого (слова, блоки описания, строки таблиц). */
 export class ModerationDiff {
   static ABSENT = '__absent__';

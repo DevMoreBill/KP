@@ -4,13 +4,10 @@ import { AppTabs } from '../../core/app-tabs.js';
 import { KpState, LocalDraft, S } from '../../core/state.js';
 import { Modal } from '../../core/modal.js';
 import { Toast } from '../../core/toast.js';
-import { $, esc, Uid } from '../../core/util.js';
-import { CatalogWindow } from '../catalog/catalog-window.js';
-import { CatalogEditor } from '../catalog/catalog-edit.js';
-import { KpSave } from '../doc/kp-save.js';
+import { esc, Uid } from '../../core/util.js';
 import { KpEconomics } from './price-calc.js';
-import { StationImages } from '../station/station-images.js';
 import { KpForm } from '../../core/kp-form.js';
+import { DocLink } from '../../core/doc-link.js';
 
 /**
  * Несколько КП в работе — каждое своей вкладкой. Открыто всегда одно (`S`), остальные лежат целиком в своих вкладках и
@@ -236,11 +233,11 @@ export class KpTabs {
 
   // переключение не начинается, пока идёт другое или сохраняется КП в журнал
   static _free() {
-    if (CatalogEditor.session) {
+    if (KpState.paused()) {
       Toast.show('Сначала сохраните или закройте позицию каталога');
       return false;
     }
-    if (!this.busy && !Drafts.paused && !KpSave.busy) return true; // сборка файла идёт до паузы черновика
+    if (!this.busy && !Drafts.paused && !DocLink.saving()) return true; // сборка файла идёт до паузы черновика
     Toast.show('Подождите — КП ещё сохраняется');
     return false;
   }
@@ -260,8 +257,7 @@ export class KpTabs {
     document.querySelectorAll('dialog[open]:modal').forEach(dialog => dialog.close());
     AppTabs.close('item');
     AppTabs.close('deal');
-    if ($('#catdlg')?.open && CatalogWindow.win.optFor != null) AppTabs.close('cat');
-    StationImages.cancel();
+    document.dispatchEvent(new Event('kp:leave'));
   }
 
   static async _park() {
@@ -285,7 +281,7 @@ export class KpTabs {
     KpForm.render();
     KpState.persist();
     KpState.flush();
-    if ($('#catdlg')?.open) CatalogWindow.win.foot();
+    document.dispatchEvent(new Event('kp:enter'));
     window.scrollTo({ top: 0 });
   }
 

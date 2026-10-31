@@ -1,7 +1,7 @@
 import { FEAT } from '../../core/features.js';
 import { esc } from '../../core/util.js';
-import { Currency } from '../kp/currency.js';
 import { Str } from '../../core/str.js';
+import { Currency } from '../../core/currency.js';
 /** РРЦ и наличие у поставщика (позиции из товарного фида, feeds.py): значки в списке и карточке каталога. */
 export class FeedBadge {
   static _qtyText(stock) {

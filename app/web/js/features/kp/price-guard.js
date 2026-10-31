@@ -1,5 +1,4 @@
 import { PriceHist } from './price-hints.js';
-import { Currency } from './currency.js';
 import { FEAT } from '../../core/features.js';
 import { Modal } from '../../core/modal.js';
 import { esc, isoDay } from '../../core/util.js';
@@ -9,6 +8,7 @@ import { RateSource } from './rate-source.js';
 import { WorkCalendar } from '../../core/date-picker.js';
 import { MarginLight } from '../../core/margin-light.js';
 import { DealLink } from '../../core/deal-link.js';
+import { Currency } from '../../core/currency.js';
 
 /** Проверка цен перед сохранением и отправкой КП: ниже закупки, маржа ниже красного порога, курс ЦБ старше суток. */
 export class PriceGuard {

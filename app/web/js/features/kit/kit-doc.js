@@ -1,4 +1,3 @@
-import { Kit } from './kit.js';
 import { FEAT } from '../../core/features.js';
 import { StationPurpose } from './station-spec.js';
 import { StationCalc } from '../calc/station-calc.js';
@@ -8,6 +7,7 @@ import { S } from '../../core/state.js';
 import { SupplyDocs } from './supply-docs.js';
 import { StationDesign } from './station-design.js';
 import { StationDoc } from './station-doc.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Сборка в документе КП, экономике сделки и логистике: шаблон, умеющий сборки, получает состав как есть (`data`), любой

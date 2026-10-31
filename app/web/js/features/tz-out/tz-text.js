@@ -19,7 +19,7 @@ import { KitView } from '../kit/kit-view.js';
 import { S } from '../../core/state.js';
 import { ContainerKind } from '../kit/container-kind.js';
 import { StationReq } from '../req/station-req.js';
-import { Kit } from '../kit/kit.js';
+import { Kit } from '../../core/kit.js';
 
 /** Текст ТЗ на сборку станции: разделы по порядку, нумерация — сквозная. */
 export class TzText {

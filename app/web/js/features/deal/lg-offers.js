@@ -8,12 +8,12 @@ import { LgGeo } from './lg-geo.js';
 import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
 import { FEAT } from '../../core/features.js';
-import { Currency } from '../kp/currency.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { KpState } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Предложения перевозчиков (ATI.SU, ПЭК, Энергия, Деловые Линии, КИТ, СДЭК, Возовоз, ЖелДорЭкспедиция — сервер

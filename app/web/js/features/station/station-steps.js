@@ -1,5 +1,5 @@
-import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Три шага над «Подбором станции»: требования → подбор → проверка и КП. Готовый шаг — ✓, текущий — выделен; нажатие

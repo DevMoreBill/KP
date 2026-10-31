@@ -1,4 +1,3 @@
-import { Kit } from './kit.js';
 import { KitPick } from './kit-pick.js';
 import { NeedPick } from './need-pick.js';
 import { StationAuto, StationName } from './station-auto.js';
@@ -23,6 +22,7 @@ import { StationReq } from '../req/station-req.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from './station-size.js';
 import { StationPlan } from './station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —

@@ -3,8 +3,8 @@ import { DealTerms } from './deal-terms.js';
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { XlsxBook } from '../../core/xlsx.js';
 import { IncomeTax } from '../../core/income-tax.js';
-import { Currency } from '../kp/currency.js';
 import { S } from '../../core/state.js';
+import { Currency } from '../../core/currency.js';
 
 /** Таблицы листа «Сводка»: позиции, себестоимость, поставщики, оплата заказчика, деньги и налоги, замечания. */
 export class DealXlsxSummaryTables {

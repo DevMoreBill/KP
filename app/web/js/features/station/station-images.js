@@ -9,12 +9,12 @@ import { StationRender } from '../view/station-render.js';
 import { PhotoTint } from '../view/photo-tint.js';
 import { DrawPic } from '../kit/draw-pic.js';
 import { EskdFont } from '../eskd/eskd-font.js';
-import { Kit } from '../kit/kit.js';
 import { StationUi } from './station-ui.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 /**
  * Картинки станции для КП по расстановке: 3D-вид — главное фото, виды снаружи с четырёх сторон, габаритный чертёж (все
  * листы) и схема — в изображениях после характеристик. Своё фото менеджера не заменяется; убранное менеджером — выключает
@@ -334,6 +334,11 @@ export class StationImages {
     for (const item of S.items) if (await this.sync(item)) changed = true;
     if (changed) KpState.persist();
     return changed;
+  }
+
+  /** Переключили КП (вкладки КП) — отложенные пересборки отменяются. */
+  static listen() {
+    document.addEventListener('kp:leave', () => this.cancel());
   }
 
   /** Отложенные пересборки — отменить (открыли другое КП: его станции пересоберутся, когда их тронут). */

@@ -20,12 +20,12 @@ import { KitPart } from '../kit/kit-part.js';
 import { Api } from '../../core/net.js';
 import { StationAuto, StationName } from '../kit/station-auto.js';
 import { StationReq } from '../req/station-req.js';
-import { Kit } from '../kit/kit.js';
 import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { StationSize } from '../kit/station-size.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {

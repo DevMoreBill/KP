@@ -1,4 +1,3 @@
-import { Kit } from './kit.js';
 import { KitPart } from './kit-part.js';
 import { StationDefaults } from './station-defaults.js';
 import { StationAuto, StationName } from './station-auto.js';
@@ -16,6 +15,7 @@ import { Str } from '../../core/str.js';
 import { Attrs, CatAttrs } from '../../core/item-attrs.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationPlan } from './station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций

@@ -1,15 +1,11 @@
-import { KpLead } from '../kp/kp-lead.js';
 import { PriceAge } from './price-age.js';
 import { CatalogCache } from './catalog-cache.js';
 import { Catalog, CatalogStore, CatFind } from './catalog-store.js';
 import { Logos } from './image-slots.js';
-import { Kit } from '../kit/kit.js';
-import { Auth } from '../kp/auth.js';
 import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Str } from '../../core/str.js';
 import { KpState, S } from '../../core/state.js';
-import { Currency } from '../kp/currency.js';
 import { CatFeatures } from '../kit/kit-part.js';
 import { PriceCalc } from '../kp/price-calc.js';
 import { ItemSpec } from '../../core/item-spec.js';
@@ -23,6 +19,10 @@ import { CardRules } from './card-rules.js';
 import { AdminSession } from '../../core/net.js';
 import { CoverSync } from '../kit/cover-sync.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpLead } from './kp-lead.js';
+import { Kit } from '../../core/kit.js';
+import { Auth } from '../../core/auth.js';
+import { Currency } from '../../core/currency.js';
 
 /** Позиция КП из карточки каталога: всё содержимое карточки, цена — в валюте КП, без следов прежнего оборудования. */
 export class CatalogFill {

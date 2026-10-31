@@ -1,7 +1,7 @@
-import { Currency } from './currency.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpState, S } from '../../core/state.js';
+import { Currency } from '../../core/currency.js';
 
 /** Цена продажи по закупке и марже (подстановка модели из каталога без цены); округление цен КП. */
 export class PriceCalc {

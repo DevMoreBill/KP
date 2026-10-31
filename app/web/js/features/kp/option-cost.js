@@ -2,10 +2,10 @@ import { FEAT } from '../../core/features.js';
 import { KpState, S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { CbrRates } from './cbr-rates.js';
-import { Currency } from './currency.js';
 import { InputNum } from '../../core/input-num.js';
 import { Money } from '../../core/money.js';
 import { DealLink } from '../../core/deal-link.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Закупка опций и услуг позиции: цена за единицу и валюта. Одно поле — в «Опциях и услугах» позиции и в закупке

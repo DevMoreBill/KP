@@ -1,17 +1,17 @@
 import { CatFind } from '../features/catalog/catalog-store.js';
 import { QuickFind } from '../features/catalog/quick-find.js';
 import { Price } from '../core/str.js';
-import { Currency } from '../features/kp/currency.js';
 import { StationUi } from '../features/station/station-ui.js';
 import { ItemSpec } from '../core/item-spec.js';
 import { Attrs } from '../core/item-attrs.js';
-import { Kit } from '../features/kit/kit.js';
 import { FEAT } from '../core/features.js';
 import { CatSections } from '../features/catalog/cat-sections.js';
 import { $, esc } from '../core/util.js';
 import { EquipTypes } from '../core/equip-types.js';
 import { KpState, S } from '../core/state.js';
 import { UiKit } from '../core/ui-kit.js';
+import { Currency } from '../core/currency.js';
+import { Kit } from '../core/kit.js';
 
 /** Раздел 2 «Оборудование»: плитки видов оборудования (пустое КП) или карточки позиций; строка быстрого поиска. */
 export class EquipStep {

@@ -13,7 +13,6 @@ import { Catalog, CatalogStore } from './catalog-store.js';
 import { Suppliers } from './suppliers.js';
 import { Morph } from '../../core/morph.js';
 import { S } from '../../core/state.js';
-import { Auth } from '../kp/auth.js';
 import { Api } from '../../core/net.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Modal } from '../../core/modal.js';
@@ -21,6 +20,7 @@ import { $, esc } from '../../core/util.js';
 import { Toast } from '../../core/toast.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Окно каталога: отбор сверху, фильтры и категории слева, список с отметками, карточка-предпросмотр справа.
@@ -77,6 +77,13 @@ export class CatalogWindow {
       },
       true,
     );
+    // переключили КП: каталог, выбирающий опции позиции прежнего КП, закрывается; строка «В КП» — по новому КП
+    document.addEventListener('kp:leave', () => {
+      if ($('#catdlg')?.open && this.win.optFor != null) AppTabs.close('cat');
+    });
+    document.addEventListener('kp:enter', () => {
+      if ($('#catdlg')?.open) this.win.foot();
+    });
   }
 
   constructor() {

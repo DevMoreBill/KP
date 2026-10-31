@@ -8,8 +8,8 @@ import { KitDoc } from '../kit/kit-doc.js';
 import { KpState, S } from '../../core/state.js';
 import { Uid } from '../../core/util.js';
 import { Toast } from '../../core/toast.js';
-import { Auth } from '../kp/auth.js';
 import { Api } from '../../core/net.js';
+import { Auth } from '../../core/auth.js';
 
 /**
  * Поставщики сделки: справочники отдела (поставщики, коды ТН ВЭД, ключевая ставка ЦБ), условия из справочника, страна →

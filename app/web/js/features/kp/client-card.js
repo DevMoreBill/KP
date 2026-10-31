@@ -1,6 +1,5 @@
 import { KpReportView } from './kp-report-view.js';
 import { ClientStore } from './client-store.js';
-import { Currency } from './currency.js';
 import { Drafts } from './drafts.js';
 import { KpRepeat } from './kp-repeat.js';
 import { KpTrack } from './kp-track.js';
@@ -22,6 +21,7 @@ import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Карточка клиента: реквизиты, сделки и все КП клиента с итогами, контакты (звонок и письмо нажатием), объекты, заметки отдела.

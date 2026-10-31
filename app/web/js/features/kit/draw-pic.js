@@ -1,4 +1,3 @@
-import { Kit } from './kit.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { ImageFiles } from '../catalog/images.js';
@@ -9,6 +8,7 @@ import { $, esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationPlan } from './station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Свой рисунок модели для габаритного чертежа: вид спереди и сверху (PNG или JPEG) вписывается в габарит элемента вместо

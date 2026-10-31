@@ -1,4 +1,3 @@
-import { Currency } from './currency.js';
 import { KpEconomics } from './price-calc.js';
 import { KpLoader } from './reminders.js';
 import { KpReportView } from './kp-report-view.js';
@@ -11,6 +10,7 @@ import { Api } from '../../core/net.js';
 import { Modal } from '../../core/modal.js';
 import { esc, today } from '../../core/util.js';
 import { KpDate } from '../../core/kp-date.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Отчёт по КП за период (журнал → «Отчёт»): по менеджерам, категориям оборудования и клиентам — количество КП, сумма,

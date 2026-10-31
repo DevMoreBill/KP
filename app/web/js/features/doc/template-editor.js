@@ -2,7 +2,6 @@ import { KpSave } from './kp-save.js';
 import { TemplateDraft } from './template-draft.js';
 import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
-import { Translit } from './translit.js';
 import { ObjPath } from '../../core/str.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
@@ -210,7 +209,7 @@ export class TemplateEditor {
       `${(state.work && state.work.name) || 'Шаблон'} — копия`,
     );
     if (!name) return undefined;
-    const id = Translit.templateId(name);
+    const id = Templates.freeId(name);
     await Api.request(this._url(`copy?to=${encodeURIComponent(id)}&title=${encodeURIComponent(name)}`), {
       method: 'POST',
     });

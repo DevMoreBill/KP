@@ -95,10 +95,10 @@ check('цена продажи опции в своей валюте — в КП
   assert.strictEqual(KpState.itemSum(S.items[0]), 2*100000000 + 5000000 + 2*900000, 'опция — в сумме позиции');
   S.pricing.rates.USD='95'; OptionSale.syncAll();
   assert.strictEqual(opt.price, 950000, 'курс поменялся — пересчитана');
-  Currency.setKp('EUR');
+  KpCurrency.set('EUR');
   assert.strictEqual(opt.price, 9500, '100 USD × 95 / 100 = 95 EUR');
   assert.strictEqual(S.items[0].options[0].price, 50000, 'опция в валюте КП — переведена как цены');
-  Currency.setKp('USD');
+  KpCurrency.set('USD');
   assert.strictEqual(opt.price, 10000, 'валюта КП = валюта опции — та же сумма');
   assert.deepStrictEqual(OptionSale.currencies(S.items), []);
   opt.saleCur='EUR'; OptionSale.set(opt, 10000);

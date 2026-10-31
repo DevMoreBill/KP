@@ -18,12 +18,12 @@ import { StationRules } from '../rules/station-rules.js';
 import { KitNeed } from '../kit/kit-need.js';
 import { ReceiverSync } from '../req/receiver-sync.js';
 import { ReqNum } from '../req/req-num.js';
-import { Kit } from '../kit/kit.js';
 import { StationReq } from '../req/station-req.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { Mm } from '../layout/mm.js';
 import { StationSize } from '../kit/station-size.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 /** Замечания одной станции без повторов; решение раздела — только к замечанию о нехватке. */
 class FixList {
   constructor() {

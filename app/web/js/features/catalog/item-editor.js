@@ -13,12 +13,12 @@ import { StationImages } from '../station/station-images.js';
 import { $, esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
-import { Kit } from '../kit/kit.js';
 import { StationUi } from '../station/station-ui.js';
 import { AsmTab } from '../kit/asm-tab.js';
 import { KitView } from '../kit/kit-view.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Карточка позиции (окно с вкладками): основное, состав и компоновка станции, автозаполнение, описание и фото,

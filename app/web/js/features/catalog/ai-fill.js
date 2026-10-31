@@ -3,7 +3,6 @@ import { AiParse } from './ai-parse.js';
 import { AiPrompt } from './ai-prompt.js';
 import { AiOptions } from './ai-options.js';
 import { StationAuto } from '../kit/station-auto.js';
-import { Kit } from '../kit/kit.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { Str } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
@@ -16,6 +15,7 @@ import { Api } from '../../core/net.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { CoverSync } from '../kit/cover-sync.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Заполнение карточки с ИИ: объём — как у карточек этой категории в каталоге (образец — /api/ai/profile), недостающее

@@ -1,11 +1,9 @@
 import { ContainerKind } from './container-kind.js';
 import { ContainerPart } from './container-part.js';
-import { Kit } from './kit.js';
 import { KitCabinet, KitPipe, PartField } from './kit-fields.js';
 import { KitPick } from './kit-pick.js';
 import { StationAuto, StationName } from './station-auto.js';
 import { CbrRates } from '../kp/cbr-rates.js';
-import { Currency } from '../kp/currency.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { PaintView } from './paint-view.js';
 import { Toast } from '../../core/toast.js';
@@ -20,6 +18,8 @@ import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from './station-size.js';
 import { InputNum } from '../../core/input-num.js';
 import { DealLink } from '../../core/deal-link.js';
+import { Kit } from '../../core/kit.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,

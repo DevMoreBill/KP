@@ -7,9 +7,9 @@ import { CatalogSearch } from './catalog-cache.js';
 import { Debounce } from '../../core/debounce.js';
 import { $, esc } from '../../core/util.js';
 import { AdminSession } from '../../core/net.js';
-import { Auth } from '../kp/auth.js';
 import { FEAT } from '../../core/features.js';
 import { HelpLink } from '../../core/help-link.js';
+import { Auth } from '../../core/auth.js';
 
 /** Разметка окна каталога и его события (вешаются один раз на элемент окна). */
 export class CatalogEvents {

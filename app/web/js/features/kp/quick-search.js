@@ -1,24 +1,22 @@
 import { ClientCard } from './client-card.js';
 import { ClientMatchText } from './client-find.js';
 import { ClientStore } from './client-store.js';
-import { Currency } from './currency.js';
 import { KpRepeat } from './kp-repeat.js';
 import { MyDay } from './my-day.js';
 import { KpLoader } from './reminders.js';
-import { CatalogWindow } from '../catalog/catalog-window.js';
 import { Journal } from './journal.js';
 import { AppTabs } from '../../core/app-tabs.js';
 import { S } from '../../core/state.js';
 import { Toast } from '../../core/toast.js';
-import { CatFind } from '../catalog/catalog-store.js';
 import { Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
 import { Debounce } from '../../core/debounce.js';
 import { Modal } from '../../core/modal.js';
-import { QuickFind } from '../catalog/quick-find.js';
 import { KpForm } from '../../core/kp-form.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
+import { Currency } from '../../core/currency.js';
+import { CatalogLink } from '../../core/catalog-link.js';
 
 /** Модели, недавно добавленные в КП (этот браузер) — для «Недавнего» в едином поиске. */
 export class RecentModels {
@@ -193,7 +191,7 @@ export class QuickSearch {
       .filter(row => row.client && !seen.has(row.client) && seen.add(row.client))
       .slice(0, this.SHOWN);
     const models = RecentModels.list()
-      .map(model => CatFind.id(model.id))
+      .map(model => CatalogLink.find(model.id))
       .filter(Boolean);
     const people = ClientCard.enabled()
       ? this._sect(
@@ -257,7 +255,7 @@ export class QuickSearch {
     // «кп Ромашка» — только журнал КП, без слова «кп» в поиске
     const query = text.replace(/^кп\s+/i, '');
     const [kps, clients, deals] = await this._search(query);
-    const catalog = QuickFind.matches(query).slice(0, this.FOUND);
+    const catalog = CatalogLink.matches(query).slice(0, this.FOUND);
     const all = catalog.length
       ? `<div class="qs-i"><button type="button" class="qs-b qs-all" data-qall><b>Все модели по «${esc(query)}» — в каталоге</b></button></div>`
       : '';
@@ -328,15 +326,15 @@ export class QuickSearch {
     qcmd: key => QuickCommands.run(key),
     qback: () => AppTabs.open(AppTabs.HOME),
     qadd: id => {
-      const item = CatFind.id(id);
+      const item = CatalogLink.find(id);
       if (!item) return;
       KpForm.open('equip');
-      QuickFind.add(item);
+      CatalogLink.add(item);
       Toast.show(`В КП: ${item.name} — позиций ${S.items.length}. Можно искать и добавлять дальше`);
     },
     qcat: (id, query) => {
-      const item = CatFind.id(id);
-      CatalogWindow.open({ q: item ? item.name : query });
+      const item = CatalogLink.find(id);
+      CatalogLink.open({ q: item ? item.name : query });
     },
   };
 
@@ -354,7 +352,7 @@ export class QuickSearch {
     if (!button.dataset.qadd) modal.close(); // «В КП» — окно остаётся: можно добавить ещё
     const key = Object.keys(this._ACTIONS).find(name => button.dataset[name]);
     if (key) this._ACTIONS[key](button.dataset[key], query);
-    else if (button.hasAttribute('data-qall')) CatalogWindow.open({ q: query });
+    else if (button.hasAttribute('data-qall')) CatalogLink.open({ q: query });
   }
 
   /** Ctrl+K (Cmd+K на Mac) — единый поиск откуда угодно. */

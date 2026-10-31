@@ -8,7 +8,6 @@ import { StationDefaults } from '../kit/station-defaults.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { KpState, S } from '../../core/state.js';
 import { StationView3D } from '../draw/station-view3d.js';
-import { Kit } from '../kit/kit.js';
 import { StationUi } from '../station/station-ui.js';
 import { StationReq } from '../req/station-req.js';
 import { TzPick } from '../tz/tz-pick.js';
@@ -23,6 +22,7 @@ import { DefRegistry } from '../../core/defaults.js';
 import { StationLibrary } from './station-library.js';
 import { StationWays } from './station-ways.js';
 import { StationPlan } from '../kit/station-plan.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе

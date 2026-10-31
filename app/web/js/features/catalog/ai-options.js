@@ -2,9 +2,9 @@ import { FEAT } from '../../core/features.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { Uid, esc } from '../../core/util.js';
-import { Currency } from '../kp/currency.js';
 import { OptionSale } from '../kp/option-sale.js';
 import { Money } from '../../core/money.js';
+import { Currency } from '../../core/currency.js';
 
 /**
  * Опции и комплектация из ответа ИИ: аксессуары с ценой (из КП поставщика — закупкой), входящие в состав — «включено»,

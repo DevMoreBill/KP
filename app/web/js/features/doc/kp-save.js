@@ -3,7 +3,6 @@ import { KpDocx } from './kp-docx.js';
 import { KpFile } from './kp-file.js';
 import { PdfExport } from './pdf-export.js';
 import { Templates } from './templates.js';
-import { KpSaved } from '../kp/kp-saved.js';
 import { PriceGuard } from '../kp/price-guard.js';
 import { FEAT } from '../../core/features.js';
 import { DealXlsx } from '../deal/deal-xlsx.js';
@@ -13,7 +12,6 @@ import { KpEconomics } from '../kp/price-calc.js';
 import { ClientFields, ClientStore } from '../kp/client-store.js';
 import { CatalogSync } from '../catalog/catalog-fill.js';
 import { DrawPic } from '../kit/draw-pic.js';
-import { Kit } from '../kit/kit.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { DealDefaults } from '../deal/deal-defaults.js';
 import { Api, ImgUpload, Srv } from '../../core/net.js';
@@ -30,6 +28,8 @@ import { Tender } from '../../core/tender.js';
 import { CondMemory } from '../../core/cond-memory.js';
 import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
+import { KpSaved } from './kp-saved.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,

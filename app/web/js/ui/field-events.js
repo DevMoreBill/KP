@@ -7,7 +7,7 @@ import { CatFind, Catalog } from '../features/catalog/catalog-store.js';
 import { CatalogEditor } from '../features/catalog/catalog-edit.js';
 import { Toast } from '../core/toast.js';
 import { Logos } from '../features/catalog/image-slots.js';
-import { Currency, Discount } from '../features/kp/currency.js';
+import { Discount, KpCurrency } from '../features/kp/currency.js';
 import { PriceHints } from '../features/kp/price-hints.js';
 import { KpFile } from '../features/doc/kp-file.js';
 import { $ } from '../core/util.js';
@@ -159,7 +159,7 @@ export class FieldEvents {
   static _pricing(target) {
     const key = target.dataset.pr;
     if (key === 'cur') {
-      Currency.setKp(target.value);
+      KpCurrency.set(target.value);
       return;
     }
     S.pricing[key] = target.type === 'checkbox' ? target.checked : target.value;

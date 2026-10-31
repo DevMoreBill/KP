@@ -44,6 +44,9 @@ import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpState } from '../../core/state.js';
 import { AiOptions } from './ai-options.js';
+import { KpLead } from './kp-lead.js';
+import { QuickFind } from './quick-find.js';
+import { CatalogLink } from '../../core/catalog-link.js';
 
 export const CATALOG = {
   AiChat,
@@ -94,6 +97,7 @@ export const CATALOG = {
   ItemEditor,
   ItemLinks,
   ItemTabs,
+  KpLead,
   Logos,
   MigrationNotice,
   ModerationDiff,
@@ -132,3 +136,13 @@ AiOptions.listen();
 LISTS.ready(AiChat.LISTS);
 // правка позиции каталога идёт в КП — черновик КП не пишется
 KpState.paused = () => !!CatalogEditor.session;
+// КП просит каталог (CatalogLink) — без import каталога
+CatalogLink.connect({
+  find: id => CatFind.id(id),
+  findByName: name => CatFind.name(name),
+  fullDoc: card => Catalog.fullDoc(card),
+  stockText: stock => FeedBadge.stockText(stock),
+  matches: query => QuickFind.matches(query),
+  add: card => QuickFind.add(card),
+  open: opts => CatalogWindow.open(opts),
+});

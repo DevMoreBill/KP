@@ -1,16 +1,16 @@
-import { Currency } from './currency.js';
-import { DocsGen } from '../doc/docs-gen.js';
-import { KpFilesPanel } from './kp-files.js';
-import { KpTrack } from './kp-track.js';
-import { NewKp } from './new-kp.js';
-import { Presets } from './presets.js';
-import { Reminders } from './reminders.js';
+import { DocsGen } from './docs-gen.js';
+import { KpFilesPanel } from '../kp/kp-files.js';
+import { KpTrack } from '../kp/kp-track.js';
+import { NewKp } from '../kp/new-kp.js';
+import { Presets } from '../kp/presets.js';
+import { Reminders } from '../kp/reminders.js';
 import { Toast } from '../../core/toast.js';
 import { FEAT } from '../../core/features.js';
 import { Modal } from '../../core/modal.js';
 import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Api, Srv } from '../../core/net.js';
+import { Currency } from '../../core/currency.js';
 
 /** Окно «КП сохранено»: следующие шаги в одном месте — файл, письмо клиенту, ход сделки, заготовка, новое КП. */
 export class KpSaved {

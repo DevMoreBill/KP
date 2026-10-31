@@ -1,7 +1,7 @@
-import { Currency } from '../kp/currency.js';
-import { Uid } from '../../core/util.js';
-import { Attrs } from '../../core/item-attrs.js';
-import { EquipTypes } from '../../core/equip-types.js';
+import { Uid } from './util.js';
+import { Attrs } from './item-attrs.js';
+import { EquipTypes } from './equip-types.js';
+import { Currency } from './currency.js';
 /**
  * Сборка: одна позиция КП из нескольких элементов (`x.kit.parts`) — основное оборудование (`role: 'main'`), контейнер
  * (`role: 'container'`) и прочие элементы; закупка изделия — сумма закупок элементов по курсам КП.

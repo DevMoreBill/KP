@@ -1,6 +1,5 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { ContainerPart } from './container-part.js';
-import { Kit } from './kit.js';
 import { ImageFiles } from '../catalog/images.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Api, ImgUpload } from '../../core/net.js';
@@ -13,6 +12,7 @@ import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationPlan } from './station-plan.js';
 import { InputNum } from '../../core/input-num.js';
+import { Kit } from '../../core/kit.js';
 
 /**
  * Окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и
