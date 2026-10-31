@@ -2,7 +2,6 @@ import { ExpertLog } from '../req/expert-log.js';
 import { ReceiverSync } from '../req/receiver-sync.js';
 import { ReqNum } from '../req/req-num.js';
 import { StationReq } from '../req/station-req.js';
-import { StationQuick } from './station-quick.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
@@ -12,18 +11,26 @@ import { SupplyDocs } from '../kit/supply-docs.js';
 import { esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
-import { StationParams } from '../kit/station-params.js';
 import { Spoiler } from '../../core/spoiler.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { StationDefaults } from '../kit/station-defaults.js';
 import { ReqChecks } from '../kit/req-checks.js';
+import { StationAuto } from '../kit/station-auto.js';
 
 /**
  * Форма «Все требования, условия расчёта и проверки» (под раскрывающимся блоком «Подбора станции»): проверки состава,
  * итог подбора, ресиверы, условия расчёта, режим «эксперт» ворот и вентиляции, особые требования; и изменение её полей.
  */
 export class ReqForm {
+  static AUTO = ['flow', 'pressure', 'kw', 'q', 'head'];
+  /**
+   * Подбор заново по изменённому требованию (StationQuick.auto) — подключает station/index.js: быстрый подбор встраивает
+   * форму (циклы import).
+   * @type {(index: number, field: string) => void}
+   */
+  static autoPick = () => {};
+
   static STATIONS = ['comp', 'dgu', 'pump'];
   static VENT_COMP_ONLY = /^vent(K|Dtc)$/;
 
@@ -216,7 +223,7 @@ export class ReqForm {
     const key = target.dataset.rk;
     const field = this._store(item, target, key);
     ExpertLog.note(item);
-    if (target.dataset.stpar != null) StationParams.changed(item);
+    if (target.dataset.stpar != null) ReqForm.paramsChanged(item);
     if (key === 'recv' || key === 'recvOut') this._relayout(item);
     this._syncReceivers(item, field);
     if (this._repick({ index, item, target, key, field })) return;
@@ -257,13 +264,13 @@ export class ReqForm {
   static _repick({ index, item, target, key, field }) {
     if (key === 'basis' && Kit.main(item)) {
       KpState.persist();
-      StationQuick.auto(index, 'flow');
+      ReqForm.autoPick(index, 'flow');
       return true;
     }
-    if (!StationQuick.AUTO.includes(field) || !target.dataset.p || !Kit.main(item)) return false;
+    if (!ReqForm.AUTO.includes(field) || !target.dataset.p || !Kit.main(item)) return false;
     StationReq.ensure(item)[field] = target.value;
     KpState.persist();
-    StationQuick.auto(index, field);
+    ReqForm.autoPick(index, field);
     return true;
   }
 
@@ -273,5 +280,16 @@ export class ReqForm {
     Kit.sync(item);
     this._relayout(item);
     Toast.show(`Добавлено в состав: ${added.join(', ')}`);
+  }
+
+  /**
+   * Строки изменились — таблица характеристик станции заново (пока её не правили вручную).
+   * @param {object} item
+   */
+  static paramsChanged(item) {
+    setTimeout(() => {
+      StationAuto.fill(item);
+      KpState.persist();
+    }, 0);
   }
 }

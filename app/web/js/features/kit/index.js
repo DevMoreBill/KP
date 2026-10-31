@@ -13,7 +13,7 @@ import { KitDoc } from './kit-doc.js';
 import { KitCabinet, KitPipe } from './kit-fields.js';
 import { KitNeed } from './kit-need.js';
 import { KitPart } from './kit-part.js';
-import { KitPick, PickFilter, PickFind } from './kit-pick.js';
+import { KitPick } from './kit-pick.js';
 import { KitScope } from './kit-scope.js';
 import { KitView } from './kit-view.js';
 import { NeedPick } from './need-pick.js';
@@ -33,6 +33,7 @@ import { KpState } from '../../core/state.js';
 import { StationLink } from '../../core/station-link.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
+import { PickFilter, PickFind } from './pick-filter.js';
 
 export const KIT = {
   AsmActions,
@@ -96,3 +97,5 @@ StationLink.connect({
 });
 // листы ЕСКД берут картинку модели из кэша загруженных (DrawPic) — без import состава
 EquipIcon.picture = src => DrawPic.data(src);
+// окно подбора стоит на KitNeed — «Нужно…» и «⇄ Заменить» открывают его портом
+KitNeed.pickOpen = (index, opts) => KitPick.open(index, opts);

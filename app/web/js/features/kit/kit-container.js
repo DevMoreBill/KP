@@ -1,5 +1,4 @@
 import { StationPaint } from '../layout/station-paint.js';
-import { KitView } from './kit-view.js';
 import { DimInput } from '../../core/dim-input.js';
 import { PaintView } from './paint-view.js';
 import { StationGeo } from '../layout/station-geo.js';
@@ -10,11 +9,24 @@ import { Spoiler } from '../../core/spoiler.js';
 import { Money } from '../../core/money.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { StationReq } from '../req/station-req.js';
 /**
  * Контейнер станции во вкладке «Состав станции»: тип, размер, утепление, климат, сборщик и закупка — одной строкой;
  * крыша, пол и окраска — под раскрытием; системы контейнера — кнопками. Контейнер не выбран — плитки типов.
  */
 export class KitContainer {
+  /**
+   * Система контейнера включена: своё значение, иначе по умолчанию (рекуперация — у компрессорных и ДГУ).
+   * @param {object} item
+   * @param {object} part контейнер
+   * @param {string} id система
+   * @returns {boolean}
+   */
+  static sysOn(item, part, id) {
+    const value = (part.sys || {})[id];
+    return value ?? (id === 'rec' ? StationReq.kind(item) !== 'pump' : !!ContainerKind.SYSTEMS_ON[id]);
+  }
+
   static KOPECKS = 100;
 
   /**
@@ -136,7 +148,7 @@ export class KitContainer {
 
   static _systems(item, index, part, j) {
     return ContainerKind.SYSTEMS.map(([id, label, hint]) => {
-      const active = KitView.sysOn(item, part, id);
+      const active = KitContainer.sysOn(item, part, id);
       return `<button type="button" class="chip sm${active ? ' on' : ''}" data-a="kitSys" data-i="${index}" data-j="${j}" data-sys="${id}" aria-pressed="${!!active}" title="${esc(hint)}">${esc(label)}</button>`;
     }).join('');
   }

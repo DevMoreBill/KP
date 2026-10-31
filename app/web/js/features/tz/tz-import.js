@@ -22,7 +22,8 @@ import { Spoiler } from '../../core/spoiler.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
-import { TzPick } from '../kit/tz-pick.js';
+import { TzBuild } from '../kit/tz-build.js';
+import { TzValues } from './tz-values.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -32,12 +33,6 @@ export class TzImport {
     ['dgu', 'Дизель-генераторная', 'st_dgu'],
   ];
   static ACCEPT = '.pdf,.docx,.xlsx,.odt,.ods,.rtf,.txt,.png,.jpg,.jpeg,.tif,.tiff,.bmp';
-  static STATUS = {
-    found: ['найдено в ТЗ', 'on'],
-    default: ['принято по умолчанию', 'warn'],
-    missing: ['отсутствует', 'off'],
-    conflict: ['противоречие', 'bad'],
-  };
   /** Числовые поля: сравнение с ИИ и запись в станцию. */
   static NUMS = [
     'flow',
@@ -79,23 +74,6 @@ export class TzImport {
     fire: 'Категория помещения',
     noise: 'Шум, дБА',
     industry: 'Отрасль заказчика',
-  };
-  /** Значения выбора — словами. */
-  static VAL = {
-    basis: { fad: 'FAD — на выходе компрессора', normal: 'нормальные м³ (0 °C)', std: 'стандартные м³ (20 °C)' },
-    mode: { prime: 'основной (PRP)', standby: 'резервный (ESP)' },
-    start: {
-      direct: 'прямой',
-      stardelta: 'звезда — треугольник',
-      soft: 'плавный пуск',
-      vsd: 'частотный преобразователь',
-    },
-    reserve: { 0: 'без резерва', 1: 'N + 1', 2: 'N + 2' },
-    rel: { 1: 'I', 2: 'II', 3: 'III' },
-    industry: {
-      food: 'пищевая — компрессоры безмасляные',
-      med: 'медицинская, фармацевтическая — компрессоры безмасляные',
-    },
   };
   static DOC_KIND = { 'pdf-ocr': 'PDF-скан, распознан', image: 'картинка, распознана' };
   /** Ответ ИИ — в пределах полей окна. */
@@ -200,16 +178,12 @@ export class TzImport {
     this.redraw();
   }
 
-  static _empty(value) {
-    return value == null || value === '';
-  }
-
   /** Станция уже есть: чего нет в ТЗ — из её требований и контейнера. */
   static _fromStation(need, station) {
     const container = Kit.container(station);
     if (!need.cont && container) need.cont = container.ctype;
     for (const [k, value] of Object.entries(StationReq.of(station)))
-      if (!['src', 'pick'].includes(k) && this._empty(need[k]) && !this._empty(value)) need[k] = value;
+      if (!['src', 'pick'].includes(k) && TzValues.empty(need[k]) && !TzValues.empty(value)) need[k] = value;
     if (!need.air && StationPlan.opts(station).air) need.air = StationPlan.opts(station).air;
     if (container) this._fromCont(need, container);
   }
@@ -373,17 +347,6 @@ export class TzImport {
           <button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="button" data-tzok>${this._okLabel(cur, station)}</button></div></div>`;
   }
 
-  /** Значение параметра анкеты словами. */
-  static val(key, value) {
-    if (value === true) return 'да';
-    if (this._empty(value)) return '—';
-    const names = this.VAL[key];
-    if (names && names[value] != null) return names[value];
-    return String(value)
-      .replace('.', ',')
-      .replace(/^-(?=\d)/, '−');
-  }
-
   /** Вид документа словами. */
   static kindName(k) {
     return this.DOC_KIND[k] || String(k || '').toUpperCase();
@@ -421,15 +384,15 @@ export class TzImport {
   static _quote(field) {
     if (field.status === 'conflict')
       return (field.values || [])
-        .map(value => `${this.val(field.key, value.value)} — ${this._pg(value.page)}${value.src}`)
+        .map(value => `${TzValues.val(field.key, value.value)} — ${this._pg(value.page)}${value.src}`)
         .join(' | ');
     if (field.status === 'found') return this._pg(field.page) + (field.src || '');
     return field.why || '';
   }
 
   static _row(field) {
-    const [label, cls] = this.STATUS[field.status] || ['', ''];
-    return `<tr><td>${esc(field.label)}</td><td><span class="chip sm ${cls}">${esc(label)}</span></td><td>${esc(this.val(field.key, field.value))}</td><td class="muted">${esc(this._quote(field))}</td></tr>`;
+    const [label, cls] = TzValues.STATUS[field.status] || ['', ''];
+    return `<tr><td>${esc(field.label)}</td><td><span class="chip sm ${cls}">${esc(label)}</span></td><td>${esc(TzValues.val(field.key, field.value))}</td><td class="muted">${esc(this._quote(field))}</td></tr>`;
   }
 
   /** Анкета: статус каждого параметра, значение, цитата со страницей или почему принято по умолчанию. */
@@ -557,7 +520,7 @@ export class TzImport {
   /** Одно поле ответа ИИ: 1 — поле дополнено. */
   static _aiKey(ctx, k, value) {
     const { q: need } = ctx;
-    if (this._empty(value) || typeof value === 'object' || k === 'notes' || k === 'kind')
+    if (TzValues.empty(value) || typeof value === 'object' || k === 'notes' || k === 'kind')
       return this._aiNotes(need, k, value);
     if (StationReq.OPTS.some(opt => opt[0] === k)) return this._aiFlag(need, k, value);
     const val = Object.hasOwn(this.AI_VAL, k) ? this.AI_VAL[k](value) : String(value).slice(0, this.LIMIT.value);
@@ -565,7 +528,7 @@ export class TzImport {
       ctx.diff.push({ key: k, rule: ctx.rule[k], ai: val, same: this._aiSame(k, val, ctx.rule[k]) });
       return 0;
     }
-    if (!this._empty(need[k])) return 0;
+    if (!TzValues.empty(need[k])) return 0;
     need[k] = val;
     ctx.diff.push({ key: k, rule: null, ai: val, same: false });
     return 1;
@@ -611,7 +574,7 @@ export class TzImport {
     const { x: station, i } = this._station(cur, need);
     this._container(station, need);
     const req = this._req(station, need, cur);
-    if (cur.pick) req.pick = (await TzPick.assemble(station, this._pickQ(need))).slice(0, this.LIMIT.pick);
+    if (cur.pick) req.pick = (await TzBuild.assemble(station, this._pickQ(need))).slice(0, this.LIMIT.pick);
     else this._fill(station, need, req);
     KpState.persist();
     this.m.close();
@@ -680,7 +643,7 @@ export class TzImport {
   }
 
   static _reqValues(req, need) {
-    for (const k of this.NUMS) if (!this._empty(need[k])) req[k] = this._numStr(need[k]);
+    for (const k of this.NUMS) if (!TzValues.empty(need[k])) req[k] = this._numStr(need[k]);
     for (const k of ['recv', 'reserve', 'work', 'fire']) if (need[k] != null) req[k] = need[k];
     if (need.kind === 'comp' && StationReq.INDUSTRY.some(opt => opt[0] === need.industry)) req.industry = need.industry;
     for (const [k, list] of [

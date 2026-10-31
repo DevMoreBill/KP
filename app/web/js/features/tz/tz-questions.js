@@ -1,10 +1,10 @@
 import { DocxWriter } from '../doc/docx-writer.js';
-import { TzImport } from './tz-import.js';
 import { S } from '../../core/state.js';
-import { StationUi } from '../station/station-ui.js';
 import { FileSave } from '../../core/files.js';
 import { LazyJs } from '../../core/lazy-js.js';
 import { Toast } from '../../core/toast.js';
+import { StationMeta } from '../station/station-meta.js';
+import { TzValues } from './tz-values.js';
 
 /** Вопросы заказчику по ТЗ — документ Word. */
 export class TzQuestions {
@@ -27,7 +27,7 @@ export class TzQuestions {
 
   /** Документ Word с вопросами. */
   static make(cur, questions, fields, later = []) {
-    const org = StationUi.org();
+    const org = StationMeta.org();
     const doc = new DocxWriter({
       title: 'Вопросы по техническому заданию',
       author: org,
@@ -71,8 +71,8 @@ export class TzQuestions {
       ['Параметр', 'Статус', 'Значение', 'Источник / почему'],
       fields.map(field => [
         field.label,
-        (TzImport.STATUS[field.status] || [''])[0],
-        TzImport.val(field.key, field.value),
+        (TzValues.STATUS[field.status] || [''])[0],
+        TzValues.val(field.key, field.value),
         this._source(field),
       ]),
     );
@@ -83,7 +83,7 @@ export class TzQuestions {
     if (field.status === 'found') return (field.page ? `стр. ${field.page}: ` : '') + (field.src || '');
     if (field.status === 'conflict')
       return (field.values || [])
-        .map(value => TzImport.val(field.key, value.value) + (value.page ? ` (стр. ${value.page})` : ''))
+        .map(value => TzValues.val(field.key, value.value) + (value.page ? ` (стр. ${value.page})` : ''))
         .join('; ');
     return field.why || '';
   }

@@ -24,7 +24,6 @@ import { StationModsUi } from './station-mods-ui.js';
 import { StationTidy } from '../layout/station-tidy.js';
 import { StationImages } from './station-images.js';
 import { esc } from '../../core/util.js';
-import { StationUi } from './station-ui.js';
 import { KpState } from '../../core/state.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { Spoiler } from '../../core/spoiler.js';
@@ -32,6 +31,7 @@ import { StationSize } from '../kit/station-size.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { StationMeta } from './station-meta.js';
 /**
  * Вкладка «Компоновка» карточки станции: помещается ли оборудование, замечания с решениями, разрез и виды снаружи,
  * габаритный чертёж и схема, доступ к оборудованию, подготовка воздуха, системы контейнера, расчёт и как расставляется.
@@ -60,12 +60,12 @@ export class LayoutTab {
     const dims = this._dims(plan, ContainerKind.of(container.ctype));
     const issues = this._issues(item, plan);
     const pics = plan.level !== 'error' && plan.geo.ext;
-    const meta = StationUi.meta(item, plan);
+    const meta = StationMeta.meta(item, plan);
     if (pics) this._loadAssets(item);
     StationImages.soon(item);
     const views = pics ? this._views({ item, index, plan, meta, opts }) : '';
     return `<div class="ed-sec stl">
-      <div class="stl-st ${cls}"><b>${title}</b><span>${dims}${this.sizeNote(container, index)}${StationTidy.line(plan)}${this._tidyTip(plan)}</span>${plan.suggest ? StationUi.fix(plan.suggest, index) : ''}${StationModsUi.btn(item, index, plan)}</div>
+      <div class="stl-st ${cls}"><b>${title}</b><span>${dims}${this.sizeNote(container, index)}${StationTidy.line(plan)}${this._tidyTip(plan)}</span>${plan.suggest ? StationMeta.fix(plan.suggest, index) : ''}${StationModsUi.btn(item, index, plan)}</div>
       ${this._issueBlock(item, index, plan, issues)}
       ${views}
       ${this.access(plan, item)}
@@ -206,7 +206,7 @@ export class LayoutTab {
   static _views({ item, index, plan, meta, opts }) {
     const photoOn = item.photo ? item.photo.gen === 'st3d' : opts.photo;
     const ready = StationRender.cached(plan);
-    const src = ready ? ready.src : StationUi.url(StationView3D.svg(plan, meta));
+    const src = ready ? ready.src : StationMeta.url(StationView3D.svg(plan, meta));
     if (!ready) StationRender.image(plan, meta).then(image => this._swap(image, plan.hash));
     const webgl = StationRender.ok();
     const outs = webgl
@@ -255,10 +255,10 @@ export class LayoutTab {
   }
 
   static _scheme(plan, meta, index, opts) {
-    const scheme = StationUi.scheme(plan);
+    const scheme = StationMeta.scheme(plan);
     if (!scheme) return '';
     return `<figure class="dr"><figcaption><b>${esc(scheme.title)}</b><label class="stl-chk"><input type="checkbox" data-stl="scheme" data-i="${index}"${opts.scheme ? ' checked' : ''}> в КП — после чертежа</label></figcaption>
-          <img src="${esc(StationUi.url(scheme.cls.svg(plan, meta)))}" alt="${esc(scheme.name)}"></figure>`;
+          <img src="${esc(StationMeta.url(scheme.cls.svg(plan, meta)))}" alt="${esc(scheme.name)}"></figure>`;
   }
 
   /**
@@ -302,7 +302,7 @@ export class LayoutTab {
     const count = list.length;
     const pages = list
       .map((svg, page) => {
-        const img = `<img src="${esc(StationUi.url(svg))}" alt="Габаритный чертёж станции, лист ${page + 1}">`;
+        const img = `<img src="${esc(StationMeta.url(svg))}" alt="Габаритный чертёж станции, лист ${page + 1}">`;
         return svg.includes(' rotate(90)">') ? `<div class="stl-rot">${img}</div>` : img;
       })
       .join('');

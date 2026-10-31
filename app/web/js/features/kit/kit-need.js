@@ -1,4 +1,3 @@
-import { KitPick } from './kit-pick.js';
 import { NeedPick } from './need-pick.js';
 import { StationAuto, StationName } from './station-auto.js';
 import { StationDefaults } from './station-defaults.js';
@@ -24,7 +23,7 @@ import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
 import { TzPick } from './tz-pick.js';
-import { AirCheck } from '../layout/air-check.js';
+import { KitAir } from './kit-air.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -44,38 +43,11 @@ export class KitNeed {
   static ACTIONS = { kitNeed: '_need', kitNeedAll: '_needAll', kitSwap: '_swapRow' };
   // подбор по каталогу долгий, а в одной перерисовке его спрашивают и строки «Нужно…», и «эксперт» — ответ помнится до конца шага
   static memo = null;
-
   /**
-   * Цепочка воздуха по составу (контейнер не нужен).
-   * @param {object} item позиция КП
-   * @returns {object|null} {q, bar, recs, …} или null (не компрессорная, нет компрессоров)
+   * Окно каталога для подбора (KitPick.open) — подключает kit/index.js: окно стоит на KitNeed (циклы import).
+   * @type {(index: number, opts: object) => void}
    */
-  static air(item) {
-    if (StationReq.kind(item) !== 'comp') return null;
-    const equipment = StationEquip.list(Kit.parts(item), {
-      recv: StationReq.recv(item),
-      recvOut: StationReq.recvOut(item),
-    });
-    return AirCheck.of(equipment, StationPlan.opts(item).air, StationReq.recvIn(item), StationReq.dryer(item));
-  }
-
-  /**
-   * Компрессоры состава с характеристиками.
-   * @param {object} item
-   * @returns {object[]}
-   */
-  static comps(item) {
-    return StationEquip.list(Kit.parts(item)).filter(entry => entry.kind === 'compressor' && entry.air);
-  }
-
-  /**
-   * Наибольшее давление компрессоров, бар (0 — неизвестно).
-   * @param {object} item
-   * @returns {number}
-   */
-  static bar(item) {
-    return Math.max(0, ...this.comps(item).map(entry => entry.air.bar || 0));
-  }
+  static pickOpen = () => {};
 
   /**
    * Чего не хватает (или что мало — замена).
@@ -231,7 +203,7 @@ export class KitNeed {
    * @returns {object[]}
    */
   static airRecs(item) {
-    const air = this.air(item);
+    const air = KitAir.of(item);
     if (!air) return [];
     return [...air.recs, ...this.dryerFit(item, air)]
       .sort((first, second) => this._rank(first) - this._rank(second))
@@ -361,25 +333,6 @@ export class KitNeed {
   }
 
   /**
-   * Подходит ли позиция каталога по пресету.
-   * @param {object} card
-   * @param {object|null} preset
-   * @returns {boolean}
-   */
-  static fits(card, preset) {
-    return NeedPick.fits(card, preset);
-  }
-
-  /**
-   * Наибольшее число в значении («7,5 / 10 / 13 бар» → 13).
-   * @param {*} value
-   * @returns {number|null}
-   */
-  static top(value) {
-    return NeedPick.top(value);
-  }
-
-  /**
    * Заголовок строки: «Нужно: …» / «Заменить: …».
    * @param {object} rec
    * @returns {string}
@@ -473,10 +426,10 @@ export class KitNeed {
     if (!item || !rec) return;
     if (rec.main) {
       const preset = { ...(this.mainPreset(item) || {}), replace: rec.replace };
-      KitPick.open(index, { cats: (Kit.station(item) || {}).main, role: 'main', preset });
+      this.pickOpen(index, { cats: (Kit.station(item) || {}).main, role: 'main', preset });
       return;
     }
-    KitPick.open(index, { cats: [rec.cat], name: rec.name, preset: this.preset(item, rec) });
+    this.pickOpen(index, { cats: [rec.cat], name: rec.name, preset: this.preset(item, rec) });
   }
 
   /**
@@ -622,7 +575,7 @@ export class KitNeed {
     const name = String(part.name || '').trim();
     const tag = `Замена «${name || 'элемента'}». `;
     if (part.role === 'main') {
-      KitPick.open(index, {
+      this.pickOpen(index, {
         cats: (Kit.station(item) || {}).main,
         role: 'main',
         preset: this._swapMain(item, part, tag),
@@ -633,7 +586,7 @@ export class KitNeed {
     const cats = cat && EquipTypes.list.some(type => type.id === cat) ? [cat] : null;
     const preset = this._swapRowPreset(item, part, cats);
     preset.need = tag + this._swapNeed(preset.need);
-    KitPick.open(index, { cats, role: part.role || null, name: cats ? '' : name, preset, by: part.by });
+    this.pickOpen(index, { cats, role: part.role || null, name: cats ? '' : name, preset, by: part.by });
   }
 
   static _swapRowPreset(item, part, cats) {
@@ -697,7 +650,7 @@ export class KitNeed {
       const volume = AirChain.volume(part) || 0;
       return volume > 0 ? { volume: [volume] } : {};
     }
-    const air = this.air(item);
+    const air = KitAir.of(item);
     const flow = air && air.work > 0 ? air.work : 0;
     return (kind === 'dryer' || kind === 'filter') && flow ? { flow: [AirChain.flowText(flow).replace(',', '.')] } : {};
   }

@@ -20,6 +20,7 @@ import { DealLink } from '../../core/deal-link.js';
 import { Kit } from '../../core/kit.js';
 import { Currency } from '../../core/currency.js';
 import { ContainerKind } from '../layout/container-kind.js';
+import { KitContainer } from './kit-container.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,
@@ -96,7 +97,7 @@ export class KitActions {
     const part = parts[j];
     const id = button.dataset.sys;
     part.sys = { ...(part.sys || ContainerKind.SYSTEMS_ON) };
-    part.sys[id] = !KitView.sysOn(item, part, id);
+    part.sys[id] = !KitContainer.sysOn(item, part, id);
     ContainerPart.apply(part);
     return true;
   }

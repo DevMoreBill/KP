@@ -9,12 +9,12 @@ import { StationRender } from '../view/station-render.js';
 import { PhotoTint } from '../view/photo-tint.js';
 import { DrawPic } from '../kit/draw-pic.js';
 import { EskdFont } from '../eskd/eskd-font.js';
-import { StationUi } from './station-ui.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
+import { StationMeta } from './station-meta.js';
 /**
  * Картинки станции для КП по расстановке: 3D-вид — главное фото, виды снаружи с четырёх сторон, габаритный чертёж (все
  * листы) и схема — в изображениях после характеристик. Своё фото менеджера не заменяется; убранное менеджером — выключает
@@ -69,7 +69,7 @@ export class StationImages {
     item.gallery = Array.isArray(item.gallery) ? item.gallery : [];
     const none = this._none(plan);
     this._noteIssue(item, plan, opts, none);
-    const scheme = StationUi.scheme(plan);
+    const scheme = StationMeta.scheme(plan);
     let changed = this._dropOff(item, opts, { none, scheme });
     if (none) return changed;
     this.busy.add(item.id);
@@ -127,7 +127,7 @@ export class StationImages {
       this.busy.delete(item.id);
       return this.sync(item);
     }
-    const meta = StationUi.meta(item, plan);
+    const meta = StationMeta.meta(item, plan);
     const ctx = { opts, scheme, hash: plan.hash + StationRender.brandKey(), sheetsKey: this.key(plan, meta) };
     const dropped = this._dropPartPhoto(item, opts);
     const photo = await this._photo(item, plan, meta, ctx);
@@ -397,7 +397,7 @@ export class StationImages {
    * @returns {Promise<{src: string, w: number, h: number}>}
    */
   static async raster(svg, type) {
-    const image = await ImageFiles.read(StationUi.url(svg));
+    const image = await ImageFiles.read(StationMeta.url(svg));
     const width = image.naturalWidth || image.width;
     const height = image.naturalHeight || image.height;
     const canvas = document.createElement('canvas');

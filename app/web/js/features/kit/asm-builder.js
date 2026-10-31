@@ -1,6 +1,5 @@
 import { AsmAi } from './asm-ai.js';
 import { AsmItem } from './asm-item.js';
-import { PickFilter, PickFind } from './kit-pick.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { Toast } from '../../core/toast.js';
@@ -15,6 +14,7 @@ import { Kit } from '../../core/kit.js';
 import { Currency } from '../../core/currency.js';
 import { StationWays } from './station-ways.js';
 import { WizardLink } from '../../core/wizard-link.js';
+import { PickFilter, PickFind } from './pick-filter.js';
 
 /**
  * Окно «Сборное изделие» (в окне «Добавить оборудование», `#dlg`, та же ширина и шапка, что у подбора станции):

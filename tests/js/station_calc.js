@@ -484,7 +484,7 @@ Check.run('подбор осушителя по ТЗ — с поправками
   ];
   Api.request=async u=>Catalog.cache.find(z=>u.endsWith('/'+encodeURIComponent(z.id)));
   const x=station('st_comp', {}, []);
-  return TzPick.run(x, { kind:'comp', flow:12, pressure:7, tmax:'35', air:'', reserve:'0', work:0 }).then(note=>{
+  return TzBuild.run(x, { kind:'comp', flow:12, pressure:7, tmax:'35', air:'', reserve:'0', work:0 }).then(note=>{
     // 13 м³/мин через осушитель; 35 + 5 = 40 °C (0,84), вход 50 °C (0,65), 7 бар (1): DK 1000 — 16,7 · 0,546 = 9,1 мало, DK 1450 — 13,1
     assert.ok(Kit.parts(x).some(p=>/DK 1450/.test(p.name)), note);
     assert.ok(/с поправками 13,1/.test(note), note);

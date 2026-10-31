@@ -8,13 +8,13 @@ import { StationView3D } from '../draw/station-view3d.js';
 import { TzText } from './tz-text.js';
 import { ImageFiles } from '../catalog/images.js';
 import { StationImages } from '../station/station-images.js';
-import { StationUi } from '../station/station-ui.js';
 import { DrawPic } from '../kit/draw-pic.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { S } from '../../core/state.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
+import { StationMeta } from '../station/station-meta.js';
 
 /** ТЗ на сборку станции для сборщика — документ Word с чертежом, схемой и 3D-видом в приложениях. */
 export class TzOut {
@@ -57,8 +57,8 @@ export class TzOut {
     await DrawPic.load(x);
     await PhotoTint.load(x);
     const plan = StationPlan.plan(x);
-    const meta = StationUi.meta(x, plan);
-    const org = StationUi.org();
+    const meta = StationMeta.meta(x, plan);
+    const org = StationMeta.org();
     const doc = new DocxWriter({
       title: `ТЗ на сборку: ${x.name || ''}`,
       author: org,
@@ -87,7 +87,7 @@ export class TzOut {
 
   /** Приложения: габаритный чертёж, схема, 3D-разрез и виды снаружи. */
   static async _sheets(app, plan, meta) {
-    const sch = StationUi.scheme(plan);
+    const sch = StationMeta.scheme(plan);
     app.d.heading('Приложения', { page: true });
     const sheets = StationDrawing.sheets(plan, meta);
     for (const [k, sheet] of sheets.entries())

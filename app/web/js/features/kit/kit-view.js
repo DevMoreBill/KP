@@ -20,7 +20,6 @@ import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
 import { DealLink } from '../../core/deal-link.js';
 import { Kit } from '../../core/kit.js';
-import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
 import { StationSup } from './station-sup.js';
 
@@ -96,18 +95,6 @@ export class KitView {
   static _mainTodo(index, station) {
     return `<div class="kit-todo"><b>${esc(station.mainLabel)}</b><span class="muted">Основное оборудование станции — из каталога (с описанием, характеристиками, фото и закупкой) или своё.</span>
         <div class="row"><button class="btn primary" type="button" data-a="kitMain" data-i="${index}">Выбрать в каталоге</button><button class="btn ghost" type="button" data-a="kitAdd" data-i="${index}" data-n="${esc(station.mainLabel)}" data-role="main">+ Своё</button></div></div>`;
-  }
-
-  /**
-   * Система контейнера включена: своё значение, иначе по умолчанию (рекуперация — у компрессорных и ДГУ).
-   * @param {object} item
-   * @param {object} part контейнер
-   * @param {string} id система
-   * @returns {boolean}
-   */
-  static sysOn(item, part, id) {
-    const value = (part.sys || {})[id];
-    return value ?? (id === 'rec' ? StationReq.kind(item) !== 'pump' : !!ContainerKind.SYSTEMS_ON[id]);
   }
 
   // группа элементов: таблица строк, «Нужно: …» и кнопки добавления (чего ещё нет и что не закрывает «Нужно»)

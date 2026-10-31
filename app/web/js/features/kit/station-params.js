@@ -1,5 +1,4 @@
-import { StationAuto } from './station-auto.js';
-import { KpState, S } from '../../core/state.js';
+import { S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { StationReq } from '../req/station-req.js';
 /**
@@ -98,16 +97,5 @@ export class StationParams {
       .filter(field => /\.k$/.test(field.dataset.p))
       .pop();
     if (input) input.focus();
-  }
-
-  /**
-   * Строки изменились — таблица характеристик станции заново (пока её не правили вручную).
-   * @param {object} item
-   */
-  static changed(item) {
-    setTimeout(() => {
-      StationAuto.fill(item);
-      KpState.persist();
-    }, 0);
   }
 }

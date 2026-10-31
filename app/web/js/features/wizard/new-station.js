@@ -1,4 +1,3 @@
-import { EquipWizard } from './equip-wizard.js';
 import { KitPick } from '../kit/kit-pick.js';
 import { KitNeed } from '../kit/kit-need.js';
 import { StationImages } from '../station/station-images.js';
@@ -8,7 +7,6 @@ import { StationDefaults } from '../kit/station-defaults.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { KpState, S } from '../../core/state.js';
 import { StationView3D } from '../draw/station-view3d.js';
-import { StationUi } from '../station/station-ui.js';
 import { StationReq } from '../req/station-req.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { ReqNum } from '../req/req-num.js';
@@ -23,6 +21,9 @@ import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
 import { TzPick } from '../kit/tz-pick.js';
 import { StationWays } from '../kit/station-ways.js';
+import { StationMeta } from '../station/station-meta.js';
+import { TzBuild } from '../kit/tz-build.js';
+import { WizardState } from './wizard-state.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе
@@ -85,7 +86,7 @@ export class NewStation {
    * @returns {string}
    */
   static html(type) {
-    const { where } = EquipWizard.state;
+    const { where } = WizardState.state;
     const kind = this.kind(type);
     const need = (StationQuick.NEED[kind] || [])[0];
     const fields = (StationQuick.KEYS[kind] || []).map(row => this._field(row, need)).join('');
@@ -109,7 +110,7 @@ export class NewStation {
     const req = StationLibrary.req(this.kind(type), index);
     if (!req) return;
     Object.assign(this.state.req, req);
-    EquipWizard.draw();
+    WizardState.draw();
     this.later();
   }
 
@@ -169,7 +170,7 @@ export class NewStation {
       if (kind.climate) state.climate = kind.climate;
     } else if (select.id === 'nsIns') state.ins = select.value;
     else if (select.id === 'nsCl') state.climate = select.value;
-    EquipWizard.draw();
+    WizardState.draw();
     this.later();
   }
 
@@ -179,7 +180,7 @@ export class NewStation {
    */
   static key() {
     const { req, ctype, ins, climate } = this.state;
-    return JSON.stringify([EquipWizard.state.cat, req, ctype, ins, climate]);
+    return JSON.stringify([WizardState.state.cat, req, ctype, ins, climate]);
   }
 
   /**
@@ -198,7 +199,7 @@ export class NewStation {
 
   /** Подобрать станцию для предпросмотра (только в КП, при верном вводе и главном требовании). */
   static async preview() {
-    const { cat, where } = EquipWizard.state;
+    const { cat, where } = WizardState.state;
     const type = cat && EquipTypes.byId(cat);
     if (!type || !type.station || where !== 'kp') return;
     const need = (StationQuick.NEED[this.kind(type)] || [])[0];
@@ -220,7 +221,7 @@ export class NewStation {
   static async _assemble(type, view) {
     try {
       const item = this.make(type);
-      const note = await TzPick.assemble(item, StationQuick.query(item));
+      const note = await TzBuild.assemble(item, StationQuick.query(item));
       StationReq.ensure(item).pick = String(note || '').slice(0, this.PICK_MAX);
       view.x = item;
     } catch (error) {
@@ -288,7 +289,7 @@ export class NewStation {
 
   static _image(item, plan) {
     if (!plan || plan.level === 'error' || !plan.geo || !plan.geo.ext) return '';
-    return `<img src="${esc(StationUi.url(StationView3D.svg(plan, StationUi.meta(item, plan))))}" alt="3D-вид станции">`;
+    return `<img src="${esc(StationMeta.url(StationView3D.svg(plan, StationMeta.meta(item, plan))))}" alt="3D-вид станции">`;
   }
 
   /**
@@ -344,11 +345,11 @@ export class NewStation {
     if (this.ready()) {
       const item = this.draft.x;
       this.draft = null;
-      EquipWizard.finish(item, 'kit', () => StationImages.soon(item));
+      WizardState.finish(item, 'kit', () => StationImages.soon(item));
       return;
     }
-    const inKp = EquipWizard.state.where === 'kp';
-    EquipWizard.finish(this.make(type), 'kit', inKp ? index => StationQuick.pick(index) : null);
+    const inKp = WizardState.state.where === 'kp';
+    WizardState.finish(this.make(type), 'kit', inKp ? index => StationQuick.pick(index) : null);
   }
 
   /**
@@ -357,8 +358,8 @@ export class NewStation {
    */
   static main(type) {
     if (!this._valid()) return;
-    EquipWizard.finish(this.make(type), 'kit', index => {
-      if (EquipWizard.state.where !== 'kp') return;
+    WizardState.finish(this.make(type), 'kit', index => {
+      if (WizardState.state.where !== 'kp') return;
       const preset = KitNeed.mainPreset(S.items[index]) || {
         test: card => !TzPick.mobile(card),
         need: 'Укажите производительность в «Подборе станции» — покажем подходящие и рекомендуемый первым. Сейчас — все стационарные.',
@@ -372,6 +373,6 @@ export class NewStation {
    * @param {object} type
    */
   static empty(type) {
-    EquipWizard.finish(this.make(type), 'kit');
+    WizardState.finish(this.make(type), 'kit');
   }
 }

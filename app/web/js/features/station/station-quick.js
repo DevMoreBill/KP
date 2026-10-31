@@ -9,9 +9,7 @@ import { StationEquip } from '../layout/station-equip.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 import { ExpertFix } from './expert-fix.js';
-import { KitNeed } from '../kit/kit-need.js';
 import { AirChain } from '../layout/air-chain.js';
-import { StationUi } from './station-ui.js';
 import { ReqNum } from '../req/req-num.js';
 import { esc } from '../../core/util.js';
 import { StationReq } from '../req/station-req.js';
@@ -23,8 +21,10 @@ import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
 import { ReqForm } from './req-form.js';
-import { TzPick } from '../kit/tz-pick.js';
 import { StationSup } from '../kit/station-sup.js';
+import { KitAir } from '../kit/kit-air.js';
+import { StationMeta } from './station-meta.js';
+import { TzBuild } from '../kit/tz-build.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна
@@ -78,7 +78,6 @@ export class StationQuick {
   /** что заменится при подборе заново (по виду станции) */
   static REPICK = { comp: 'Компрессоры, осушители, фильтры и ресиверы', dgu: 'ДГУ и бак', pump: 'Насосы' };
   static CHANGED = { flow: 'производительность', pressure: 'давление', kw: 'мощность', q: 'подача', head: 'напор' };
-  static AUTO = ['flow', 'pressure', 'kw', 'q', 'head'];
   static MAIN = /^(compressor|dgu|pump)$/;
   static PICKED = /^(compressor|dryer|filter|receiver|dgu|pump)$/;
   static MISSING = /В каталоге нет: ([^]*?)(?: — добавьте вручную|$)/;
@@ -196,9 +195,9 @@ export class StationQuick {
    * @returns {object} ключ поля → текст подсказки
    */
   static hint(item) {
-    const comps = StationReq.kind(item) === 'comp' ? KitNeed.comps(item) : [];
+    const comps = StationReq.kind(item) === 'comp' ? KitAir.comps(item) : [];
     const flow = comps.reduce((sum, comp) => sum + (comp.air.flow > 0 ? comp.air.flow * comp.qty : 0), 0);
-    const bar = KitNeed.bar(item);
+    const bar = KitAir.bar(item);
     return {
       ...(flow > 0 ? { flow: `по компрессорам: ${AirChain.flowText(flow)}` } : {}),
       ...(bar > 0 ? { pressure: `компрессоры: до ${AirChain.flowText(bar)}` } : {}),
@@ -263,7 +262,7 @@ export class StationQuick {
 
   /** как решить: другой контейнер, решение эксперта или подсказка */
   static _advice(item, index, { plan, fit, miss, errors }, text) {
-    if (fit && plan.suggest) return StationUi.fix(plan.suggest, index);
+    if (fit && plan.suggest) return StationMeta.fix(plan.suggest, index);
     const hint = ExpertFix.hint(item, index, text);
     if (hint) return hint;
     if (!fit && miss)
@@ -357,10 +356,10 @@ export class StationQuick {
    */
   static pic(item, plan) {
     if (!plan || plan.level === 'error' || !plan.geo || !plan.geo.ext) return '';
-    const meta = StationUi.meta(item, plan);
+    const meta = StationMeta.meta(item, plan);
     const ready = StationRender.cached(plan);
     if (!ready) StationRender.image(plan, meta).then(image => this._swap(image, plan.hash));
-    const src = ready ? ready.src : StationUi.url(StationView3D.svg(plan, meta));
+    const src = ready ? ready.src : StationMeta.url(StationView3D.svg(plan, meta));
     return `<button type="button" class="sq-pic" data-edtab="layout" title="Компоновка, чертёж и схема"><img src="${esc(src)}" data-sq3d="${esc(plan.hash || '')}" alt="3D-вид станции"><small>Компоновка и чертежи →</small></button>`;
   }
 
@@ -375,7 +374,7 @@ export class StationQuick {
    * @returns {string}
    */
   static sig(query) {
-    return JSON.stringify([...this.AUTO.map(field => query[field] || 0), query.basis || 'fad']);
+    return JSON.stringify([...ReqForm.AUTO.map(field => query[field] || 0), query.basis || 'fad']);
   }
 
   /**
@@ -414,7 +413,7 @@ export class StationQuick {
     this.busy.add(item.id);
     ItemEditor.render();
     try {
-      const note = await TzPick.assemble(item, query);
+      const note = await TzBuild.assemble(item, query);
       req.pick = note.slice(0, this.NOTE_MAX);
       req.pickSig = this.sig(query);
       KpState.persist();

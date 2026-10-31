@@ -61,8 +61,8 @@ class Scenario {
     r.recvOut=!!q.recvOut;
     if (q.kind==='comp' && q.air) x.stLayout={ air:q.air };
     StationDefaults.ensureParts(x);
-    const note=await TzPick.run(x, { ...q, flow:+this.num(q.flow), pressure:+this.num(q.pressure), q:+this.num(q.q), head:+this.num(q.head), kw:+this.num(q.kw), hours:+this.num(q.hours), pdp:q.pdp, recvVol:+this.num(q.recvVol), work:+q.work||0 });
-    if (GOLDEN){ GOLDEN.label=sc.name; GOLDEN.put('TzPick.run', [note, x.kit, x.req, x.stLayout]);
+    const note=await TzBuild.run(x, { ...q, flow:+this.num(q.flow), pressure:+this.num(q.pressure), q:+this.num(q.q), head:+this.num(q.head), kw:+this.num(q.kw), hours:+this.num(q.hours), pdp:q.pdp, recvVol:+this.num(q.recvVol), work:+q.work||0 });
+    if (GOLDEN){ GOLDEN.label=sc.name; GOLDEN.put('TzBuild.run', [note, x.kit, x.req, x.stLayout]);
       const d=GOLDEN.docx(); TzText.write(d, x, StationPlan.plan(x), 'ПНЕВМОТЕХ'); GOLDEN.put('TzOut.write', d.calls); }
     if (sc.edit) for (const [k, v] of Object.entries(sc.edit)) r[k]=v;   // правка менеджера после подбора
     // ТКП (решение ПНЕВМОТЕХ): расчётная записка в КП — только галочкой менеджера, по умолчанию её нет

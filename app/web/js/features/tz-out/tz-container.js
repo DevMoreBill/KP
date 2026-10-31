@@ -5,8 +5,8 @@ import { StationNorms } from '../layout/station-norms.js';
 import { StationPaint } from '../layout/station-paint.js';
 import { TzDoors } from './tz-doors.js';
 import { TzSystems } from './tz-systems.js';
-import { KitView } from '../kit/kit-view.js';
 import { ContainerKind } from '../layout/container-kind.js';
+import { KitContainer } from '../kit/kit-container.js';
 
 /** Раздел ТЗ «Контейнер и его системы»: строки таблицы требований. */
 export class TzContainer {
@@ -46,7 +46,7 @@ export class TzContainer {
       ['Окраска', this._paint(container)],
       ...this._arts(container),
       ['Двери', `${TzDoors.text(plan) + this._fuel(plan)}; над входами — съёмные козырьки и светодиодные прожекторы`],
-      ...ContainerKind.SYSTEMS.filter(([id]) => KitView.sysOn(x, container, id)).map(([id, label, base]) => [
+      ...ContainerKind.SYSTEMS.filter(([id]) => KitContainer.sysOn(x, container, id)).map(([id, label, base]) => [
         label,
         TzSystems.text(id, base, plan),
       ]),

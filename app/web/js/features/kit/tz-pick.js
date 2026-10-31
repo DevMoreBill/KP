@@ -13,21 +13,18 @@ import { StationRules } from '../rules/station-rules.js';
 import { StationDefaults } from './station-defaults.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { FieldUnit } from '../../core/field-unit.js';
-import { KitNeed } from './kit-need.js';
 import { KitPart } from './kit-part.js';
 import { Api } from '../../core/net.js';
-import { StationAuto, StationName } from './station-auto.js';
 import { StationReq } from '../req/station-req.js';
 import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Attrs } from '../../core/item-attrs.js';
-import { StationSize } from './station-size.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
 import { StationSup } from './station-sup.js';
-import { TzFit } from './tz-fit.js';
 import { EquipField } from '../layout/equip-field.js';
+import { KitAir } from './kit-air.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -497,18 +494,6 @@ export class TzPick {
       : `${word} ${name}`;
   }
 
-  /** Подбор и сборка станции: шкафы по особым требованиям, оборудование, название, характеристики, контейнер. */
-  static async assemble(station, need) {
-    const added = StationDefaults.ensureParts(station);
-    const note = await this.run(station, need);
-    Kit.sync(station);
-    StationPlan.cache.delete(station.id);
-    StationSize.refresh(station);
-    StationAuto.fill(station);
-    StationName.apply(station);
-    return [note, added.length ? `Добавлено по ТЗ: ${added.join(', ')}` : ''].filter(Boolean).join('. ');
-  }
-
   /** Элемент состава из позиции каталога: полная карточка с сервера, нет связи — из кэша каталога. */
   static async part(item, qty, role) {
     let doc = item;
@@ -519,36 +504,6 @@ export class TzPick {
     part.qty = qty;
     if (role) part.role = role;
     return part;
-  }
-
-  /** Подбор с защитой состава: чего в каталоге не нашлось — прежнее оборудование этого вида остаётся. */
-  static async run(station, need) {
-    const drop = this.DROP[need.kind] || /^$/;
-    const before = Kit.parts(station).filter(
-      part => part.role !== 'container' && drop.test(StationEquip.kindOf(part) || ''),
-    );
-    const note = await TzFit.fit(station, need);
-    const kept = this._restore(station, before);
-    return kept.length ? `${note}. Оставлено прежнее: ${kept.join('; ')}` : note;
-  }
-
-  static _restore(station, before) {
-    const kept = [];
-    let air = null;
-    // фильтры и ресиверы — только если цепочка воздуха их по-прежнему просит
-    const need = k => {
-      if (k !== 'filter' && k !== 'receiver') return true;
-      air ??= StationLayout.solve(StationPlan.input(station)).air || KitNeed.air(station) || { recs: [] };
-      return (air.recs || []).some(rec => rec.cat === k && !rec.replace);
-    };
-    for (const k of new Set(before.map(part => StationEquip.kindOf(part)))) {
-      if (Kit.parts(station).some(part => StationEquip.kindOf(part) === k) || !need(k)) continue;
-      const old = before.filter(part => StationEquip.kindOf(part) === k);
-      const index = Kit.parts(station).findIndex(part => part.role === 'container');
-      station.kit.parts.splice(index < 0 ? station.kit.parts.length : index, 0, ...old);
-      kept.push(...old.map(part => part.name));
-    }
-    return kept;
   }
 
   /** Подбор в станцию x по требованиям q (без защиты состава — run). */
@@ -631,7 +586,7 @@ export class TzPick {
 
   /** Фильтры и ресиверы — по цепочке воздуха, и когда компоновка не сложилась. */
   static async _chain(job) {
-    const air = StationLayout.solve(StationPlan.input(job.x)).air || KitNeed.air(job.x);
+    const air = StationLayout.solve(StationPlan.input(job.x)).air || KitAir.of(job.x);
     for (const rec of (air?.recs || []).filter(
       entry => (entry.cat === 'filter' || entry.cat === 'receiver') && !entry.replace,
     ))

@@ -1,9 +1,9 @@
 import { DocxWriter } from '../doc/docx-writer.js';
 import { LayoutDigest } from '../layout/layout-digest.js';
-import { StationUi } from '../station/station-ui.js';
 import { Toast } from '../../core/toast.js';
 import { FileSave } from '../../core/files.js';
 import { Api } from '../../core/net.js';
+import { StationMeta } from '../station/station-meta.js';
 
 /** Документ «Инженерные правила и источники» (DOCX) и общий вид значений правил. */
 export class StationRulesDoc {
@@ -63,7 +63,7 @@ export class StationRulesDoc {
   static make(data) {
     const doc = new DocxWriter({
       title: 'Инженерные правила и источники',
-      author: StationUi.org(),
+      author: StationMeta.org(),
       footer: `Инженерные правила и источники — версия ${data.version || ''}`,
     });
     const rules = data.rules || [];

@@ -15,13 +15,13 @@ import { StationPipe } from '../layout/station-pipe.js';
 import { StationPower } from '../layout/station-power.js';
 import { TzContainer } from './tz-container.js';
 import { KitScope } from '../kit/kit-scope.js';
-import { KitView } from '../kit/kit-view.js';
 import { S } from '../../core/state.js';
 import { StationReq } from '../req/station-req.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { ReqLine } from '../req/req-line.js';
 import { EquipField } from '../layout/equip-field.js';
+import { KitContainer } from '../kit/kit-container.js';
 
 /** Текст ТЗ на сборку станции: разделы по порядку, нумерация — сквозная. */
 export class TzText {
@@ -135,7 +135,7 @@ export class TzText {
     const { d: doc, x, c: container } = spec;
     this._h1(spec, 'Контейнер и его системы');
     doc.table([42, 128], ['Параметр', 'Требование'], TzContainer.rows(spec));
-    const off = ContainerKind.SYSTEMS.filter(([id]) => !KitView.sysOn(x, container, id)).map(([, k]) =>
+    const off = ContainerKind.SYSTEMS.filter(([id]) => !KitContainer.sysOn(x, container, id)).map(([, k]) =>
       k.toLowerCase(),
     );
     if (off.length)

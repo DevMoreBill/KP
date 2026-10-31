@@ -2,16 +2,16 @@ import { Str } from '../../core/str.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
-import { PickFilter } from './kit-pick.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationReq } from '../req/station-req.js';
-import { KitNeed } from './kit-need.js';
 import { ReqNum } from '../req/req-num.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
 import { TzPick } from './tz-pick.js';
 import { StationSup } from './station-sup.js';
+import { PickFilter } from './pick-filter.js';
+import { KitAir } from './kit-air.js';
 /**
  * Подбор из каталога по строке «Нужно: …»: рекомендуемая позиция (тот же расчёт, что у автоподбора TzPick), фильтры и
  * подсказка окна каталога; основное оборудование — по требованиям «Подбора станции».
@@ -28,9 +28,9 @@ export class NeedPick {
   }
 
   static _context(item) {
-    const air = KitNeed.air(item);
+    const air = KitAir.of(item);
     const req = StationReq.of(item);
-    return { air, flow: air ? air.work : 0, req, bar: ReqNum.loose(req.pressure) || 0, compBar: KitNeed.bar(item) };
+    return { air, flow: air ? air.work : 0, req, bar: ReqNum.loose(req.pressure) || 0, compBar: KitAir.bar(item) };
   }
 
   /**
@@ -95,7 +95,7 @@ export class NeedPick {
    * @returns {object} {cat, f, r, min}
    */
   static filters(item, rec) {
-    const compBar = KitNeed.bar(item);
+    const compBar = KitAir.bar(item);
     const filter = PickFilter.create([rec.cat]);
     Object.assign(filter.f, rec.f || {});
     for (const [key, range] of Object.entries(rec.r || {})) filter.r[key] = [...range];
@@ -110,7 +110,7 @@ export class NeedPick {
    * @returns {object}
    */
   static preset(item, rec) {
-    const air = KitNeed.air(item);
+    const air = KitAir.of(item);
     const filter = this.filters(item, rec);
     const best = this.best(item, rec);
     return {
@@ -294,25 +294,12 @@ export class NeedPick {
 
   static _minOk(attrs, min) {
     return Object.entries(min || {}).every(([key, limit]) => {
-      const top = this.top(attrs[key]);
+      const top = PickFilter.top(attrs[key]);
       return top == null || !(top < limit - this.EPS);
     });
   }
 
   static _fieldsOk(attrs, fields) {
     return Object.entries(fields || {}).every(([key, value]) => !value || String(attrs[key] ?? '') === value);
-  }
-
-  /**
-   * Наибольшее число в значении («7,5 / 10 / 13 бар» → 13).
-   * @param {*} value
-   * @returns {number|null}
-   */
-  static top(value) {
-    const found = String(value ?? '')
-      .replace(/\s+/g, '')
-      .replace(/[−–]/g, '-')
-      .match(/-?\d+(?:[.,]\d+)?/g);
-    return found ? Math.max(...found.map(text => +text.replace(',', '.'))) : null;
   }
 }

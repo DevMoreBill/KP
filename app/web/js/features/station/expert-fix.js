@@ -8,7 +8,6 @@ import { ContainerPart } from '../kit/container-part.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { AirChain } from '../layout/air-chain.js';
 import { ExpertLog } from '../req/expert-log.js';
-import { KitView } from '../kit/kit-view.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
@@ -24,6 +23,8 @@ import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
 import { TzPick } from '../kit/tz-pick.js';
 import { StationSup } from '../kit/station-sup.js';
+import { KitAir } from '../kit/kit-air.js';
+import { KitContainer } from '../kit/kit-container.js';
 /** Замечания одной станции без повторов; решение раздела — только к замечанию о нехватке. */
 class FixList {
   constructor() {
@@ -380,9 +381,9 @@ export class ExpertFix {
   static _ventFix(item, issue, sec) {
     const container = Kit.container(item);
     if (sec !== 'vent' || !/Не поместил/.test(issue.text) || !container) return null;
-    if (!KitView.sysOn(item, container, 'exfan') && StationRules.opt('vent.exfan'))
+    if (!KitContainer.sysOn(item, container, 'exfan') && StationRules.opt('vent.exfan'))
       return { id: 'exfan', label: 'Включить вытяжные вентиляторы' };
-    if (!KitView.sysOn(item, container, 'boost'))
+    if (!KitContainer.sysOn(item, container, 'boost'))
       return { id: 'boost', label: 'Включить вентилятор в воздуховоде выброса' };
     return null;
   }
@@ -525,7 +526,7 @@ export class ExpertFix {
     req.recvWhy = 'space';
     StationSup.use(item);
     const plan = StationReq.recvPlan(item);
-    const offer = plan && plan.main ? TzPick.recvPick(ReceiverPlan.SMALL, KitNeed.bar(item), TzPick.hmax(item)) : null;
+    const offer = plan && plan.main ? TzPick.recvPick(ReceiverPlan.SMALL, KitAir.bar(item), TzPick.hmax(item)) : null;
     if (!offer || !offer.o) {
       this._restore(req, keep);
       return '';

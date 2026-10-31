@@ -50,3 +50,5 @@ StationLink.connect({
   soonImages: item => StationImages.soon(item),
   brief: (item, i) => StationBrief.html(item, i),
 });
+// быстрый подбор встраивает форму требований — подбор заново по правке требования форма зовёт портом
+ReqForm.autoPick = (index, field) => StationQuick.auto(index, field);
