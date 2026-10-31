@@ -120,7 +120,34 @@ const STRICT = {
 const LAYERS = {
   ui: { group: ['../../ui/**', '../ui/**'], message: 'разделы не подключают форму (ui/): KpForm, PhoneLayout и общие виджеты — в core/' },
   admin: { group: ['../admin/**'], message: '«Настройки» — верхний раздел: окна подтверждения — AdminDialog, запросы /api/admin — AdminApi, подписи журнала — AuditLabels (core/)' },
+  deal: { group: ['../deal/**'], message: 'станции до состава включительно не подключают экономику сделки: DealLink (core/deal-link.js), груз из характеристик — LgCargo (core/)' },
 };
+// станции — разделы снизу вверх (циклы import): раздел подключает только нижние; верхнему нижний — портом core/ или
+// регистрацией в index.js верхнего (подсказка — у раздела); до состава включительно — и без экономики сделки
+const STATIONS = [
+  ['rules', ''],
+  ['layout', '3D-вид — StationEquip.photoTint'],
+  ['eskd', 'картинка модели — EquipIcon.picture'],
+  ['draw', ''],
+  ['view', 'шаблон КП — DocLink'],
+  ['req', 'производительность — AirDemand.required, шкафы АВР и АСУ ТП — StationDefaults.ensureParts, проверки — ReqChecks, форма — ReqForm'],
+  ['calc', 'компоновка позиции — StationPlan (req/), контейнеры — ContainerKind (layout/), безмасляный — AirChain.oilFree'],
+  ['kit', 'подбор — KitView.stationQuick, мастер — WizardLink'],
+  ['station', 'шаблон КП — DocLink'],
+  ['doc', ''],
+  ['tz', ''],
+  ['wizard', ''],
+];
+const STATION_ORDER = STATIONS.map(([name]) => name);
+const STATION_RULES = STATIONS.slice(0, -1).map(([name, hint], i) => ({
+  files: [`app/web/js/features/${name}/**/*.js`],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    LAYERS.ui,
+    LAYERS.admin,
+    { group: STATION_ORDER.slice(i + 1).map(upper => `../${upper}/**`), message: `станции снизу вверх (${STATION_ORDER.join(' < ')}): ${name}/ не подключает верхние${hint ? ` — ${hint}` : ''}` },
+    ...(i <= STATION_ORDER.indexOf('kit') ? [LAYERS.deal] : []),
+  ] }] },
+}));
 // сведения, не отказ (tests/run_all.py и CI — отдельным шагом с KP_ESLINT_REPORT=1): разметка без esc(); сложность и длина
 // функций обычных скриптов (у ES-модулей это уже ошибки STRICT). esc-html — «error», когда все места разобраны
 const REPORT = process.env.KP_ESLINT_REPORT === '1' ? [{
@@ -196,45 +223,7 @@ export default [{
     LAYERS.admin,
     { group: ['../*/**', '!../kp/**', '!../../**'], message: 'каталог подключает только КП и core/: станции — StationLink, мастер — WizardLink, имя латиницей — Translit (core/)' },
   ] }] },
-}, {
-  // состав станции (kit) не подключает подбор станции (station): расчёт компоновки позиции — StationPlan (kit), быстрый
-  // подбор под составом — KitView.stationQuick (подключает station/index.js); компоновка (layout) не подключает 3D-вид
-  // (view): оттенок по фото — StationEquip.photoTint (подключает view/index.js); оба — экономику сделки (deal): DealLink
-  files: ['app/web/js/features/kit/**/*.js'],
-  rules: { 'no-restricted-imports': ['error', { patterns: [
-    LAYERS.ui,
-    LAYERS.admin,
-    { group: ['../station/**'], message: 'состав станции не подключает подбор: StationPlan, KitView.stationQuick' },
-    { group: ['../deal/**'], message: 'состав станции и компоновка не подключают экономику сделки: DealLink (core/deal-link.js), груз из характеристик — LgCargo (core/)' },
-  ] }] },
-}, {
-  files: ['app/web/js/features/layout/**/*.js'],
-  rules: { 'no-restricted-imports': ['error', { patterns: [
-    LAYERS.ui,
-    LAYERS.admin,
-    { group: ['../view/**'], message: 'компоновка не подключает 3D-вид: StationEquip.photoTint' },
-    { group: ['../deal/**'], message: 'состав станции и компоновка не подключают экономику сделки: DealLink (core/deal-link.js), груз из характеристик — LgCargo (core/)' },
-  ] }] },
-}, {
-  // требования к станции (req) — модель под расчётом, составом, ТЗ и подбором: производительность по требованиям —
-  // AirDemand.required (calc), шкафы АВР и АСУ ТП — StationDefaults.ensureParts, проверки состава — ReqChecks (kit), форма
-  // требований — ReqForm (station); расчёт компоновки позиции StationPlan — в req
-  files: ['app/web/js/features/req/**/*.js'],
-  rules: { 'no-restricted-imports': ['error', { patterns: [
-    LAYERS.ui,
-    LAYERS.admin,
-    { group: ['../calc/**', '../kit/**', '../tz/**', '../station/**', '../wizard/**', '../doc/**'], message: 'требования к станции — модель: расчёт, состав, ТЗ, подбор, мастер и документ подключают её сами (AirDemand.required, StationDefaults.ensureParts, ReqChecks, ReqForm)' },
-  ] }] },
-}, {
-  // расчёт станции (calc) — над требованиями, под составом, подбором, мастером и документом: расчёт компоновки позиции —
-  // StationPlan (req/), виды контейнеров — ContainerKind (layout/)
-  files: ['app/web/js/features/calc/**/*.js'],
-  rules: { 'no-restricted-imports': ['error', { patterns: [
-    LAYERS.ui,
-    LAYERS.admin,
-    { group: ['../kit/**', '../station/**', '../wizard/**', '../doc/**'], message: 'расчёт станции не подключает состав, подбор, мастер и документ: StationPlan (req/), ContainerKind (layout/)' },
-  ] }] },
-}, {
+}, ...STATION_RULES, {
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },

@@ -10,23 +10,23 @@ import { StationGeo } from '../layout/station-geo.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { StationRules } from '../rules/station-rules.js';
-import { StationSup } from './station-sup.js';
-import { TzFit } from './tz-fit.js';
-import { StationDefaults } from '../kit/station-defaults.js';
+import { StationDefaults } from './station-defaults.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { FieldUnit } from '../../core/field-unit.js';
-import { KitNeed } from '../kit/kit-need.js';
-import { KitPart } from '../kit/kit-part.js';
+import { KitNeed } from './kit-need.js';
+import { KitPart } from './kit-part.js';
 import { Api } from '../../core/net.js';
-import { StationAuto, StationName } from '../kit/station-auto.js';
+import { StationAuto, StationName } from './station-auto.js';
 import { StationReq } from '../req/station-req.js';
 import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Attrs } from '../../core/item-attrs.js';
-import { StationSize } from '../kit/station-size.js';
+import { StationSize } from './station-size.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
+import { StationSup } from './station-sup.js';
+import { TzFit } from './tz-fit.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -159,14 +159,14 @@ export class TzPick {
     const vsd = item => AirChain.info({ name: item.name, attrs: Attrs.of(item), rows: [] }, 'compressor').vsd;
     const loss = this.lossPlan(need);
     const options = pool
-      .filter(item => !need.oilFree || this.oilFree(item))
+      .filter(item => !need.oilFree || AirChain.oilFree(item))
       .map(item => ({
         c: item,
         v: this.flow(item),
         p: this.num(Attrs.of(item).pressure),
         vsd: vsd(item),
         f: !need.vsd || vsd(item),
-        of: !need.oilFree && this.oilFree(item),
+        of: !need.oilFree && AirChain.oilFree(item),
       }))
       .filter(
         option =>
@@ -287,17 +287,6 @@ export class TzPick {
     if (!(bar > 0) || !(pressure > 0)) return 0;
     const need = this.barNeed(bar, vsd, loss);
     return pressure < need - this.BAR_TOL ? this.PENALTY.barShort : this.PENALTY.barOver * (pressure - need);
-  }
-
-  /** Безмасляный: по полю «Безмасляный (класс 0)», не заполнено — по названию и характеристикам. */
-  static oilFree(item) {
-    const attrs = Attrs.of(item);
-    const field = String(attrs.oilFree ?? '').trim();
-    if (/^(да|есть|true)/i.test(field) || /класс\w*\s*0(?![.,\d])/i.test(field)) return true;
-    if (/^(нет|false)/i.test(field)) return false; // поле важнее описания серии
-    return /безмасл|oil[\s-]?free|класс\w*\s*0(?![.,\d])/i.test(
-      [item.name, attrs.model, attrs.series, attrs.lubrication, attrs.oil].filter(Boolean).join(' '),
-    );
   }
 
   /** Передвижной или бензиновый — не для станции в контейнере. */

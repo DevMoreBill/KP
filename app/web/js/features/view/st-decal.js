@@ -2,9 +2,8 @@ import { Mm } from '../layout/mm.js';
 import { RalColor } from '../layout/ral-color.js';
 import { ImageFiles } from '../catalog/images.js';
 import { StOutfit } from './st-outfit.js';
-import { S } from '../../core/state.js';
-import { Templates } from '../doc/templates.js';
 import { Logos } from '../catalog/image-slots.js';
+import { DocLink } from '../../core/doc-link.js';
 
 const FONT = '"Arial Black", "Segoe UI Black", "Helvetica Neue", Arial, sans-serif';
 const RED = '#c8102e';
@@ -93,7 +92,7 @@ export class StDecal {
 
   /** Логотип организации: части надписи с цветами из шаблона КП; «ПНЕВМОТЕХ» — фирменные синие всегда. */
   static brandParts() {
-    const pack = Templates.cache[S.template] || null;
+    const pack = DocLink.pack();
     const settings = (pack && pack.settings) || {};
     const col = settings.colors || {};
     const parts = (settings.brandParts || [])

@@ -1,5 +1,4 @@
 import { StationImages } from './station-images.js';
-import { TzPick } from '../tz/tz-pick.js';
 import { ItemEditor } from '../catalog/item-editor.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
@@ -7,7 +6,6 @@ import { StationView3D } from '../draw/station-view3d.js';
 import { StationRender } from '../view/station-render.js';
 import { Mm } from '../layout/mm.js';
 import { StationEquip } from '../layout/station-equip.js';
-import { StationSup } from '../tz/station-sup.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 import { ExpertFix } from './expert-fix.js';
@@ -25,6 +23,8 @@ import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
 import { ReqForm } from './req-form.js';
+import { TzPick } from '../kit/tz-pick.js';
+import { StationSup } from '../kit/station-sup.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна

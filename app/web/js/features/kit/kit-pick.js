@@ -10,12 +10,12 @@ import { KitNeed } from './kit-need.js';
 import { $, esc } from '../../core/util.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { TzPick } from '../tz/tz-pick.js';
 import { Str } from '../../core/str.js';
 import { Attrs, CatAttrs } from '../../core/item-attrs.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
+import { TzPick } from './tz-pick.js';
 
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций

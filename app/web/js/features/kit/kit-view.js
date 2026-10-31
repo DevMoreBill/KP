@@ -11,7 +11,6 @@ import { StationMatrix } from '../layout/station-matrix.js';
 import { Mm } from '../layout/mm.js';
 import { TankSize } from '../layout/tank-size.js';
 import { ItemSpec } from '../../core/item-spec.js';
-import { StationSup } from '../tz/station-sup.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Str } from '../../core/str.js';
 import { Attrs } from '../../core/item-attrs.js';
@@ -23,6 +22,7 @@ import { DealLink } from '../../core/deal-link.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { StationSup } from './station-sup.js';
 
 /**
  * Вкладка «Состав станции»: подбор станции, контейнер одной строкой, оборудование двумя группами по стороне поставки

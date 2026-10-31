@@ -57,6 +57,14 @@ export class Templates {
   }
 
   /**
+   * Содержимое папки выбранного шаблона КП, если уже загружено (настройки: организация, цвета, логотип), иначе null.
+   * @returns {object|null}
+   */
+  static loadedPack() {
+    return this.cache[S.template] || null;
+  }
+
+  /**
    * Выбор шаблона в разделе «Оформление КП» и ошибки шаблонов.
    * @returns {string}
    */

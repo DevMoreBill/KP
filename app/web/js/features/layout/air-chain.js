@@ -3,6 +3,7 @@ import { PressureVessel } from './pressure-vessel.js';
 import { StationEquip } from './station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
 import { FieldUnit } from '../../core/field-unit.js';
+import { Attrs } from '../../core/item-attrs.js';
 
 /**
  * Подготовка сжатого воздуха по ходу воздуха: компрессоры → (влагоотделитель) → «мокрый» ресивер → фильтры →
@@ -253,6 +254,17 @@ export class AirChain {
       if (v != null && v > 0) return v;
     }
     return null;
+  }
+
+  /** Компрессор безмасляный (класс 0 по маслу): по полю «Безмасляный (класс 0)», не заполнено — по названию и характеристикам. */
+  static oilFree(item) {
+    const attrs = Attrs.of(item);
+    const field = String(attrs.oilFree ?? '').trim();
+    if (/^(да|есть|true)/i.test(field) || /класс\w*\s*0(?![.,\d])/i.test(field)) return true;
+    if (/^(нет|false)/i.test(field)) return false; // поле важнее описания серии
+    return /безмасл|oil[\s-]?free|класс\w*\s*0(?![.,\d])/i.test(
+      [item.name, attrs.model, attrs.series, attrs.lubrication, attrs.oil].filter(Boolean).join(' '),
+    );
   }
 
   /** Фильтры в комплекте аппарата: строка «…фильтры в комплекте / в составе / встроенные» (не «нет»). */

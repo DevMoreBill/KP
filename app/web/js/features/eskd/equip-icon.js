@@ -3,10 +3,15 @@ import { StationLayout } from '../layout/station-layout.js';
 import { IconAir } from './icon-air.js';
 import { IconParts } from './icon-parts.js';
 import { IconUnits } from './icon-units.js';
-import { DrawPic } from '../kit/draw-pic.js';
 
 /** Оборудование на габаритном чертеже — упрощённые рисунки, схематически сходные с изделием, в его пропорциях. */
 export class EquipIcon {
+  /**
+   * Картинка модели из кэша загруженных (вкладка «Состав станции») — подключает состав станции (kit/index.js).
+   * @returns {string}
+   */
+  static picture = () => '';
+
   /** Вид спереди (разрез А–А). */
   static front(sheet, item, [x0, y0, x1, y1]) {
     const frame = EquipIcon.ctx(sheet, item, [x0, y0, x1, y1]);
@@ -56,11 +61,11 @@ export class EquipIcon {
     tank: frame => IconUnits.tankTop(frame),
   };
 
-  /** Рисунок модели для SVG — только data:image (внешние адреса в картинку чертежа не попадают); адрес /img/… — из кэша загруженных (DrawPic, вкладка «Состав станции»). */
+  /** Рисунок модели для SVG — только data:image (внешние адреса в картинку чертежа не попадают); адрес /img/… — из кэша загруженных (EquipIcon.picture). */
   static src(src) {
     const text = String(src || '');
     if (text.startsWith('data:image/')) return text;
-    return DrawPic.data(text);
+    return EquipIcon.picture(text);
   }
 
   /** Вид сверху (разрез Б–Б): лицевая сторона — к проходу (вниз), к задней стене (вверх) или вдоль торца. */

@@ -1,5 +1,4 @@
 import { StationGeo } from '../layout/station-geo.js';
-import { TzPick } from './tz-pick.js';
 import { TzQuestions } from './tz-questions.js';
 import { StationAuto, StationName } from '../kit/station-auto.js';
 import { StationDefaults } from '../kit/station-defaults.js';
@@ -23,6 +22,7 @@ import { Spoiler } from '../../core/spoiler.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { TzPick } from '../kit/tz-pick.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {

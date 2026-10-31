@@ -1,4 +1,4 @@
-// Подбор оборудования по ТЗ заказчика (app/web/js/features/tz/ — TzPick) и проверки требований станции
+// Подбор оборудования по ТЗ заказчика (app/web/js/features/kit/tz-pick.js — TzPick) и проверки требований станции
 // (kit/req-checks.js — ReqChecks) на вымышленном каталоге в памяти: число рабочих агрегатов из ТЗ, запас давления
 // компрессора на потери в осушителе и фильтрах, продувка адсорбционного осушителя, бак ДГУ под время работы, насосы
 // без лишнего напора.
@@ -528,7 +528,7 @@ class Check {
     assert.strictEqual(info({ cat:'comp_screw', filters:'Да' }, [], 'compressor').filter, true);
     assert.strictEqual(info({ cat:'comp_screw' }, [{ k:'Тип', v:'На ресивере (с осушителем и фильтрами)' }], 'compressor').filter, true, 'компрессор «4 в 1»');
     // безмасляный: поле «Безмасляный (класс 0)» главнее названия; не заполнено — по названию
-    const of=(name, attrs)=>TzPick.oilFree({ name, attrs });
+    const of=(name, attrs)=>AirChain.oilFree({ name, attrs });
     assert.deepStrictEqual([of('Компрессор К-1', { oilFree:'Да' }), of('Безмасляный компрессор К-2', { oilFree:'Нет' }), of('Безмасляный компрессор К-3', {}), of('Компрессор К-4', {})],
       [true, false, true, false]);
     // габариты и масса для компоновки — из любых строк характеристик, в т. ч. дальше первых 14 и в метрах

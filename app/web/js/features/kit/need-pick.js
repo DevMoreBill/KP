@@ -4,14 +4,14 @@ import { Attrs } from '../../core/item-attrs.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
 import { PickFilter } from './kit-pick.js';
 import { AirChain } from '../layout/air-chain.js';
-import { TzPick } from '../tz/tz-pick.js';
-import { StationSup } from '../tz/station-sup.js';
 import { StationReq } from '../req/station-req.js';
 import { KitNeed } from './kit-need.js';
 import { ReqNum } from '../req/req-num.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
+import { TzPick } from './tz-pick.js';
+import { StationSup } from './station-sup.js';
 /**
  * Подбор из каталога по строке «Нужно: …»: рекомендуемая позиция (тот же расчёт, что у автоподбора TzPick), фильтры и
  * подсказка окна каталога; основное оборудование — по требованиям «Подбора станции».
@@ -208,7 +208,7 @@ export class NeedPick {
     return this._result(ctx, {
       unit,
       count,
-      test: card => TzPick.flow(card) >= per - this.EPS && (!oilFree || TzPick.oilFree(card)),
+      test: card => TzPick.flow(card) >= per - this.EPS && (!oilFree || AirChain.oilFree(card)),
       need: this._compNeed(ctx, { total, bar, demand, ads, count, per, oilFree }),
       extra: { min: bar > 0 ? { pressure: bar } : {} },
     });

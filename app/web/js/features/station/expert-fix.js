@@ -3,8 +3,6 @@ import { StationImages } from './station-images.js';
 import { S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
 import { Catalog } from '../catalog/catalog-store.js';
-import { TzPick } from '../tz/tz-pick.js';
-import { StationSup } from '../tz/station-sup.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { ContainerPart } from '../kit/container-part.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
@@ -24,6 +22,8 @@ import { StationSize } from '../kit/station-size.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { TzPick } from '../kit/tz-pick.js';
+import { StationSup } from '../kit/station-sup.js';
 /** Замечания одной станции без повторов; решение раздела — только к замечанию о нехватке. */
 class FixList {
   constructor() {

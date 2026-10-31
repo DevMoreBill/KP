@@ -68,7 +68,13 @@
   и подбором: их не подключают (ESLint); производительность по требованиям — `AirDemand.required` (`calc/`), шкафы АВР и
   АСУ ТП — `StationDefaults.ensureParts`, проверки состава — `ReqChecks` (`kit/`), форма требований — `ReqForm`
   (`station/`); расчёт компоновки позиции `StationPlan` — в `req/`, виды контейнеров `ContainerKind` — в `layout/` (списки —
-  `layout/index.js`); расчёт (`features/calc`) не подключает состав, подбор, мастер и документ.
+  `layout/index.js`); расчёт (`features/calc`) не подключает состав, подбор, мастер и документ. (31.10, этап 10) Станции —
+  разделы снизу вверх: `rules` < `layout` < `eskd` < `draw` < `view` < `req` < `calc` < `kit` < `station` < `doc` < `tz` <
+  `wizard` (ESLint, `STATIONS` в `eslint.config.mjs`): раздел подключает только нижние, до состава включительно — и без
+  экономики сделки; автоподбор по ТЗ `TzPick` (`TzFit`), приоритет поставщика `StationSup`, способы создания станции
+  `StationWays` — в `kit/`; безмасляный компрессор — `AirChain.oilFree`; «Добавить оборудование» из состава — `WizardLink`,
+  картинка модели на листах ЕСКД — `EquipIcon.picture` (подключает `kit/index.js`), шаблон КП для листов и 3D-вида —
+  `DocLink.pack()` / `template()`; циклов через границы разделов нет (внутри разделов — остаются).
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

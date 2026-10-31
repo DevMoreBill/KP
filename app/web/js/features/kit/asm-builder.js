@@ -1,6 +1,4 @@
 import { AsmAi } from './asm-ai.js';
-import { EquipWizard } from '../wizard/equip-wizard.js';
-import { StationWays } from '../wizard/station-ways.js';
 import { AsmItem } from './asm-item.js';
 import { PickFilter, PickFind } from './kit-pick.js';
 import { Catalog } from '../catalog/catalog-store.js';
@@ -15,6 +13,8 @@ import { $, esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Kit } from '../../core/kit.js';
 import { Currency } from '../../core/currency.js';
+import { StationWays } from './station-ways.js';
+import { WizardLink } from '../../core/wizard-link.js';
 
 /**
  * Окно «Сборное изделие» (в окне «Добавить оборудование», `#dlg`, та же ширина и шапка, что у подбора станции):
@@ -463,7 +463,7 @@ export class AsmBuilder {
   static _leave(pre) {
     this.held = this.state.parts.length ? this.state : null;
     this.state = null;
-    EquipWizard.open('kp', pre);
+    WizardLink.open('kp', pre);
   }
 
   /** другой вид изделия — основное оборудование заново по основным категориям этого вида */

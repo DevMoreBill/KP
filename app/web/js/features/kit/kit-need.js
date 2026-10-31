@@ -13,7 +13,6 @@ import { Attrs } from '../../core/item-attrs.js';
 import { Mm } from '../layout/mm.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
 import { PumpPoint } from '../calc/pump-point.js';
-import { TzPick } from '../tz/tz-pick.js';
 import { ReqNum } from '../req/req-num.js';
 import { AirChain } from '../layout/air-chain.js';
 import { DryerDerate } from '../layout/dryer-derate.js';
@@ -24,6 +23,7 @@ import { StationSize } from './station-size.js';
 import { Kit } from '../../core/kit.js';
 import { StationPlan } from '../req/station-plan.js';
 import { AirDemand } from '../calc/air-demand.js';
+import { TzPick } from './tz-pick.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -165,7 +165,7 @@ export class KitNeed {
     if (bar > 0 && own > 0 && own - loss < bar - this.EPS) {
       return `давление ${fmt(own)} бар (с потерями в подготовке воздуха и трубопроводе ≈ ${fmt(own - loss)}) меньше ${fmt(bar)} бар у потребителя`;
     }
-    if (StationReq.oilFree(item) && !TzPick.oilFree(part)) {
+    if (StationReq.oilFree(item) && !AirChain.oilFree(part)) {
       return `масляный, а ${StationReq.oilWhy(item)} нужен безмасляный (класс 0 по маслу)`;
     }
     return '';

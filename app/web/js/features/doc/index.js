@@ -46,11 +46,13 @@ KpPreview.listen();
 LivePreview.listen();
 DesignMouse.listen();
 LISTS.ready(TemplateFields.LISTS);
-// КП просит документ (DocLink) — без import документа
+// КП и станции просят документ (DocLink) — без import документа
 DocLink.connect({
   docs: kpId => DocsGen.open(kpId),
   saving: () => KpSave.busy,
   templates: () => Templates.list,
+  pack: () => Templates.loadedPack(),
+  template: () => Templates.current(),
   wantPreview: shown => LivePreview.want(shown),
   previewWanted: () => LivePreview.wanted(),
   previewMinWidth: () => LivePreview.MIN_WIDTH,

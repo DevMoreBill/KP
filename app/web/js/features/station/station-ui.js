@@ -9,7 +9,6 @@ import { Mm } from '../layout/mm.js';
 import { HydroScheme } from '../eskd/hydro-scheme.js';
 import { StationScheme } from '../eskd/station-scheme.js';
 import { StationImages } from './station-images.js';
-import { Templates } from '../doc/templates.js';
 import { KpState, S } from '../../core/state.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { KpForm } from '../../core/kp-form.js';
@@ -17,6 +16,7 @@ import { StationSize } from '../kit/station-size.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { DocLink } from '../../core/doc-link.js';
 
 /**
  * Компоновка станции в программе: расстановка (с кэшем), что вставлять в КП, вкладка «Компоновка», метка в разделе
@@ -66,9 +66,9 @@ export class StationUi {
    * @returns {string}
    */
   static org() {
-    const pack = Templates.cache[S.template];
+    const pack = DocLink.pack();
     const settings = (pack && pack.settings) || {};
-    const template = Templates.current() || {};
+    const template = DocLink.template() || {};
     return String(
       settings.company || template.company || (settings.brandParts || []).map(part => part[0]).join('') || 'ПНЕВМОТЕХ',
     ).trim();

@@ -10,7 +10,6 @@ import { KpState, S } from '../../core/state.js';
 import { StationView3D } from '../draw/station-view3d.js';
 import { StationUi } from '../station/station-ui.js';
 import { StationReq } from '../req/station-req.js';
-import { TzPick } from '../tz/tz-pick.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { ReqNum } from '../req/req-num.js';
 import { $, esc } from '../../core/util.js';
@@ -19,10 +18,11 @@ import { Mm } from '../layout/mm.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { StationLibrary } from './station-library.js';
-import { StationWays } from './station-ways.js';
 import { Kit } from '../../core/kit.js';
 import { ContainerKind } from '../layout/container-kind.js';
 import { StationPlan } from '../req/station-plan.js';
+import { TzPick } from '../kit/tz-pick.js';
+import { StationWays } from '../kit/station-ways.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе

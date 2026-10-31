@@ -22,7 +22,12 @@ import { ReqChecks } from './req-checks.js';
 import { StationAuto, StationAutoVal, StationName } from './station-auto.js';
 import { StationDefaults } from './station-defaults.js';
 import { StationPurpose, StationSpec } from './station-spec.js';
+import { StationSup } from './station-sup.js';
+import { StationWays } from './station-ways.js';
 import { SupplyDocs } from './supply-docs.js';
+import { TzFit } from './tz-fit.js';
+import { TzPick } from './tz-pick.js';
+import { EquipIcon } from '../eskd/equip-icon.js';
 import { LISTS } from '../../core/lists.js';
 import { KpState } from '../../core/state.js';
 import { StationLink } from '../../core/station-link.js';
@@ -61,7 +66,11 @@ export const KIT = {
   StationName,
   StationPurpose,
   StationSpec,
+  StationSup,
+  StationWays,
   SupplyDocs,
+  TzFit,
+  TzPick,
 };
 
 KitActions.listen();
@@ -85,3 +94,5 @@ StationLink.connect({
   autoFill: item => StationAuto.fill(item),
   container: kind => ContainerPart.create(kind),
 });
+// листы ЕСКД берут картинку модели из кэша загруженных (DrawPic) — без import состава
+EquipIcon.picture = src => DrawPic.data(src);

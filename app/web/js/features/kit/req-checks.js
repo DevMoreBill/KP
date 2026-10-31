@@ -2,7 +2,6 @@ import { StationReq } from '../req/station-req.js';
 import { StationDefaults } from './station-defaults.js';
 import { StationRules } from '../rules/station-rules.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
-import { TzPick } from '../tz/tz-pick.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { Kit } from '../../core/kit.js';
@@ -108,7 +107,7 @@ export class ReqChecks {
   static _oil(ctx) {
     if (ctx.kind !== 'comp' || !StationReq.oilFree(ctx.item)) return [];
     const units = this._units(ctx.parts, 'compressor');
-    const oily = units.filter(part => !TzPick.oilFree(part)).length;
+    const oily = units.filter(part => !AirChain.oilFree(part)).length;
     if (!units.length) return [];
     return [
       {

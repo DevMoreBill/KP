@@ -1,5 +1,4 @@
 import { AsmItem } from './asm-item.js';
-import { EquipWizard } from '../wizard/equip-wizard.js';
 import { CatalogEditor } from '../catalog/catalog-edit.js';
 import { Catalog, CatalogStore } from '../catalog/catalog-store.js';
 import { CardRules } from '../catalog/card-rules.js';
@@ -10,6 +9,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Str } from '../../core/str.js';
 import { $, Uid } from '../../core/util.js';
+import { WizardLink } from '../../core/wizard-link.js';
 
 /**
  * Части сборного изделия, которых нет в каталоге: новая карточка каталога всеми способами окна «Добавить оборудование»
@@ -24,7 +24,7 @@ export class AsmCatalog {
    */
   static newCard(cat, from) {
     if (ItemEditor.current) ItemEditor.close();
-    EquipWizard.open('catalog', cat, from);
+    WizardLink.open('catalog', cat, from);
   }
 
   /**
