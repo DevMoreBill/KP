@@ -1430,15 +1430,21 @@ class Scenario(UiRun):
         self._cab_intake()
 
     def _cab_tip(self):
-        """Совет при первом открытии кабинета (в общем ходе прогона выключен — expose_script): показан и «Понятно» убирает его."""
+        """Совет при первом открытии кабинета (в общем ходе прогона выключен — expose_script): показан и «Понятно» убирает его.
+        На телефоне совет — под раскрытием «Неделя, месяц, воронка» внизу «Сегодня» (CabToday._phoneMore): раскрыть."""
         pg = self.pg
         self.ev("localStorage.removeItem('kp.cab.tip')")
         self.ev("Cabinet.renderBody()")
+        more = pg.locator('#cabWin details.td-more:not([open]) > summary')
+        if more.count():
+            more.click()
+            self.wait(300)
         try:
             pg.wait_for_selector('#cabWin .cab-tip', timeout=5000)
         except Exception:
             self.errs.append(('cabinet', 'ERR', 'совет при первом открытии кабинета не показан'))
             return
+        pg.locator('#cabWin .cab-tip').scroll_into_view_if_needed()
         self.snap('f_cab_tip', '#cabWin', wait=200)
         pg.click('#cabWin .cab-tip [data-ctip]')
         self.wait(300)
