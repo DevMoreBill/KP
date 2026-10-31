@@ -215,6 +215,23 @@ class UiStand:
             c.execute("DELETE FROM kv WHERE key IN ('admin', 'admins')")
             c.commit()
             c.close()
+        self._quiet()
+
+    def _quiet(self):
+        """Внешние обмены стенда. Битрикс24 — по «Обменяться сейчас» прогона, фоновый опрос — раз в час (раз в 90 с он
+        попадал между снимками: сделка то «ждёт отправки», то уже в Битриксе); копия базы — без портала и второй папки
+        копий владельца: стенд не пишет в его Битрикс24 и на его диск (прогон подключает подставной портал сам)."""
+        import storage
+        from bitrix import BitrixConf
+        store = storage.Store(self.st.db)
+        try:
+            bitrix = store.kv_get(BitrixConf.KEY) or {}
+            store.kv_set(BitrixConf.KEY, dict(bitrix, on=False, pollSec=BitrixConf.POLL[1]))
+            settings = store.kv_get('settings') or {}
+            if settings.get('backup2'):
+                store.kv_set('settings', dict(settings, backup2=dict(settings['backup2'], on=False)))
+        finally:
+            store.conn().close()
 
     def start(self):
         from bitrix_fake import FakeBitrix
@@ -320,7 +337,9 @@ class UiRun:
         """Классы программы — именами в окне страницы, только для проверок прогона (в программе их нет: модули
         подключают друг друга import). Живые свойства: S после смены КП — новое. Разделы «по требованию»
         (tz-out, rules-doc) не подключаются — проверяется их загрузка по первому нажатию; main.js и index.js страница
-        подключает с меткой версии (?v=…) — повторный import запустил бы их второй раз."""
+        подключает с меткой версии (?v=…) — повторный import запустил бы их второй раз. Обзор первого входа и совет
+        кабинета — выключены (совет держится до первой перерисовки кабинета — в снимках был бы через раз; его снимок —
+        на этапе «Кабинет»)."""
         root = os.path.join(ROOT, 'app', 'web', 'js')
         mods = []
         for d, _, files in os.walk(root):
@@ -334,7 +353,7 @@ class UiRun:
                     names = re.findall(r'^export (?:class|const|let|function) (\w+)', src.read(), re.M)
                 if names:
                     mods.append(['/web/js/' + os.path.relpath(path, root).replace(os.sep, '/'), names])
-        return '''try { localStorage.setItem('kp.tour', '1'); } catch (e) {}
+        return '''try { localStorage.setItem('kp.tour', '1'); localStorage.setItem('kp.cab.tip', '1'); } catch (e) {}
 addEventListener('DOMContentLoaded', async () => {
   for (const [path, names] of %s) {
     const ns = await import(path);
@@ -378,7 +397,7 @@ addEventListener('DOMContentLoaded', async () => {
         if os.environ.get('KP_PROGON_DOM'):   # разметка страницы рядом со снимком — сверка до и после переписывания кода
             try:
                 with open(fn[:-4] + '.html', 'w', encoding='utf-8') as f:
-                    f.write(self.ev("document.body.outerHTML"))
+                    f.write(self.ev(self.DOM))
             except Exception:
                 pass
         if os.environ.get('KP_PROGON_GEOM'):   # место, размер и вид каждого элемента — сверка вёрстки до и после правки стилей
@@ -391,6 +410,22 @@ addEventListener('DOMContentLoaded', async () => {
         self.log.append('snap ' + name)
         return r
 
+    # разметка страницы со значениями полей, как на экране: набранное, но ещё не перерисованное, в атрибутах не видно —
+    # снимок зависел бы от того, успела ли форма перерисоваться; страница не меняется (значения — в копии)
+    DOM = """() => {
+        const live = document.body.querySelectorAll('input, textarea, select');
+        const copy = document.body.cloneNode(true);
+        const twins = copy.querySelectorAll('input, textarea, select');
+        live.forEach((el, k) => {
+          const twin = twins[k];
+          if (!twin) return;
+          if (el.tagName === 'TEXTAREA') twin.textContent = el.value;
+          else if (el.tagName === 'SELECT') [...twin.options].forEach((opt, j) => opt.toggleAttribute('selected', !!(el.options[j] && el.options[j].selected)));
+          else if (el.type === 'checkbox' || el.type === 'radio') twin.toggleAttribute('checked', el.checked);
+          else if (el.type !== 'file' && el.type !== 'password') twin.setAttribute('value', el.value);
+        });
+        return copy.outerHTML;
+      }"""
     # [тег#id.классы, x, y, ширина, высота, кегль, цвет, фон, display] видимых элементов — по порядку в документе
     GEOM = """() => [...document.querySelectorAll('body *')].filter(e => !e.closest('svg') || e.tagName === 'svg').map(e => {
         const r = e.getBoundingClientRect(); if (!r.width && !r.height) return null; const cs = getComputedStyle(e);
@@ -481,6 +516,19 @@ class Scenario(UiRun):
         self.ev("Steps.open('%s')" % step)
         self.wait(500)
         self.ev("window.scrollTo(0,0)")
+
+    def settle(self, what, js, timeout=60000):
+        """Дождаться, пока страница будет готова к снимку (условие js); не дождались — отметка в отчёт."""
+        try:
+            self.pg.wait_for_function(js, timeout=timeout)
+        except Exception:
+            self.errs.append((self.cur, 'NOTE', '%s — не дождались за %d с' % (what, timeout // 1000)))
+
+    # картинки станций собраны: нет пересборки и отложенной (3D-вид и листы — в фоне, по очереди)
+    IMAGES = "StationImages.busy.size === 0 && StationImages.timers.size === 0"
+    # миниатюра титула построена (или пустая / с ошибкой)
+    COVER = ("(() => { const box = document.querySelector('#cvThumb'); return !box || (!box.classList.contains('loading') "
+             "&& !!box.querySelector('section.docx, .cv-empty')); })()")
 
     def visible(self, sel):
         loc = self.pg.locator(sel).first
@@ -658,12 +706,15 @@ class Scenario(UiRun):
         self.snap('43_station_preview', '#dlg', wait=1500)
         pg.click('#dlg [data-nw=nsPick]')
         pg.wait_for_function("!document.querySelector('#dlg[open].nw')", timeout=60000)
-        self.snap('44_equip_with_station', None, full=True, wait=2000)
+        self.wait(2000)
+        self.settle('картинки станции', self.IMAGES, 180000)
+        self.snap('44_equip_with_station', None, full=True)
         self.closeall()      # после подбора программа сама открывает карточку станции — открываем заново, как менеджер
         n = self.ev("S.items.length") - 1
         pg.locator('#form button.btn[data-a=edit][data-i="%d"]' % n).first.click()
         pg.wait_for_selector('#edlg[open]')
         self.wait(1500)
+        self.settle('картинки станции', self.IMAGES, 180000)
         tabs = self._tabs('st_tabs', '45_st_', 2500)
         self._paint(tabs)
         if 'layout' in tabs:
@@ -833,6 +884,9 @@ class Scenario(UiRun):
         if d:
             d.fill('5')
             pg.keyboard.press('Tab')
+            # скидка форму не перерисовывает (FieldEvents.leave) — сумма во вкладке КП обновилась бы только при следующей
+            # перерисовке, и снимок зависел бы от неё
+            self.ev("KpForm.render()")
         self.snap('51_price_filled', None, full=True, wait=800)
 
     def _open_deal(self):
@@ -917,6 +971,7 @@ class Scenario(UiRun):
     def s_steps(self):
         pg = self.pg
         self.go('cover')
+        self.settle('миниатюра титула', self.COVER, 60000)
         self.snap('70_cover', None, full=True)
         self.go('conds')
         self.snap('71_conds', None, full=True)
@@ -934,7 +989,9 @@ class Scenario(UiRun):
                 pg.select_option('#form select >> nth=0', o[0])
                 self.wait(800)
         self.fill_empty((('manager.name', 'Иванов Иван Иванович'), ('manager.phone', '+7 900 000-00-00'), ('manager.email', 'test@example.com')))
-        self.snap('73_mgr_filled', None, full=True, wait=600)
+        self.wait(600)
+        self.settle('менеджер в справочнике', "!/Сохраняю/.test((document.querySelector('#mgrStat') || {}).textContent || '')", 15000)
+        self.snap('73_mgr_filled', None, full=True)
         self.go('client')
         self.fill_empty((('contact.name', 'Петров Пётр'), ('contact.phone', '+7 900 111-22-33')))
         self.meta()['problems'] = self.ev("Problems.list().map(p=>p[0])")
@@ -1074,7 +1131,7 @@ class Scenario(UiRun):
         other.click()
         self.wait(2500)
         tabs = self.kp_tabs()
-        second = self.ev("({client:S.client, kpId:S.kpId||''})")
+        second = self.ev("({client:S.client, kpId:S.kpId||'', number:S.number||''})")
         if len(tabs) != 2 or second['kpId'] != other_id:
             bad.append('из журнала — не новой вкладкой: %s' % tabs)
         self._unlock_others()
@@ -1090,6 +1147,11 @@ class Scenario(UiRun):
         now = self.ev("({client:S.client, kpId:S.kpId||'', n:S.items.length, extra:S.condExtra})")
         if now != first:
             bad.append('первое КП изменилось: было %s, стало %s' % (first, now))
+        # правка КП, открытого из журнала, при переходе на другую вкладку — в черновике (было: до первого автосохранения
+        # правка не считалась несохранённой — ни черновика, ни вопроса при закрытии вкладки)
+        drafts = self.ev("Drafts.list().then(rows => rows.map(row => row.kp))")
+        if second['number'] and second['number'] not in drafts:
+            bad.append('правка КП № %s, открытого из журнала, не отложена в черновик: %s' % (second['number'], drafts))
         self.kp_pick(1)
         if self.ev("S.condExtra") != 'Вкладка Б — проверка':
             bad.append('правка второго КП потерялась: %s' % self.ev("S.condExtra"))
@@ -1271,6 +1333,16 @@ class Scenario(UiRun):
             pg.click('#setdlg #bxOn')
         pg.wait_for_function("document.querySelector('#setdlg').innerText.includes('Последний обмен')", timeout=30000)
 
+    def _bx_run(self):
+        """«Обменяться сейчас» и дождаться конца: поля экономики и связь сделок с Битриксом — до снимков, а не когда успеет
+        фоновый обмен (иначе «Как в Битрикс24» через раз без полей КП и прежних сделок)."""
+        pg = self.pg
+        run = pg.locator('#setdlg #bxRun')
+        if not run.count() or not run.is_enabled():
+            return
+        run.click()
+        self.settle('обмен с Битриксом', "(b => !b || (!b.disabled && !/Обмениваюсь/.test(b.textContent)))(document.querySelector('#setdlg #bxRun'))", 90000)
+
     def _bx_tab(self, tab):
         """Вкладка «Связи → Битрикс24» в «Настройках» (щелчок из страницы — на телефоне меню может быть свёрнуто)."""
         self.ev("""t => {
@@ -1287,6 +1359,7 @@ class Scenario(UiRun):
         """«Настройки → Битрикс24» на подставном Битриксе: связь, все пункты раздела, пробный прогон, старые сделки."""
         pg = self.pg
         self._bx_connect()
+        self._bx_run()
         tabs = self.ev("BitrixPanel.TABS.map(t=>t[0])")
         for t in tabs:
             self._bx_tab(t)
@@ -1315,6 +1388,7 @@ class Scenario(UiRun):
         if self.ev("CabState.tab") != 'today':
             self.errs.append(('cabinet', 'ERR', 'кабинет открылся не на «Сегодня»'))
         self.snap('f_cab_start', '#cabWin', wait=200)
+        self._cab_tip()
         if pg.locator('#cabWho').count():
             pg.select_option('#cabWho', 'all')
             self.wait(2000)
@@ -1351,6 +1425,22 @@ class Scenario(UiRun):
         self.snap('f_cab_guide', 'dialog.cg-dlg[open]', wait=200)
         self.closeall()
         self._cab_intake()
+
+    def _cab_tip(self):
+        """Совет при первом открытии кабинета (в общем ходе прогона выключен — expose_script): показан и «Понятно» убирает его."""
+        pg = self.pg
+        self.ev("localStorage.removeItem('kp.cab.tip')")
+        self.ev("Cabinet.renderBody()")
+        try:
+            pg.wait_for_selector('#cabWin .cab-tip', timeout=5000)
+        except Exception:
+            self.errs.append(('cabinet', 'ERR', 'совет при первом открытии кабинета не показан'))
+            return
+        self.snap('f_cab_tip', '#cabWin', wait=200)
+        pg.click('#cabWin .cab-tip [data-ctip]')
+        self.wait(300)
+        if pg.locator('#cabWin .cab-tip').count() or self.ev("localStorage.getItem('kp.cab.tip')") != '1':
+            self.errs.append(('cabinet', 'ERR', '«Понятно» не убрал совет кабинета'))
 
     def _cab_intake(self):
         """Заявка из письма: «Разобрать» — клиент (ИНН), задача, контакт и модель каталога; сделка → КП с этой моделью."""
@@ -1639,6 +1729,7 @@ class Scenario(UiRun):
         """«Как в Битрикс24»: структура и сделки подставного Битрикса, доска по воронкам, карточка сделки с полями Битрикса."""
         pg = self.pg
         self._bx_connect()
+        self._bx_run()
         self._mirror_tab()
         self._mirror_act('structure', 'Структура загружена')
         self._mirror_act('import', 'Загрузка сделок закончена')

@@ -7,6 +7,7 @@ import { $, esc, today } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { FEAT } from '../../core/features.js';
 import { KpTabs } from './kp-tabs.js';
+import { Drafts } from './drafts.js';
 import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
 
@@ -162,6 +163,7 @@ export class KpLoader {
     KpForm.render();
     KpState.persist();
     window.scrollTo({ top: 0 });
+    Drafts.loaded();
     Toast.show(`КП № ${S.number || id} открыто`);
   }
 }

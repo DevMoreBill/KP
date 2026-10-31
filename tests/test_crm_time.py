@@ -2,8 +2,10 @@
 """«Где тратится время» (app/crm_time.py, /api/crm/time): дни на стадиях по истории, от заявки до первого КП,
 дела позже срока; по отделу, без имён менеджеров. Вымышленные данные."""
 import json
+import os
+import time
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from kit import Http, SampleData, Stand, TempStore
 
@@ -24,6 +26,42 @@ class DealTimeTest(unittest.TestCase):
         doc = {k: v for k, v in deal.items() if k not in ('id', 'managerId', 'stage', 'updated', 'rev', 'kps', 'next', 'tasks', 'funnel')}
         self.st.write('UPDATE deals SET doc=?, stage=? WHERE id=?', (json.dumps(doc, ensure_ascii=False), moves[-1][1] if moves else 'lead', did))
         return did
+
+    def _kp(self, did, kid, saved_at):
+        """КП в сделке; время сохранения — как пишет браузер (UTC, «…Z»)."""
+        self.st.write('INSERT INTO kp (id, number, meta, rev) VALUES (?, ?, ?, 0)', (kid, kid, json.dumps({'savedAt': saved_at})))
+        self.st.write('INSERT INTO deal_kp (kp_id, deal_id) VALUES (?, ?)', (kid, did))
+
+    def _moscow(self):
+        was = os.environ.get('TZ')
+
+        def back():
+            if was is None:
+                os.environ.pop('TZ', None)
+            else:
+                os.environ['TZ'] = was
+            time.tzset()
+
+        self.addCleanup(back)
+        os.environ['TZ'] = 'Europe/Moscow'
+        time.tzset()
+
+    def test_first_kp_browser_time(self):
+        """Время КП — по часам браузера в UTC, сделки — местное время сервера (Москва): КП через 2 дня после заявки — 2 дня
+        (было 1,9: UTC сравнивалось с местным как есть); КП, сохранённое тем же сохранением, что создало сделку (часы браузера
+        на секунды позади), — 0 дней (было: «КП раньше заявки», сделка не считалась)."""
+        from crm_time import DealTime
+        if not hasattr(time, 'tzset'):
+            self.skipTest('нет time.tzset (Windows)')
+        self._moscow()
+        now = datetime.now().replace(microsecond=0)
+
+        def browser(when):
+            return when.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+        self._kp(self._deal(now - timedelta(days=3), []), 'kp-t1', browser(now - timedelta(days=1)))
+        self._kp(self._deal(now - timedelta(hours=1), []), 'kp-t2', browser(now - timedelta(hours=1, seconds=2)))
+        self.assertEqual(DealTime(self.st).report()['firstKp'], {'median': 1.0, 'deals': 2})
 
     def test_stage_days(self):
         from crm_time import DealTime

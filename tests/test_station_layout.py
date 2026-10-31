@@ -31,6 +31,15 @@ class StationLayoutJs(unittest.TestCase):
                            text=True, encoding='utf-8', errors='replace', timeout=900)
         self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
 
+    def test_images_wait_background(self):
+        """перед предпросмотром и сохранением КП фоновая пересборка картинок станции заканчивается (tests/js/station_images.js)"""
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('нет Node.js')
+        r = subprocess.run([node, os.path.join(REPO, 'tests', 'js', 'station_images.js')], cwd=REPO, capture_output=True,
+                           text=True, encoding='utf-8', errors='replace', timeout=120)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-6000:])
+
 
 class StationLayoutFeature(unittest.TestCase):
     def test_feature_switch(self):

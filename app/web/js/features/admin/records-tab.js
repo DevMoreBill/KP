@@ -15,6 +15,7 @@ import { Debounce } from '../../core/debounce.js';
 import { $, esc } from '../../core/util.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from '../kp/kp-tabs.js';
+import { Drafts } from '../kp/drafts.js';
 import { KpForm } from '../../core/kp-form.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
@@ -255,6 +256,7 @@ export class RecordEdit {
     KpForm.render();
     KpState.persist();
     window.scrollTo({ top: 0 });
+    Drafts.loaded();
     Toast.show(`КП № ${S.number || ''} открыто для редактирования`);
   }
 }

@@ -31,6 +31,8 @@ export class StationImages {
   /** ракурсы вида снаружи: ключ, азимут камеры (°: 0 — спереди, 90 — слева, −90 — справа, 180 — сзади), подпись */
   /** пересборка — после полутора секунд тишины (не на каждое нажатие при наборе) */
   static WAIT = 1500;
+  /** проверка, закончилась ли пересборка станции, начатая не очередью (вкладка «Компоновка») */
+  static IDLE_MS = 100;
   static ERROR_MAX = 120;
   static QUALITY = 0.9;
   static OPTION = { stdraw: 'draw', stschema: 'scheme', stout: 'out' };
@@ -326,10 +328,14 @@ export class StationImages {
   }
 
   /**
-   * Картинки всех станций КП.
+   * Картинки всех станций КП — по текущему составу (предпросмотр, сохранение, пробный файл). Пересборка, идущая в фоне,
+   * сначала заканчивается: занятая станция пропускалась — в КП уходили прежние картинки, а новые приходили уже после.
    * @returns {Promise<boolean>} что-то изменилось
    */
   static async syncAll() {
+    this.cancel();
+    await this.queue;
+    while (this.busy.size) await new Promise(resolve => setTimeout(resolve, this.IDLE_MS));
     let changed = false;
     for (const item of S.items) if (await this.sync(item)) changed = true;
     if (changed) KpState.persist();

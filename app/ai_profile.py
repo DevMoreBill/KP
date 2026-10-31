@@ -107,13 +107,13 @@ class CategoryProfile:
         shown: defaultdict = defaultdict(Counter)
         labels: Counter = Counter()
         gnames: Counter = Counter()
+        # по разу на карточку, в порядке карточки: равные по частоте — в одном порядке при любом запуске сервера
         for card in cards:
-            for k in {KeyNorm.of(x) for x in card['keys'] if x}:
-                keys[k] += 1
+            keys.update(dict.fromkeys((KeyNorm.of(x) for x in card['keys'] if x), 1))
             for x in card['keys']:
                 shown[KeyNorm.of(x)][x] += 1
-            labels.update({label for label, _ in card['feats'] if label})
-            gnames.update({group for group in card['groups'] if group})
+            labels.update(dict.fromkeys((label for label, _ in card['feats'] if label), 1))
+            gnames.update(dict.fromkeys((group for group in card['groups'] if group), 1))
         block = [line for card in cards for _, line in card['feats']]
         return {
             'cat': cat,

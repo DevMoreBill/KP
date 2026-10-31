@@ -20,6 +20,9 @@ class DealTime:
     DAY_S = 86400
     ROUND = 1
     REASONS = 5
+    # сделку создало сохранение КП: время КП — по часам браузера, сделки — по часам сервера; КП «раньше» сделки не больше
+    # чем на эту величину — то же сохранение (ожидание 0)
+    SAME_SAVE = timedelta(minutes=5)
 
     def __init__(self, store) -> None:
         self.store = store
@@ -40,10 +43,13 @@ class DealTime:
 
     @staticmethod
     def _when(text: Any) -> datetime | None:
+        """Метка — местным временем сервера: из браузера (UTC, «…Z») переводится, метка сервера (без пояса) — как есть."""
+        raw = str(text or '').strip()
         try:
-            return datetime.fromisoformat(str(text)[:19])
+            when = datetime.fromisoformat(raw[:-1] + '+00:00' if raw.endswith('Z') else raw)
         except ValueError:
             return None
+        return when.astimezone().replace(tzinfo=None) if when.tzinfo else when
 
     def _segments(self, deal: dict) -> list[tuple[str, float]]:
         """(стадия, дней на ней) по истории сделки; последняя незакрытая стадия — до сегодня."""
@@ -124,8 +130,8 @@ class DealTime:
             start = self._when(deal.get('created'))
             dates = [self._when(row.get('savedAt') or row.get('date')) for row in kps.get(deal['id']) or []]
             first = min((when for when in dates if when), default=None)
-            if start and first and first >= start:
-                waits.append((first - start).total_seconds() / self.DAY_S)
+            if start and first and first >= start - self.SAME_SAVE:
+                waits.append(max(first - start, timedelta()).total_seconds() / self.DAY_S)
         return {'median': round(median(waits), self.ROUND) if waits else None, 'deals': len(waits)}
 
     def _late_tasks(self, since: str) -> dict:

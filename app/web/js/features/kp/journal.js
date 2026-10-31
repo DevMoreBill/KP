@@ -374,7 +374,7 @@ export class Journal {
       KpForm.render();
       KpState.persist();
       window.scrollTo({ top: 0 });
-      if (copy) Drafts.loaded();
+      Drafts.loaded(); // отсчёт правок — с открытого: иначе правка до первого автосохранения не считалась несохранённой
       if (econ) {
         DealLink.open();
         return;
