@@ -1,5 +1,6 @@
 import { CatalogActions } from './catalog-actions.js';
 import { CatalogClicks } from './catalog-clicks.js';
+import { CatalogScroll } from './catalog-scroll.js';
 import { CatalogSorter } from './catalog-sorter.js';
 import { CatalogTree } from './catalog-nav.js';
 import { DefRegistry } from '../../core/defaults.js';
@@ -46,7 +47,7 @@ export class CatalogEvents {
    */
   static html(win) {
     const main = win.optFor == null;
-    return `<div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
+    return `<div class="cw-main"><div class="cw-h"><button class="btn cw-navbtn" type="button" data-cw="nav" aria-label="Категории и фильтры" title="Категории и фильтры"><span aria-hidden="true">☰</span><span class="cw-lbl2"> Фильтры</span></button>
        <h3>${this._title(win)}</h3>
        <div class="cw-q"><input type="search" id="cwQ" placeholder="Модель, артикул, производитель, поставщик или характеристика" autocomplete="off" value="${esc(win.F.q)}" aria-label="Поиск по каталогу" title="Можно без пробелов и дефисов: «DVK3013» найдёт DVK D 30-13; «/» — перейти к поиску"><kbd aria-hidden="true">/</kbd></div>
        ${main ? '<button class="btn" type="button" data-cw="new" title="Новая позиция каталога">+<span class="cw-lbl"> Позиция</span></button>' : ''}
@@ -62,7 +63,7 @@ export class CatalogEvents {
          <div class="cw-list" id="cwList"><p class="empty">Загружаю…</p></div></section>
        <aside class="cw-pv" id="cwPv" aria-label="Карточка позиции"></aside>
        <div class="cw-split" data-split="nav" role="separator" aria-orientation="vertical" aria-label="Ширина панели фильтров" tabindex="0" title="Потяните, чтобы изменить ширину панели фильтров. Двойной щелчок — как было"></div>
-       <div class="cw-split" data-split="pv" role="separator" aria-orientation="vertical" aria-label="Ширина карточки позиции" tabindex="0" title="Потяните, чтобы изменить ширину карточки. Двойной щелчок — как было"></div></div>
+       <div class="cw-split" data-split="pv" role="separator" aria-orientation="vertical" aria-label="Ширина карточки позиции" tabindex="0" title="Потяните, чтобы изменить ширину карточки. Двойной щелчок — как было"></div></div></div>
      <div class="cw-f" id="cwF"></div>`;
   }
 
@@ -118,6 +119,7 @@ export class CatalogEvents {
     delay.run(
       () => {
         win.refresh();
+        CatalogScroll.results();
         this._server(win, filter);
       },
       win.docs.length > this.BIG ? wait : Math.min(this.FAST, wait),
@@ -220,7 +222,7 @@ export class CatalogChanges {
       win.tab = field.value ? 'flt' : '';
     } else filter[key] = field.value;
     win.refresh();
-    $('#cwList').scrollTop = 0;
+    CatalogScroll.start();
   }
 
   static _facet(win, field) {
@@ -247,7 +249,7 @@ export class CatalogChanges {
     win.F.sort = field.value;
     win.F.dir = CatalogSorter.def(field.value);
     win.list();
-    $('#cwList').scrollTop = 0;
+    CatalogScroll.start();
   }
 
   static _byId = {

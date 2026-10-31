@@ -1,6 +1,7 @@
 import { CatalogAnalogs } from './catalog-analogs.js';
 import { CatalogCompare, CatalogSimilar } from './catalog-compare.js';
 import { CatalogActions } from './catalog-actions.js';
+import { CatalogScroll } from './catalog-scroll.js';
 import { CatalogTree } from './catalog-nav.js';
 import { ModerationList } from './moderation.js';
 import { TypesEditor } from './types-editor.js';
@@ -150,7 +151,7 @@ export class CatalogClicks {
     win.limit = win.constructor.PAGE;
     win.tab = win.F.cat ? 'flt' : '';
     win.refresh();
-    $('#cwList').scrollTop = 0;
+    CatalogScroll.start();
   }
 
   static _cat(win, button, dialog) {
@@ -159,7 +160,7 @@ export class CatalogClicks {
     win.tab = win.F.cat ? 'flt' : 'cats';
     if (!win.F.cat) dialog.classList.remove('navon');
     win.refresh();
-    $('#cwList').scrollTop = 0;
+    CatalogScroll.start();
   }
 
   static _range(win, button) {
@@ -173,7 +174,7 @@ export class CatalogClicks {
   static _dir(win) {
     win.F.dir = -(win.F.dir || 1);
     win.list();
-    $('#cwList').scrollTop = 0;
+    CatalogScroll.start();
   }
 
   // цели щелчка по порядку: селектор → действие

@@ -7,6 +7,7 @@ import { CatalogFilter } from './catalog-filter.js';
 import { CatalogIndex } from './catalog-index.js';
 import { CatalogNav } from './catalog-nav.js';
 import { CatalogPanes } from './catalog-panes.js';
+import { CatalogScroll } from './catalog-scroll.js';
 import { CatalogSorter } from './catalog-sorter.js';
 import { NewTypeDialog } from './new-type.js';
 import { Catalog, CatalogStore } from './catalog-store.js';
@@ -335,7 +336,7 @@ export class CatalogWindow {
         this.io.disconnect();
         this.more();
       },
-      { root: box, rootMargin: CatalogWindow.MORE_MARGIN },
+      { root: CatalogScroll.box(), rootMargin: CatalogWindow.MORE_MARGIN },
     );
     this.io.observe(tail);
   }
@@ -577,7 +578,9 @@ export class CatalogWindow {
     this.panes.loadSize();
     this.panes.load();
     dialog.innerHTML = CatalogEvents.html(this);
+    CatalogScroll.watch(dialog);
     AppTabs.show(dialog, 'cat');
+    this._touchFocus(dialog);
     CatalogEvents.bind(this, dialog);
     this.panes.layout();
     this.docs = Catalog.cache.length
@@ -593,5 +596,11 @@ export class CatalogWindow {
     setTimeout(() => {
       if (matchMedia('(pointer:fine)').matches) $('#cwQ')?.focus();
     }, CatalogWindow.FOCUS_DELAY);
+  }
+
+  // пальцем: без рамки фокуса на первой кнопке окна — «Фильтры» в рамке выглядели включёнными (поиск — по нажатию)
+  _touchFocus(dialog) {
+    const active = document.activeElement;
+    if (matchMedia('(pointer:coarse)').matches && active?.matches('button') && dialog.contains(active)) active.blur();
   }
 }

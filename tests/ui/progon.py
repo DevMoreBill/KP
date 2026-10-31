@@ -379,6 +379,18 @@ addEventListener('DOMContentLoaded', async () => {
     def wait(self, ms):
         self.pg.wait_for_timeout(ms)
 
+    def touch_drag(self, x, y, dist, steps=12):
+        """Провести пальцем по экрану (телефон): касание, движение на dist px по вертикали, отпускание — прокрутка, как у
+        менеджера (window.scrollTo и щелчок Playwright прокручивают и там, где палец не может)."""
+        if not getattr(self, 'touch', None):
+            self.touch = self.ctx.new_cdp_session(self.pg)
+        self.touch.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
+        for k in range(1, steps + 1):
+            self.touch.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x, 'y': y + dist * k / steps}]})
+            self.wait(16)
+        self.touch.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+        self.wait(900)
+
     def snap(self, name, root=None, full=False, wait=500):
         self.wait(wait)
         try:
@@ -597,6 +609,8 @@ class Scenario(UiRun):
             self.ev("CatalogWindow.open({})")
         pg.wait_for_selector('#cwList .cw-row', timeout=20000)
         self.snap('21_cat_open', '#catdlg')
+        if self.phone:
+            self._cat_scroll()
         pg.fill('#cwQ', 'компрессор винтовой')
         self.wait(1200)
         self.snap('22_cat_search', '#catdlg')
@@ -660,6 +674,49 @@ class Scenario(UiRun):
         pg.click('#catdlg [data-cw=done]')
         self.wait(1500)
         self.snap('29_equip_filled', None, full=True)
+        if self.phone:
+            self._kp_swipe()
+
+    # телефон: где верх окна каталога, строка поиска, отбор и список (px от верха экрана), прокрутка окна и сколько строк нарисовано
+    CAT_GEO = ("(() => { const box = sel => document.querySelector(sel).getBoundingClientRect(); "
+               "return {main: document.querySelector('#catdlg .cw-main').scrollTop, q: box('#cwQ').top, bar: box('#cwBar').bottom, "
+               "head: box('#catdlg .cw-h').bottom, foot: box('#cwF').top, list: box('#cwList').top, "
+               "rows: document.querySelectorAll('#cwList .cw-row').length, page: CatalogWindow.PAGE}; })()")
+
+    def _cat_scroll(self):
+        """Телефон: список каталога пальцем вверх — заголовок, отбор и «Найдено» уходят вместе с ним, строка поиска остаётся у
+        края, списку — почти весь экран (31.10: было меньше половины); затем — снова к началу."""
+        before = self.ev(self.CAT_GEO)
+        self.touch_drag(215, 650, -400)
+        after = self.ev(self.CAT_GEO)
+        self.snap('21b_cat_scrolled', '#catdlg')
+        self.meta()['cat_list_px'] = [round(geo['foot'] - max(geo['list'], geo['head'])) for geo in (before, after)]
+        if not (after['main'] > before['main'] and 0 <= after['q'] < before['q'] and after['bar'] <= after['q']):
+            self.errs.append((self.cur, 'ERR', 'каталог на телефоне: при прокрутке списка верх окна не уходит или строка поиска '
+                                               'не остаётся у края — %s → %s' % (before, after)))
+        if after['rows'] > after['page']:   # строки — частями по мере прокрутки, а не все позиции каталога сразу
+            self.errs.append((self.cur, 'ERR', 'каталог на телефоне: нарисовано строк %d — больше порции %d' % (after['rows'], after['page'])))
+        self.ev("document.querySelector('#catdlg .cw-main').scrollTop = 0")
+        self.wait(300)
+
+    def _kp_swipe(self):
+        """Телефон: страница КП прокручивается пальцем, когда вкладки разделов открыты в фоне — как у менеджера: кабинет открыт с
+        запуска, на КП — нижней панелью (31.10: правило «под открытым окном страница не прокручивается» срабатывало и на спрятанных
+        вкладках — КП не листалось совсем)."""
+        self.pg.click('[data-tab="cab"]')
+        self.pg.wait_for_selector('#cabWin[open]')
+        self.wait(800)
+        self.pg.click('[data-tab="kp"]')
+        self.wait(800)
+        before = self.ev('scrollY')
+        self.touch_drag(215, 600, -300)
+        moved = self.ev('scrollY') - before
+        self.meta()['kp_swipe_px'] = moved
+        if moved <= 0 and self.ev('document.documentElement.scrollHeight > innerHeight + 300'):
+            self.errs.append((self.cur, 'ERR', 'страница КП на телефоне не прокручивается пальцем (вкладки разделов открыты в фоне)'))
+        self.ev('window.scrollTo(0, 0)')
+        self.ev("AppTabs.close('cab')")
+        self.wait(500)
 
     def _add_found(self, q, n):
         self.pg.fill('#cwQ', q)
