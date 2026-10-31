@@ -279,8 +279,11 @@ class SampleData:
         out = []
         for i in range(self.n_clients):
             city = self.CITIES[i % len(self.CITIES)]
-            out.append({'id': 'cl-%03d' % i, 'name': 'ООО «Пример %d»' % (i + 1), 'full': 'Общество с ограниченной ответственностью «Пример %d»' % (i + 1),
-                        'inn': self.inn(self.rnd), 'address': 'г. %s, ул. Тестовая, д. %d' % (city, i + 1)})
+            inn = self.inn(self.rnd)
+            # id — как у клиентов, которых заводит программа (КП, Битрикс24, карточка предприятия): «inn» + ИНН; был «cl-NNN» —
+            # КП стенда с ИНН клиента искали «inn…» и получали «нет в справочнике» (404 в консоли прогона)
+            out.append({'id': 'inn' + inn, 'name': 'ООО «Пример %d»' % (i + 1), 'full': 'Общество с ограниченной ответственностью «Пример %d»' % (i + 1),
+                        'inn': inn, 'address': 'г. %s, ул. Тестовая, д. %d' % (city, i + 1)})
         return out
 
     def kp_docs(self, kid, n, manager):

@@ -1,3 +1,4 @@
+import { DocxPage } from './docx-parts.js';
 /**
  * Графический редактор шаблона КП: состояние окна, подписи и единицы (см, пт). Настройки шаблона правятся в рабочей копии
  * state.work и хранятся в template.json шаблона.
@@ -133,15 +134,13 @@ export class Design {
     return `/tpl/${encodeURIComponent(this.state.id)}/${encodeURIComponent(file)}`;
   }
 
-  static TWIPS_PER_CM = 567;
-
   static PAGE_CM = 21;
 
   static PX_PER_CM = 37.8;
 
   static _pageCm() {
     const found = /<w:pgSz[^>]*w:w="(\d+)"/.exec(Design.state.pack.sect || '');
-    return found ? +found[1] / this.TWIPS_PER_CM : this.PAGE_CM;
+    return found ? +found[1] / DocxPage.TWIPS_PER_CM : this.PAGE_CM;
   }
 
   /**

@@ -6,6 +6,7 @@ import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
 import { ObjPath } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
+import { DocxPage } from './docx-parts.js';
 
 /** Графический редактор шаблона: окно, верхняя панель и левая панель (структура, оформление, шапка, объекты). */
 export class DesignPanels {
@@ -19,7 +20,6 @@ export class DesignPanels {
   static MARGINS = { top: 'Верхнее', bottom: 'Нижнее', left: 'Левое', right: 'Правое' };
   static BLOCK_GROUPS = ['cover', 'equipment', 'offer', 'all'];
   static PANELS = { struct: '_struct', look: '_look', head: '_head' };
-  static TWIPS_PER_CM = 567;
   static LABEL_SHOWN = 40;
 
   /**
@@ -175,7 +175,7 @@ export class DesignPanels {
 
   static _margin(work, side) {
     const found = new RegExp(`<w:pgMar[^>]*w:${side}="(\\d+)"`).exec(Design.state.pack.sect || '');
-    const base = found ? Design.cmText(+found[1] / this.TWIPS_PER_CM) : '';
+    const base = found ? Design.cmText(+found[1] / DocxPage.TWIPS_PER_CM) : '';
     const value = (work.page || {})[side];
     return `<label class="td-n"><span>${this.MARGINS[side]}</span><input type="number" min="0.5" max="6" step="0.1" data-tdpage="${side}" value="${esc(value ?? '')}" placeholder="${esc(base)}"></label>`;
   }

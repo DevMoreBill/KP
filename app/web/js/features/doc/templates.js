@@ -6,6 +6,7 @@ import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Translit } from '../../core/translit.js';
+import { DocxPage } from './docx-parts.js';
 
 /**
  * Шаблоны КП (папка templates): выбор шаблона и загрузка всего, что в папке шаблона — настроек (template.json), скелета
@@ -16,7 +17,6 @@ export class Templates {
   static cache = {};
   static MAIN = 'pnevmotekh';
   static STORE = 'kp.template';
-  static TWIPS_PER_CM = 567;
   static CENTS = 100;
   static A4_TWIPS = [11906, 16838];
   static A4_TOLERANCE = 30;
@@ -149,7 +149,7 @@ export class Templates {
   }
 
   static _cm(value) {
-    return String(Math.round((value / this.TWIPS_PER_CM) * this.CENTS) / this.CENTS).replace('.', ',');
+    return String(Math.round((value / DocxPage.TWIPS_PER_CM) * this.CENTS) / this.CENTS).replace('.', ',');
   }
 
   static _format(width, height) {
