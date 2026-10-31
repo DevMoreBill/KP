@@ -1,10 +1,10 @@
-import { CarrierApis } from './carrier-apis.js';
-import { KeyBackup } from './key-backup.js';
-import { PartyCheck } from './party-check.js';
+import { PartyCheck } from '../kp/party-check.js';
 import { LgState } from '../deal/lg-state.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { esc } from '../../core/util.js';
+import { CarrierApis } from './carrier-apis.js';
+import { KeyBackup } from './key-backup.js';
 
 /** Ключи API — форма прямо в «Настройки → Ключи API». Ключи на сервере; в браузер приходит только маска. */
 export class ApiKeys {

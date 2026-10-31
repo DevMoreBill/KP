@@ -15,7 +15,6 @@ import { KpEconomics } from './price-calc.js';
 import { Fmt } from '../../core/str.js';
 import { Modal } from '../../core/modal.js';
 import { AppTabs } from '../../core/app-tabs.js';
-import { DealState } from '../deal/deal-state.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
@@ -27,6 +26,7 @@ import { KpTabs } from './kp-tabs.js';
 import { KpTransferView } from './kp-transfer.js';
 import { KpForm } from '../../core/kp-form.js';
 import { CabinetLink } from '../../core/cabinet-link.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /** Журнал КП: сохранённые КП постранично (поиск, автор и итоги считает сервер), открытие, копия, статус, письмо. */
 export class Journal {
@@ -376,7 +376,7 @@ export class Journal {
       window.scrollTo({ top: 0 });
       if (copy) Drafts.loaded();
       if (econ) {
-        DealState.open();
+        DealLink.open();
         return;
       }
       Toast.show(this._opened(copy));

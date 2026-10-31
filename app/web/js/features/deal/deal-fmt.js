@@ -138,7 +138,7 @@ export class DealFmt {
   static _cur(curPath, deal) {
     if (!curPath) return '';
     const now = ObjPath.get(deal, curPath) || 'RUB';
-    const options = DealTerms.CURS.map(cur => `<option${now === cur ? ' selected' : ''}>${cur}</option>`).join('');
+    const options = Money.CURS.map(cur => `<option${now === cur ? ' selected' : ''}>${cur}</option>`).join('');
     return `<select data-dl="${curPath}" aria-label="Валюта">${options}</select>`;
   }
 

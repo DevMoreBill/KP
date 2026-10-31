@@ -2,10 +2,10 @@ import { DealCalculator } from './deal-calculator.js';
 import { DealDefaults } from './deal-defaults.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
-import { InputNum } from './input-num.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
 import { S } from '../../core/state.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Краткая экономика сделки в правой панели (под кнопками сохранения): прибыль до налога, маржа, чистая прибыль, цена под

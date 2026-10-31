@@ -1,7 +1,6 @@
 import { ContainerKind } from './container-kind.js';
 import { Kit } from './kit.js';
 import { StationSpec } from './station-spec.js';
-import { LgCargo } from '../deal/lg-cargo.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { StationMods } from '../layout/station-mods.js';
 import { ItemSpec } from '../../core/item-spec.js';
@@ -9,6 +8,7 @@ import { Attrs } from '../../core/item-attrs.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { FieldUnit } from '../../core/field-unit.js';
 import { Str } from '../../core/str.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /** Значения, подставляемые в станцию из её оборудования. */
 export class StationAutoVal {

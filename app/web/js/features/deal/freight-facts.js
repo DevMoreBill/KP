@@ -1,11 +1,11 @@
 import { Freight } from './freight.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
 import { Toast } from '../../core/toast.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /**
  * Сверка тарифов со счетами перевозчиков (администратор): счета хранятся вместе с тарифами (facts); каждый счёт

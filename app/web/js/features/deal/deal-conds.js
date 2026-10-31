@@ -2,6 +2,8 @@ import { DealCal } from './deal-cal.js';
 import { DealState } from './deal-state.js';
 import { DealTerms } from './deal-terms.js';
 import { S } from '../../core/state.js';
+import { KpDate } from '../../core/kp-date.js';
+import { CondAuto } from '../../core/cond-auto.js';
 
 /**
  * Условия КП из экономики сделки: срок поставки, этапы оплаты, монтаж и ПНР, документация — человеческим текстом.
@@ -31,8 +33,8 @@ export class DealConds {
   static when(stage) {
     const days = +stage.off || 0;
     const [now, after] = DealConds.WHEN[stage.ev] || DealConds.WHEN.delivery;
-    if (stage.ev === 'pnr') return `${days ? `в течение ${DealTerms.daysText(days, stage.offK)} ` : ''}${after}`;
-    return days ? `в течение ${DealTerms.daysText(days, stage.offK)} ${after}` : now;
+    if (stage.ev === 'pnr') return `${days ? `в течение ${KpDate.daysText(days, stage.offK)} ` : ''}${after}`;
+    return days ? `в течение ${KpDate.daysText(days, stage.offK)} ${after}` : now;
   }
 
   /**
@@ -68,7 +70,7 @@ export class DealConds {
     if (lead) {
       const start = DealCal.contractDate();
       const until = start && !deal.startAuto ? ` (ориентировочно до ${DealCal.dayRu(calc.D)})` : '';
-      out['Срок поставки'] = `${DealTerms.daysText(lead.n, lead.kind)} с даты подписания договора${until}`;
+      out['Срок поставки'] = `${KpDate.daysText(lead.n, lead.kind)} с даты подписания договора${until}`;
     }
     const pay = DealConds._payment(calc);
     if (pay) out['Условия оплаты'] = pay;
@@ -101,7 +103,7 @@ export class DealConds {
 
   static _mounting(calc, deal) {
     const days = calc.pnrDays
-      ? ` и выполняются в течение ${DealTerms.daysText(calc.pnrDays, deal.pnrK === 'work' ? 'work' : '')} после поставки оборудования`
+      ? ` и выполняются в течение ${KpDate.daysText(calc.pnrDays, deal.pnrK === 'work' ? 'work' : '')} после поставки оборудования`
       : '';
     return `Монтажные и пусконаладочные работы входят в стоимость${days}`;
   }
@@ -122,31 +124,7 @@ export class DealConds {
     const suggested = DealConds.suggest(calc);
     S.condAuto = S.condAuto || {};
     let changed = false;
-    for (const label of DealConds.LABELS) changed = DealConds.apply(label, suggested[label] || '') || changed;
-    return changed;
-  }
-
-  /**
-   * Условие — подстановкой: пока поле пустое или в нём прежняя подстановка; вписанное вручную не меняется.
-   * @param {string} label
-   * @param {string} value
-   * @returns {boolean} изменилось
-   */
-  static apply(label, value) {
-    S.condAuto = S.condAuto || {};
-    let cond = S.conditions.find(row => row.label === label);
-    if (!cond) {
-      if (!value) return false;
-      cond = { label, value: '' };
-      S.conditions.push(cond);
-    }
-    const now = String(cond.value || '').trim();
-    const prev = S.condAuto[label];
-    if (now && !(prev != null && now === prev)) return false;
-    const changed = cond.value !== value;
-    if (changed) cond.value = value;
-    if (value) S.condAuto[label] = value;
-    else delete S.condAuto[label];
+    for (const label of DealConds.LABELS) changed = CondAuto.apply(label, suggested[label] || '') || changed;
     return changed;
   }
 }

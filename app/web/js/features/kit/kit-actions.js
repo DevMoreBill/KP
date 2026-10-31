@@ -8,8 +8,6 @@ import { CbrRates } from '../kp/cbr-rates.js';
 import { Currency } from '../kp/currency.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { PaintView } from './paint-view.js';
-import { DealWin } from '../deal/deal-win.js';
-import { InputNum } from '../deal/input-num.js';
 import { Toast } from '../../core/toast.js';
 import { ImageFiles } from '../catalog/images.js';
 import { $ } from '../../core/util.js';
@@ -20,6 +18,8 @@ import { KitScope } from './kit-scope.js';
 import { KpState, S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from './station-size.js';
+import { InputNum } from '../../core/input-num.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,
@@ -186,7 +186,7 @@ export class KitActions {
   }
 
   static _deal() {
-    DealWin.render();
+    DealLink.render();
   }
 
   static _change(field) {

@@ -5,7 +5,6 @@ import { ImageFiles } from '../catalog/images.js';
 import { ItemSpec } from '../../core/item-spec.js';
 import { Api, ImgUpload } from '../../core/net.js';
 import { Toast } from '../../core/toast.js';
-import { InputNum } from '../deal/input-num.js';
 import { KpState, S } from '../../core/state.js';
 import { $, esc } from '../../core/util.js';
 import { StationGeo } from '../layout/station-geo.js';
@@ -13,6 +12,7 @@ import { StationPaint } from '../layout/station-paint.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationPlan } from './station-plan.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и

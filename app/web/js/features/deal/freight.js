@@ -1,9 +1,9 @@
 import { FreightFit } from './freight-fit.js';
 import { FreightTariffs } from './freight-tariffs.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgGeo } from './lg-geo.js';
 import { LgValues } from './lg-values.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /**
  * Перевозка по России целиком: точки и расстояние, места груза с упаковкой, машины, разгрузка, агент, страхование, срок,

@@ -1,7 +1,5 @@
 import { PriceHist } from './price-hints.js';
 import { Currency } from './currency.js';
-import { DealState } from '../deal/deal-state.js';
-import { DealValues } from '../deal/deal-values.js';
 import { FEAT } from '../../core/features.js';
 import { Modal } from '../../core/modal.js';
 import { esc, isoDay } from '../../core/util.js';
@@ -9,6 +7,8 @@ import { S } from '../../core/state.js';
 import { KpEconomics } from './price-calc.js';
 import { RateSource } from './rate-source.js';
 import { WorkCalendar } from '../../core/date-picker.js';
+import { MarginLight } from '../../core/margin-light.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /** Проверка цен перед сохранением и отправкой КП: ниже закупки, маржа ниже красного порога, курс ЦБ старше суток. */
 export class PriceGuard {
@@ -93,10 +93,10 @@ export class PriceGuard {
 
   // экономику не открывали — маржа по закупке позиций, как в «Цене КП»
   static _margin() {
-    const sum = DealState.summary();
+    const sum = DealLink.summary();
     const margin = sum ? this._dealMargin(sum) : KpEconomics.of().margin;
     if (margin == null || !Number.isFinite(margin)) return [];
-    const red = DealValues.num('deal.marginRed', DealValues.MARGIN_RED);
+    const red = MarginLight.red();
     return margin < red ? [`Маржа ${Math.round(margin)} % — ниже порога ${red} %`] : [];
   }
 

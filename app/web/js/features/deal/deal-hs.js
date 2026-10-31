@@ -1,7 +1,6 @@
 import { DealState } from './deal-state.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
-import { InputNum } from './input-num.js';
 import { TnVed } from './tn-ved.js';
 import { Toast } from '../../core/toast.js';
 import { KitDoc } from '../kit/kit-doc.js';
@@ -11,6 +10,7 @@ import { $, Uid, esc } from '../../core/util.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { S } from '../../core/state.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Коды ТН ВЭД и пошлины: позиция сделки (вручную в этом КП → по модели → по категории → справочно по виду и

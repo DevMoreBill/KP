@@ -15,7 +15,6 @@ import { DealTerms } from './deal-terms.js';
 import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { DealXlsx } from './deal-xlsx.js';
-import { InputNum } from './input-num.js';
 import { CbrRates } from '../kp/cbr-rates.js';
 import { Currency } from '../kp/currency.js';
 import { Toast } from '../../core/toast.js';
@@ -27,6 +26,7 @@ import { RateSource } from '../kp/rate-source.js';
 import { WinSize } from '../../core/win-size.js';
 import { KpForm } from '../../core/kp-form.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Ввод в окне «Экономика сделки»: поля расчёта и КП (цены, закупка, курс, НДС), даты и дни платежей, готовые варианты

@@ -50,7 +50,11 @@
   верхний раздел: другие разделы их не подключают (ESLint, запреты слоёв — `LAYERS` в `eslint.config.mjs`); окна
   подтверждения, выбора и формы — `AdminDialog`, запросы `/api/admin` — `AdminApi`, подписи журнала — `AuditLabels` (`core/`);
   вкладки «Настроек» — в `features/admin` (корзина, «Как в Битрикс24»); вход администратора с экрана входа —
-  `AuthScreen.openSettings`, форма входа после истёкшей сессии — `AdminApi.onExpired` (подключает `admin/index.js`).
+  `AuthScreen.openSettings`, форма входа после истёкшей сессии — `AdminApi.onExpired` (подключает `admin/index.js`). (31.10, этап 5) Экономика сделки
+  (`features/deal`) — поверх КП, состава станции и компоновки: они её не подключают; окно экономики (перерисовать, открыть),
+  сводка расчёта и справочник поставщиков — `DealLink` (`core/deal-link.js`, подключает `deal/index.js`); валюты цен —
+  `Money.CURS`, срок словами — `KpDate.daysText`, условие подстановкой — `CondAuto`, «Светофор маржи» — `MarginLight`,
+  `InputNum`, `LgCargo` — в `core/`.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

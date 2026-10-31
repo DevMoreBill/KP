@@ -1,10 +1,10 @@
 import { DealTerms } from './deal-terms.js';
 import { DealValues } from './deal-values.js';
-import { InputNum } from './input-num.js';
 import { SupplierCalc } from './supplier-calc.js';
 import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
 import { KpEconomics } from '../kp/price-calc.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Основа расчёта сделки: поля с проверкой, курсы, цена и НДС, поставщики, сборка станции, прочие расходы. Все суммы — в

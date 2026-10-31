@@ -178,22 +178,25 @@ export default [{
   ] }] },
 }, {
   // КП не подключает кабинет (кабинет построен поверх КП): открыть кабинет или сделку, сделки и стадии — CabinetLink
-  // (core/cabinet-link.js, подключает features/crm/index.js); правило заменяет общее для этих файлов — запреты ui/ и admin/ повторены
+  // (core/cabinet-link.js, подключает features/crm/index.js); экономику сделки — тоже (DealLink, подключает
+  // features/deal/index.js); правило заменяет общее для этих файлов — запреты ui/ и admin/ повторены
   files: ['app/web/js/features/kp/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [
     LAYERS.ui,
     LAYERS.admin,
     { group: ['../crm/**'], message: 'КП не подключает кабинет: CabinetLink (core/cabinet-link.js)' },
+    { group: ['../deal/**'], message: 'КП не подключает экономику сделки: DealLink (core/deal-link.js); валюты цен — Money.CURS, сроки — KpDate.daysText, условие подстановкой — CondAuto, «Светофор маржи» — MarginLight' },
   ] }] },
 }, {
   // состав станции (kit) не подключает подбор станции (station): расчёт компоновки позиции — StationPlan (kit), быстрый
   // подбор под составом — KitView.stationQuick (подключает station/index.js); компоновка (layout) не подключает 3D-вид
-  // (view): оттенок по фото — StationEquip.photoTint (подключает view/index.js)
+  // (view): оттенок по фото — StationEquip.photoTint (подключает view/index.js); оба — экономику сделки (deal): DealLink
   files: ['app/web/js/features/kit/**/*.js'],
   rules: { 'no-restricted-imports': ['error', { patterns: [
     LAYERS.ui,
     LAYERS.admin,
     { group: ['../station/**'], message: 'состав станции не подключает подбор: StationPlan, KitView.stationQuick' },
+    { group: ['../deal/**'], message: 'состав станции и компоновка не подключают экономику сделки: DealLink (core/deal-link.js), груз из характеристик — LgCargo (core/)' },
   ] }] },
 }, {
   files: ['app/web/js/features/layout/**/*.js'],
@@ -201,6 +204,7 @@ export default [{
     LAYERS.ui,
     LAYERS.admin,
     { group: ['../view/**'], message: 'компоновка не подключает 3D-вид: StationEquip.photoTint' },
+    { group: ['../deal/**'], message: 'состав станции и компоновка не подключают экономику сделки: DealLink (core/deal-link.js), груз из характеристик — LgCargo (core/)' },
   ] }] },
 }, {
   files: CLEAN,

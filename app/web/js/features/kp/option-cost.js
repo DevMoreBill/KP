@@ -1,11 +1,11 @@
 import { FEAT } from '../../core/features.js';
 import { KpState, S } from '../../core/state.js';
 import { esc } from '../../core/util.js';
-import { DealTerms } from '../deal/deal-terms.js';
-import { DealWin } from '../deal/deal-win.js';
-import { InputNum } from '../deal/input-num.js';
 import { CbrRates } from './cbr-rates.js';
 import { Currency } from './currency.js';
+import { InputNum } from '../../core/input-num.js';
+import { Money } from '../../core/money.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
  * Закупка опций и услуг позиции: цена за единицу и валюта. Одно поле — в «Опциях и услугах» позиции и в закупке
@@ -41,7 +41,7 @@ export class OptionCost {
   static field(i, j, option) {
     const text = this.text(option);
     const bad = Number.isNaN(InputNum.parse(text)) ? ' bad' : '';
-    const curs = DealTerms.CURS.map(
+    const curs = Money.CURS.map(
       code => `<option${(option.costCur || 'RUB') === code ? ' selected' : ''}>${code}</option>`,
     ).join('');
     return `<span class="opt-cost"><input type="text" inputmode="decimal" class="num${bad}" data-optcost="${i}.${j}" value="${esc(text)}" placeholder="закупка" aria-label="Закупка за единицу"><select data-optcur="${i}.${j}" aria-label="Валюта закупки">${curs}</select></span>`;
@@ -82,7 +82,7 @@ export class OptionCost {
     field.classList.toggle('bad', Number.isNaN(cost));
     if (!Number.isNaN(cost)) option.cost = cost == null ? 0 : Math.round(cost * this.KOPECKS);
     KpState.persist();
-    if (field.closest('#dealdlg')) DealWin.render();
+    if (field.closest('#dealdlg')) DealLink.render();
   }
 
   static _leave(field) {
@@ -90,7 +90,7 @@ export class OptionCost {
     const option = this._of(field.dataset.optcost);
     if (option && !Number.isNaN(InputNum.parse(option._costText))) delete option._costText;
     KpState.persist();
-    DealWin.render();
+    DealLink.render();
   }
 
   static _currency(field) {
@@ -100,6 +100,6 @@ export class OptionCost {
     option.costCur = field.value;
     if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     KpState.persist();
-    DealWin.render();
+    DealLink.render();
   }
 }

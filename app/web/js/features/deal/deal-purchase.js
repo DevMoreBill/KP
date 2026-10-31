@@ -6,11 +6,12 @@ import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
-import { InputNum } from './input-num.js';
 import { Fmt } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { KitDoc } from '../kit/kit-doc.js';
 import { esc } from '../../core/util.js';
+import { InputNum } from '../../core/input-num.js';
+import { Money } from '../../core/money.js';
 
 /**
  * Вкладка «Закупка»: сборка станции у производителя контейнера, карточки поставщиков — где покупаем, позиции с ценой
@@ -246,7 +247,7 @@ export class DealSupplierCard {
     const src = line.part || line.opt || line.item;
     const text = src._costText ?? (line.cost ? DealFmt.inp(line.cost / DealPurchase.KOPECKS) : '');
     const [costAttr, curAttr] = DealSupplierCard._costAttrs(line);
-    const curs = DealTerms.CURS.map(
+    const curs = Money.CURS.map(
       cur => `<option${(line.costCur || 'RUB') === cur ? ' selected' : ''}>${cur}</option>`,
     ).join('');
     return `<span class="dl-in cur"><input type="text" inputmode="decimal" ${costAttr} value="${esc(text)}" placeholder="цена из счёта" aria-label="Цена закупки за единицу"${line.cost ? '' : ' class="need"'}><select ${curAttr} aria-label="Валюта закупки">${curs}</select></span>`;

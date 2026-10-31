@@ -18,8 +18,6 @@ export class DealValues {
   ];
   static FEE_TITLE = 'ПП РФ № 1637 в ред. № 1638, с 01.01.2026';
   static HALF = 2;
-  static MARGIN_RED = 10;
-  static MARGIN_YELLOW = 20;
   static ABOVE = 1.5;
 
   /**
@@ -362,17 +360,6 @@ export class DealValues {
       },
     ],
   ];
-
-  /**
-   * Цвет маржинальности по порогам «Светофора маржи».
-   * @param {number} margin маржинальность, %
-   * @returns {'neg'|'warn'|'pos'|''}
-   */
-  static marginTone(margin) {
-    if (margin == null || !Number.isFinite(margin)) return '';
-    if (margin < this.num('deal.marginRed', this.MARGIN_RED)) return 'neg';
-    return margin < this.num('deal.marginYellow', this.MARGIN_YELLOW) ? 'warn' : 'pos';
-  }
 
   /** Значения раздела «Экономика сделки» — в реестр «Значений программы». */
   static register() {

@@ -5,6 +5,7 @@ import { DealScheduleView } from './deal-schedule-view.js';
 import { DealState } from './deal-state.js';
 import { DealSuppliers } from './deal-suppliers.js';
 import { DealTerms } from './deal-terms.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Перестановка этапов оплаты (перетаскивание за «⠿» или ↑↓: этап занимает срок своего нового места, доли сохраняются,
@@ -146,7 +147,7 @@ export class DealRows {
   }
 
   static _plus(count, kind) {
-    return count ? ` + ${DealTerms.daysText(count, kind)}` : '';
+    return count ? ` + ${KpDate.daysText(count, kind)}` : '';
   }
 
   static _custDay(ctx, match) {
@@ -192,7 +193,7 @@ export class DealRows {
     const count = DealRows._count(ctx, 0, sup.prodK);
     sup.prod = String(count);
     DealSuppliers.save(sup);
-    return `Срок изготовления${DealRows._whose(deal, calc, k)}: ${DealTerms.daysText(count, sup.prodK)} — сдвинуты и платежи, привязанные к готовности и поставке`;
+    return `Срок изготовления${DealRows._whose(deal, calc, k)}: ${KpDate.daysText(count, sup.prodK)} — сдвинуты и платежи, привязанные к готовности и поставке`;
   }
 
   // доставка по России — поставщик строки; монтаж — поставщик с самой поздней поставкой
@@ -205,7 +206,7 @@ export class DealRows {
     if (count < 0) return '';
     sup.ship = String(count);
     DealSuppliers.save(sup);
-    return `Срок доставки${DealRows._whose(deal, calc, k)}: ${DealTerms.daysText(count, sup.shipK)} после готовности — сдвинуты платежи при поставке`;
+    return `Срок доставки${DealRows._whose(deal, calc, k)}: ${KpDate.daysText(count, sup.shipK)} после готовности — сдвинуты платежи при поставке`;
   }
 
   static _latest(calc) {

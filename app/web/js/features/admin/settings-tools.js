@@ -7,7 +7,6 @@ import { SettingsWindow } from './settings-window.js';
 import { $, esc } from '../../core/util.js';
 import { Debounce } from '../../core/debounce.js';
 import { EquipTypes } from '../../core/equip-types.js';
-import { ApiKeys } from '../kp/api-keys.js';
 import { LISTS } from '../../core/lists.js';
 import { FEAT } from '../../core/features.js';
 import { DEF_BY, DEF_GROUPS, DEF_SCHEMA, DefRegistry } from '../../core/defaults.js';
@@ -16,6 +15,7 @@ import { Toast } from '../../core/toast.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
 import { AdminState } from './admin-state.js';
+import { ApiKeys } from './api-keys.js';
 
 /** Поиск по всем настройкам (вкладки, умолчания, функции, списки, ключи, категории) с переходом к найденному. */
 export class SettingsSearch {

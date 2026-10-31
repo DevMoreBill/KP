@@ -29,6 +29,9 @@ import { AdminLogin, SettingsWindow } from './settings-window.js';
 import { AccessPanel, AdminsTab, SecurityTab } from './staff-tabs.js';
 import { GoodsTab, TrashTab } from './trash-tab.js';
 import { MirrorPanel } from './mirror-panel.js';
+import { ApiKeys } from './api-keys.js';
+import { CarrierApis } from './carrier-apis.js';
+import { KeyBackup } from './key-backup.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AuthScreen } from '../kp/auth-screen.js';
 
@@ -104,6 +107,9 @@ export const ADMIN_UI = {
   GoodsTab,
   TrashTab,
   MirrorPanel,
+  ApiKeys,
+  CarrierApis,
+  KeyBackup,
 };
 
 SettingsWindow.listen();

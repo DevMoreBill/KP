@@ -1,4 +1,4 @@
-import { LgCargo } from './lg-cargo.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /**
  * Груз, вписанный вручную на вкладке «Логистика»: габариты — в мм, масса — в кг; хранится как вписано

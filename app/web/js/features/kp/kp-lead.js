@@ -1,11 +1,11 @@
 import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Suppliers } from '../catalog/suppliers.js';
-import { DealConds } from '../deal/deal-conds.js';
-import { DealTerms } from '../deal/deal-terms.js';
 import { FEAT } from '../../core/features.js';
 import { Str } from '../../core/str.js';
 import { S } from '../../core/state.js';
 import { KpForm } from '../../core/kp-form.js';
+import { KpDate } from '../../core/kp-date.js';
+import { CondAuto } from '../../core/cond-auto.js';
 
 /**
  * Срок поставки позиции из каталога: свой у позиции («Срок поставки» в карточке) или по поставщику (срок изготовления и
@@ -27,7 +27,7 @@ export class KpLead {
     const name = Str.norm(Suppliers.of(card));
     const sup = name && Suppliers.sups.find(row => Str.norm(row.name) === name);
     const days = sup ? (+sup.prod || 0) + (+sup.ship || 0) : 0;
-    return days > 0 ? `под заказ, ${DealTerms.daysText(days, 'work')}` : ''; // вид дней у поставщика не задан — рабочие: срок не короче обещанного
+    return days > 0 ? `под заказ, ${KpDate.daysText(days, 'work')}` : ''; // вид дней у поставщика не задан — рабочие: срок не короче обещанного
   }
 
   /**
@@ -56,6 +56,6 @@ export class KpLead {
     const texts = [...new Set(leads.map(item => item.supLead))];
     const value =
       texts.length > 1 ? leads.map(item => `${item.name || 'позиция'} — ${item.supLead}`).join('; ') : texts[0] || '';
-    return value ? DealConds.apply(this.LABEL, value) : false;
+    return value ? CondAuto.apply(this.LABEL, value) : false;
   }
 }

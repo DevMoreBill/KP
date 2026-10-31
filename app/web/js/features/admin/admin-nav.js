@@ -19,9 +19,9 @@ import { SettingsSearch, StDirty } from './settings-tools.js';
 import { esc } from '../../core/util.js';
 import { AdminSession } from '../../core/net.js';
 import { DefRegistry } from '../../core/defaults.js';
-import { ApiKeys } from '../kp/api-keys.js';
 import { FreightSettings } from '../deal/freight-settings.js';
 import { GoodsTab, TrashTab } from './trash-tab.js';
+import { ApiKeys } from './api-keys.js';
 
 /**
  * Разделы и вкладки «Настроек»: «Главная» отдельной кнопкой и семь разделов по предмету (каталог, люди, документы, справочники,

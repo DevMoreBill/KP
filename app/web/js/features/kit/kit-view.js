@@ -18,11 +18,11 @@ import { Str } from '../../core/str.js';
 import { ContainerKind } from './container-kind.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Catalog } from '../catalog/catalog-store.js';
-import { DealUi } from '../deal/deal-ui.js';
 import { esc } from '../../core/util.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
 import { StationPlan } from './station-plan.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
  * Вкладка «Состав станции»: подбор станции, контейнер одной строкой, оборудование двумя группами по стороне поставки
@@ -88,7 +88,7 @@ export class KitView {
   }
 
   static _sups() {
-    const deal = DealUi.sups || [];
+    const deal = DealLink.suppliers();
     const names = [...deal.map(sup => sup.name), ...Catalog.cache.map(card => Attrs.of(card).maker)].filter(Boolean);
     return [...new Set(names)].slice(0, this.SUPS_MAX);
   }

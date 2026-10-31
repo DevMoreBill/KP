@@ -3,7 +3,6 @@ import { DealLogistics } from './deal-logistics.js';
 import { DealState } from './deal-state.js';
 import { DealSteps } from './deal-steps.js';
 import { Freight } from './freight.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgCargoIn } from './lg-cargo-in.js';
 import { LgCarrier } from './lg-carrier.js';
 import { LgFmt } from './lg-fmt.js';
@@ -13,6 +12,7 @@ import { LgValues } from './lg-values.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /** Вкладка «Логистика»: по каждому поставщику — до границы, маршрут по России, груз, транспорт и разгрузка, цены, итог. */
 export class LgView {

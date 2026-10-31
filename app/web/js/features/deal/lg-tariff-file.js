@@ -1,12 +1,12 @@
 import { FreightFields } from './freight-fields.js';
 import { FreightSettings } from './freight-settings.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
 import { Toast } from '../../core/toast.js';
 import { Api } from '../../core/net.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /**
  * Тарифы доставки файлом: шаблон (CSV для Excel), чтение первого листа .xlsx (JSZip уже есть в программе), разбор таблиц

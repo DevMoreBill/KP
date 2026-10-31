@@ -42,9 +42,7 @@ import { FreightFields } from './freight-fields.js';
 import { FreightFit } from './freight-fit.js';
 import { FreightSettings, FreightSettingsView } from './freight-settings.js';
 import { FreightTariffs } from './freight-tariffs.js';
-import { InputNum } from './input-num.js';
 import { LgBind } from './lg-bind.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgCargoIn } from './lg-cargo-in.js';
 import { LgCarrier } from './lg-carrier.js';
 import { LgCities } from './lg-cities.js';
@@ -60,6 +58,9 @@ import { SupplierCalc } from './supplier-calc.js';
 import { TnVed } from './tn-ved.js';
 import { LISTS } from '../../core/lists.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { DealLink } from '../../core/deal-link.js';
+import { InputNum } from '../../core/input-num.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 export const DEAL = {
   DealBind,
@@ -142,3 +143,10 @@ if (typeof document !== 'undefined' && document.addEventListener) DealRows.liste
 // страны поставщиков — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
 LISTS.ready(DealTerms.LISTS);
 DefRegistry.options(DealPresets.DEF_OPTS);
+// КП и состав станции просят экономику сделки (DealLink) — без import экономики
+DealLink.connect({
+  render: () => DealWin.render(),
+  open: () => DealState.open(),
+  summary: () => DealState.summary(),
+  suppliers: () => DealUi.sups,
+});

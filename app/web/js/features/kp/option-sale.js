@@ -2,11 +2,11 @@ import { FEAT } from '../../core/features.js';
 import { KpState, S } from '../../core/state.js';
 import { Price } from '../../core/str.js';
 import { esc } from '../../core/util.js';
-import { DealTerms } from '../deal/deal-terms.js';
-import { DealWin } from '../deal/deal-win.js';
 import { CbrRates } from './cbr-rates.js';
 import { Currency } from './currency.js';
 import { KpForm } from '../../core/kp-form.js';
+import { Money } from '../../core/money.js';
+import { DealLink } from '../../core/deal-link.js';
 
 /**
  * Цена продажи опции или услуги в своей валюте (option.sale, option.saleCur), как закупка. В КП, итоги, документ и
@@ -70,7 +70,7 @@ export class OptionSale {
     const input = `<input type="text" inputmode="decimal" class="num${Number.isNaN(Price.parse(text)) ? ' bad' : ''}" data-oprice="${i}.${j}" value="${esc(text)}" placeholder="включено" aria-label="Цена продажи за единицу">`;
     if (!this.enabled()) return `<span class="opt-sale">${input}</span>`;
     const cur = this.cur(option);
-    const curs = DealTerms.CURS.map(code => `<option${cur === code ? ' selected' : ''}>${code}</option>`).join('');
+    const curs = Money.CURS.map(code => `<option${cur === code ? ' selected' : ''}>${code}</option>`).join('');
     return `<span class="opt-cost opt-sale">${input}<select data-osalecur="${i}.${j}" aria-label="Валюта цены продажи">${curs}</select></span>`;
   }
 
@@ -155,6 +155,6 @@ export class OptionSale {
     if (field.value !== 'RUB' && !(Currency.rate(field.value) > 0)) CbrRates.fillEmpty();
     KpState.persist();
     KpForm.render();
-    DealWin.render();
+    DealLink.render();
   }
 }

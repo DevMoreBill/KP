@@ -4,7 +4,7 @@ import { RalColor } from './ral-color.js';
 import { StationMatrix } from './station-matrix.js';
 import { StationNorms } from './station-norms.js';
 import { TankSize } from './tank-size.js';
-import { LgCargo } from '../deal/lg-cargo.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /** Оборудование из состава станции: вид, габариты, масса, цвет, форма, подписи. */
 export class StationEquip {

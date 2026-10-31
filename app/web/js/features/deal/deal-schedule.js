@@ -1,7 +1,7 @@
 import { DealCalcBase } from './deal-calc-base.js';
 import { DealTerms } from './deal-terms.js';
 import { DealValues } from './deal-values.js';
-import { InputNum } from './input-num.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * График сделки: платежи поставщикам и заказчику, банковские гарантии, дни платежей по календарю, финансирование и

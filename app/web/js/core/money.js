@@ -4,6 +4,8 @@
  * прибыли и убытка, «−0» не бывает, не посчитано — прочерк. Без DOM — работает и в проверках (node).
  */
 export class Money {
+  // валюты цен закупки, опций и перевозки — порядок в списках выбора
+  static CURS = ['RUB', 'CNY', 'USD', 'EUR'];
   static SPACE = ' ';
   static MINUS = '−';
   static DASH = '—';

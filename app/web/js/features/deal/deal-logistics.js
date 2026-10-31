@@ -4,7 +4,6 @@ import { DealUi } from './deal-ui.js';
 import { DealWin } from './deal-win.js';
 import { Freight } from './freight.js';
 import { LgBind } from './lg-bind.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgCargoIn } from './lg-cargo-in.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgMoney } from './lg-money.js';
@@ -21,6 +20,7 @@ import { KitDoc } from '../kit/kit-doc.js';
 import { KpState, S } from '../../core/state.js';
 import { Api } from '../../core/net.js';
 import { KpForm } from '../../core/kp-form.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /**
  * Вкладка «Логистика» экономики сделки: тарифы, груз позиций и станций, маршрут, расчёт перед каждой отрисовкой окна —

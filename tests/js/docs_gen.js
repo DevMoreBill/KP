@@ -104,10 +104,10 @@ check('проверка цен перед сохранением', ()=>{
   const { PriceHist }=require(JS('features/kp/price-hints.js'));
   const state=require(JS('core/state.js'));
   const { KpState }=state;
-  const { DealState }=require(JS('features/deal/deal-state.js'));
+  const { DealLink }=require(JS('core/deal-link.js'));
   KpState.replace(Object.assign(KpState.fresh(), { items:[{ name:'Дешёвый', qty:1, price:900 }, { name:'Нормальный', qty:1, price:2000 }] }));
   PriceHist.doc=item=>({ cost:1000, costCur:'RUB', price:item.price });
-  DealState.summary=()=>({ confirmed:true, margin:8 });
+  DealLink.summary=()=>({ confirmed:true, margin:8 });
   const pricing=state.S.pricing;
   pricing.cur='USD'; pricing.rates.USD='1'; pricing.rateDate='2020-01-01';
   const found=PriceGuard.problems();
@@ -115,7 +115,7 @@ check('проверка цен перед сохранением', ()=>{
   assert.ok(!found.some(t=>t.includes('Нормальный')));
   assert.ok(found.some(t=>t.startsWith('Маржа 8 %')), found);
   assert.ok(found.some(t=>t.startsWith('Курс ЦБ устарел')), found);
-  pricing.cur='RUB'; DealState.summary=()=>null; PriceHist.doc=()=>null;
+  pricing.cur='RUB'; DealLink.summary=()=>null; PriceHist.doc=()=>null;
   assert.deepStrictEqual(PriceGuard.problems(), []);
   // цена после скидки позиции ниже закупки; закупка без НДС — с НДС поставщика
   PriceHist.doc=()=>({ cost:90000, costCur:'RUB' });

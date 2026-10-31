@@ -1,10 +1,10 @@
-import { DealTerms } from './deal-terms.js';
-import { InputNum } from './input-num.js';
 import { LgValues } from './lg-values.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { S } from '../../core/state.js';
 import { RateSource } from '../kp/rate-source.js';
+import { InputNum } from '../../core/input-num.js';
+import { Money } from '../../core/money.js';
 
 /**
  * «Своя сумма» доставки по России — в рублях или валюте: sup.logRu = {v, cur}; в рубли переводит расчёт сделки по курсу ЦБ
@@ -21,11 +21,11 @@ export class LgMoney {
    */
   static cur(sup) {
     const own = sup.logRu || {};
-    if (own.cur) return DealTerms.CURS.includes(own.cur) ? own.cur : 'RUB';
+    if (own.cur) return Money.CURS.includes(own.cur) ? own.cur : 'RUB';
     // сумма прежних версий и «по расчёту» — в рублях
     if (String(own.v ?? '').trim() !== '') return 'RUB';
     const last = (sup.lg && sup.lg.manCur) || LgValues.manCur();
-    return DealTerms.CURS.includes(last) ? last : 'RUB';
+    return Money.CURS.includes(last) ? last : 'RUB';
   }
 
   /**
@@ -34,7 +34,7 @@ export class LgMoney {
    * @param {string} cur
    */
   static setCur(sup, cur) {
-    if (!DealTerms.CURS.includes(cur)) return;
+    if (!Money.CURS.includes(cur)) return;
     sup.lg = sup.lg || {};
     sup.lg.manCur = cur;
     sup.logRu = { v: (sup.logRu && sup.logRu.src !== 'module' && sup.logRu.v) || '', cur };

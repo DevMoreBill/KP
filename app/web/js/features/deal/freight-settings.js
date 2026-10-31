@@ -2,7 +2,6 @@ import { DealLogistics } from './deal-logistics.js';
 import { FreightFacts } from './freight-facts.js';
 import { FreightFields } from './freight-fields.js';
 import { Freight } from './freight.js';
-import { LgCargo } from './lg-cargo.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgState } from './lg-state.js';
 import { LgTariffFile } from './lg-tariff-file.js';
@@ -12,6 +11,7 @@ import { Fmt } from '../../core/str.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
+import { LgCargo } from '../../core/lg-cargo.js';
 
 /**
  * «Настройки» → «Тарифы доставки» (администратор): машины, разгрузка, общие параметры, автообновление ставок по ATI.SU,

@@ -1,14 +1,13 @@
 import { DealValues } from './deal-values.js';
 import { DealPresets } from './deal-presets.js';
-import { InputNum } from './input-num.js';
 import { DefRegistry } from '../../core/defaults.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Условия и данные сделки без интерфейса: валюты, страны поставщиков и их таможенный режим, события оплаты, виды банковских
  * гарантий и документации, новый поставщик и новый расчёт из «Умолчаний», расчёт прежних версий, сроки в днях.
  */
 export class DealTerms {
-  static CURS = ['RUB', 'CNY', 'USD', 'EUR'];
   static LISTS = { 'deal.countries': () => DealTerms.COUNTRIES };
   static EAEU = ['Беларусь', 'Казахстан', 'Армения', 'Киргизия'];
   static COUNTRIES = [
@@ -58,17 +57,6 @@ export class DealTerms {
   static WEEK = 7;
   static WORK_WEEK = 5;
   static CENTS = 100;
-  static TEENS = 100;
-  static DECADE = 10;
-  static FEW_MIN = 2;
-  static FEW_MAX = 4;
-  static TEEN_MIN = 10;
-  static TEEN_MAX = 20;
-  static ELEVEN = 11;
-  static DAY_WORDS = {
-    work: ['рабочий день', 'рабочих дня', 'рабочих дней'],
-    cal: ['календарный день', 'календарных дня', 'календарных дней'],
-  };
 
   /**
    * Страна поставщика → таможенный режим, НДС при ввозе, валюта.
@@ -265,25 +253,6 @@ export class DealTerms {
     return kpData && kpData.addWork
       ? kpData.addWork(base, count)
       : base + Math.ceil((count * this.WEEK) / this.WORK_WEEK);
-  }
-
-  /**
-   * «5 рабочих дней», «1 календарный день».
-   * @param {number} count
-   * @param {string} kind '' | 'work'
-   * @returns {string}
-   */
-  static daysText(count, kind) {
-    const words = this.DAY_WORDS[kind === 'work' ? 'work' : 'cal'];
-    return `${count} ${words[this._form(count)]}`;
-  }
-
-  static _form(count) {
-    const last = count % this.DECADE;
-    const lastTwo = count % this.TEENS;
-    if (last === 1 && lastTwo !== this.ELEVEN) return 0;
-    const teen = lastTwo >= this.TEEN_MIN && lastTwo < this.TEEN_MAX;
-    return last >= this.FEW_MIN && last <= this.FEW_MAX && !teen ? 1 : 2;
   }
 
   /**

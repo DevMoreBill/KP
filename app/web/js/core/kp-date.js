@@ -1,6 +1,6 @@
 import { S } from './state.js';
 import { today } from './util.js';
-/** Даты хода сделки: ДД.ММ.ГГГГ, сдвиг на дни, срок действия КП (как kp_track.OfferTerm на сервере). */
+/** Даты и сроки КП: ДД.ММ.ГГГГ, сдвиг на дни, срок действия КП (как kp_track.OfferTerm на сервере), срок словами. */
 export class KpDate {
   static NOON = 'T12:00:00';
   static WEEKEND = 6;
@@ -9,6 +9,17 @@ export class KpDate {
     [/недел/, 7],
     [/мес/, 30],
   ];
+  static TEENS = 100;
+  static DECADE = 10;
+  static FEW_MIN = 2;
+  static FEW_MAX = 4;
+  static TEEN_MIN = 10;
+  static TEEN_MAX = 20;
+  static ELEVEN = 11;
+  static DAY_WORDS = {
+    work: ['рабочий день', 'рабочих дня', 'рабочих дней'],
+    cal: ['календарный день', 'календарных дня', 'календарных дней'],
+  };
 
   /**
    * Дата ГГГГ-ММ-ДД → ДД.ММ.ГГГГ ('' — не дата).
@@ -67,5 +78,24 @@ export class KpDate {
     if (/раб/.test(words)) return this.workDays(base, count);
     const unit = this.DAYS.find(([pattern]) => pattern.test(words));
     return unit ? this.addDays(base, count * unit[1]) : '';
+  }
+
+  /**
+   * «5 рабочих дней», «1 календарный день».
+   * @param {number} count
+   * @param {string} kind '' | 'work'
+   * @returns {string}
+   */
+  static daysText(count, kind) {
+    const words = this.DAY_WORDS[kind === 'work' ? 'work' : 'cal'];
+    return `${count} ${words[this._form(count)]}`;
+  }
+
+  static _form(count) {
+    const last = count % this.DECADE;
+    const lastTwo = count % this.TEENS;
+    if (last === 1 && lastTwo !== this.ELEVEN) return 0;
+    const teen = lastTwo >= this.TEEN_MIN && lastTwo < this.TEEN_MAX;
+    return last >= this.FEW_MIN && last <= this.FEW_MAX && !teen ? 1 : 2;
   }
 }

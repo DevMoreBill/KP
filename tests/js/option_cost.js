@@ -85,7 +85,7 @@ check('маржа КП (журнал, проверка цен): закупка �
 });
 
 check('цена продажи опции в своей валюте — в КП по курсу, итог КП, смена курса и валюты КП', ()=>{
-  Toast.show=()=>{}; FormView.render=()=>{}; DealWin.render=()=>{}; KpState.persist=()=>{}; CbrRates.fillEmpty=()=>Promise.resolve();
+  Toast.show=()=>{}; FormView.render=()=>{}; DealLink.render=()=>{}; KpState.persist=()=>{}; CbrRates.fillEmpty=()=>Promise.resolve();
   const state={...kp(), pricing:{cur:'RUB', rates:{USD:'90', EUR:'100'}}, vat:22};
   KpState.replace(state);
   const opt=S.items[0].options[1];

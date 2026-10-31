@@ -4,9 +4,9 @@ import { DealFmt } from './deal-fmt.js';
 import { DealUi } from './deal-ui.js';
 import { DealXlsxCalc } from './deal-xlsx-calc.js';
 import { DealXlsxSummaryTables } from './deal-xlsx-tables.js';
-import { InputNum } from './input-num.js';
 import { Fmt } from '../../core/str.js';
 import { S } from '../../core/state.js';
+import { InputNum } from '../../core/input-num.js';
 
 /**
  * Лист Excel «Сводка» — одна страница для коммерческого директора: ключевые показатели и вывод, позиции, структура

@@ -1,7 +1,5 @@
 import { SafeLink } from '../../core/safe-link.js';
 import { DealFmt } from './deal-fmt.js';
-import { DealTerms } from './deal-terms.js';
-import { InputNum } from './input-num.js';
 import { LgFmt } from './lg-fmt.js';
 import { LgMoney } from './lg-money.js';
 import { LgOffers } from './lg-offers.js';
@@ -9,6 +7,8 @@ import { LgState } from './lg-state.js';
 import { LgValues } from './lg-values.js';
 import { esc } from '../../core/util.js';
 import { Fmt } from '../../core/str.js';
+import { InputNum } from '../../core/input-num.js';
+import { Money } from '../../core/money.js';
 
 /**
  * Перевозчик и цена (все предложения «дверь в дверь», выбор — любое или максимальное) и итог доставки по России в расчёт
@@ -142,7 +142,7 @@ export class LgCarrier {
     const { k, sup } = this;
     const card = this.card;
     const invalid = card.calc.err[`${card.path}.logRu`] ? ' aria-invalid="true"' : '';
-    const options = DealTerms.CURS.map(code => `<option${code === cur ? ' selected' : ''}>${code}</option>`).join('');
+    const options = Money.CURS.map(code => `<option${code === cur ? ' selected' : ''}>${code}</option>`).join('');
     return `<span class="dl-in cur lg-man"><input type="text" inputmode="decimal" data-lgman="${k}" value="${esc((sup.logRu && sup.logRu.v) || '')}" placeholder="сумма" aria-label="Своя сумма доставки"${invalid}><select data-lgcur="${k}" aria-label="Валюта своей суммы">${options}</select></span>${LgMoney.rubNote(card.calc, card.cs, cur)}`;
   }
 

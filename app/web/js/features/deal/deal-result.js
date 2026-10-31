@@ -1,13 +1,13 @@
-import { DealValues } from './deal-values.js';
 import { DealCalculator } from './deal-calculator.js';
 import { DealBxFix } from './deal-bx-fix.js';
 import { DealFmt } from './deal-fmt.js';
 import { DealState } from './deal-state.js';
-import { InputNum } from './input-num.js';
 import { Fmt } from '../../core/str.js';
 import { esc } from '../../core/util.js';
 import { IncomeTax } from '../../core/income-tax.js';
 import { SellerTax } from '../../core/seller-tax.js';
+import { InputNum } from '../../core/input-num.js';
+import { MarginLight } from '../../core/margin-light.js';
 
 /**
  * Правая колонка окна: подбор цены продажи под цель (маржинальность, наценка, прибыль) с ценами позиций, безубыточная
@@ -134,7 +134,7 @@ export class DealResult {
   static _kpi(calc) {
     const show = key =>
       calc.unknown.length > 0 ? DealResult._range(calc, row => row[key], DealFmt.pct) : DealFmt.pct(calc.base[key]);
-    return `<div class="dl-kpi"><div><small>Маржинальность ${DealFmt.help('Прибыль ÷ выручка без НДС. Сколько копеек прибыли в каждом рубле выручки. Цвет — «Светофор маржи» в «Параметрах».')}</small><b class="mg-${DealValues.marginTone(calc.base ? calc.base.margin : null) || 'none'}">${show('margin')}</b></div>
+    return `<div class="dl-kpi"><div><small>Маржинальность ${DealFmt.help('Прибыль ÷ выручка без НДС. Сколько копеек прибыли в каждом рубле выручки. Цвет — «Светофор маржи» в «Параметрах».')}</small><b class="mg-${MarginLight.tone(calc.base ? calc.base.margin : null) || 'none'}">${show('margin')}</b></div>
           <div><small>Наценка ${DealFmt.help('Прибыль ÷ себестоимость (все расходы с финансированием, без НДС к вычету, и прочие расходы наличными).')}</small><b>${show('markup')}</b></div></div>`;
   }
 
