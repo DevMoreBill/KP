@@ -3,8 +3,8 @@ import { StationEquip } from '../layout/station-equip.js';
 import { AirDemand } from './air-demand.js';
 import { StationReq } from '../req/station-req.js';
 import { ReqNum } from '../req/req-num.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /** Исходные данные расчёта: требования (числа с проверкой диапазона), элементы состава по видам. */
 export class CalcInput {

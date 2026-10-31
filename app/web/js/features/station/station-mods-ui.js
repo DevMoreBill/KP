@@ -12,8 +12,8 @@ import { StationMods } from '../layout/station-mods.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
 /**
  * Станция из нескольких модулей: окно раскладки. Всегда кнопкой «Модули…» в «Компоновке» и всегда с вопросом «сделать
  * так?»; раскладка — на сетке (модули перетаскиваются; на телефоне — нажать модуль, затем клетку), варианты a × b — с

@@ -24,8 +24,9 @@ import { CatalogIndex } from '../catalog/catalog-index.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { StationSize } from '../kit/station-size.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
+import { AirDemand } from '../calc/air-demand.js';
 
 /** Подбор оборудования станции из каталога по требованиям ТЗ — без недобора (в пользу заказчика). */
 export class TzPick {
@@ -508,7 +509,7 @@ export class TzPick {
 
   /** Подбор и сборка станции: шкафы по особым требованиям, оборудование, название, характеристики, контейнер. */
   static async assemble(station, need) {
-    const added = StationReq.ensureParts(station);
+    const added = StationDefaults.ensureParts(station);
     const note = await this.run(station, need);
     Kit.sync(station);
     StationPlan.cache.delete(station.id);
@@ -633,7 +634,7 @@ export class TzPick {
   static _need(job) {
     const { q: need } = job;
     job.ads = this.adsNeed(need);
-    const demand = need.flow > 0 ? StationReq.need(need, need.flow) : { v: 0, why: '' };
+    const demand = need.flow > 0 ? AirDemand.required(need, need.flow) : { v: 0, why: '' };
     job.Q = job.ads && demand.v > 0 ? demand.v / (1 - AirChain.PURGE) : demand.v;
     return demand;
   }

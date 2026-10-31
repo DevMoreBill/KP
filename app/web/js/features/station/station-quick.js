@@ -8,7 +8,6 @@ import { StationRender } from '../view/station-render.js';
 import { Mm } from '../layout/mm.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationSup } from '../tz/station-sup.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { StationCalc } from '../calc/station-calc.js';
 import { StationRules } from '../rules/station-rules.js';
 import { ExpertFix } from './expert-fix.js';
@@ -22,8 +21,10 @@ import { StationSteps } from './station-steps.js';
 import { KpForm } from '../../core/kp-form.js';
 import { Spoiler } from '../../core/spoiler.js';
 import { StationParams } from '../kit/station-params.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
+import { ReqForm } from './req-form.js';
 
 /**
  * Станция «просто» — главный экран менеджера на вкладке «Состав станции»: главные требования (или ТЗ заказчика) и одна
@@ -116,7 +117,7 @@ export class StationQuick {
         ${req.src && req.src.name ? `<span class="muted">по ТЗ «${esc(req.src.name)}»</span>` : ''}</div>
       ${StationParams.html(item, index)}
       ${state ? this.result(item, index, state) : ''}
-      <details class="sq-more"${Spoiler.attr(`req:${item.id}`)}><summary>Все требования, условия расчёта и проверки</summary>${StationReq.details(item, index)}</details></div>`;
+      <details class="sq-more"${Spoiler.attr(`req:${item.id}`)}><summary>Все требования, условия расчёта и проверки</summary>${ReqForm.html(item, index)}</details></div>`;
   }
 
   static _steps(item, kind, state) {

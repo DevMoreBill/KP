@@ -17,12 +17,12 @@ import { $, esc } from '../../core/util.js';
 import { StationQuick } from '../station/station-quick.js';
 import { Mm } from '../layout/mm.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { StationLibrary } from './station-library.js';
 import { StationWays } from './station-ways.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /**
  * Новая станция в окне «Добавить оборудование»: «что нужно заказчику» (главные требования — те же поля, что в «Подборе

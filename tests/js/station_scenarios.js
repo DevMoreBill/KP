@@ -60,7 +60,7 @@ class Scenario {
     for (const [k, , kinds] of StationReq.OPTS) if (kinds.includes(q.kind)) r[k]=!!q[k];
     r.recvOut=!!q.recvOut;
     if (q.kind==='comp' && q.air) x.stLayout={ air:q.air };
-    StationReq.ensureParts(x);
+    StationDefaults.ensureParts(x);
     const note=await TzPick.run(x, { ...q, flow:+this.num(q.flow), pressure:+this.num(q.pressure), q:+this.num(q.q), head:+this.num(q.head), kw:+this.num(q.kw), hours:+this.num(q.hours), pdp:q.pdp, recvVol:+this.num(q.recvVol), work:+q.work||0 });
     if (GOLDEN){ GOLDEN.label=sc.name; GOLDEN.put('TzPick.run', [note, x.kit, x.req, x.stLayout]);
       const d=GOLDEN.docx(); TzText.write(d, x, StationPlan.plan(x), 'ПНЕВМОТЕХ'); GOLDEN.put('TzOut.write', d.calls); }

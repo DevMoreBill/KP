@@ -14,15 +14,15 @@ import { ItemSpec } from '../../core/item-spec.js';
 import { StationSup } from '../tz/station-sup.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { Str } from '../../core/str.js';
-import { ContainerKind } from './container-kind.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { Catalog } from '../catalog/catalog-store.js';
 import { esc } from '../../core/util.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
-import { StationPlan } from './station-plan.js';
 import { DealLink } from '../../core/deal-link.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /**
  * Вкладка «Состав станции»: подбор станции, контейнер одной строкой, оборудование двумя группами по стороне поставки

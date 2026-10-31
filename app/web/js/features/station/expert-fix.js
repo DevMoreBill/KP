@@ -7,7 +7,6 @@ import { TzPick } from '../tz/tz-pick.js';
 import { StationSup } from '../tz/station-sup.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { ContainerPart } from '../kit/container-part.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { AirChain } from '../layout/air-chain.js';
 import { ExpertLog } from '../req/expert-log.js';
@@ -22,8 +21,9 @@ import { StationReq } from '../req/station-req.js';
 import { StationMatrix } from '../layout/station-matrix.js';
 import { Mm } from '../layout/mm.js';
 import { StationSize } from '../kit/station-size.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
 /** Замечания одной станции без повторов; решение раздела — только к замечанию о нехватке. */
 class FixList {
   constructor() {

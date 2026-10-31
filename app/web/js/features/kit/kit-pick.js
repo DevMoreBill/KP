@@ -14,8 +14,8 @@ import { TzPick } from '../tz/tz-pick.js';
 import { Str } from '../../core/str.js';
 import { Attrs, CatAttrs } from '../../core/item-attrs.js';
 import { KpForm } from '../../core/kp-form.js';
-import { StationPlan } from './station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /**
  * Быстрый поиск в окне подбора: строка поиска карточки и ключ сортировки — один раз на карточку (каталог 7 500+ позиций

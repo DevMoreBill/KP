@@ -21,8 +21,9 @@ import { StationEquip } from '../layout/station-equip.js';
 import { StationReq } from '../req/station-req.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from './station-size.js';
-import { StationPlan } from './station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
+import { AirDemand } from '../calc/air-demand.js';
 
 /**
  * Чего не хватает станции: основное оборудование против требований «Подбора станции» (сколько рабочих и резервных, мало —
@@ -152,7 +153,7 @@ export class KitNeed {
   static _compRating(item, part, req) {
     const cap = (AirChain.flow(part) || 0) * (1 - this._purge(item));
     const flow = ReqNum.loose(req.flow);
-    const need = flow > 0 ? StationReq.need(req, flow).v : 0;
+    const need = flow > 0 ? AirDemand.required(req, flow).v : 0;
     return { cap, need, bad: this._compWeak(item, part, req) };
   }
 

@@ -9,8 +9,9 @@ import { StationSup } from '../tz/station-sup.js';
 import { StationReq } from '../req/station-req.js';
 import { KitNeed } from './kit-need.js';
 import { ReqNum } from '../req/req-num.js';
-import { StationPlan } from './station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
+import { AirDemand } from '../calc/air-demand.js';
 /**
  * Подбор из каталога по строке «Нужно: …»: рекомендуемая позиция (тот же расчёт, что у автоподбора TzPick), фильтры и
  * подсказка окна каталога; основное оборудование — по требованиям «Подбора станции».
@@ -194,7 +195,7 @@ export class NeedPick {
     if (!(flow > 0)) return null;
     const waterClass = +(String(StationPlan.opts(item).air || '').split('.')[1] || 0);
     const ads = waterClass > 0 && waterClass <= this.ADS_CLASS_MAX;
-    const demand = StationReq.need(req, flow);
+    const demand = AirDemand.required(req, flow);
     const total = ads ? demand.v / (1 - AirChain.PURGE) : demand.v;
     const height = TzPick.hmax(item);
     const fitting = pool.filter(card => TzPick.fitsH(card, 'compressor', height));

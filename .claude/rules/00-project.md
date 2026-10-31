@@ -44,7 +44,7 @@
   `Tender`, `CondMemory`); раздел, которому нужна форма, просит через `KpForm`, а не импортирует её. (30.10, этап 2) КП
   (`features/kp`) не подключает кабинет (`features/crm`, построен поверх КП): открыть кабинет или сделку, сделки и стадии —
   `CabinetLink` (`core/cabinet-link.js`, подключает `features/crm/index.js`); `KpDate`, `CrmFmt`, `DateChips` — в `core/`. (30.10, этап 3) Состав станции (`features/kit`) не подключает подбор
-  (`features/station`): расчёт компоновки позиции — `StationPlan` (`kit/station-plan.js`), быстрый подбор под составом —
+  (`features/station`): расчёт компоновки позиции — `StationPlan` (`req/station-plan.js`; уточнено 31.10, этап 9), быстрый подбор под составом —
   `KitView.stationQuick`; компоновка (`features/layout`) не подключает 3D-вид (`features/view`): оттенок по фото —
   `StationEquip.photoTint` (подключают `station/index.js` и `view/index.js`). (31.10, этап 4) «Настройки» (`features/admin`) —
   верхний раздел: другие разделы их не подключают (ESLint, запреты слоёв — `LAYERS` в `eslint.config.mjs`); окна
@@ -64,7 +64,11 @@
   подключают `kit/`, `station/`, `wizard/index.js`). (31.10, этап 8) Кабинет без внутренних циклов: открытый раздел,
   поиск, отбор и черновики — `CabState` (`crm/cab-state.js`), окно кабинета подключает себя в `crm/index.js`; разделы
   кабинета и карточка сделки не подключают `Cabinet`; «Итог звонка», закрыть карточку сделки, воронки доски —
-  регистрацией в `crm/index.js`.
+  регистрацией в `crm/index.js`. (31.10, этап 9) Требования к станции (`features/req`) — модель под расчётом, составом, ТЗ
+  и подбором: их не подключают (ESLint); производительность по требованиям — `AirDemand.required` (`calc/`), шкафы АВР и
+  АСУ ТП — `StationDefaults.ensureParts`, проверки состава — `ReqChecks` (`kit/`), форма требований — `ReqForm`
+  (`station/`); расчёт компоновки позиции `StationPlan` — в `req/`, виды контейнеров `ContainerKind` — в `layout/` (списки —
+  `layout/index.js`); расчёт (`features/calc`) не подключает состав, подбор, мастер и документ.
 - Проверки: ESLint `no-undef` (забытый `import` — ошибка проверки), слепки (`tests/js/*golden*`), проверки в Node — через
   `tests/js/web.js` (минимальное окружение браузера; классы модулей доступны по имени только в проверках; подмена — методами
   настоящих классов: `Attrs.of = …`, `Catalog.cache = […]`, `KpState.replace(…)`), разметка страниц прогона

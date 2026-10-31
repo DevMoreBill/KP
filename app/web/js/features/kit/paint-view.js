@@ -10,9 +10,9 @@ import { StationGeo } from '../layout/station-geo.js';
 import { StationPaint } from '../layout/station-paint.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
-import { StationPlan } from './station-plan.js';
 import { InputNum } from '../../core/input-num.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /**
  * Окраска контейнера в «Крыша, пол, окраска» (StationPaint): на один цвет — одно окно (каркас, стены, крыша, пол, двери и

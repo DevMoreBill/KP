@@ -7,9 +7,9 @@ import { StationRulesDoc } from './rules-doc.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { AdminApi } from '../../core/admin-api.js';
 import { AdminDialog } from '../../core/admin-dialog.js';
+import { StationPlan } from '../req/station-plan.js';
 
 const JSON_POST = { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' } };
 

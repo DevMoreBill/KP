@@ -1,5 +1,5 @@
 // Подбор оборудования по ТЗ заказчика (app/web/js/features/tz/ — TzPick) и проверки требований станции
-// (kit-view.js — StationReq.checks) на вымышленном каталоге в памяти: число рабочих агрегатов из ТЗ, запас давления
+// (kit/req-checks.js — ReqChecks) на вымышленном каталоге в памяти: число рабочих агрегатов из ТЗ, запас давления
 // компрессора на потери в осушителе и фильтрах, продувка адсорбционного осушителя, бак ДГУ под время работы, насосы
 // без лишнего напора.
 // Запуск из корня репозитория: node tests/js/tz_pick.js — код выхода 0, если всё прошло (tests/test_tz_parse.py).
@@ -134,11 +134,11 @@ class Check {
     assert.strictEqual(K[K.length-1][0], 'piping', 'прочий состав — после подобранного');
     // требования: за вычетом продувки, давление на выходе — с потерями в подготовке воздуха
     x.req={ flow:'10', pressure:'7', reserve:'1' };
-    const ck=StationReq.checks(x);
+    const ck=ReqChecks.of(x);
     assert.ok(ck[0].ok && /за вычетом продувки осушителя 11,05 м³\/мин \+ 11,05 в резерве — не меньше 10/.test(ck[0].text), ck[0].text);
     assert.ok(ck[1].ok && /на выходе ≈ 9,\d бар/.test(ck[1].text), ck[1].text);
     x.req.pressure='9.8';
-    assert.ok(!StationReq.checks(x)[1].ok, 'компрессор 10 бар минус потери — меньше 9,8');
+    assert.ok(!ReqChecks.of(x)[1].ok, 'компрессор 10 бар минус потери — меньше 9,8');
   });
 
   await Check.run('компрессорная: два рабочих по ТЗ, рефрижераторный осушитель', async ()=>{
@@ -207,10 +207,10 @@ class Check {
     assert.ok(!main(x) && /В каталоге нет: безмасляный компрессор на/.test(note), note);
     // АВР и АСУ ТП: нет шкафов — замечания, добавляются один раз
     x=Cat.station('st_comp', [], { ats:true, scada:true });
-    const warn=()=>StationReq.checks(x).filter(c=>!c.ok).map(c=>c.text);
+    const warn=()=>ReqChecks.of(x).filter(c=>!c.ok).map(c=>c.text);
     assert.deepStrictEqual(warn(), ['нет шкафа АВР — по ТЗ два ввода питания', 'нет шкафа АСУ ТП — по ТЗ диспетчеризация']);
-    assert.deepStrictEqual(StationReq.ensureParts(x), ['Шкаф АВР (автоматический ввод резерва)', 'Шкаф АСУ ТП (автоматизация и диспетчеризация)']);
-    assert.deepStrictEqual(StationReq.ensureParts(x), [], 'второй раз — ничего');
+    assert.deepStrictEqual(StationDefaults.ensureParts(x), ['Шкаф АВР (автоматический ввод резерва)', 'Шкаф АСУ ТП (автоматизация и диспетчеризация)']);
+    assert.deepStrictEqual(StationDefaults.ensureParts(x), [], 'второй раз — ничего');
     assert.deepStrictEqual(warn(), []);
     assert.ok(Kit.parts(x).filter(p=>/^Шкаф/.test(p.name)).every(p=>KitScope.of(p)==='asm' && p.desc), 'шкафы — у сборщика, с описанием');
   });
@@ -245,11 +245,11 @@ class Check {
     // 50 · 24 ч · 1,1 (запас) = 1320 л, бака у ДГУ нет → ближайший типовой 1500 л
     assert.strictEqual(t.rows.find(r=>r.k==='Объём').v, '1500 л', '1320 л → 1500 л');
     assert.ok(/бак 1500 л — на 24 ч при нагрузке 80 % с запасом 10 %/.test(note), note);
-    const ck=StationReq.checks(x);
+    const ck=ReqChecks.of(x);
     // 1500 / (50 · 1,1) = 27,3 ч
     assert.ok(ck.some(c=>c.ok && /работа от баков ≈ 27 ч при нагрузке 80 % \(с запасом\) — не меньше 24/.test(c.text)), JSON.stringify(ck));
     x.req.hours='48';
-    assert.ok(StationReq.checks(x).some(c=>!c.ok && /меньше 48: нужно топлива 2640 л, в баках 1500/.test(c.text)), JSON.stringify(StationReq.checks(x)));
+    assert.ok(ReqChecks.of(x).some(c=>!c.ok && /меньше 48: нужно топлива 2640 л, в баках 1500/.test(c.text)), JSON.stringify(ReqChecks.of(x)));
     // режим «эксперт» у ДГУ: бак мал, ДГУ одна вместо двух — в своих разделах, «Решить автоматически» — бак и число ДГУ
     d.qty=1; ExpertFix.memo=null;
     const XL=ExpertFix.list(x), fuel=XL.find(q=>q.sec==='fuel' && q.bad), main=XL.find(q=>q.sec==='main' && q.fix);
@@ -267,7 +267,7 @@ class Check {
     const p=Kit.parts(x).find(z=>StationEquip.kindOf(z)==='pump');
     assert.deepStrictEqual([p.name, p.qty], ['Насос Н-50/35', 3], '2 рабочих по 50 м³/ч с напором 35 м + резервный');
     x.req={ q:'90', head:'30.6', reserve:'1' };
-    assert.ok(StationReq.checks(x).every(c=>c.ok), JSON.stringify(StationReq.checks(x)));
+    assert.ok(ReqChecks.of(x).every(c=>c.ok), JSON.stringify(ReqChecks.of(x)));
     const y=Cat.station('st_pump', [], {});
     const note=await TzPick.run(y, { kind:'pump', q:500, head:30, reserve:'0', work:0 });
     assert.ok(/В каталоге нет: насос на 500 м³\/ч и 30 м/.test(note), note);
@@ -419,7 +419,7 @@ class Check {
     assert.ok(/всего 3: 2 рабоч\. \+ 1 резерв\. на 12 м³\/мин/.test(r.why), r.why);
     assert.ok(/data-k="main-qty">Добавить</.test(KitNeed.rows(x, 0)), 'кнопка «Добавить»');
     KitNeed.apply(x, r); assert.strictEqual(Kit.parts(x).find(p=>p.role==='main').qty, 3);
-    assert.ok(!keys(x).includes('main-qty') && StationReq.checks(x).every(c=>c.ok), 'хватает: '+JSON.stringify(StationReq.checks(x)));
+    assert.ok(!keys(x).includes('main-qty') && ReqChecks.of(x).every(c=>c.ok), 'хватает: '+JSON.stringify(ReqChecks.of(x)));
     // давление: компрессор 8 бар, у потребителя нужно 8,5 — «Заменить», каталог по требованиям
     const y=Cat.station('st_comp', [await TzPick.part(C[2], 2, 'main'), await TzPick.part(C[1], 1)], { flow:'6', pressure:'8,5' });
     assert.deepStrictEqual(keys(y).filter(k=>/^main/.test(k)), [], 'две модели — собрано вручную, решают проверки');
@@ -439,7 +439,7 @@ class Check {
     assert.ok(t.key==='tank' && /^Нужно: топливный бак \d[\d\s]* л$/.test(KitNeed.head(t)) && /работа без дозаправки 24 ч/.test(t.why), JSON.stringify(t));
     assert.ok(/data-k="tank">Добавить</.test(KitNeed.rows(g, 0, 'asm')) && !KitNeed.rows(g, 0, 'our'), 'бак — в группе сборщика');
     assert.ok(/^топливный бак/.test(KitNeed.apply(g, t)) && !KitNeed.recs(g).length, 'бак добавлен: '+JSON.stringify(KitNeed.recs(g)));
-    assert.ok(StationReq.checks(g).every(c=>c.ok), JSON.stringify(StationReq.checks(g)));
+    assert.ok(ReqChecks.of(g).every(c=>c.ok), JSON.stringify(ReqChecks.of(g)));
     g.req.hours='72'; const t2=KitNeed.recs(g)[0];
     assert.ok(t2 && t2.swap && /^Заменить: топливный бак .* — нужен .* л$/.test(KitNeed.head(t2)), 'мал — заменить: '+JSON.stringify(t2));
     const D=KitNeed.mainPreset(Cat.station('st_dgu', [], { kw:'200' }));
@@ -466,12 +466,12 @@ class Check {
     const r=KitNeed.recs(x).find(z=>z.key==='main');
     assert.ok(r && /^Заменить: компрессор — масляный, а для пищевой промышленности нужен безмасляный \(класс 0 по маслу\)$/.test(KitNeed.head(r)), JSON.stringify(r));
     const M=KitNeed.mainPreset(x); assert.ok(!M.test(C[0]) && M.test(C[1]) && C.find(c=>c.id===M.best.id)===C[1] && /безмасляные \(для пищевой промышленности\)/.test(M.need), M.need);
-    assert.ok(StationReq.checks(x).some(c=>!c.ok && /компрессор не безмасляный — для пищевой промышленности нужен класс 0 по маслу/.test(c.text)), JSON.stringify(StationReq.checks(x)));
-    assert.ok(/пищевая отрасль · безмасляный/.test(StationReq.line(x)), StationReq.line(x));
+    assert.ok(ReqChecks.of(x).some(c=>!c.ok && /компрессор не безмасляный — для пищевой промышленности нужен класс 0 по маслу/.test(c.text)), JSON.stringify(ReqChecks.of(x)));
+    assert.ok(/пищевая отрасль · безмасляный/.test(ReqLine.of(x)), ReqLine.of(x));
     assert.strictEqual(StationQuick.query(x).oilFree, true, 'подбор станции — только безмасляные');
     x.req.oilOk=true;   // заказчик разрешил масляный
-    assert.ok(!StationReq.oilFree(x) && !KitNeed.recs(x).some(z=>z.key==='main') && StationReq.checks(x).every(c=>!/безмасл/.test(c.text)), 'масляный по требованию — без замены');
-    assert.ok(/масляный — по требованию заказчика/.test(StationReq.line(x)), StationReq.line(x));
+    assert.ok(!StationReq.oilFree(x) && !KitNeed.recs(x).some(z=>z.key==='main') && ReqChecks.of(x).every(c=>!/безмасл/.test(c.text)), 'масляный по требованию — без замены');
+    assert.ok(/масляный — по требованию заказчика/.test(ReqLine.of(x)), ReqLine.of(x));
     x.req.oilOk=false; x.req.industry='med'; assert.ok(StationReq.oilFree(x) && /медицинской и фармацевтической/.test(StationReq.oilWhy(x)));
     x.req.industry=''; assert.ok(!StationReq.oilFree(x), 'общепромышленная — без ограничения');
   });

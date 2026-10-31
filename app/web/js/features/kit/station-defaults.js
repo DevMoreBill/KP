@@ -1,4 +1,3 @@
-import { ContainerKind } from './container-kind.js';
 import { ContainerPart } from './container-part.js';
 import { KitPipe } from './kit-fields.js';
 import { StationReq } from '../req/station-req.js';
@@ -7,6 +6,7 @@ import { GensetSizing } from '../calc/genset-sizing.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { StationRules } from '../rules/station-rules.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
 
 /**
  * Элементы станции, без которых её не бывает: мастер кладёт их в состав сразу (ДГУ — глушитель на крыше, дополнительный
@@ -128,6 +128,30 @@ export class StationDefaults {
     const part = Kit.newPart({ name });
     this.fill(part, item);
     return part;
+  }
+
+  /**
+   * Шкафы АВР и АСУ ТП по требованиям — добавить, если их нет.
+   * @param {object} item
+   * @returns {string[]} названия добавленного
+   */
+  static ensureParts(item) {
+    const req = StationReq.of(item);
+    const parts = Kit.parts(item);
+    const added = [];
+    const has = pattern => parts.some(part => pattern.test(String(part.name || '')));
+    if (req.ats && !has(StationReq.ATS)) {
+      const part = this.part(item, 'Шкаф АВР (автоматический ввод резерва)');
+      part.attrs = { cat: 'ats' };
+      parts.push(part);
+      added.push(part.name);
+    }
+    if (req.scada && !has(StationReq.SCADA)) {
+      const part = this.part(item, 'Шкаф АСУ ТП (автоматизация и диспетчеризация)');
+      parts.push(part);
+      added.push(part.name);
+    }
+    return added;
   }
 
   /**

@@ -1,6 +1,7 @@
 import { ExpertFix } from './expert-fix.js';
 import { IssueSpot } from './issue-spot.js';
 import { LayoutTab } from './layout-tab.js';
+import { ReqForm } from './req-form.js';
 import { StationImages } from './station-images.js';
 import { StationModsUi } from './station-mods-ui.js';
 import { StationQuick } from './station-quick.js';
@@ -19,6 +20,7 @@ export const STATION = {
   ExpertFix,
   IssueSpot,
   LayoutTab,
+  ReqForm,
   StationBrief,
   StationDesign,
   StationDoc,
@@ -31,6 +33,7 @@ export const STATION = {
   StationUi,
 };
 
+ReqForm.listen();
 Spoiler.listen();
 StationQuick.listen();
 StationSteps.listen();

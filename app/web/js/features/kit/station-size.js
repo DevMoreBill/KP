@@ -5,8 +5,8 @@ import { esc } from '../../core/util.js';
 import { Mm } from '../layout/mm.js';
 import { Toast } from '../../core/toast.js';
 import { StationGeo } from '../layout/station-geo.js';
-import { StationPlan } from './station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
 /**
  * Размер блок-контейнера «по проекту» по оборудованию: наименьший размер из ряда, при котором всё помещается; длина задана —
  * компоновка пересобирается с нужной плотностью и уведомлением. Размер, вписанный менеджером, не трогается.

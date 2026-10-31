@@ -1,11 +1,12 @@
-import { StationReq } from './station-req.js';
-import { StationDefaults } from '../kit/station-defaults.js';
+import { StationReq } from '../req/station-req.js';
+import { StationDefaults } from './station-defaults.js';
 import { StationRules } from '../rules/station-rules.js';
 import { GensetSizing } from '../calc/genset-sizing.js';
 import { TzPick } from '../tz/tz-pick.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationEquip } from '../layout/station-equip.js';
 import { Kit } from '../../core/kit.js';
+import { AirDemand } from '../calc/air-demand.js';
 
 /**
  * Что даёт состав станции против требований: производительность, давление, безмасляные компрессоры, шкафы АВР и АСУ ТП,
@@ -67,7 +68,7 @@ export class ReqChecks {
     const units = this._units(parts, 'compressor');
     const flow = StationReq.num(req.flow);
     const bar = StationReq.num(req.pressure);
-    const demand = flow > 0 ? StationReq.need(req, flow) : null;
+    const demand = flow > 0 ? AirDemand.required(req, flow) : null;
     const need = demand ? demand.v : null;
     const purge = this._purge(parts);
     const flows = units.map(part => (AirChain.flow(part) || 0) * (1 - purge));

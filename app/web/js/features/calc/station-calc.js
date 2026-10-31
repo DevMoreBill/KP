@@ -10,15 +10,16 @@ import { PressureBudget } from './pressure-budget.js';
 import { PumpSizing } from './pump-sizing.js';
 import { ReceiverSizing } from './receiver-sizing.js';
 import { VentSizing } from './vent-sizing.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { StationRules } from '../rules/station-rules.js';
 import { StationReq } from '../req/station-req.js';
 import { ReqNum } from '../req/req-num.js';
 import { esc } from '../../core/util.js';
 import { AdminGear } from '../../core/admin-gear.js';
 import { Spoiler } from '../../core/spoiler.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
+import { ReqLine } from '../req/req-line.js';
 
 /**
  * Расчёт модульной станции по требованиям заказчика, составу и инженерным правилам: каждый шаг — данные, формула,
@@ -230,7 +231,7 @@ export class StationCalc {
 
   /** Требования (без имени файла ТЗ), контейнер, ссылка на «Состав изделия», версия правил. */
   static docHead(station, result) {
-    const req = StationReq.line({ ...station, req: { ...(station.req || {}), src: null } });
+    const req = ReqLine.of({ ...station, req: { ...(station.req || {}), src: null } });
     const parts = Kit.parts(station).filter(part => part.role !== 'container' && String(part.name || '').trim());
     const container = Kit.container(station);
     return {

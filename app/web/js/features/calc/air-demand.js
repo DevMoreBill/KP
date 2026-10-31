@@ -3,6 +3,7 @@ import { SummerTemp } from '../layout/summer-temp.js';
 import { CalcNote } from './calc-note.js';
 import { StationRules } from '../rules/station-rules.js';
 import { ReserveCheck } from './reserve-check.js';
+import { ReqNum } from '../req/req-num.js';
 
 /**
  * Потребность → производительность компрессоров (ISO 1217, FAD). Н. м³ (DIN 1343) или ст. м³ (ГОСТ 2939-63) — в FAD по
@@ -13,6 +14,8 @@ export class AirDemand {
   static KELVIN = 273.15;
   static P_NORMAL = 101.325; // кПа, нормальное атмосферное давление
   static REF = { normal: 'flow.normal', std: 'flow.standard' };
+  static PERCENT = 100;
+  static FULL_HUMIDITY = 100;
 
   /** Давление на высоте H, кПа. */
   static baro(alt) {
@@ -45,6 +48,39 @@ export class AirDemand {
     return (
       (((normal * refCond.p) / (AirDemand.baro(alt) - vapor)) * (temp + AirDemand.KELVIN)) /
       (refCond.t + AirDemand.KELVIN)
+    );
+  }
+
+  /**
+   * Требуемая производительность компрессоров, м³/мин FAD: потребность (нормальные м³ — к условиям всасывания) с запасом.
+   * @param {object} req
+   * @param {number} flow
+   * @returns {{v: number, why: string}}
+   */
+  static required(req, flow) {
+    const why = [];
+    let value = flow;
+    if (this.REF[req.basis]) {
+      value = this._reqFad(req, flow);
+      why.push(`${this.unit(req.basis)} → FAD`);
+    }
+    const margin = ReqNum.loose(req.margin);
+    if (margin > 0) {
+      value *= 1 + margin / this.PERCENT;
+      why.push(`запас ${String(margin).replace('.', ',')} %`);
+    }
+    return { v: value, why: why.join(', ') };
+  }
+
+  static _reqFad(req, flow) {
+    const tmax = ReqNum.loose(req.tmax);
+    const humidity = ReqNum.loose(req.rh);
+    return this.fad(
+      flow,
+      ReqNum.loose(req.alt) || 0,
+      SummerTemp.room(tmax),
+      humidity != null ? humidity : this.FULL_HUMIDITY,
+      req.basis,
     );
   }
 

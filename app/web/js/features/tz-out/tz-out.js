@@ -13,8 +13,8 @@ import { DrawPic } from '../kit/draw-pic.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { S } from '../../core/state.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /** ТЗ на сборку станции для сборщика — документ Word с чертежом, схемой и 3D-видом в приложениях. */
 export class TzOut {

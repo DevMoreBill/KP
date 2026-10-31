@@ -1,21 +1,23 @@
-import { ExpertLog } from './expert-log.js';
-import { ReceiverSync } from './receiver-sync.js';
-import { ReqNum } from './req-num.js';
-import { StationReq } from './station-req.js';
-import { StationQuick } from '../station/station-quick.js';
+import { ExpertLog } from '../req/expert-log.js';
+import { ReceiverSync } from '../req/receiver-sync.js';
+import { ReqNum } from '../req/req-num.js';
+import { StationReq } from '../req/station-req.js';
+import { StationQuick } from './station-quick.js';
 import { Toast } from '../../core/toast.js';
 import { KpState, S } from '../../core/state.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { Mm } from '../layout/mm.js';
-import { ExpertFix } from '../station/expert-fix.js';
+import { ExpertFix } from './expert-fix.js';
 import { SupplyDocs } from '../kit/supply-docs.js';
 import { esc } from '../../core/util.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
 import { StationParams } from '../kit/station-params.js';
 import { Spoiler } from '../../core/spoiler.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { StationPlan } from '../req/station-plan.js';
+import { StationDefaults } from '../kit/station-defaults.js';
+import { ReqChecks } from '../kit/req-checks.js';
 
 /**
  * Форма «Все требования, условия расчёта и проверки» (под раскрывающимся блоком «Подбора станции»): проверки состава,
@@ -67,7 +69,7 @@ export class ReqForm {
         .join('');
       return `<label class="f"><span>${label}</span><select data-req="${index}" data-rk="${key}">${options}</select></label>`;
     };
-    return { item, index, req, kind: StationReq.kind(item), path, field, select, checks: StationReq.checks(item) };
+    return { item, index, req, kind: StationReq.kind(item), path, field, select, checks: ReqChecks.of(item) };
   }
 
   static _fireList(item) {
@@ -266,7 +268,7 @@ export class ReqForm {
   }
 
   static _addCabinets(item) {
-    const added = StationReq.ensureParts(item);
+    const added = StationDefaults.ensureParts(item);
     if (!added.length) return;
     Kit.sync(item);
     this._relayout(item);

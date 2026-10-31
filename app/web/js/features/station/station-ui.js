@@ -10,13 +10,13 @@ import { HydroScheme } from '../eskd/hydro-scheme.js';
 import { StationScheme } from '../eskd/station-scheme.js';
 import { StationImages } from './station-images.js';
 import { Templates } from '../doc/templates.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { KpState, S } from '../../core/state.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /**
  * Компоновка станции в программе: расстановка (с кэшем), что вставлять в КП, вкладка «Компоновка», метка в разделе

@@ -1,5 +1,6 @@
 import { AirChain } from './air-chain.js';
 import { AirCheck } from './air-check.js';
+import { ContainerKind } from './container-kind.js';
 import { LayoutAccess } from './layout-access.js';
 import { LayoutDgu } from './layout-dgu.js';
 import { LayoutDigest } from './layout-digest.js';
@@ -47,10 +48,13 @@ import { VentCalc } from './vent-calc.js';
 import { VentGrille } from './vent-grille.js';
 import { VentIntake } from './vent-intake.js';
 import { VentPlan } from './vent-plan.js';
+import { LISTS } from '../../core/lists.js';
+import { DefRegistry } from '../../core/defaults.js';
 
 export const LAYOUT = {
   AirChain,
   AirCheck,
+  ContainerKind,
   LayoutAccess,
   LayoutDgu,
   LayoutDigest,
@@ -99,3 +103,7 @@ export const LAYOUT = {
   VentIntake,
   VentPlan,
 };
+
+// виды контейнеров — свои варианты администратора («Списки и выборы») подставляются после загрузки модуля
+LISTS.ready(ContainerKind.LISTS);
+DefRegistry.options(ContainerKind.DEF_OPTS);

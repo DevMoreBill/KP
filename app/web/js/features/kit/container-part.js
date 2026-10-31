@@ -1,10 +1,10 @@
-import { ContainerKind } from './container-kind.js';
 import { StationPaint } from '../layout/station-paint.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { Mm } from '../layout/mm.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { StationMods } from '../layout/station-mods.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
 
 /** Строка характеристик контейнера «Модули» у станции из модулей (габариты в строке выше — одного модуля). */
 export class StationModsText {

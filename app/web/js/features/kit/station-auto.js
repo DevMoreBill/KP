@@ -1,4 +1,3 @@
-import { ContainerKind } from './container-kind.js';
 import { StationSpec } from './station-spec.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { StationMods } from '../layout/station-mods.js';
@@ -9,6 +8,7 @@ import { FieldUnit } from '../../core/field-unit.js';
 import { Str } from '../../core/str.js';
 import { LgCargo } from '../../core/lg-cargo.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
 
 /** Значения, подставляемые в станцию из её оборудования. */
 export class StationAutoVal {

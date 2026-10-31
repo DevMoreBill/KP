@@ -216,6 +216,25 @@ export default [{
     { group: ['../deal/**'], message: 'состав станции и компоновка не подключают экономику сделки: DealLink (core/deal-link.js), груз из характеристик — LgCargo (core/)' },
   ] }] },
 }, {
+  // требования к станции (req) — модель под расчётом, составом, ТЗ и подбором: производительность по требованиям —
+  // AirDemand.required (calc), шкафы АВР и АСУ ТП — StationDefaults.ensureParts, проверки состава — ReqChecks (kit), форма
+  // требований — ReqForm (station); расчёт компоновки позиции StationPlan — в req
+  files: ['app/web/js/features/req/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    LAYERS.ui,
+    LAYERS.admin,
+    { group: ['../calc/**', '../kit/**', '../tz/**', '../station/**', '../wizard/**', '../doc/**'], message: 'требования к станции — модель: расчёт, состав, ТЗ, подбор, мастер и документ подключают её сами (AirDemand.required, StationDefaults.ensureParts, ReqChecks, ReqForm)' },
+  ] }] },
+}, {
+  // расчёт станции (calc) — над требованиями, под составом, подбором, мастером и документом: расчёт компоновки позиции —
+  // StationPlan (req/), виды контейнеров — ContainerKind (layout/)
+  files: ['app/web/js/features/calc/**/*.js'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    LAYERS.ui,
+    LAYERS.admin,
+    { group: ['../kit/**', '../station/**', '../wizard/**', '../doc/**'], message: 'расчёт станции не подключает состав, подбор, мастер и документ: StationPlan (req/), ContainerKind (layout/)' },
+  ] }] },
+}, {
   files: CLEAN,
   plugins: { kp: KP },
   rules: { 'id-length': ['error', NAMES], 'kp/jsdoc': 'error' },

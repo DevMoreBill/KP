@@ -1,14 +1,8 @@
-import { ReqChecks } from './req-checks.js';
-import { ReqForm } from './req-form.js';
-import { ReqLine } from './req-line.js';
 import { ReqNum } from './req-num.js';
-import { AirDemand } from '../calc/air-demand.js';
 import { AirChain } from '../layout/air-chain.js';
 import { DryerDerate } from '../layout/dryer-derate.js';
 import { ReceiverPlan } from '../layout/receiver-plan.js';
 import { StationEquip } from '../layout/station-equip.js';
-import { SummerTemp } from '../layout/summer-temp.js';
-import { StationDefaults } from '../kit/station-defaults.js';
 import { Attrs } from '../../core/item-attrs.js';
 import { StationRules } from '../rules/station-rules.js';
 import { Kit } from '../../core/kit.js';
@@ -112,8 +106,6 @@ export class StationReq {
   ];
   static NOISE = 80;
   static CENTS = 100;
-  static PERCENT = 100;
-  static FULL_HUMIDITY = 100;
   static WHY_MAX = 300;
 
   /**
@@ -185,30 +177,6 @@ export class StationReq {
   static oilWhy(item) {
     const req = this.of(item);
     return !req.oilFree && this.oilFree(item) ? `для ${this.INDUSTRY_WORD[req.industry]} промышленности` : 'по ТЗ';
-  }
-
-  /**
-   * Шкафы АВР и АСУ ТП по требованиям — добавить, если их нет.
-   * @param {object} item
-   * @returns {string[]} названия добавленного
-   */
-  static ensureParts(item) {
-    const req = this.of(item);
-    const parts = Kit.parts(item);
-    const added = [];
-    const has = pattern => parts.some(part => pattern.test(String(part.name || '')));
-    if (req.ats && !has(this.ATS)) {
-      const part = StationDefaults.part(item, 'Шкаф АВР (автоматический ввод резерва)');
-      part.attrs = { cat: 'ats' };
-      parts.push(part);
-      added.push(part.name);
-    }
-    if (req.scada && !has(this.SCADA)) {
-      const part = StationDefaults.part(item, 'Шкаф АСУ ТП (автоматизация и диспетчеризация)');
-      parts.push(part);
-      added.push(part.name);
-    }
-    return added;
   }
 
   /**
@@ -360,48 +328,6 @@ export class StationReq {
   }
 
   /**
-   * Что даёт состав против требований.
-   * @param {object} item
-   * @returns {{ok: boolean, text: string}[]}
-   */
-  static checks(item) {
-    return ReqChecks.of(item);
-  }
-
-  /**
-   * Требуемая производительность компрессоров, м³/мин FAD: потребность (нормальные м³ — к условиям всасывания) с запасом.
-   * @param {object} req
-   * @param {number} flow
-   * @returns {{v: number, why: string}}
-   */
-  static need(req, flow) {
-    const why = [];
-    let value = flow;
-    if (AirDemand.REF[req.basis]) {
-      value = this._fad(req, flow);
-      why.push(`${AirDemand.unit(req.basis)} → FAD`);
-    }
-    const margin = ReqNum.loose(req.margin);
-    if (margin > 0) {
-      value *= 1 + margin / this.PERCENT;
-      why.push(`запас ${String(margin).replace('.', ',')} %`);
-    }
-    return { v: value, why: why.join(', ') };
-  }
-
-  static _fad(req, flow) {
-    const tmax = ReqNum.loose(req.tmax);
-    const humidity = ReqNum.loose(req.rh);
-    return AirDemand.fad(
-      flow,
-      ReqNum.loose(req.alt) || 0,
-      SummerTemp.room(tmax),
-      humidity != null ? humidity : this.FULL_HUMIDITY,
-      req.basis,
-    );
-  }
-
-  /**
    * Потери давления в подготовке воздуха и трубопроводе станции, бар — как в расчётной записке (DryerDerate.loss):
    * перепад аппарата по паспорту, иначе по правилу.
    * @param {object[]} parts
@@ -413,32 +339,5 @@ export class StationReq {
       .filter(entry => entry.kind === 'dryer' || entry.kind === 'filter')
       .map(entry => ({ kind: entry.kind, info: AirChain.info(entry.part, entry.kind) }));
     return Math.round(DryerDerate.loss(units) * this.CENTS) / this.CENTS;
-  }
-
-  /**
-   * Короткая строка требований для заголовка блока.
-   * @param {object} item
-   * @returns {string}
-   */
-  static line(item) {
-    return ReqLine.of(item);
-  }
-
-  /**
-   * «Все требования, условия расчёта и проверки» — под раскрывающимся блоком «Подбора станции».
-   * @param {object} item
-   * @param {number} index позиция КП
-   * @returns {string}
-   */
-  static details(item, index) {
-    return ReqForm.html(item, index);
-  }
-
-  /**
-   * Поле требований изменилось.
-   * @param {HTMLElement} target
-   */
-  static change(target) {
-    ReqForm.change(target);
   }
 }

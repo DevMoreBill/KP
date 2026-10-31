@@ -18,8 +18,8 @@ import { Inn } from '../features/kp/client-store.js';
 import { KpState, S } from '../core/state.js';
 import { OptionSale } from '../features/kp/option-sale.js';
 import { Tender } from '../core/tender.js';
-import { StationPlan } from '../features/kit/station-plan.js';
 import { Currency } from '../core/currency.js';
+import { StationPlan } from '../features/req/station-plan.js';
 
 /** Что осталось заполнить, чтобы сохранить КП: [текст, id блока]. */
 export class Problems {

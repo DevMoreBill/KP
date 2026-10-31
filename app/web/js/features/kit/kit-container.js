@@ -4,12 +4,12 @@ import { DimInput } from '../../core/dim-input.js';
 import { PaintView } from './paint-view.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { esc } from '../../core/util.js';
-import { ContainerKind } from './container-kind.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { StationSize } from './station-size.js';
 import { Spoiler } from '../../core/spoiler.js';
-import { StationPlan } from './station-plan.js';
 import { Money } from '../../core/money.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
 /**
  * Контейнер станции во вкладке «Состав станции»: тип, размер, утепление, климат, сборщик и закупка — одной строкой;
  * крыша, пол и окраска — под раскрытием; системы контейнера — кнопками. Контейнер не выбран — плитки типов.

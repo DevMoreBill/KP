@@ -7,7 +7,6 @@ import { ContainerPart } from '../kit/container-part.js';
 import { EquipTypes } from '../../core/equip-types.js';
 import { StationImages } from '../station/station-images.js';
 import { ItemEditor } from '../catalog/item-editor.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { AiDirect } from '../catalog/ai-chat.js';
 import { AirChain } from '../layout/air-chain.js';
 import { StationReq } from '../req/station-req.js';
@@ -21,8 +20,9 @@ import { DefRegistry } from '../../core/defaults.js';
 import { KpForm } from '../../core/kp-form.js';
 import { StationSize } from '../kit/station-size.js';
 import { Spoiler } from '../../core/spoiler.js';
-import { StationPlan } from '../kit/station-plan.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { StationPlan } from '../req/station-plan.js';
 
 /** ТЗ заказчика: разбор на сервере, окно с найденным и полями требований, запись в станцию и подбор. */
 export class TzImport {
@@ -723,7 +723,7 @@ export class TzImport {
   /** Без подбора: шкафы по особым требованиям, бак ДГУ, характеристики и название. */
   static _fill(station, need, req) {
     delete req.pick;
-    const added = StationReq.ensureParts(station);
+    const added = StationDefaults.ensureParts(station);
     if (added.length) req.pick = `Добавлено по ТЗ: ${added.join(', ')}`;
     const hours = +this._numStr(need.hours);
     if (need.kind === 'dgu' && hours > 0) StationDefaults.retank(station, hours);

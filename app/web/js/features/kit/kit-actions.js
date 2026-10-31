@@ -1,4 +1,3 @@
-import { ContainerKind } from './container-kind.js';
 import { ContainerPart } from './container-part.js';
 import { KitCabinet, KitPipe, PartField } from './kit-fields.js';
 import { KitPick } from './kit-pick.js';
@@ -20,6 +19,7 @@ import { InputNum } from '../../core/input-num.js';
 import { DealLink } from '../../core/deal-link.js';
 import { Kit } from '../../core/kit.js';
 import { Currency } from '../../core/currency.js';
+import { ContainerKind } from '../layout/container-kind.js';
 
 /**
  * Действия вкладки «Состав» (кнопки data-a — из общего обработчика) и поля состава (закупка, валюта, количество,

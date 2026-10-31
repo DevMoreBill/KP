@@ -17,9 +17,10 @@ import { TzContainer } from './tz-container.js';
 import { KitScope } from '../kit/kit-scope.js';
 import { KitView } from '../kit/kit-view.js';
 import { S } from '../../core/state.js';
-import { ContainerKind } from '../kit/container-kind.js';
 import { StationReq } from '../req/station-req.js';
 import { Kit } from '../../core/kit.js';
+import { ContainerKind } from '../layout/container-kind.js';
+import { ReqLine } from '../req/req-line.js';
 
 /** Текст ТЗ на сборку станции: разделы по порядку, нумерация — сквозная. */
 export class TzText {
@@ -91,7 +92,7 @@ export class TzText {
   static _general(spec) {
     const { x, c: container } = spec;
     const prefix = this._h1(spec, 'Общие сведения');
-    const line = StationReq.line({ ...x, req: { ...spec.r, src: null } }); // без имени файла ТЗ заказчика
+    const line = ReqLine.of({ ...x, req: { ...spec.r, src: null } }); // без имени файла ТЗ заказчика
     spec.d.items(
       [
         [

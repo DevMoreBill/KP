@@ -1,4 +1,4 @@
-import { StationReq } from '../req/station-req.js';
+import { StationReq } from './station-req.js';
 import { StationLayout } from '../layout/station-layout.js';
 import { StationGeo } from '../layout/station-geo.js';
 import { FEAT } from '../../core/features.js';
