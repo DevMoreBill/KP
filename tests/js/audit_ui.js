@@ -121,6 +121,44 @@ check('заготовка — без сделки (и заготовки пре�
   }
 });
 
+check('черновик: правка до перезагрузки страницы, ещё не попавшая в черновик, после неё — несохранённая; без правки — нет (и у прежних КП, где у позиций нет опций)', ()=>{
+  const { Drafts }=mod('features/kp/drafts.js');
+  const state=mod('core/state.js');
+  const { KpState, LocalDraft }=state;
+  const was={ S:state.S, kpId:Drafts.kpId, base:Drafts.base, edits:LocalDraft.edits, tabs:LocalDraft.tabs };
+  // перезагрузка страницы: КП — из черновика браузера (KpState.restore), отсчёт правок — заново (Drafts.start)
+  const reload=()=>{
+    KpState.replace(KpState.restore());
+    Drafts.kpId=null;
+    Drafts.base=null;
+    Drafts._resume();
+    return Drafts.pending();
+  };
+  try {
+    LocalDraft.tabs=null;
+    LocalDraft.edits=()=>Drafts._edits();
+    KpState.replace(Object.assign(KpState.fresh(), { kpId:'k-reload', number:'2026-077', client:'ООО «Перезагрузка»',
+      items:[{ id:'i1', name:'Компрессор', qty:1, price:100 }] }));
+    Drafts.loaded();
+    LocalDraft.save(state.S);
+    assert.strictEqual(reload(), null, 'без правки — не несохранённое (позиции дополнены опциями при восстановлении)');
+    state.S.client='ООО «Правка до перезагрузки»';
+    LocalDraft.save(state.S);
+    assert.ok(reload(), 'правка до перезагрузки — несохранённая');
+    assert.strictEqual(state.S.client, 'ООО «Правка до перезагрузки»');
+    Drafts.loaded();
+    state.S.client='ООО «Ещё правка»';
+    LocalDraft.saveLite(state.S);
+    assert.strictEqual(reload(), null, 'КП без фото (не хватило места в браузере) — отсчёт с восстановленного, как раньше');
+  } finally {
+    localStorage.removeItem(LocalDraft.KEY);
+    localStorage.removeItem(LocalDraft.EDITS);
+    KpState.replace(was.S);
+    Object.assign(Drafts, { kpId:was.kpId, base:was.base });
+    Object.assign(LocalDraft, { edits:was.edits, tabs:was.tabs });
+  }
+});
+
 check('сохранение КП: сделка, которую назначил сервер, — не правка менеджера (было: ложное «Изменения … не вошли» и КП «не сохранено»)', async ()=>{
   const { KpSave }=mod('features/doc/kp-save.js');
   const { Api }=mod('core/net.js');

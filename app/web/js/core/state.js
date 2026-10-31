@@ -14,8 +14,11 @@ import { KpConditions } from './conditions.js';
 export class LocalDraft {
   static KEY = 'kp.draft';
   static TABS = 'kp.tabs';
+  static EDITS = 'kp.draft.edits';
   /** другие открытые КП для записи вместе с текущим (KpTabs) — функция или null */
   static tabs = null;
+  /** отсчёт правок открытого КП для записи вместе с ним (Drafts) — функция или null */
+  static edits = null;
   static PRE = 'kp.img.';
   static REF = '\u0000img:';
   // меньше — прямо в черновике
@@ -32,6 +35,7 @@ export class LocalDraft {
     const used = new Set();
     localStorage.setItem(this.KEY, this._text(state, used));
     this._others(rest => this._text(rest, used));
+    this._keepEdits();
     this.sweep(used);
   }
 
@@ -42,7 +46,29 @@ export class LocalDraft {
   static saveLite(state) {
     localStorage.setItem(this.KEY, JSON.stringify(state));
     this._others(rest => JSON.stringify(rest, (key, value) => (this._big(value) ? null : value)));
+    localStorage.removeItem(this.EDITS); // КП без фото — не то, что открыто: после перезагрузки отсчёт правок — с него
     this.sweep(new Set());
+  }
+
+  // отсчёт правок открытого КП — рядом с ним: после перезагрузки страницы правки до неё остаются несохранёнными; пока
+  // черновики не подключились (запуск), прежняя запись не трогается — её ещё не прочитали
+  static _keepEdits() {
+    if (!this.edits) return;
+    const edits = this.edits();
+    if (edits) localStorage.setItem(this.EDITS, JSON.stringify(edits));
+    else localStorage.removeItem(this.EDITS);
+  }
+
+  /**
+   * Отсчёт правок КП из черновика браузера (записан вместе с ним) или null.
+   * @returns {{kpId: string, draft: string, base: string|null} | null}
+   */
+  static loadEdits() {
+    try {
+      return JSON.parse(localStorage.getItem(this.EDITS) || 'null');
+    } catch {
+      return null;
+    }
   }
 
   /**

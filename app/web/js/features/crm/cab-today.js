@@ -54,7 +54,7 @@ export class CabToday {
         ? '<p class="msg warn">Выберите себя в разделе «Менеджер» — тогда здесь будут ваши сделки и дела.</p>'
         : '';
     if (this._phone())
-      return `${who}${this._cta()}${this._tiles()}${this._todo()}${this._reminders()}${this._drafts()}${this._phoneMore()}`;
+      return `${who}${CabGuide.tip()}${this._cta()}${this._tiles()}${this._todo()}${this._reminders()}${this._drafts()}${this._phoneMore()}`;
     const top = `${who}${CabGuide.tip()}${BrowserNotify.offer()}${this._cta()}${this._tiles()}`;
     if (CabLayout.enabled()) return `${top}${CabLayout.html('today', this._parts())}`;
     return `${top}<div class="td-g"><div class="td-l">${this._todo()}${this._reminders()}</div>
@@ -126,13 +126,14 @@ export class CabToday {
     setTimeout(() => list.classList.remove('td-flash'), this.FLASH_MS);
   }
 
-  // телефон: только то, что делать сейчас; неделя, месяц, воронка и советы — под раскрытием внизу
+  // телефон: только то, что делать сейчас; неделя, месяц, воронка и уведомления — под раскрытием внизу (совет при первом
+  // открытии — сверху, как на ПК: внизу под раскрытием его не видели)
   static _phone() {
     return FEAT.on('phoneToday') && document.documentElement.classList.contains('mob');
   }
 
   static _phoneMore() {
-    return `<details class="td-more"><summary>Неделя, месяц, воронка</summary>${CabTodaySide.html()}${this._more()}${CabGuide.tip()}${BrowserNotify.offer()}</details>`;
+    return `<details class="td-more"><summary>Неделя, месяц, воронка</summary>${CabTodaySide.html()}${this._more()}${BrowserNotify.offer()}</details>`;
   }
 
   static _sum(deals) {

@@ -1115,7 +1115,7 @@ class Scenario(UiRun):
 
     def s_kptabs(self):
         """Несколько КП вкладками: открыть из журнала второе, правка в нём не трогает первое, «＋» — новое пустое,
-        то же КП ещё раз — переход на его вкладку, после перезагрузки — те же вкладки, ✕ — закрыть."""
+        то же КП ещё раз — переход на его вкладку, после перезагрузки — те же вкладки и несохранённая правка, ✕ — закрыть."""
         pg = self.pg
         bad = []
         first = self.ev("({client:S.client, kpId:S.kpId||'', n:S.items.length, extra:S.condExtra})")
@@ -1180,9 +1180,7 @@ class Scenario(UiRun):
         if len(self.kp_tabs()) != 3 or self.ev("S.kpId") != same:
             bad.append('то же КП открылось второй раз: %s' % self.kp_tabs())
         self.wait(800)
-        pg.reload()
-        pg.wait_for_function("window.__kpExposed && Catalog.cache.length>0", timeout=60000)
-        self.wait(2500)
+        self._edit_reload(bad)
         self.closeall()
         after = self.kp_tabs()
         if len(after) != 3:
@@ -1211,6 +1209,26 @@ class Scenario(UiRun):
         for b in bad:
             self.errs.append(('kptabs', 'ИЗОЛЯЦИЯ', b))
         self.closeall()
+
+    def _edit_reload(self, bad):
+        """Правка перед перезагрузкой страницы, ещё не попавшая в черновик (автосохранение на это время — пауза), после неё —
+        несохранённая, с сообщением (было: считалась сохранённой — переход на другое КП терял её молча)."""
+        pg = self.pg
+        mark = 'Перед перезагрузкой — проверка'
+        self.ev("t => { S.object.purpose = t; KpState.persist(); KpState.flush(); Drafts.paused = true; }", mark)
+        asked = len(self.dialogs)
+        pg.reload()
+        pg.wait_for_function("window.__kpExposed && Catalog.cache.length>0", timeout=60000)
+        try:
+            pg.wait_for_function("(document.querySelector('#toast') || {}).textContent?.includes('Несохранённые правки КП')",
+                                 timeout=15000)
+        except Exception:
+            bad.append('после перезагрузки нет сообщения о несохранённых правках КП')
+        self.wait(2500)
+        # «Покинуть страницу?» при несохранённой правке — так и задумано (BackGuard), не ошибка прогона
+        self.dialogs[asked:] = [dialog for dialog in self.dialogs[asked:] if dialog[1] != 'beforeunload']
+        if self.ev("S.object.purpose") != mark or not self.ev("!!Drafts.pending()"):
+            bad.append('правка перед перезагрузкой страницы после неё — не несохранённая')
 
     def s_misc(self):
         for nm, js in (('b0_myday', 'MyDay.open()'), ('b1_myprefs', 'MyPrefs.open()'), ('b2_help', 'HelpWindow.open()'),
@@ -1430,15 +1448,11 @@ class Scenario(UiRun):
         self._cab_intake()
 
     def _cab_tip(self):
-        """Совет при первом открытии кабинета (в общем ходе прогона выключен — expose_script): показан и «Понятно» убирает его.
-        На телефоне совет — под раскрытием «Неделя, месяц, воронка» внизу «Сегодня» (CabToday._phoneMore): раскрыть."""
+        """Совет при первом открытии кабинета (в общем ходе прогона выключен — expose_script): показан сверху «Сегодня» (и на
+        телефоне) и «Понятно» убирает его."""
         pg = self.pg
         self.ev("localStorage.removeItem('kp.cab.tip')")
         self.ev("Cabinet.renderBody()")
-        more = pg.locator('#cabWin details.td-more:not([open]) > summary')
-        if more.count():
-            more.click()
-            self.wait(300)
         try:
             pg.wait_for_selector('#cabWin .cab-tip', timeout=5000)
         except Exception:

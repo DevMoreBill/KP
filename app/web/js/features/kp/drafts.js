@@ -3,7 +3,7 @@ import { Fmt } from '../../core/str.js';
 import { Toast } from '../../core/toast.js';
 import { $, esc } from '../../core/util.js';
 import { Api } from '../../core/net.js';
-import { KpState, S } from '../../core/state.js';
+import { KpState, LocalDraft, S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { DefRegistry } from '../../core/defaults.js';
 import { KpTabs } from './kp-tabs.js';
@@ -66,11 +66,17 @@ export class Drafts {
   }
 
   /**
-   * Состояние КП без служебных полей (как в журнал).
+   * Состояние КП без служебных полей (как в журнал); у позиций — опции и характеристики, как после перезагрузки
+   * страницы (KpState.revive): отпечаток прежних КП не меняется от перезагрузки.
    * @returns {object}
    */
   static clean() {
-    return JSON.parse(JSON.stringify(S, (key, value) => (key.startsWith('_') ? undefined : value)));
+    const state = JSON.parse(JSON.stringify(S, (key, value) => (key.startsWith('_') ? undefined : value)));
+    (state.items || []).forEach(item => {
+      item.options = item.options || [];
+      item.attrs = item.attrs || {};
+    });
+    return state;
   }
 
   /**
@@ -242,9 +248,14 @@ export class Drafts {
     if (FEAT.on('autosave') && !this.paused) this._save();
   }
 
-  /** Запуск автосохранения (отсчёт — с КП, открытого при запуске). */
+  /** Запуск автосохранения (отсчёт — с КП, открытого при запуске; после перезагрузки страницы — прежний). */
   static start() {
-    this.pending();
+    this._resume();
+    LocalDraft.edits = () => this._edits();
+    if (this.pending() && S.kpId)
+      Toast.show(
+        `Несохранённые правки КП${S.number ? ` № ${S.number}` : ''} на месте — сохраните КП, чтобы они попали в журнал`,
+      );
     const next = () =>
       setTimeout(() => {
         this.tick();
@@ -254,6 +265,22 @@ export class Drafts {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') this.tick();
     });
+  }
+
+  // перезагрузка страницы: отсчёт правок — записанный в браузере вместе с КП, иначе правки до перезагрузки, ещё не
+  // попавшие в черновик, считались бы сохранёнными (переход на другое КП терял их молча)
+  static _resume() {
+    const edits = LocalDraft.loadEdits();
+    if (!edits || edits.kpId !== (S.kpId || '') || edits.draft !== (S._draft || '')) return;
+    this.kpId = edits.kpId;
+    this.base = edits.base;
+  }
+
+  // отсчёт правок открытого КП — в браузер вместе с ним (LocalDraft.edits); отсчёт ещё от прежнего КП (открыли другое,
+  // а pending его не сверял) — не записывается
+  static _edits() {
+    const kpId = S.kpId || '';
+    return this.kpId === kpId ? { kpId, draft: S._draft || '', base: this.base } : null;
   }
 
   /**
