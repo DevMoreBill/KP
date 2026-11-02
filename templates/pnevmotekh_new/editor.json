@@ -1,0 +1,1795 @@
+{
+  "_help": "Описание формы «Настроить шаблон». Каждая вкладка — список полей: key — путь к настройке в template.json, type — вид поля (text, textarea, number, color, toggle, select, font, pairs, brand, sections, style, image, group). Новую настройку из skeleton.js достаточно добавить сюда — она появится в редакторе.",
+  "colorNames": {
+    "BLUE": "Основной",
+    "SKY": "Акцент",
+    "NAVYD": "Тёмно-синий (колонка, полоса)",
+    "DARK": "Текст",
+    "GRAY": "Второстепенный текст",
+    "LIGHT": "Светлая подложка",
+    "LINE": "Линии и рамки",
+    "HAIR": "Тонкие разделители",
+    "WHITE": "Белый",
+    "NAVYLINE": "Линии на тёмно-синем"
+  },
+  "tabs": [
+    {
+      "id": "main",
+      "title": "Основное",
+      "intro": "Название шаблона в списке, имя файла готового КП, фирменный знак и шрифт.",
+      "fields": [
+        {
+          "key": "name",
+          "type": "text",
+          "label": "Название шаблона"
+        },
+        {
+          "key": "description",
+          "type": "textarea",
+          "label": "Описание",
+          "rows": 2,
+          "hint": "Видно под списком шаблонов."
+        },
+        {
+          "key": "filePrefix",
+          "type": "text",
+          "label": "Префикс имени файла",
+          "hint": "Подставляется вместо {префикс}."
+        },
+        {
+          "key": "fileName",
+          "type": "text",
+          "label": "Имя файла КП",
+          "hint": "Метки: {номер}, {префикс}, {клиент}, {оборудование}, {дата}. Пустые метки пропускаются вместе с «_». Расширение .docx добавляется само."
+        },
+        {
+          "key": "brandParts",
+          "type": "brand",
+          "label": "Фирменный знак",
+          "hint": "Название компании частями, у каждой части — свой цвет: в нижнем колонтитуле и в «О компании»."
+        },
+        {
+          "key": "site",
+          "type": "text",
+          "label": "Сайт",
+          "hint": "На титуле под телефонами. Оставьте пустым, чтобы не выводить."
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Шрифт документа",
+          "hint": "Golos Text встроен в base.docx — КП с ним открывается одинаково на любом компьютере. Другой шрифт должен быть установлен там, где открывают КП."
+        },
+        {
+          "key": "fontSemi",
+          "type": "text",
+          "label": "Полужирное начертание",
+          "hint": "Golos Text SemiBold — тоже встроен в base.docx. Если выбран другой шрифт документа, полужирный текст выводится обычным жирным."
+        }
+      ]
+    },
+    {
+      "id": "sections",
+      "title": "Разделы и блоки",
+      "intro": "Порядок разделов документа (стрелки ↑ ↓), включение и начало с новой страницы. Титульный лист — всегда первая страница. Ниже — отдельные блоки внутри разделов.",
+      "fields": [
+        {
+          "key": "sections",
+          "type": "sections",
+          "label": "Разделы документа",
+          "names": {
+            "cover": "Титульный лист (синяя колонка)",
+            "offer": "Стоимость и условия (карточки позиций)",
+            "conditions": "Условия поставки (плитки)",
+            "equipment": "Страницы оборудования",
+            "contacts": "Контакты, о компании, наши клиенты"
+          },
+          "hints": {
+            "cover": "Отдельная страница без полей: слева синяя колонка, справа фото и состав предложения. Если блоки не помещаются — фото меньше, список короче, второстепенное убирается.",
+            "equipment": "Крупная позиция — со своей страницы; небольшие при большом числе позиций — карточками по нескольку на странице (вкладка «Правила»).",
+            "contacts": "«Наши клиенты» — справа, если в КП включено «Наши клиенты» и в шаблоне есть картинка."
+          }
+        },
+        {
+          "type": "group",
+          "title": "Титульный лист"
+        },
+        {
+          "key": "blocks.coverPhoto",
+          "type": "toggle",
+          "label": "Фото"
+        },
+        {
+          "key": "blocks.coverKpis",
+          "type": "toggle",
+          "label": "Ключевые параметры (одна позиция)"
+        },
+        {
+          "key": "blocks.coverDesc",
+          "type": "toggle",
+          "label": "Описание (одна позиция)"
+        },
+        {
+          "key": "blocks.coverIncluded",
+          "type": "toggle",
+          "label": "«В предложение также входит» (одна позиция)"
+        },
+        {
+          "key": "blocks.coverList",
+          "type": "toggle",
+          "label": "«Состав предложения» (несколько позиций)"
+        },
+        {
+          "key": "blocks.coverTerms",
+          "type": "toggle",
+          "label": "Номер КП и главные условия в колонке"
+        },
+        {
+          "key": "blocks.coverWhy",
+          "type": "toggle",
+          "label": "«Почему ПНЕВМОТЕХ» (преимущества)"
+        },
+        {
+          "key": "blocks.coverManager",
+          "type": "toggle",
+          "label": "Ваш менеджер"
+        },
+        {
+          "key": "blocks.coverRecipient",
+          "type": "toggle",
+          "label": "Получатель, вниманию, объект"
+        },
+        {
+          "key": "blocks.coverTrust",
+          "type": "toggle",
+          "label": "«Нам доверяют»"
+        },
+        {
+          "key": "blocks.coverRequisites",
+          "type": "toggle",
+          "label": "Реквизиты и номер страницы внизу"
+        },
+        {
+          "type": "group",
+          "title": "Страница оборудования"
+        },
+        {
+          "key": "blocks.equipPrice",
+          "type": "toggle",
+          "label": "Количество и сумма в строке-заголовке позиции"
+        },
+        {
+          "key": "blocks.equipLogo",
+          "type": "toggle",
+          "label": "Логотип производителя"
+        },
+        {
+          "key": "blocks.equipKeyParams",
+          "type": "toggle",
+          "label": "Ключевые параметры рядом с фото"
+        },
+        {
+          "key": "blocks.equipOptions",
+          "type": "toggle",
+          "label": "Опции позиции"
+        },
+        {
+          "key": "blocks.equipKit",
+          "type": "toggle",
+          "label": "Сборка: таблица «Состав изделия»"
+        },
+        {
+          "key": "blocks.equipKitCards",
+          "type": "toggle",
+          "label": "Сборка: карточки элементов"
+        },
+        {
+          "key": "blocks.equipComponents",
+          "type": "toggle",
+          "label": "Узлы и компоненты (карточки с фото)"
+        },
+        {
+          "key": "blocks.equipFeatures",
+          "type": "toggle",
+          "label": "Особенности и комплектация (длинные описания списком)"
+        },
+        {
+          "key": "blocks.equipSpecs",
+          "type": "toggle",
+          "label": "Технические характеристики"
+        },
+        {
+          "key": "blocks.specNote",
+          "type": "toggle",
+          "label": "Пояснение у характеристик"
+        },
+        {
+          "key": "blocks.equipGallery",
+          "type": "toggle",
+          "label": "Фото и схемы"
+        },
+        {
+          "type": "group",
+          "title": "Стоимость и условия"
+        },
+        {
+          "key": "blocks.discount",
+          "type": "toggle",
+          "label": "Показывать скидку для заказчика"
+        },
+        {
+          "key": "blocks.offerKit",
+          "type": "toggle",
+          "label": "Состав сборки строкой в карточке позиции"
+        },
+        {
+          "key": "blocks.amountInWords",
+          "type": "toggle",
+          "label": "Сумма прописью"
+        },
+        {
+          "key": "blocks.currencyNote",
+          "type": "toggle",
+          "label": "Пояснение о валюте и курсе ЦБ"
+        },
+        {
+          "type": "group",
+          "title": "Контакты и колонтитул"
+        },
+        {
+          "key": "blocks.contactsHow",
+          "type": "toggle",
+          "label": "«Как заказать» — три шага"
+        },
+        {
+          "key": "blocks.contactsAbout",
+          "type": "toggle",
+          "label": "О компании"
+        },
+        {
+          "key": "blocks.contactsAdvantages",
+          "type": "toggle",
+          "label": "Преимущества под «О компании»"
+        },
+        {
+          "key": "blocks.footer",
+          "type": "toggle",
+          "label": "Нижний колонтитул (менеджер, номера страниц)"
+        },
+        {
+          "type": "group",
+          "title": "Подпись и печать"
+        },
+        {
+          "key": "blocks.signImage",
+          "type": "toggle",
+          "label": "Подпись картинкой (под контактами)"
+        },
+        {
+          "key": "blocks.stampImage",
+          "type": "toggle",
+          "label": "Печать картинкой (поверх подписи)"
+        }
+      ]
+    },
+    {
+      "id": "company",
+      "title": "О компании",
+      "intro": "Тексты о компании: преимущества — в колонке титула и на странице контактов, «Нам доверяют» — на титуле, «Наши клиенты» — картинка на странице контактов.",
+      "fields": [
+        {
+          "key": "about",
+          "type": "textarea",
+          "label": "О компании",
+          "rows": 4,
+          "hint": "Выводится сразу после фирменного знака, поэтому начинайте с тире: « — интегратор…»."
+        },
+        {
+          "key": "advantages",
+          "type": "pairs",
+          "label": "Преимущества",
+          "cols": [
+            "Заголовок",
+            "Текст"
+          ],
+          "max": 4,
+          "hint": "Сколько показывать — правило «Преимуществ» во вкладке «Правила»."
+        },
+        {
+          "key": "trust",
+          "type": "textarea",
+          "label": "Нам доверяют",
+          "rows": 2,
+          "hint": "Список клиентов через запятую."
+        },
+        {
+          "key": "clientsTitle",
+          "type": "text",
+          "label": "Заголовок «Наши клиенты»"
+        },
+        {
+          "key": "clientsImage",
+          "type": "image",
+          "label": "Картинка «Наши клиенты»",
+          "hint": "JPG или PNG с логотипами клиентов — справа на странице контактов. Уберите картинку, чтобы её не было."
+        },
+        {
+          "type": "group",
+          "title": "Подпись и печать"
+        },
+        {
+          "key": "signImage",
+          "type": "image",
+          "label": "Картинка подписи",
+          "hint": "PNG с прозрачным фоном. Встаёт под контактами строкой «Подпись:», если включено в «Разделы и блоки» → «Подпись картинкой».",
+          "empty": "Картинки нет — подписи в КП нет"
+        },
+        {
+          "key": "stampImage",
+          "type": "image",
+          "label": "Картинка печати",
+          "hint": "PNG с прозрачным фоном: печать ложится поверх строки подписи. Включается в «Разделы и блоки» → «Печать картинкой».",
+          "empty": "Картинки нет — печати в КП нет"
+        }
+      ]
+    },
+    {
+      "id": "texts",
+      "title": "Надписи",
+      "intro": "Все заголовки и подписи документа. {метки} заменяются данными КП.",
+      "fields": [
+        {
+          "type": "group",
+          "title": "Титульный лист"
+        },
+        {
+          "key": "texts.coverKicker",
+          "type": "text",
+          "label": "Надзаголовок"
+        },
+        {
+          "key": "texts.coverFor",
+          "type": "text",
+          "label": "Клиент под заголовком",
+          "hint": "{client} — название клиента."
+        },
+        {
+          "key": "texts.coverPhones",
+          "type": "text",
+          "label": "Телефоны компании (справа вверху)",
+          "hint": "Номера через « · »."
+        },
+        {
+          "key": "texts.coverRequisites",
+          "type": "textarea",
+          "label": "Реквизиты компании (внизу титула)",
+          "rows": 2
+        },
+        {
+          "key": "texts.priceWithVat",
+          "type": "text",
+          "label": "Стоимость"
+        },
+        {
+          "key": "texts.coverDiscount",
+          "type": "text",
+          "label": "Скидка под стоимостью"
+        },
+        {
+          "key": "texts.validUntil",
+          "type": "text",
+          "label": "Срок действия",
+          "hint": "{date} — по условию «Срок действия предложения» от даты КП."
+        },
+        {
+          "key": "texts.offerRef",
+          "type": "text",
+          "label": "Подпись «Предложение»"
+        },
+        {
+          "key": "texts.offerNo",
+          "type": "text",
+          "label": "Номер и дата КП"
+        },
+        {
+          "key": "texts.coverListTitle",
+          "type": "text",
+          "label": "Состав предложения"
+        },
+        {
+          "key": "texts.coverListSum",
+          "type": "text",
+          "label": "Колонка суммы"
+        },
+        {
+          "key": "texts.coverListTotal",
+          "type": "text",
+          "label": "Итог списка"
+        },
+        {
+          "key": "texts.coverListMore",
+          "type": "text",
+          "label": "Если позиций больше, чем помещается"
+        },
+        {
+          "key": "texts.coverIncluded",
+          "type": "text",
+          "label": "Одна позиция: «В предложение также входит»"
+        },
+        {
+          "key": "texts.coverIncludedFree",
+          "type": "text",
+          "label": "Бесплатная опция"
+        },
+        {
+          "key": "texts.coverParts",
+          "type": "text",
+          "label": "Состав сборки"
+        },
+        {
+          "key": "texts.whyTitle",
+          "type": "text",
+          "label": "Преимущества: заголовок"
+        },
+        {
+          "key": "texts.managerTitle",
+          "type": "text",
+          "label": "Ваш менеджер"
+        },
+        {
+          "key": "texts.mobileShort",
+          "type": "text",
+          "label": "Мобильный менеджера",
+          "hint": "{phone} — номер."
+        },
+        {
+          "key": "texts.recipient",
+          "type": "text",
+          "label": "Получатель"
+        },
+        {
+          "key": "texts.attention",
+          "type": "text",
+          "label": "Вниманию"
+        },
+        {
+          "key": "texts.object",
+          "type": "text",
+          "label": "Объект"
+        },
+        {
+          "key": "texts.inn",
+          "type": "text",
+          "label": "ИНН клиента"
+        },
+        {
+          "key": "texts.trustLabel",
+          "type": "text",
+          "label": "Нам доверяют"
+        },
+        {
+          "key": "texts.pageOf",
+          "type": "text",
+          "label": "Номер страницы",
+          "hint": "{page} — номер страницы, {pages} — всего страниц."
+        },
+        {
+          "type": "group",
+          "title": "Стоимость и условия"
+        },
+        {
+          "key": "texts.offerTitle",
+          "type": "text",
+          "label": "Заголовок раздела"
+        },
+        {
+          "key": "texts.offerLead",
+          "type": "text",
+          "label": "Строка под заголовком"
+        },
+        {
+          "key": "texts.offerLeadUntil",
+          "type": "text",
+          "label": "Срок действия в строке под заголовком"
+        },
+        {
+          "key": "texts.unitPrice",
+          "type": "text",
+          "label": "Количество × цена"
+        },
+        {
+          "key": "texts.positionTotal",
+          "type": "text",
+          "label": "Итог позиции с опциями"
+        },
+        {
+          "key": "texts.included",
+          "type": "text",
+          "label": "Бесплатная опция"
+        },
+        {
+          "key": "texts.kitInOffer",
+          "type": "text",
+          "label": "Состав сборки в карточке"
+        },
+        {
+          "key": "texts.pcs",
+          "type": "text",
+          "label": "Единица «шт.»"
+        },
+        {
+          "key": "texts.grandTotal",
+          "type": "text",
+          "label": "Итого к оплате"
+        },
+        {
+          "key": "texts.subtotalLine",
+          "type": "text",
+          "label": "Сумма без скидки и скидка"
+        },
+        {
+          "key": "texts.vatIncl",
+          "type": "text",
+          "label": "В т. ч. НДС"
+        },
+        {
+          "key": "texts.currencyNote",
+          "type": "textarea",
+          "label": "Цены в валюте"
+        },
+        {
+          "key": "texts.currencyRate",
+          "type": "textarea",
+          "label": "Справка о курсе"
+        },
+        {
+          "key": "texts.currencyRateOwn",
+          "type": "textarea",
+          "label": "Справка о курсе — курс вписан вручную (договорной)"
+        },
+        {
+          "key": "texts.conditionsTitle",
+          "type": "text",
+          "label": "Условия поставки"
+        },
+        {
+          "key": "texts.condExtraTitle",
+          "type": "text",
+          "label": "Дополнительные условия"
+        },
+        {
+          "key": "texts.condUntil",
+          "type": "text",
+          "label": "Срок действия — до даты"
+        },
+        {
+          "type": "group",
+          "title": "Страница оборудования"
+        },
+        {
+          "key": "texts.positionKicker",
+          "type": "text",
+          "label": "Надзаголовок позиции"
+        },
+        {
+          "key": "texts.positionQty",
+          "type": "text",
+          "label": "Количество"
+        },
+        {
+          "key": "texts.withOptions",
+          "type": "text",
+          "label": "Пометка «с опциями»"
+        },
+        {
+          "key": "texts.equipOptionsTitle",
+          "type": "text",
+          "label": "Опции"
+        },
+        {
+          "key": "texts.componentsTitle",
+          "type": "text",
+          "label": "Узлы и компоненты"
+        },
+        {
+          "key": "texts.kitTitle",
+          "type": "text",
+          "label": "Сборка: заголовок таблицы состава"
+        },
+        {
+          "key": "texts.kitColName",
+          "type": "text",
+          "label": "Сборка: колонка «Элемент»"
+        },
+        {
+          "key": "texts.kitColParams",
+          "type": "text",
+          "label": "Сборка: колонка характеристик"
+        },
+        {
+          "key": "texts.kitCardsTitle",
+          "type": "text",
+          "label": "Сборка: заголовок карточек элементов"
+        },
+        {
+          "key": "texts.kitMaker",
+          "type": "text",
+          "label": "Сборка: производитель элемента"
+        },
+        {
+          "key": "texts.featuresTitle",
+          "type": "text",
+          "label": "Особенности и комплектация"
+        },
+        {
+          "key": "texts.specsTitle",
+          "type": "text",
+          "label": "Технические характеристики"
+        },
+        {
+          "key": "texts.specNote",
+          "type": "textarea",
+          "label": "Пояснение у характеристик"
+        },
+        {
+          "key": "texts.specCont",
+          "type": "text",
+          "label": "Вторая половина длинной группы характеристик"
+        },
+        {
+          "key": "texts.galleryTitle",
+          "type": "text",
+          "label": "Фото и схемы"
+        },
+        {
+          "key": "texts.colNo",
+          "type": "text",
+          "label": "Колонка «№»"
+        },
+        {
+          "key": "texts.colQty",
+          "type": "text",
+          "label": "Колонка «Кол-во»"
+        },
+        {
+          "type": "group",
+          "title": "Контакты"
+        },
+        {
+          "key": "texts.contactsTitle",
+          "type": "text",
+          "label": "Контактная информация"
+        },
+        {
+          "key": "texts.closing1",
+          "type": "text",
+          "label": "Прощание, строка 1"
+        },
+        {
+          "key": "texts.closing2",
+          "type": "text",
+          "label": "Прощание, строка 2"
+        },
+        {
+          "key": "texts.phone",
+          "type": "text",
+          "label": "Телефон"
+        },
+        {
+          "key": "texts.ext",
+          "type": "text",
+          "label": "Добавочный"
+        },
+        {
+          "key": "texts.mobile",
+          "type": "text",
+          "label": "Мобильный"
+        },
+        {
+          "key": "texts.email",
+          "type": "text",
+          "label": "E-mail"
+        },
+        {
+          "key": "texts.site",
+          "type": "text",
+          "label": "Сайт"
+        },
+        {
+          "key": "texts.hours",
+          "type": "text",
+          "label": "Часы работы"
+        },
+        {
+          "key": "texts.address",
+          "type": "text",
+          "label": "Адрес"
+        },
+        {
+          "key": "texts.howTitle",
+          "type": "text",
+          "label": "Как заказать"
+        },
+        {
+          "key": "texts.how1",
+          "type": "text",
+          "label": "Как заказать: шаг 1"
+        },
+        {
+          "key": "texts.how2",
+          "type": "text",
+          "label": "Как заказать: шаг 2"
+        },
+        {
+          "key": "texts.how3",
+          "type": "text",
+          "label": "Как заказать: шаг 3",
+          "hint": "Пустой шаг не выводится."
+        },
+        {
+          "key": "texts.aboutTitle",
+          "type": "text",
+          "label": "О компании"
+        },
+        {
+          "key": "texts.signLine",
+          "type": "text",
+          "label": "Надпись перед подписью"
+        },
+        {
+          "type": "group",
+          "title": "Колонтитулы"
+        },
+        {
+          "key": "texts.headerKp",
+          "type": "text",
+          "label": "Шапка: перед номером КП"
+        },
+        {
+          "key": "texts.headerFor",
+          "type": "text",
+          "label": "Шапка: перед клиентом"
+        },
+        {
+          "key": "texts.footerManager",
+          "type": "text",
+          "label": "Колонтитул: перед именем менеджера"
+        }
+      ]
+    },
+    {
+      "id": "colors",
+      "title": "Цвета",
+      "intro": "Палитра шаблона. Тёмно-синий — только рамка документа: колонка титула и полоса слева на внутренних страницах.",
+      "fields": [
+        {
+          "key": "colors.BLUE",
+          "type": "color",
+          "label": "Основной"
+        },
+        {
+          "key": "colors.SKY",
+          "type": "color",
+          "label": "Акцент"
+        },
+        {
+          "key": "colors.NAVYD",
+          "type": "color",
+          "label": "Тёмно-синий (колонка титула, полоса)"
+        },
+        {
+          "key": "colors.DARK",
+          "type": "color",
+          "label": "Текст"
+        },
+        {
+          "key": "colors.GRAY",
+          "type": "color",
+          "label": "Второстепенный текст"
+        },
+        {
+          "key": "colors.LIGHT",
+          "type": "color",
+          "label": "Светлая подложка"
+        },
+        {
+          "key": "colors.LINE",
+          "type": "color",
+          "label": "Линии и рамки"
+        },
+        {
+          "key": "colors.HAIR",
+          "type": "color",
+          "label": "Тонкие разделители"
+        },
+        {
+          "key": "colors.WHITE",
+          "type": "color",
+          "label": "Текст на тёмном фоне"
+        },
+        {
+          "key": "colors.NAVYLINE",
+          "type": "color",
+          "label": "Линии на тёмно-синем"
+        }
+      ]
+    },
+    {
+      "id": "styles",
+      "title": "Стили текста",
+      "intro": "Размер (пт), цвет и начертание каждого вида текста. Справа — образец.",
+      "fields": [
+        {
+          "type": "group",
+          "title": "Общие"
+        },
+        {
+          "key": "styles.heading",
+          "type": "style",
+          "label": "Заголовок раздела",
+          "sample": "Стоимость и условия"
+        },
+        {
+          "key": "styles.lead",
+          "type": "style",
+          "label": "Строка под заголовком",
+          "sample": "Цены в рублях, с НДС 22 %"
+        },
+        {
+          "key": "styles.subheading",
+          "type": "style",
+          "label": "Подзаголовок",
+          "sample": "Технические характеристики"
+        },
+        {
+          "key": "styles.subAside",
+          "type": "style",
+          "label": "Пояснение справа от подзаголовка",
+          "sample": "По данным производителя"
+        },
+        {
+          "key": "styles.label",
+          "type": "style",
+          "label": "Подписи прописными",
+          "sample": "Получатель"
+        },
+        {
+          "key": "styles.muted",
+          "type": "style",
+          "label": "Мелкий серый текст",
+          "sample": "ИНН 7700000000"
+        },
+        {
+          "key": "styles.note",
+          "type": "style",
+          "label": "Примечание",
+          "sample": "Цены указаны в долларах США"
+        },
+        {
+          "key": "styles.badge",
+          "type": "style",
+          "label": "Номер позиции",
+          "sample": "1",
+          "dark": true
+        },
+        {
+          "key": "styles.badgeLarge",
+          "type": "style",
+          "label": "Номер позиции на странице оборудования",
+          "sample": "1",
+          "dark": true
+        },
+        {
+          "type": "group",
+          "title": "Титульный лист: колонка"
+        },
+        {
+          "key": "styles.coverKicker",
+          "type": "style",
+          "label": "Надзаголовок",
+          "sample": "Технико-коммерческое предложение",
+          "dark": true
+        },
+        {
+          "key": "styles.coverTitle",
+          "type": "style",
+          "label": "Вид оборудования (одна позиция)",
+          "sample": "Винтовые компрессоры",
+          "dark": true
+        },
+        {
+          "key": "styles.coverModel",
+          "type": "style",
+          "label": "Модель или вид оборудования крупно",
+          "sample": "Berg ВК-15-500",
+          "dark": true
+        },
+        {
+          "key": "styles.coverSub",
+          "type": "style",
+          "label": "Модели под заголовком",
+          "sample": "4 модели",
+          "dark": true
+        },
+        {
+          "key": "styles.coverClient",
+          "type": "style",
+          "label": "Клиент",
+          "sample": "для ООО «Ромашка»",
+          "dark": true
+        },
+        {
+          "key": "styles.navyLabel",
+          "type": "style",
+          "label": "Подписи прописными",
+          "sample": "Стоимость с НДС 22 %",
+          "dark": true
+        },
+        {
+          "key": "styles.coverSum",
+          "type": "style",
+          "label": "Стоимость",
+          "sample": "2 491 000",
+          "dark": true
+        },
+        {
+          "key": "styles.coverSumSmall",
+          "type": "style",
+          "label": "Копейки и валюта",
+          "sample": ",00 руб.",
+          "dark": true
+        },
+        {
+          "key": "styles.navyNote",
+          "type": "style",
+          "label": "Мелкий текст",
+          "sample": "с учётом скидки",
+          "dark": true
+        },
+        {
+          "key": "styles.coverBadge",
+          "type": "style",
+          "label": "Срок действия",
+          "sample": "Действует до 1 декабря 2026 г.",
+          "dark": true
+        },
+        {
+          "key": "styles.navyText",
+          "type": "style",
+          "label": "Условия",
+          "sample": "12 месяцев с даты ввода",
+          "dark": true
+        },
+        {
+          "key": "styles.whyHead",
+          "type": "style",
+          "label": "Преимущество: заголовок",
+          "sample": "Сроки.",
+          "dark": true
+        },
+        {
+          "key": "styles.whyText",
+          "type": "style",
+          "label": "Преимущество: текст",
+          "sample": "Поставляем оборудование сами",
+          "dark": true
+        },
+        {
+          "key": "styles.coverManager",
+          "type": "style",
+          "label": "Менеджер",
+          "sample": "Иванова Анна",
+          "dark": true
+        },
+        {
+          "key": "styles.coverManagerPost",
+          "type": "style",
+          "label": "Должность менеджера",
+          "sample": "Менеджер",
+          "dark": true
+        },
+        {
+          "key": "styles.coverManagerText",
+          "type": "style",
+          "label": "Телефоны и почта",
+          "sample": "+7 (900) 000-00-00",
+          "dark": true
+        },
+        {
+          "type": "group",
+          "title": "Титульный лист: справа"
+        },
+        {
+          "key": "styles.coverPhone",
+          "type": "style",
+          "label": "Телефоны компании",
+          "sample": "8 (495) 690-91-96"
+        },
+        {
+          "key": "styles.coverSite",
+          "type": "style",
+          "label": "Сайт",
+          "sample": "www.kompr.ru"
+        },
+        {
+          "key": "styles.kpiValue",
+          "type": "style",
+          "label": "Ключевой параметр: число",
+          "sample": "2,2"
+        },
+        {
+          "key": "styles.kpiUnit",
+          "type": "style",
+          "label": "Ключевой параметр: единица",
+          "sample": "м³/мин"
+        },
+        {
+          "key": "styles.kpiCaption",
+          "type": "style",
+          "label": "Ключевой параметр: подпись",
+          "sample": "Производительность"
+        },
+        {
+          "key": "styles.coverDesc",
+          "type": "style",
+          "label": "Описание",
+          "sample": "Снабжение сжатым воздухом производственных участков"
+        },
+        {
+          "key": "styles.coverOption",
+          "type": "style",
+          "label": "Опции",
+          "sample": "Комплект фильтров на первое ТО"
+        },
+        {
+          "key": "styles.listName",
+          "type": "style",
+          "label": "Состав: название",
+          "sample": "Винтовой компрессор Berg ВК-15"
+        },
+        {
+          "key": "styles.listSpec",
+          "type": "style",
+          "label": "Состав: характеристики",
+          "sample": "1 шт. · 2,2 м³/мин · 8 бар"
+        },
+        {
+          "key": "styles.listSum",
+          "type": "style",
+          "label": "Состав: сумма",
+          "sample": "459 400,00"
+        },
+        {
+          "key": "styles.listTotal",
+          "type": "style",
+          "label": "Состав: итог",
+          "sample": "Итого с НДС 22 %"
+        },
+        {
+          "key": "styles.listTotalSum",
+          "type": "style",
+          "label": "Состав: итоговая сумма",
+          "sample": "2 491 000,00"
+        },
+        {
+          "key": "styles.whoValue",
+          "type": "style",
+          "label": "Получатель",
+          "sample": "ООО «Ромашка»"
+        },
+        {
+          "key": "styles.whoText",
+          "type": "style",
+          "label": "Вниманию, объект",
+          "sample": "Петров Пётр"
+        },
+        {
+          "key": "styles.whoSub",
+          "type": "style",
+          "label": "ИНН, должность",
+          "sample": "главный инженер"
+        },
+        {
+          "key": "styles.trustText",
+          "type": "style",
+          "label": "Нам доверяют",
+          "sample": "Газпром, Сбербанк, РЖД"
+        },
+        {
+          "key": "styles.requisites",
+          "type": "style",
+          "label": "Реквизиты",
+          "sample": "ООО «ПНЕВМОТЕХ» · ИНН …"
+        },
+        {
+          "type": "group",
+          "title": "Стоимость и условия"
+        },
+        {
+          "key": "styles.cardName",
+          "type": "style",
+          "label": "Позиция: название",
+          "sample": "Винтовой компрессор Berg ВК-15"
+        },
+        {
+          "key": "styles.cardSpec",
+          "type": "style",
+          "label": "Позиция: характеристики",
+          "sample": "2,2 м³/мин · 8 бар"
+        },
+        {
+          "key": "styles.cardCalc",
+          "type": "style",
+          "label": "Количество × цена",
+          "sample": "1 шт. × 468 000,00"
+        },
+        {
+          "key": "styles.cardSum",
+          "type": "style",
+          "label": "Сумма позиции",
+          "sample": "444 600,00"
+        },
+        {
+          "key": "styles.chip",
+          "type": "style",
+          "label": "Скидка",
+          "sample": "−5 %",
+          "dark": true
+        },
+        {
+          "key": "styles.cardLine",
+          "type": "style",
+          "label": "Опция",
+          "sample": "Масло компрессорное, 20 л"
+        },
+        {
+          "key": "styles.cardLineMuted",
+          "type": "style",
+          "label": "Опция: количество, «включено»",
+          "sample": "включено"
+        },
+        {
+          "key": "styles.cardSub",
+          "type": "style",
+          "label": "Итог по позиции",
+          "sample": "Итого по позиции 1"
+        },
+        {
+          "key": "styles.cardParts",
+          "type": "style",
+          "label": "Состав сборки",
+          "sample": "Блок-контейнер — 1 шт."
+        },
+        {
+          "key": "styles.cardPartsHead",
+          "type": "style",
+          "label": "Состав сборки: подпись",
+          "sample": "В составе:"
+        },
+        {
+          "key": "styles.totalTitle",
+          "type": "style",
+          "label": "Итого к оплате",
+          "sample": "Итого к оплате с НДС"
+        },
+        {
+          "key": "styles.totalNote",
+          "type": "style",
+          "label": "Итог: пояснения",
+          "sample": "Сумма без скидки"
+        },
+        {
+          "key": "styles.totalSum",
+          "type": "style",
+          "label": "Итог: сумма",
+          "sample": "2 491 000,00 руб."
+        },
+        {
+          "key": "styles.condText",
+          "type": "style",
+          "label": "Условие: значение",
+          "sample": "30 рабочих дней"
+        },
+        {
+          "key": "styles.extraLabel",
+          "type": "style",
+          "label": "«Дополнительно:»",
+          "sample": "Дополнительно:"
+        },
+        {
+          "key": "styles.extraText",
+          "type": "style",
+          "label": "Дополнительные условия",
+          "sample": "Цена действительна при заказе всего комплекта"
+        },
+        {
+          "type": "group",
+          "title": "Страница оборудования"
+        },
+        {
+          "key": "styles.posTitle",
+          "type": "style",
+          "label": "Название позиции",
+          "sample": "Винтовой компрессор Berg ВК-15"
+        },
+        {
+          "key": "styles.posSum",
+          "type": "style",
+          "label": "Сумма позиции",
+          "sample": "459 400,00 руб."
+        },
+        {
+          "key": "styles.featureLabel",
+          "type": "style",
+          "label": "Описание: подзаголовок",
+          "sample": "Назначение"
+        },
+        {
+          "key": "styles.featureText",
+          "type": "style",
+          "label": "Описание: текст",
+          "sample": "Снабжение сжатым воздухом"
+        },
+        {
+          "key": "styles.photoCaption",
+          "type": "style",
+          "label": "Подпись к фото",
+          "sample": "Вид с торца"
+        },
+        {
+          "key": "styles.heroValue",
+          "type": "style",
+          "label": "Плитка параметра: значение",
+          "sample": "2,2"
+        },
+        {
+          "key": "styles.heroUnit",
+          "type": "style",
+          "label": "Плитка параметра: единица",
+          "sample": "м³/мин"
+        },
+        {
+          "key": "styles.heroLabel",
+          "type": "style",
+          "label": "Плитка параметра: подпись",
+          "sample": "Производительность"
+        },
+        {
+          "key": "styles.componentLabel",
+          "type": "style",
+          "label": "Узел: заголовок",
+          "sample": "Панель управления"
+        },
+        {
+          "key": "styles.componentText",
+          "type": "style",
+          "label": "Узел: текст",
+          "sample": "Автозапуск, ЖК-дисплей"
+        },
+        {
+          "key": "styles.tableHeader",
+          "type": "style",
+          "label": "Шапка таблиц",
+          "sample": "Элемент"
+        },
+        {
+          "key": "styles.specGroup",
+          "type": "style",
+          "label": "Группа характеристик",
+          "sample": "Основные"
+        },
+        {
+          "key": "styles.specName",
+          "type": "style",
+          "label": "Характеристика: название",
+          "sample": "Напряжение"
+        },
+        {
+          "key": "styles.specValue",
+          "type": "style",
+          "label": "Характеристика: значение",
+          "sample": "380 В"
+        },
+        {
+          "key": "styles.specValueKey",
+          "type": "style",
+          "label": "Ключевое значение",
+          "sample": "15 кВт"
+        },
+        {
+          "key": "styles.specText",
+          "type": "style",
+          "label": "Характеристика: длинный текст",
+          "sample": "Предохранительный клапан; защита от перегрева"
+        },
+        {
+          "key": "styles.galleryCaption",
+          "type": "style",
+          "label": "Подпись в «Фото и схемы»",
+          "sample": "Вид спереди"
+        },
+        {
+          "key": "styles.cell",
+          "type": "style",
+          "label": "Таблица состава: текст",
+          "sample": "1 шт."
+        },
+        {
+          "key": "styles.cellBold",
+          "type": "style",
+          "label": "Таблица состава: элемент",
+          "sample": "Осушитель рефрижераторный"
+        },
+        {
+          "key": "styles.rowIndex",
+          "type": "style",
+          "label": "Таблица состава: номер",
+          "sample": "1.1"
+        },
+        {
+          "key": "styles.cardTitle",
+          "type": "style",
+          "label": "Карточка элемента: название",
+          "sample": "1.1  Осушитель"
+        },
+        {
+          "type": "group",
+          "title": "Контакты и колонтитулы"
+        },
+        {
+          "key": "styles.managerName",
+          "type": "style",
+          "label": "Имя менеджера",
+          "sample": "Иванова Анна Сергеевна"
+        },
+        {
+          "key": "styles.managerPost",
+          "type": "style",
+          "label": "Должность",
+          "sample": "Менеджер"
+        },
+        {
+          "key": "styles.closing",
+          "type": "style",
+          "label": "Прощание",
+          "sample": "С уважением и надеждой"
+        },
+        {
+          "key": "styles.contactPhone",
+          "type": "style",
+          "label": "Телефоны",
+          "sample": "+7 (900) 000-00-00"
+        },
+        {
+          "key": "styles.contactExt",
+          "type": "style",
+          "label": "Добавочный",
+          "sample": "доб. 123"
+        },
+        {
+          "key": "styles.contactLink",
+          "type": "style",
+          "label": "E-mail и сайт",
+          "sample": "info@kompr.ru"
+        },
+        {
+          "key": "styles.contactValue",
+          "type": "style",
+          "label": "Часы работы, адрес",
+          "sample": "Пн–Пт 9:00–18:00"
+        },
+        {
+          "key": "styles.howNumber",
+          "type": "style",
+          "label": "«Как заказать»: номер шага",
+          "sample": "1"
+        },
+        {
+          "key": "styles.howText",
+          "type": "style",
+          "label": "«Как заказать»: текст",
+          "sample": "Мы пришлём договор и счёт"
+        },
+        {
+          "key": "styles.about",
+          "type": "style",
+          "label": "О компании",
+          "sample": " — интегратор комплексных решений"
+        },
+        {
+          "key": "styles.aboutBrand",
+          "type": "style",
+          "label": "Фирменный знак в «О компании»",
+          "sample": "ПНЕВМОТЕХ",
+          "noColor": true
+        },
+        {
+          "key": "styles.advTitle",
+          "type": "style",
+          "label": "Преимущество: заголовок",
+          "sample": "Сроки"
+        },
+        {
+          "key": "styles.advText",
+          "type": "style",
+          "label": "Преимущество: текст",
+          "sample": "Поставляем оборудование сами"
+        },
+        {
+          "key": "styles.header",
+          "type": "style",
+          "label": "Шапка страницы",
+          "sample": "Коммерческое предложение"
+        },
+        {
+          "key": "styles.headerBold",
+          "type": "style",
+          "label": "Шапка: номер и клиент",
+          "sample": "№ 2026-041"
+        },
+        {
+          "key": "styles.footer",
+          "type": "style",
+          "label": "Колонтитул",
+          "sample": "Ваш менеджер"
+        },
+        {
+          "key": "styles.footerBold",
+          "type": "style",
+          "label": "Колонтитул: менеджер",
+          "sample": "Иванова Анна"
+        },
+        {
+          "key": "styles.footerBrand",
+          "type": "style",
+          "label": "Колонтитул: фирменный знак",
+          "sample": "ПНЕВМОТЕХ",
+          "noColor": true
+        },
+        {
+          "key": "styles.footerPage",
+          "type": "style",
+          "label": "Номер страницы",
+          "sample": "3"
+        }
+      ]
+    },
+    {
+      "id": "rules",
+      "title": "Правила",
+      "intro": "Размеры титула и фото, когда список на титуле без фото и короче, сколько условий и преимуществ показывать, как выводить много оборудования, переносы слов.",
+      "fields": [
+        {
+          "type": "group",
+          "title": "Титульный лист"
+        },
+        {
+          "key": "rules.coverColumnCm",
+          "type": "number",
+          "label": "Ширина синей колонки",
+          "unit": "см",
+          "min": 6,
+          "max": 10,
+          "step": 0.1
+        },
+        {
+          "key": "rules.coverLogoFieldCm",
+          "type": "number",
+          "label": "Белое поле с логотипом над колонкой — высота",
+          "unit": "см",
+          "min": 2,
+          "max": 5,
+          "step": 0.1
+        },
+        {
+          "key": "rules.coverLogoHeightCm",
+          "type": "number",
+          "label": "Логотип на титуле — высота",
+          "unit": "см",
+          "min": 0.6,
+          "max": 2.5,
+          "step": 0.05
+        },
+        {
+          "key": "rules.coverPhotoHeightCm",
+          "type": "number",
+          "label": "Фото: наибольшая высота (одна позиция)",
+          "unit": "см",
+          "min": 3,
+          "max": 14,
+          "step": 0.1
+        },
+        {
+          "key": "rules.coverPhotoMultiCm",
+          "type": "number",
+          "label": "Фото: наибольшая высота (несколько позиций)",
+          "unit": "см",
+          "min": 2,
+          "max": 12,
+          "step": 0.1
+        },
+        {
+          "key": "rules.coverCompactFrom",
+          "type": "number",
+          "label": "«Состав предложения» без фото — от",
+          "unit": "позиций",
+          "min": 2,
+          "max": 30,
+          "step": 1
+        },
+        {
+          "key": "rules.coverListMax",
+          "type": "number",
+          "label": "Позиций в «Составе предложения» — до",
+          "unit": "шт.",
+          "min": 3,
+          "max": 30,
+          "step": 1,
+          "hint": "Больше — первые и строка «и ещё N — в разделе «Стоимость и условия»»."
+        },
+        {
+          "key": "rules.coverTermsMax",
+          "type": "number",
+          "label": "Главных условий в колонке",
+          "unit": "шт.",
+          "min": 0,
+          "max": 6,
+          "step": 1,
+          "hint": "Первые по списку «Условия» КП (кроме срока действия — он на плашке «Действует до»)."
+        },
+        {
+          "key": "rules.coverOptionsMax",
+          "type": "number",
+          "label": "Опций в «В предложение также входит»",
+          "unit": "шт.",
+          "min": 0,
+          "max": 20,
+          "step": 1
+        },
+        {
+          "key": "rules.advantagesMax",
+          "type": "number",
+          "label": "Преимуществ",
+          "unit": "шт.",
+          "min": 0,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "type": "group",
+          "title": "Страница оборудования"
+        },
+        {
+          "key": "rules.equipPhotoWidthCm",
+          "type": "number",
+          "label": "Главное фото: наибольшая ширина",
+          "unit": "см",
+          "min": 3,
+          "max": 10,
+          "step": 0.1
+        },
+        {
+          "key": "rules.heroPhotoHeightCm",
+          "type": "number",
+          "label": "Главное фото: высота рамки",
+          "unit": "см",
+          "min": 3,
+          "max": 12,
+          "step": 0.1
+        },
+        {
+          "key": "rules.keyParamsMax",
+          "type": "number",
+          "label": "Плиток ключевых параметров",
+          "unit": "шт.",
+          "min": 0,
+          "max": 9,
+          "step": 1
+        },
+        {
+          "key": "rules.keyParamMaxChars",
+          "type": "number",
+          "label": "Значение в плитке — не длиннее",
+          "unit": "знаков",
+          "min": 8,
+          "max": 60,
+          "step": 1
+        },
+        {
+          "key": "rules.componentPhotoWidthCm",
+          "type": "number",
+          "label": "Узлы: ширина фото",
+          "unit": "см",
+          "min": 2,
+          "max": 9,
+          "step": 0.1
+        },
+        {
+          "key": "rules.componentPhotoHeightCm",
+          "type": "number",
+          "label": "Узлы: высота фото",
+          "unit": "см",
+          "min": 1.5,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "key": "rules.kitKeyParams",
+          "type": "number",
+          "label": "Сборка: характеристик в таблице состава",
+          "min": 0,
+          "max": 8,
+          "step": 1
+        },
+        {
+          "key": "rules.kitPhotoWidthCm",
+          "type": "number",
+          "label": "Сборка: ширина фото элемента",
+          "unit": "см",
+          "min": 1.5,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "key": "rules.kitPhotoHeightCm",
+          "type": "number",
+          "label": "Сборка: высота фото элемента",
+          "unit": "см",
+          "min": 1.5,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "key": "rules.logoWidthCm",
+          "type": "number",
+          "label": "Ширина логотипа производителя",
+          "unit": "см",
+          "min": 1,
+          "max": 8,
+          "step": 0.05
+        },
+        {
+          "key": "rules.longFeatureChars",
+          "type": "number",
+          "label": "Длинное описание — от",
+          "unit": "знаков",
+          "min": 50,
+          "max": 2000,
+          "step": 10,
+          "hint": "Описания длиннее уходят в «Особенности и комплектация» на всю ширину."
+        },
+        {
+          "key": "rules.specTwoColumnsFrom",
+          "type": "number",
+          "label": "Характеристики в две колонки — от",
+          "unit": "строк",
+          "min": 5,
+          "max": 200,
+          "step": 1
+        },
+        {
+          "key": "rules.specLongValueChars",
+          "type": "number",
+          "label": "Длинное значение — от",
+          "unit": "знаков",
+          "min": 15,
+          "max": 200,
+          "step": 1,
+          "hint": "Значения длиннее выводятся текстом во всю ширину карточки, под названием параметра."
+        },
+        {
+          "type": "group",
+          "title": "Много оборудования"
+        },
+        {
+          "key": "rules.compactCards",
+          "type": "toggle",
+          "label": "Небольшие позиции — карточками, по нескольку на странице",
+          "hint": "Запчасти, фильтры, ресиверы и т. п.: фото слева, описание и характеристики справа — вместо полупустой страницы на каждую."
+        },
+        {
+          "key": "rules.compactFrom",
+          "type": "number",
+          "label": "Карточки — когда страниц оборудования от",
+          "unit": "шт.",
+          "min": 2,
+          "max": 100,
+          "step": 1,
+          "hint": "Одна-две позиции всегда выводятся полной страницей."
+        },
+        {
+          "key": "rules.compactMaxRows",
+          "type": "number",
+          "label": "Небольшая позиция: строк характеристик не больше",
+          "unit": "строк",
+          "min": 0,
+          "max": 80,
+          "step": 1
+        },
+        {
+          "key": "rules.compactMaxChars",
+          "type": "number",
+          "label": "…и описания не длиннее",
+          "unit": "знаков",
+          "min": 0,
+          "max": 6000,
+          "step": 50,
+          "hint": "Позиции с узлами на фото и сборки (станции) всегда выводятся полной страницей."
+        },
+        {
+          "type": "group",
+          "title": "Страница контактов"
+        },
+        {
+          "key": "rules.clientsWidthCm",
+          "type": "number",
+          "label": "Картинка «Наши клиенты» — ширина",
+          "unit": "см",
+          "min": 3,
+          "max": 12,
+          "step": 0.1
+        },
+        {
+          "type": "group",
+          "title": "Текст"
+        },
+        {
+          "key": "rules.hyphenation",
+          "type": "toggle",
+          "label": "Автоматические переносы слов в описаниях",
+          "hint": "Заголовки, названия моделей, числа, телефоны и адреса не переносятся. Неразрывные пробелы (число и единица, «№ 5», предлоги) ставятся всегда."
+        },
+        {
+          "type": "group",
+          "title": "Подпись и печать"
+        },
+        {
+          "key": "rules.signWidthCm",
+          "type": "number",
+          "label": "Ширина подписи",
+          "unit": "см",
+          "min": 1,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "key": "rules.stampWidthCm",
+          "type": "number",
+          "label": "Ширина печати",
+          "unit": "см",
+          "min": 2,
+          "max": 6,
+          "step": 0.1
+        },
+        {
+          "key": "rules.stampX",
+          "type": "number",
+          "label": "Печать: сдвиг вправо",
+          "unit": "см",
+          "min": -5,
+          "max": 15,
+          "step": 0.1
+        },
+        {
+          "key": "rules.stampY",
+          "type": "number",
+          "label": "Печать: сдвиг вниз (минус — вверх)",
+          "unit": "см",
+          "min": -6,
+          "max": 4,
+          "step": 0.1
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "title": "Файлы шаблона",
+      "intro": "Поля страницы, стили и встроенный шрифт Golos Text — в base.docx (правится в Word). Раскладка страниц — в skeleton.js. Значки условий и логотип титула — ic_*.png и logo.png. Каждое сохранение оставляет прежнюю версию в истории.",
+      "fields": [
+        {
+          "type": "files"
+        }
+      ]
+    }
+  ]
+}

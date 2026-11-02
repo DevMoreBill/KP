@@ -14,6 +14,7 @@ import { S } from '../../core/state.js';
 import { FEAT } from '../../core/features.js';
 import { Kit } from '../../core/kit.js';
 import { Currency } from '../../core/currency.js';
+import { KpDate } from '../../core/kp-date.js';
 
 /**
  * Сборка файла .docx КП: основа Word из шаблона + страницы по скелету шаблона с настройками; картинки — в пакет
@@ -23,6 +24,7 @@ export class KpDocx {
   static MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   static HEADER_RELS =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  static ASSET_KEY = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 
   /**
    * Данные КП для документа (без служебных полей и изображений).
@@ -43,6 +45,7 @@ export class KpDocx {
     };
     out.items = S.items.map(item => this._item(item));
     out.conditions = KpConditions.forDoc(out.conditions, (S.object || {}).address);
+    out.validUntil = KpDate.validUntil(S); // «Действует до …» — по условию «Срок действия предложения» и дате КП
     return out;
   }
 
@@ -88,6 +91,7 @@ export class KpDocx {
       if (item.page) media.items[item.id] = await this._itemMedia(zip, item);
     const features = pack.skel.features || [];
     if (features.includes('images')) media.extra = await this._extra(zip, pack, settings);
+    if (features.includes('assets')) media.assets = await this._assets(zip, pack, settings);
     const page = await this._page(zip, pack, settings, features);
     state.items = await this._kit(zip, state, media, features);
     if (features.includes('sign') && FEAT.on('kpStamp')) media.sign = await this._sign(zip, pack, settings);
@@ -178,6 +182,20 @@ export class KpDocx {
       extra[row.id] = { file, w: image.w, h: image.h };
     }
     return extra;
+  }
+
+  // картинки самого шаблона (значки условий, логотип титула): settings.assets — {ключ: файл папки шаблона}
+  static async _assets(zip, pack, settings) {
+    const assets = {};
+    for (const [key, file] of Object.entries(settings.assets || {})) {
+      if (!this.ASSET_KEY.test(key) || typeof file !== 'string' || !file) continue;
+      const image = await Templates.image(pack, file);
+      if (!image) continue;
+      const name = `tpla_${key}.${image.ext}`;
+      zip.file(`word/media/${name}`, image.buf);
+      assets[key] = { file: name, w: image.w, h: image.h };
+    }
+    return assets;
   }
 
   // поля страницы и своя шапка из настроек: прежние ссылки на шапки убираются, первая страница — с той же шапкой

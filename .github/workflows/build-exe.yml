@@ -223,6 +223,13 @@ jobs:
           $tpl = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/templates'
           if ($tpl.Count -lt 1) { throw 'Шаблоны КП не найдены' }
           if (-not ($tpl | Where-Object { $_.id -eq 'tender' })) { throw 'Нет тендерного шаблона' }
+          $tplNew = $tpl | Where-Object { $_.id -eq 'pnevmotekh_new' }
+          if (-not $tplNew -or $tplNew.error) { throw "Шаблон «ПНЕВМОТЕХ НОВЫЙ» не загрузился: $($tplNew.error)" }
+          foreach ($f in @('skeleton.js', 'editor.json', 'template.json', 'base.docx', 'logo.png', 'ic_clock.png')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dir "templates\pnevmotekh_new\$f"))) { throw "Файл шаблона «ПНЕВМОТЕХ НОВЫЙ» $f не разложен рядом с программой" }
+          }
+          $ic = Invoke-WebRequest -Uri 'http://127.0.0.1:17845/tpl/pnevmotekh_new/ic_clock.png' -UseBasicParsing
+          if ($ic.StatusCode -ne 200) { throw 'Значок шаблона «ПНЕВМОТЕХ НОВЫЙ» не отдаётся' }
           $types = Invoke-RestMethod -Uri 'http://127.0.0.1:17845/api/types'
           Write-Host "Типов оборудования: $($types.types.Count)"
           if ($types.types.Count -lt 5) { throw 'Справочник типов не загрузился' }

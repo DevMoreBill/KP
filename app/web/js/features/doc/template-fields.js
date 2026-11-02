@@ -189,7 +189,8 @@ export class TemplateFields {
       <button class="icon" type="button" data-row-del="${key}" data-i="${i}" title="Удалить">✕</button></div>`,
       )
       .join('');
-    return `<div class="te-f"><span class="te-lab">${esc(field.label || '')} <span class="te-brand" style="font-family:${esc(this._state.work.font || 'Arial')}">${preview || '—'}</span></span>
+    const font = esc((this._state.work.font || 'Arial').replace(/'/g, ''));
+    return `<div class="te-f"><span class="te-lab">${esc(field.label || '')} <span class="te-brand" style="font-family:'${font}',Arial,sans-serif">${preview || '—'}</span></span>
     <div class="te-rows">${list}</div>
     <button class="btn ghost" type="button" data-row-add="${key}" data-kind="brand">+ Часть</button>${field.hint ? `<small class="muted">${esc(field.hint)}</small>` : ''}</div>`;
   }
