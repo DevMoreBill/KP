@@ -157,6 +157,7 @@ class DealLock:
     title: str
     last: date  # день последнего КП в сделке (без КП — её создания)
     until: date | None  # с этого дня можно новую сделку; None — запрет администратора, пока сделка открыта
+    basis: str = 'kp'  # last — день последнего КП ('kp') или создания сделки без КП ('created')
 
     def out(self) -> dict[str, Any]:
         return {
@@ -166,6 +167,7 @@ class DealLock:
             'last': self.last.isoformat(),
             'until': self.until.isoformat() if self.until else '',
             'reason': 'days' if self.until else 'client',
+            'basis': self.basis,
         }
 
 
@@ -293,5 +295,6 @@ class DealGuard:
                 continue
             if best is None or stamp > best[0]:
                 title = str(deal.get('title') or deal.get('client') or '')
-                best = (stamp, DealLock(deal['id'], deal.get('number'), title, day, until))
+                basis = 'kp' if (mark or {}).get('last') else 'created'
+                best = (stamp, DealLock(deal['id'], deal.get('number'), title, day, until, basis))
         return best[1] if best else None

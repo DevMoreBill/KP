@@ -466,7 +466,8 @@ html.mob .lg-ck,html.mob .bx-ck{display:inline-flex;align-items:center;justify-c
 html.mob dialog.deal-dlg header.dk-top input.dk-title{min-height:44px}
 html.mob .dc-bx,html.mob .dk-bxc{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
 html.mob .cab-ck{min-width:44px}
-html.mob .kr-drop,html.mob .kt-dlg .ck,html.mob .kr-r{min-height:44px;align-items:center}
+html.mob .kr-drop,html.mob .kt-dlg .ck,html.mob .kr-r,html.mob .dm-r{min-height:44px;align-items:center}
+html.mob .dup-ds .pay-t{min-height:44px}
 html.mob .wt-x input[type=month]{min-height:44px}
 html.mob .dd-k .chip{min-width:44px}
 /* КП, каталог, станции, «Настройки» */

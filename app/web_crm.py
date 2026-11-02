@@ -23,6 +23,7 @@ from crm_money import PayCalendar, PayReminder
 from deal_files import DealClosing, DealFiles
 from deal_guard import DealGuard, DealSeen, GuardPlan
 from deal_intake import DealIntake
+from deal_merge import DealDupes, DealMerge, MergedDeals
 from deal_rules import ClientByInn, DealRegs
 from features import FeatureAccess, Viewer
 from feedback import Feedback
@@ -371,11 +372,19 @@ class CrmController(Controller):
         deal = DealBook(store()).get(did)
         uid, _name, everyone = self.who(self.handler)
         if not deal:
-            raise NotFound('Сделка не найдена')
+            raise NotFound(self._gone(did))
         if not everyone and deal.get('managerId') != uid:
             admin.DeniedLog.note(self.handler, store(), 'deal', did)
             raise Forbidden('Это сделка другого менеджера — нет доступа')
         return deal
+
+    @staticmethod
+    def _gone(did: str) -> str:
+        """Почему сделки нет: объединена с другой — с какой."""
+        into = DealBook(store()).get(MergedDeals(store()).target_of(did))
+        if into and into['id'] != did:
+            return f'Сделка объединена со сделкой № {into.get("number")} — откройте её'
+        return 'Сделка не найдена'
 
     def _manager(self, mid: str) -> tuple:
         """(id, имя) менеджера из справочника для смены ответственного."""
@@ -482,7 +491,9 @@ class CrmController(Controller):
             'clientId': str(self.query.get('client') or '')[:64],
             'tender': {'number': str(self.query.get('tender') or '')[:100]},
         }
-        guard = DealGuard(store()).check(client, DealGuard.manager_of(meta) or uid).out()
+        asked = str(self.query.get('manager') or '')  # «＋ Сделка» руководителя для менеджера — правило этого менеджера
+        mid = DealGuard.manager_of(meta) or (asked if everyone and asked and self.MID.match(asked) else '') or uid
+        guard = DealGuard(store()).check(client, mid).out()
         mine = [uid] if not everyone else None
         items = CrmBoard(store()).pick(mine, inn, name) if inn or name else []
         if cur and cur not in [x['id'] for x in items]:
@@ -789,6 +800,34 @@ class CrmController(Controller):
             None,
         )
         return self.send_json({'ok': True, 'id': did})
+
+    @route(r'/api/crm/deal/(d\d{1,9})/merge', 'POST')
+    def deal_merge(self, did: str) -> Any:
+        """«Объединить сделки»: в эту — КП, дела, документы, звонки и комментарии отмеченных; они — в корзину. Свои сделки
+        — ответственному, любые — руководителю и администратору."""
+        self._deal(did)
+        asked = self.json_body().get('deals')
+        if not isinstance(asked, list) or not all(isinstance(x, str) and DealMerge.ID_RE.match(x) for x in asked):
+            raise BadRequest('Неверный список сделок')
+        sources = [self._deal(sid)['id'] for sid in asked[: DealMerge.MAX + 1]]
+        with self.user_input():
+            try:
+                report = DealMerge(store()).merge(did, sources, admin.actor(self.handler)[1])
+            except LookupError as exc:
+                raise NotFound(str(exc)) from None
+        result = report.out()
+        admin.log(self.handler, store(), 'merge_deal', 'deal', did, {'deals': result['merged']}, result)
+        self.bitrix_on(did)
+        return self.send_json(result)
+
+    @route(r'/api/crm/dupes', 'GET')
+    def dupes(self) -> Any:
+        """«Дубли сделок» в «Отделе»: незакрытые сделки одного клиента у одного менеджера."""
+        try:
+            scope = self._scope(self.query.get('manager'))
+        except PermissionError as exc:
+            raise Forbidden(str(exc)) from None
+        return self.send_json({'groups': DealDupes(store()).groups(scope)})
 
     @route(r'/api/crm/deal/(d\d{1,9})/restore', 'POST')
     def deal_restore(self, did: str) -> Any:

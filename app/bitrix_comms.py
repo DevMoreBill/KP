@@ -63,6 +63,11 @@ class DealComms:
     def __init__(self, store) -> None:
         self.store = store
 
+    @staticmethod
+    def move(conn, source: str, target: str) -> int:
+        """Звонки и письма сделки source — в ленту сделки target (объединение, в открытой транзакции conn). → сколько."""
+        return conn.execute('UPDATE deal_comm SET deal_id=? WHERE deal_id=?', (target, source)).rowcount
+
     def put(self, row: dict) -> None:
         self.store.write(
             'INSERT INTO deal_comm (bx_id, deal_id, kind, dir, at, dur, subject, result, note, body, peer, record, mid, updated) '
@@ -227,6 +232,9 @@ class BitrixComms:
         if not did:
             return None
         from bitrix import BitrixTime
+        from deal_merge import MergedDeals
+
+        did = MergedDeals(self.sync.store).target_of(did)  # сделку объединили — звонок в ленту итоговой
 
         start = BitrixTime.local(activity.get('START_TIME') or activity.get('CREATED') or activity.get('DEADLINE'))
         text = str(activity.get('DESCRIPTION') or '')

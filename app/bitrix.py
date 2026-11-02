@@ -324,6 +324,26 @@ class BitrixLinks:
         row = self.store.one('SELECT local_id FROM bx_link WHERE kind=? AND bx_id=?', (kind, str(bx_id)))
         return row[0] if row else None
 
+    COMMENT = 'comment|{}|{}'
+
+    @classmethod
+    def adopt(cls, conn, source: str, target: str, comments: dict[int, int]) -> bool:
+        """Объединение сделок (в открытой транзакции conn): у target нет сделки в Битриксе, у source есть — target
+        продолжает её (новая сделка в Битриксе не создаётся); комментарии source, уже отправленные в ту сделку, —
+        отправленными и под новыми номерами (comments: прежний номер → новый). → связь перенесена."""
+        if conn.execute("SELECT 1 FROM bx_link WHERE kind='deal' AND local_id=?", (target,)).fetchone():
+            return False
+        if not conn.execute("SELECT 1 FROM bx_link WHERE kind='deal' AND local_id=?", (source,)).fetchone():
+            return False
+        conn.execute("UPDATE bx_link SET local_id=? WHERE kind='deal' AND local_id=?", (target, source))
+        for old, new in comments.items():
+            conn.execute(
+                'INSERT OR REPLACE INTO bx_link (kind, local_id, bx_id, sent, at) SELECT kind, ?, bx_id, sent, at '
+                "FROM bx_link WHERE kind='file' AND local_id=?",
+                (cls.COMMENT.format(target, new), cls.COMMENT.format(source, old)),
+            )
+        return True
+
     def put(self, kind, local, bx_id, sent=None) -> None:
         self.store.write(
             'INSERT OR REPLACE INTO bx_link (kind, local_id, bx_id, sent, at) VALUES (?,?,?,?,?)',

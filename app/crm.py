@@ -435,15 +435,36 @@ class DealBook:
             new.pop('lostReason', None)
         self._log(new, author, what='stage', **{'from': cur.get('fstage') or cur['stage'], 'to': exact})
 
-    def remove(self, did: str, author: str) -> dict:
+    def remove(self, did: str, author: str, why: str = '') -> dict:
         """Сделка — в корзину «Настроек» (восстановит администратор). Дела, документы и связи с КП остаются в базе и
-        возвращаются вместе со сделкой; пока она в корзине, её дела не видны. → удалённая сделка."""
+        возвращаются вместе со сделкой; пока она в корзине, её дела не видны; why — пояснение к названию в корзине.
+        → удалённая сделка."""
         deal = self._require(did)
         title = ' — '.join(
             part for part in (f'Сделка № {deal.get("number") or did}', deal.get('title'), deal.get('client')) if part
         )
-        self.store.trash_put('deal', did, title[:300], author)
+        self.store.trash_put('deal', did, (f'{title} ({why})' if why else title)[:300], author)
         return deal
+
+    def event(self, deal: dict, author: str, **what) -> None:
+        """Строка истории сделки (запишется вместе со сделкой)."""
+        self._log(deal, author, **what)
+
+    def persist(self, conn, deal: dict, author: str) -> None:
+        """Записать сделку в открытой транзакции conn."""
+        self._save(conn, deal['id'], deal, author)
+
+    def recount(self, conn, deal: dict, author: str) -> None:
+        """Сумма и стадия по КП сделки заново и запись — в открытой транзакции conn (объединение сделок)."""
+        self._sync(conn, deal, author)
+
+    @staticmethod
+    def move_kps(conn, source: str, target: str) -> list[str]:
+        """КП сделки source — в сделку target (в открытой транзакции conn); время, когда КП встало в сделку, — прежнее:
+        от него считается срок правила «одна сделка на клиента». → id КП."""
+        kids = [row[0] for row in conn.execute('SELECT kp_id FROM deal_kp WHERE deal_id=?', (source,)).fetchall()]
+        conn.execute('UPDATE deal_kp SET deal_id=? WHERE deal_id=?', (target, source))
+        return kids
 
     UNDO_MIN = 10  # «Восстановить» после удаления — сам удаливший, в эти минуты; позже — администратор в корзине
 
@@ -585,8 +606,8 @@ class DealBook:
         )
 
     def kp_marks(self, ids: list[str]) -> dict[str, dict]:
-        """КП сделок (КП в корзине не считаются): когда последнее встало в сделку и номера закупок КП (обычное КП — '')
-        → {сделка: {'last': «ГГГГ-ММ-ДДTчч:мм:сс», 'tenders': {номер закупки}}}."""
+        """КП сделок (КП в корзине не считаются): когда последнее встало в сделку, номера закупок КП (обычное КП — '') и
+        сколько КП → {сделка: {'last': «ГГГГ-ММ-ДДTчч:мм:сс», 'tenders': {номер закупки}, 'count': число}}."""
         ids = [str(did) for did in ids if did]
         if not ids:
             return {}
@@ -598,9 +619,10 @@ class DealBook:
         )
         out: dict[str, dict] = {}
         for did, added, meta in rows:
-            mark = out.setdefault(did, {'last': '', 'tenders': set()})
+            mark = out.setdefault(did, {'last': '', 'tenders': set(), 'count': 0})
             mark['last'] = max(mark['last'], str(added or ''))
             mark['tenders'].add(self.tender_of(_obj(meta)))
+            mark['count'] += 1
         return out
 
     @staticmethod
@@ -1094,6 +1116,16 @@ class TaskBook:
     def move_deal(self, did, manager_id) -> None:
         """Ответственный по сделке сменился — незакрытые дела сделки переходят к нему."""
         self.store.write("UPDATE crm_tasks SET manager_id=? WHERE deal_id=? AND state='open'", (manager_id or '', did))
+
+    @staticmethod
+    def move_all(conn, source: str, target: str, manager_id: str) -> int:
+        """Дела сделки source — в сделку target (в открытой транзакции conn); незакрытые — ответственному target, если он
+        есть. → сколько дел."""
+        count = int(conn.execute('SELECT COUNT(*) FROM crm_tasks WHERE deal_id=?', (source,)).fetchone()[0] or 0)
+        if manager_id:
+            conn.execute("UPDATE crm_tasks SET manager_id=? WHERE deal_id=? AND state='open'", (manager_id, source))
+        conn.execute('UPDATE crm_tasks SET deal_id=? WHERE deal_id=?', (target, source))
+        return count
 
 
 class CrmBoard:

@@ -7,6 +7,7 @@ import { Morph } from '../../core/morph.js';
 import { FileSave } from '../../core/files.js';
 import { Toast } from '../../core/toast.js';
 import { TeamRegs } from './team-regs.js';
+import { TeamDupes } from './team-dupes.js';
 import { CrmFmt } from '../../core/crm-fmt.js';
 
 /** «Отдел»: утренняя сводка «кому нужно внимание», воронка по стадиям, итоги месяца по менеджерам (руководителю и администратору). */
@@ -28,7 +29,7 @@ export class CabTeam {
    * @param {string} kind
    */
   static retry(kind) {
-    const block = { regs: TeamRegs, time: TeamTime }[kind];
+    const block = { regs: TeamRegs, time: TeamTime, dupes: TeamDupes }[kind];
     if (block) block.retry();
   }
 
@@ -44,6 +45,7 @@ export class CabTeam {
     const open = deals.filter(deal => !CrmData.closed(deal) && CrmData.inFunnel(deal));
     const parts = {
       attention: this._attention(deals),
+      dupes: TeamDupes.html(),
       team: `<section class="md-s"><div class="md-h"><p class="sub">Воронка отдела</p>${CrmFunnel.switcher(deals, CrmData.funnel())}<span class="muted">${open.length} в работе · ${CrmFmt.short(this._sum(open))}</span></div><div class="fn">${this._funnel(open)}</div></section>`,
       managers: `<section class="md-s"><div class="md-h"><p class="sub">Менеджеры</p><span class="muted">итоги месяца — с 1-го числа; имя — открыть кабинет менеджера</span></div>
       <div class="tbl-wrap"><table class="cab-tt"><thead><tr><th>Менеджер</th><th>В работе</th><th>Сумма</th><th>Выиграно</th><th>Проиграно</th><th>Дела просрочены</th><th>Без дела</th><th>Заявки ждут</th></tr></thead><tbody>${this._rows(deals)}</tbody></table></div></section>`,

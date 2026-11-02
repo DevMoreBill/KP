@@ -58,6 +58,31 @@ class DealFiles(KpFiles):
         """Есть акт или УПД."""
         return any(kind in self.CLOSING for kind in self.kinds([did]).get(did, []))
 
+    def move(self, conn, source: str, target: str, moved: list[tuple[str, str]]) -> int:
+        """Документы сделки source — в сделку target (объединение сделок): строки — в открытой транзакции conn, файлы —
+        в папку target; moved пополняется парами (новое место, прежнее) — откат объединения возвращает их (undo).
+        → сколько документов."""
+        rows = conn.execute('SELECT file FROM deal_files WHERE deal_id=?', (source,)).fetchall()
+        pairs = [(self._path(source, disk), self._path(target, disk)) for (disk,) in rows]
+        for old, new in pairs:
+            if os.path.isfile(old):
+                os.makedirs(os.path.dirname(new), exist_ok=True)
+                os.replace(old, new)
+                moved.append((new, old))
+        conn.execute('UPDATE deal_files SET deal_id=? WHERE deal_id=?', (target, source))
+        return len(rows)
+
+    @staticmethod
+    def undo(moved: list[tuple[str, str]]) -> None:
+        """Объединение не записалось — файлы документов на прежнее место."""
+        for new, old in reversed(moved):
+            try:
+                os.replace(new, old)
+            except OSError as exc:
+                from server_log import ServerLog
+
+                ServerLog.failure(f'документ сделки не возвращён на место: {os.path.basename(old)}', exc)
+
 
 class DealClosing:
     """Закрывающие документы: поставка отмечена или сделка выиграна (за последние RECENT_DAYS дней), а акта и УПД нет —

@@ -12,6 +12,7 @@ import { ClientStore } from '../kp/client-store.js';
 import { Modal } from '../../core/modal.js';
 import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
 import { CabState } from './cab-state.js';
+import { DealNewWarn } from './deal-new-warn.js';
 
 /**
  * «Новая сделка» без КП: клиент с подсказкой из справочника, задача, сумма, ожидаемая дата чипом, воронка и сразу первое
@@ -144,7 +145,7 @@ export class DealNew {
     if (form.dataset.busy) return;
     form.dataset.busy = '1';
     try {
-      const body = await this._byInn({ ...this._body(fields), ...DealIntakeView.extra() });
+      const body = await this._ready(form, modal);
       if (!body) return;
       const deal = await Api.request('/api/crm/deal', {
         method: 'POST',
@@ -163,6 +164,24 @@ export class DealNew {
     } finally {
       delete form.dataset.busy;
     }
+  }
+
+  // поля новой сделки; у клиента уже есть свежая сделка — вопрос: открыли её или отмена — null
+  static async _ready(form, modal) {
+    const fields = form.elements;
+    const body = await this._byInn({ ...this._body(fields), ...DealIntakeView.extra() });
+    if (!body) return null;
+    const verdict = await DealNewWarn.ask(body, fields.task.value.trim());
+    if (verdict.action === 'open') await this._toDeal(form, modal, { id: verdict.deal, managerId: body.managerId });
+    return verdict.action === 'create' ? body : null;
+  }
+
+  // у клиента уже есть свежая сделка — открыть её, первое дело из формы — в неё
+  static async _toDeal(form, modal, deal) {
+    modal.close();
+    await this._firstTask(form, deal);
+    if (document.getElementById('cabWin')?.open) await CabState.reload();
+    DealCard.open(deal.id);
   }
 
   // в поле «Клиент» — ИНН, которого нет в справочнике: клиент из ФНС

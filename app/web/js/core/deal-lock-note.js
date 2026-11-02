@@ -7,14 +7,15 @@ import { KpDate } from './kp-date.js';
  */
 export class DealLockNote {
   /**
-   * Почему новой сделки нет: срок после последнего КП или запрет администратора.
-   * @param {{last: string, until: string, reason: string}} lock
+   * Почему новой сделки нет: срок после последнего КП (сделка без КП — после её создания) или запрет администратора.
+   * @param {{last: string, until: string, reason: string, basis?: string}} lock
    * @returns {string} текст без разметки
    */
   static why(lock) {
     if (lock.reason === 'client')
       return 'администратор запретил новые сделки по этому клиенту, пока эта сделка открыта';
-    return `последнее КП в ней — ${KpDate.ddmm(lock.last)}, новая сделка по клиенту — не раньше ${KpDate.ddmm(lock.until)}`;
+    const since = lock.basis === 'created' ? 'она заведена' : 'последнее КП в ней —';
+    return `${since} ${KpDate.ddmm(lock.last)}, новая сделка по клиенту — не раньше ${KpDate.ddmm(lock.until)}`;
   }
 
   /**

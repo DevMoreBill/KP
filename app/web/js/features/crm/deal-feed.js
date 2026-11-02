@@ -22,7 +22,7 @@ export class DealFeed {
   // кто «сам» закрывает дела — программа и Битрикс24; в главное не идёт
   static ROBOTS = new Set(['Кабинет: дело само', 'Битрикс24']);
   // главное в истории: создание, стадия вручную, исполнение
-  static KEY_HISTORY = new Set(['create', 'stage', 'exec']);
+  static KEY_HISTORY = new Set(['create', 'stage', 'exec', 'merge']);
   // служебное (правки и автозаполнение полей) в ленту не идёт — только то, что важно по сделке
   static SERVICE = new Set(['kp', 'fields', 'edit']);
   static mode = '';
@@ -39,6 +39,8 @@ export class DealFeed {
     fields: '✎',
     edit: '✎',
     exec: '✓',
+    merge: '⧉',
+    mergedInto: '⧉',
   };
 
   /**

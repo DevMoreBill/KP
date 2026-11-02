@@ -24,6 +24,7 @@ export class AuditLabels {
     create_deal: 'Новая сделка',
     edit_deal: 'Этап или ответственный сделки',
     link_deal: 'КП перенесено в сделку',
+    merge_deal: 'Объединение сделок',
     deal_rule: 'Новые сделки по КП для клиента',
     send_kp: 'Отправка КП по почте',
     edit_settings: 'Изменение настроек',

@@ -9,6 +9,7 @@ import { CabGantt } from './cab-gantt.js';
 import { CabClients } from './cab-clients.js';
 import { CompanyCardView } from './company-card.js';
 import { CabTeam, MonthXlsx } from './cab-team.js';
+import { TeamDupes } from './team-dupes.js';
 import { CabGuide } from './cab-guide.js';
 import { CabLayout } from './cab-layout.js';
 import { CabPrefs } from './cab-prefs.js';
@@ -332,6 +333,7 @@ export class Cabinet {
       ['[data-cldeals]', el => this._clientDeals(el.dataset.cldeals)],
       ['[data-tmgr]', el => this._manager(el.dataset.tmgr)],
       ['[data-cabretry]', el => CabTeam.retry(el.dataset.cabretry)],
+      ['[data-tdmerge]', el => TeamDupes.merge(el)],
       ['[data-cabmonth]', el => MonthXlsx.save(el)],
       ['[data-gsc]', el => CabGantt.scale(el.dataset.gsc)],
     ];

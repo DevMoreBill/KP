@@ -40,6 +40,7 @@ import { KpDate } from '../../core/kp-date.js';
 import { CabState } from './cab-state.js';
 import { ShortName } from '../kp/short-name.js';
 import { KpRelink } from './kp-relink.js';
+import { DealMerge } from './deal-merge.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,
@@ -276,7 +277,7 @@ export class DealCard {
       <span class="dk-no">Сделка № ${esc(deal.number)}</span>
       <input type="text" class="dk-title" data-dkf="title" value="${esc(deal.title || '')}" maxlength="200" aria-label="Название сделки" title="Название сделки — нажмите, чтобы изменить" placeholder="Название: объект или задача клиента">
       <span class="dk-saved" aria-live="polite"></span>${DealParts.bitrix(deal)}<span class="dk-who" title="Ответственный · дата создания">${who}${esc(created)}</span></div>
-      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button>${HelpLink.html('deal-card', 'карточка сделки', 'dk-ib dk-help')}${DealPause.button()}${FEAT.on('dealDelete') ? `<button class="dk-ib dk-del" type="button" data-dkdel aria-label="Удалить сделку" title="Удалить сделку (в корзину)">${this._icon('trash')}</button>` : ''}<button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
+      <div class="dk-acts" role="toolbar" aria-label="Действия со сделкой">${this._nav(deal)}${this._card(deal)}<button class="dk-ib dk-prn" type="button" data-dkprint aria-label="Печать карточки" title="Печать карточки (П)">${this._icon('print')}</button><button class="dk-ib dk-keys" type="button" data-dkkeys aria-label="Горячие клавиши" title="Горячие клавиши (?)">${this._icon('keys')}</button>${HelpLink.html('deal-card', 'карточка сделки', 'dk-ib dk-help')}${DealPause.button()}${DealMerge.button(deal)}${FEAT.on('dealDelete') ? `<button class="dk-ib dk-del" type="button" data-dkdel aria-label="Удалить сделку" title="Удалить сделку (в корзину)">${this._icon('trash')}</button>` : ''}<button class="dk-ib dk-x" type="button" data-x aria-label="Закрыть сделку" title="Закрыть (Esc)">${this._icon('close')}</button></div></header>`;
   }
 
   static _card(deal) {
@@ -456,6 +457,8 @@ export class DealCard {
       stage: () => `стадия: ${label(item.from)} → ${label(item.to)}${item.auto ? ' (по ходу КП)' : ''}`,
       kp: () => `добавлено КП № ${item.kp}`,
       kpOut: () => `КП № ${item.kp} перенесено в другую сделку`,
+      merge: () => `объединена со сделкой № ${item.from}${DealMerge.counts(item)}`,
+      mergedInto: () => `объединена в сделку № ${item.to}`,
       manager: () => `ответственный: ${item.to}`,
       funnel: () => `воронка: ${CrmFunnel.get(item.from).name} → ${CrmFunnel.get(item.to).name}`,
       fields: () => `поля Битрикс24${item.auto ? ' заполнены по КП' : ''}: ${fields().join(', ')}`,
@@ -735,6 +738,7 @@ export class DealCard {
       ['[data-dkprint]', () => DealPrint.open(this.deal, item => this.hist(item))],
       ['[data-dkkeys]', () => DealKeys.help()],
       ['[data-dkdel]', () => DealRemove.ask(this.deal, () => this.close())],
+      ['[data-dkmerge]', () => DealMerge.open(this.deal, () => this.reload())],
       ['[data-dkpause], [data-dkunpause]', el => DealPause.act(el, this.deal, () => this.reload())],
       ['[data-dklink]', () => DealKp.link(this.deal, () => this.reload())],
       ['[data-dkmv]', el => KpRelink.open(el.dataset.dkmv, result => this._relinked(result))],
