@@ -43,12 +43,21 @@ export class BitrixManagers {
         ...portal.categories.map(cat => [cat.id, cat.name]),
       ],
     };
-    return `<div class="st-card"><p class="sub">Менеджеры программы ↔ пользователи Битрикса</p>
+    return `<div class="st-card"><p class="sub">Менеджеры программы ↔ пользователи Битрикса</p>${this._unpaired(ctx)}
       <div class="tzi-tw"><table class="tzi-t bx-mt"><thead><tr><th>Менеджер</th><th>Пользователь Битрикса</th><th>Участвует</th><th>Направление${UiKit.tip('<p>Своё направление менеджера действует вместе с общим (берётся более строгое).</p><p>Пример: общее «в обе стороны», у стажёра — «только в Битрикс»: его сделки уходят в Битрикс, а правки коллег из Битрикса к нему не приходят.</p>')}</th><th>Воронка новых сделок${UiKit.tip('<p>Куда в Битриксе попадают новые сделки этого менеджера из программы. Пусто — основная воронка.</p><p>Пример: сервисному инженеру — воронка «Заявки в Сервис».</p>')}</th></tr></thead><tbody>
       ${portal.managers.map(manager => this._row(manager, ctx)).join('')}</tbody></table></div>
       <p class="muted">Не участвует — его сделки и дела не уходят в Битрикс и не приходят из него. «Только из Битрикса» — у него правки остаются в программе.</p>
       <p class="muted">Новая сделка Битрикс24 с несопоставленным ответственным — «Сделки → Общие правила».</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="bxSaveMgr" data-autosave>Сохранить</button></div></div>`;
+  }
+
+  // участвует в обмене, а пользователя Битрикса нет: новые сделки не уходят (BitrixSync._owner_or_hold)
+  static _unpaired(ctx) {
+    const names = BitrixPanel.portal.managers
+      .filter(manager => (ctx.rules[manager.id] || {}).on !== false && !ctx.users[manager.id])
+      .map(manager => manager.name);
+    if (!names.length) return '';
+    return `<p class="msg warn">Без пользователя Битрикс24: ${esc(names.join(', '))}. Их новые сделки в Битрикс24 не отправляются — иначе ответственным стал бы администратор портала (владелец вебхука). Выберите пользователя и сохраните — отложенные сделки уйдут при следующем обмене. Пару по e-mail из карточки менеджера программа находит сама.</p>`;
   }
 
   /** События вкладки. */

@@ -634,6 +634,7 @@ class BitrixSync:
     KIND = BitrixRules.TASK_KINDS
     SHARED = BitrixRules.SHARED  # правка с обеих сторон: кто главный — по правилу поля (по умолчанию последняя правка)
     STD = {'title': 'TITLE', 'stage': 'STAGE_ID', 'expected': 'CLOSEDATE', 'manager': 'ASSIGNED_BY_ID'}
+    NO_USER = 'NO_USER'  # сделка без ответственного в Битриксе — не создаётся (BitrixSync._owner_or_hold)
     WHO = 'Битрикс24'
     SEM_OURS = {'S': Funnels.WON, 'F': Funnels.LOST}
 
@@ -644,6 +645,7 @@ class BitrixSync:
         self.files = files or self._kp_files
         self._api: BitrixApi | BitrixDryApi | None = None
         self._rules: BitrixRules | None = None
+        self._people: list | None = None
         self.mirror = BitrixMirror(store)
 
     @property
@@ -1004,7 +1006,66 @@ class BitrixSync:
         return self._bx_stage(deal, cat)
 
     def _user_of(self, mid: str | None) -> Any:
-        return (self.conf.get().get('users') or {}).get(str(mid or ''))
+        """Пользователь Битрикса менеджера программы: из «Менеджеров», иначе — по e-mail (пара запоминается); None — нет."""
+        key = str(mid or '')
+        return (self.conf.get().get('users') or {}).get(key) or self._user_by_mail(key)
+
+    def _user_by_mail(self, mid: str) -> str | None:
+        """Менеджер без пары в «Менеджерах» (добавлен после настройки обмена): единственный активный пользователь портала с
+        тем же e-mail — пара запоминается, как выбранная в «Менеджерах»; иначе None."""
+        manager = next((row for row in self._managers() if row['id'] == mid), None) if mid else None
+        mail = str((manager or {}).get('email') or '').strip().lower()
+        if not manager or not mail:
+            return None
+        found = [user for user in self._portal_people() if user['email'].strip().lower() == mail]
+        if len(found) != 1:
+            return None
+        uid = found[0]['id']
+        self.conf.mark(users=dict(self.conf.get().get('users') or {}, **{mid: uid}))
+        self.log.add(
+            f'Менеджер «{manager["name"]}» сопоставлен с пользователем Битрикс24 «{found[0]["name"]}» по e-mail',
+            mid=mid,
+        )
+        return uid
+
+    def _portal_people(self) -> list:
+        """Активные пользователи портала — один запрос за обмен; нет связи — пусто (сопоставим в следующий раз)."""
+        if self._people is None:
+            try:
+                self._people = self.users()
+            except BitrixError:
+                return []
+        return self._people
+
+    def _owner_or_hold(self, deal: dict) -> None:
+        """Новая сделка в Битриксе — только с ответственным: без него Битрикс24 ставит владельца вебхука (администратора
+        портала), и роботы портала шлют ему «не взята в работу». Сделка ждёт в «Не отправлено» с причиной."""
+        if not self.rules.allow(self._field('manager')['dir'], 'out') or self._user_of(deal.get('managerId')):
+            return  # ответственного передаёт программа — он есть; ведёт Битрикс (поле «только из Битрикса») — как там
+        if deal.get('managerId'):
+            raise BitrixError(
+                f'менеджер «{deal.get("manager") or deal["managerId"]}» не сопоставлен с пользователем Битрикс24 — сделка '
+                'не создана, иначе ответственным стал бы администратор портала. Выберите пользователя: «Настройки → '
+                'Битрикс24 → Менеджеры» (или исправьте e-mail в карточке менеджера)',
+                self.NO_USER,
+            )
+        raise BitrixError(
+            'у сделки нет ответственного — сделка не создана, иначе ответственным стал бы администратор портала. '
+            'Назначьте ответственного в карточке сделки',
+            self.NO_USER,
+        )
+
+    def _task_owner(self, task: dict, bid) -> Any:
+        """Ответственный нового дела в Битриксе: менеджер дела, иначе менеджер сделки, иначе ответственный сделки в Битриксе
+        (без ответственного Битрикс24 ставит владельца вебхука — администратора портала)."""
+        deal = DealBook(self.store).get(task['deal']) or {}
+        uid = self._user_of(task.get('managerId')) or self._user_of(deal.get('managerId'))
+        if uid:
+            return uid
+        try:
+            return (self.api.call('crm.deal.get', {'id': bid}) or {}).get('ASSIGNED_BY_ID') or None
+        except BitrixError:
+            return None
 
     def _mid_of(self, uid: str) -> str | None:
         return next((mid for mid, u in (self.conf.get().get('users') or {}).items() if str(u) == str(uid)), None)
@@ -1186,6 +1247,8 @@ class BitrixSync:
             return  # обмен только из Битрикса (весь или у этого менеджера) — в Битрикс не пишем
         if link and link['sent'].get('gone'):
             return  # удалена в Битриксе, связь снята по правилу — в Битрикс больше не отправляется
+        if not link:
+            self._owner_or_hold(deal)
         kps = self._kps(did)
 
         def out(k) -> bool:
@@ -1647,7 +1710,6 @@ class BitrixSync:
         if task['state'] == 'cancel':
             subj = 'Отменено — ' + subj
         when = '{}T{}:00'.format(task['due'], task.get('time') or '18:00')
-        uid = self._user_of(task.get('managerId'))
         link = self.links.get('task', tid)
         done = 'Y' if task['state'] != 'open' else 'N'
         sent = {'subj': subj, 'when': when, 'done': done}
@@ -1671,6 +1733,7 @@ class BitrixSync:
             )
             self.links.put('task', tid, link['bx'], sent)
             return
+        uid = self._task_owner(task, bid)
         try:
             if how != 'todo':
                 raise BitrixError('звонок или встреча', 'NOT_FOUND')  # по правилу — дело-звонок или дело-встреча
@@ -2463,6 +2526,7 @@ class BitrixDesk:
                 info['stages'] = len(new.get('stages') or {})
             if 'users' in data:
                 info['users'] = len(new.get('users') or {})
+                BitrixQueue(store).retry_all()  # сделки, ждавшие пары менеджера, — при следующем обмене
             self.log_fn(
                 'edit_settings', 'settings', 'bitrix', {k: was.get(k) for k in ('on', 'category') if k in info}, info
             )
