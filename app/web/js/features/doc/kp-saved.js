@@ -43,6 +43,7 @@ export class KpSaved {
       `<div class="dlg-h"><h3><span class="ks-ok" aria-hidden="true">✓</span> КП № ${esc(S.number)} ${result.isNew ? 'сохранено' : '— изменения сохранены'}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted" style="margin:0 0 4px">${esc(S.client || '')} · ${KPGen.money(totals.sum)} ${esc(Currency.short(Currency.current()))} · ${S.items.length} поз.${result.pdfOk ? ' · DOCX и PDF' : ''}</p>
       ${result.pdfErr ? `<div class="msg err">PDF не создан: ${esc(result.pdfErr)} ${this._btn('data-a="printPdf"', 'Печать → «Сохранить как PDF»', 'sm')}</div>` : ''}
+      <div data-wordcheck></div>
       <div class="ks-g">
         ${this._file(result)}
         ${this._client()}

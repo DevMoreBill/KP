@@ -91,6 +91,7 @@ FEATURES = {
     'aiFileImages': (True, 'Фото из файла при заполнении с ИИ'),
     'updDelta': (True, 'Обновление «только изменения»'),
     'feedUpdate': (True, 'Обновить цены / остатки фида со списком изменений'),
+    'wordCheck': (True, 'Проверка КП в Word после сохранения'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -165,6 +166,7 @@ ROUTES = [
     ('GET', re.compile(r'^/api/crm/deal/d\d{1,9}/comm/\d{1,12}$'), 'bxComms'),
     ('GET', re.compile(r'^/api/crm/regs/audit$'), 'regAudit'),
     (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/transfer$'), 'kpTransfer'),
+    (None, re.compile(r'^/api/kp/[A-Za-z0-9_-]+/layout$'), 'wordCheck'),
     (None, re.compile(r'^/api/companycard/.*$'), 'reqParse'),
     (None, re.compile(r'^/api/crm(/.*)?$'), 'myDay'),
 ]

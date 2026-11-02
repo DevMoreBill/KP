@@ -20,14 +20,17 @@ WORD_TIMEOUT = 150
 LO_TIMEOUT = 240
 
 # У службы (SYSTEM) Word не открывает документы без папки systemprofile\Desktop — она создаётся только от имени SYSTEM
-WORD_PS = r"""
+SYSTEM_DESKTOP = r"""
 $ErrorActionPreference = 'Stop'
 if ([Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) {
   foreach ($d in @("$env:WINDIR\System32\config\systemprofile\Desktop", "$env:WINDIR\SysWOW64\config\systemprofile\Desktop")) {
     try { if (-not (Test-Path -LiteralPath $d -ErrorAction SilentlyContinue)) { New-Item -ItemType Directory -Path $d -Force -ErrorAction SilentlyContinue | Out-Null } } catch {}
   }
 }
-$w = New-Object -ComObject Word.Application
+"""
+WORD_PS = (
+    SYSTEM_DESKTOP
+    + r"""$w = New-Object -ComObject Word.Application
 try {
   $w.Visible = $false
   $w.DisplayAlerts = 0
@@ -39,6 +42,7 @@ try {
   [void][Runtime.InteropServices.Marshal]::ReleaseComObject($w)
 }
 """
+)
 
 
 def _no_window() -> dict:
@@ -81,26 +85,30 @@ def _ok(path: str) -> bool:
     return os.path.isfile(path) and os.path.getsize(path) > PDF_MIN_BYTES
 
 
-def _word(src: str, dst: str) -> None:
-    script = os.path.join(
+def powershell(script: str, env: dict[str, str], timeout: int) -> subprocess.CompletedProcess[bytes]:
+    """Сценарий PowerShell (Word через COM) без окна; код выхода и вывод разбирает вызывающий."""
+    exe = os.path.join(
         os.environ.get('WINDIR', r'C:\Windows'), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'
     )
-    env = dict(os.environ, KP_PDF_IN=src, KP_PDF_OUT=dst)
-    proc = subprocess.run(  # noqa: PLW1510 — код выхода разбирается ниже
+    return subprocess.run(  # noqa: PLW1510 — код выхода разбирает вызывающий
         [
-            script if os.path.isfile(script) else 'powershell.exe',
+            exe if os.path.isfile(exe) else 'powershell.exe',
             '-NoProfile',
             '-NonInteractive',
             '-ExecutionPolicy',
             'Bypass',
             '-Command',
-            WORD_PS,
+            script,
         ],
         env=env,
         capture_output=True,
-        timeout=WORD_TIMEOUT,
+        timeout=timeout,
         **_no_window(),
     )
+
+
+def _word(src: str, dst: str) -> None:
+    proc = powershell(WORD_PS, dict(os.environ, KP_PDF_IN=src, KP_PDF_OUT=dst), WORD_TIMEOUT)
     if not _ok(dst):
         err = (proc.stderr or proc.stdout or b'').decode('cp866' if os.name == 'nt' else 'utf-8', 'replace').strip()
         raise RuntimeError('Word: ' + (err.splitlines()[0] if err else 'файл PDF не создан'))

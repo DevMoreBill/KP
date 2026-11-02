@@ -16,6 +16,7 @@ import { TemplateFields } from './template-fields.js';
 import { Templates } from './templates.js';
 import { KpSaved } from './kp-saved.js';
 import { DocsGen } from './docs-gen.js';
+import { WordCheck } from './word-check.js';
 import { DocLink } from '../../core/doc-link.js';
 import { LISTS } from '../../core/lists.js';
 
@@ -36,6 +37,7 @@ export const DOC = {
   TemplateFields,
   Templates,
   KpSaved,
+  WordCheck,
 };
 
 Templates.listen();
@@ -45,6 +47,7 @@ PdfExport.listen();
 KpPreview.listen();
 LivePreview.listen();
 DesignMouse.listen();
+WordCheck.listen();
 LISTS.ready(TemplateFields.LISTS);
 // КП и станции просят документ (DocLink) — без import документа
 DocLink.connect({

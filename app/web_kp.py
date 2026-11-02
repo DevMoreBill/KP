@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import subprocess
 import urllib.parse
 from collections.abc import Callable
 from typing import Any
@@ -34,6 +35,7 @@ from kp_templates import (
 from storage import with_rev
 from web_base import PASS, Controller, Forbidden, NotFound, counterparties, pdf_of, route
 from web_crm import CrmController
+from word_layout import WordLayout
 
 WIN_RESERVED = {'CON', 'PRN', 'AUX', 'NUL'} | {f'COM{i}' for i in range(1, 10)} | {f'LPT{i}' for i in range(1, 10)}
 
@@ -336,6 +338,17 @@ class KpController(Controller):
             with open(pdf, 'rb') as handle:
                 return self.send(200, 'application/pdf', handle.read(), self.attachment(os.path.basename(pdf)))
         return PASS
+
+    # самопроверка после сохранения: раскладка файла КП в Word сервера (листы, титул, заполнение листов)
+    @route(r'/api/kp/([^/]+)/layout', 'POST')
+    def layout(self, kid: str) -> Any:
+        path = self.kp_docx(safe_id(kid))
+        if not path:
+            raise NotFound('Файл КП не найден')
+        try:
+            return self.send_json(WordLayout.measure(path))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            return self.text(422, f'Word не проверил файл: {Controller.no_paths(exc)}')
 
     @route(r'/api/kp/([^/]+)/openpdf', 'POST')
     def open_pdf(self, kid: str) -> Any:

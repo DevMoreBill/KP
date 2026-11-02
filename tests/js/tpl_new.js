@@ -1,8 +1,11 @@
 // Шаблон «ПНЕВМОТЕХ НОВЫЙ» (templates/pnevmotekh_new): документ на вымышленных КП — 1, 4, 9 и 13 позиций, опции,
-// скидка, НДС 0 %, валюта (курс ЦБ и курс расчёта), станция со составом, графический редактор. Разметка Word без ошибок,
-// титул — один лист отдельным разделом без полей, суммы и надписи — на месте; форма редактора (editor.json) — только
-// существующие настройки; картинки шаблона (значки, логотип) — именами, которые отдаёт сервер; KpDocx: картинки шаблона
-// и «Действует до …».
+// скидка, НДС 0 %, валюта (курс ЦБ и курс расчёта), станция со составом, графический редактор, «трудное» КП (ДГУ с
+// текстовыми параметрами и строкой-сводкой, сроки поставки по позициям). Разметка Word без ошибок, титул — один лист
+// отдельным разделом без полей, без полей ячеек сверху и снизу в строках точной высоты и с запасом внизу (Word прибавляет
+// такое поле к высоте строки), суммы и надписи — на месте; плитки — только числа полными рядами, условия — плитками по
+// числу, позиции подряд, совсем небольшие — по две в ряд; форма редактора (editor.json) — только существующие
+// настройки; картинки шаблона (значки, логотип) — именами, которые отдаёт сервер; KpDocx: картинки шаблона и
+// «Действует до …».
 // Запуск из корня репозитория: node tests/js/tpl_new.js — код выхода 0, если всё прошло (tests/test_tpl_new.py).
 'use strict';
 const path=require('path'), fs=require('fs'), assert=require('assert');
@@ -19,6 +22,7 @@ const { KpDocx }=mod('features/doc/kp-docx.js');
 const { Templates }=mod('features/doc/templates.js');
 const { KpState }=mod('core/state.js');
 const { KpDate }=mod('core/kp-date.js');
+const { WordCheck }=mod('features/doc/word-check.js');
 
 const TEXT=fs.readFileSync(path.join(DIR, 'skeleton.js'), 'utf8');
 const SKEL=KPGen.loadSkeleton(TEXT);
@@ -157,12 +161,61 @@ const coverOf=documentXml=>{
   return { xml:cover, height:rows.slice(0, 4).reduce((a, b)=>a+b, 0) };
 };
 
+// таблицы и строки верхнего уровня (вложенные таблицы — внутри своих ячеек)
+const tagsOf=(xml, names)=>[...xml.matchAll(new RegExp(`<(/?)(${names})(?=[\\s>/])[^>]*>`, 'g'))];
+const topTables=xml=>{
+  const out=[];
+  let depth=0, start=0;
+  for (const m of tagsOf(xml, 'w:tbl')) {
+    if (!m[1]) { if (!depth) start=m.index; depth++; } else { depth--; if (!depth) out.push(xml.slice(start, m.index+m[0].length)); }
+  }
+  return out;
+};
+const partsOf=(tblXml, name)=>{   // строки (w:tr) или ячейки (w:tc) самой таблицы, без вложенных
+  const out=[];
+  let depth=0, start=-1;
+  for (const m of tagsOf(tblXml, 'w:tbl|'+name)) {
+    if (m[2] === 'w:tbl') { depth+=m[1] ? -1 : 1; continue; }
+    if (depth !== 1) continue;
+    if (!m[1]) start=m.index; else if (start >= 0) { out.push(tblXml.slice(start, m.index+m[0].length)); start=-1; }
+  }
+  return out;
+};
+const styled=(xml, style)=>[...xml.matchAll(new RegExp(`<w:r><w:rPr><w:rStyle w:val="KPS_${style}"/>[\\s\\S]*?<w:t xml:space="preserve">([^<]*)</w:t>`, 'g'))].map(m=>m[1]);
+const NUMVAL=/^\s*(?:(?:до|от|не\s+более|не\s+менее|не\s+выше|не\s+ниже)\s+|[≤≥<>~±]\s*)?\d/i;
+
+// «трудное» КП (как КП владельца 30.10): ДГУ с параметрами-текстом («В кожухе»), строкой-сводкой и пустым значением,
+// дизельный компрессор с текстовыми параметрами, ресивер; сроки поставки по позициям — длинным условием
+const hardRows=(rows, hl)=>rows.map(([k, v], i)=>(i < hl ? { k, v, hl:true } : { k, v }));
+const LEAD='ДГУ Пример-600 в кожухе — под заказ, 16 рабочих дней; ДГУ Пример-56 в кожухе с АВР — под заказ, 7 рабочих дней; '+
+  'Дизельный компрессор Пример ДК-12/7 — под заказ, 80 рабочих дней';
+const hard=()=>{
+  const long='Основное или резервное электроснабжение объектов: производство, стройка, склады. ';
+  const dgu=item(1, { name:'ДГУ Пример-600 в кожухе', qty:2, spec:'600 кВт · В кожухе · 400 В · 50 Гц',
+    features:[{ id:'h1', label:'Назначение', text:long.repeat(4) }, { id:'h2', label:'Комплектация', text:long.repeat(12) }],
+    groups:[{ name:'Характеристики', rows:hardRows([['Исполнение', 'В кожухе'], ['Мощность номинальная', '600 кВт'], ['Выходное напряжение', '230 / 400 В'],
+      ['Частота', '50 Гц'], ['Двигатель', 'Мотор-Пример'], ['Альтернатор', 'Генератор-Пример'], ['Контроллер', 'Контроллер-Пример'],
+      ['Гарантия, месяцев / моточасов', '/'], ['Двигатель / альтернатор', 'Мотор-Пример / Генератор-Пример / Контроллер-Пример']], 4) }] });
+  const small=item(2, { name:'ДГУ Пример-56 в кожухе с АВР', qty:2, groups:[{ name:'Основные', rows:hardRows([['Исполнение', 'в кожухе'],
+    ['Резервная мощность (ESP)', '63 кВА / 50 кВт'], ['Основная мощность (PRP)', '56 кВА / 45 кВт'], ['При нагрузке 100 %', '12,9 л/ч']], 4)
+    .concat(Array.from({ length:16 }, (_, i)=>({ k:'Параметр '+(i+1), v:String(i+1)+' ед.' }))) }] });
+  const comp=item(3, { name:'Дизельный компрессор Пример ДК-12/7', features:[{ id:'c1', label:'Назначение', text:long.repeat(14) }],
+    groups:[{ name:'Характеристики', rows:hardRows([['Серия', 'ДК'], ['Тип', 'Дизельный компрессор'], ['Производительность', '12,5 м³/мин'],
+      ['Давление', '7 бар'], ['Мощность', '93 кВт']], 4) }] });
+  const recv=item(4, { name:'Воздушный ресивер Пример РВ 900/10', groups:[{ name:'Основные', rows:hardRows([['Объём', '900 л'], ['Давление', 'до 10 атм']], 2) }] });
+  const s=base([dgu, small, comp, recv]);
+  s.validUntil='';
+  s.conditions=[{ label:'Срок поставки', value:LEAD }, { label:'Доставка', value:'Доставка до объекта включена' }];
+  s.condExtra='';
+  return s;
+};
+
 const checks=[];
 const check=(name, fn)=>checks.push([name, fn]);
 
 check('папка шаблона: файлы на месте, картинки шаблона — именами, которые отдаёт сервер; Golos Text встроен в base.docx', async ()=>{
   for (const file of ['template.json', 'skeleton.js', 'editor.json', 'base.docx', 'OFL-GolosText.txt']) assert.ok(fs.existsSync(path.join(DIR, file)), file);
-  assert.deepStrictEqual(SKEL.features, ['discount', 'header', 'images', 'design', 'kit', 'sign', 'assets']);
+  assert.deepStrictEqual(SKEL.features, ['discount', 'header', 'images', 'design', 'kit', 'sign', 'assets', 'flow']);
   for (const [key, file] of Object.entries(SETTINGS.assets)) {
     assert.ok(KpDocx.ASSET_KEY.test(key), 'ключ '+key);
     assert.ok(IMAGE_NAME.test(file) && fs.existsSync(path.join(DIR, file)), 'картинка '+file);
@@ -283,6 +336,113 @@ check('KpDocx: картинки шаблона — только допустим
   const got=await swap([[KpState, 'replace', KpState.replace]], ()=>{ KpState.replace(state); return KpDocx.state(); });
   assert.strictEqual(got.validUntil, KpDate.validUntil(state));
   assert.ok(/^2026-12-0[12]$/.test(got.validUntil), got.validUntil);
+});
+
+check('Word: титул — строки точной высоты без полей ячеек сверху и снизу, с запасом внизу листа (coverReserveCm)', async ()=>{
+  for (const name of ['one', 'four', 'nine', 'thirteen', 'station', 'vat0']) {
+    const res=await build(SCENARIOS[name]());
+    const cover=coverOf(res.document), table=topTables(cover.xml)[0];
+    const rows=partsOf(table, 'w:tr');
+    assert.ok(rows.every(row=>/<w:trHeight w:val="\d+" w:hRule="exact"\/>/.test(row)), name+': все строки — точной высоты');
+    const total=rows.reduce((sum, row)=>sum+ +row.match(/<w:trHeight w:val="(\d+)"/)[1], 0);
+    assert.ok(total <= PAGE_H-Math.round(SETTINGS.rules.coverReserveCm * 567)-120, `${name}: титул ${total} — без запаса внизу листа`);
+    for (const row of rows) for (const cell of partsOf(row.replace(/^<w:tr>/, '<w:tbl><w:tr>')+'</w:tbl>', 'w:tc')) {
+      const mar=cell.match(/<w:tcMar><w:top w:w="(\d+)"[^>]*\/><w:left[^>]*\/><w:bottom w:w="(\d+)"/);
+      assert.ok(mar && mar[1] === '0' && mar[2] === '0', name+': поле ячейки сверху или снизу в строке точной высоты');
+    }
+  }
+});
+
+check('трудное КП: срок на титуле — коротко, условия плитками по числу, плитки — только числа, без строк-сводок', async ()=>{
+  const res=await build(hard(), { design:true });
+  const coverText=textOf(coverOf(res.document).xml);
+  has(coverText, /Срок поставкипод заказ, до 80 рабочих дней/, 'срок на титуле — по самой долгой позиции');
+  assert.ok(!coverText.includes('16 рабочих дней'), 'на титуле — без сроков по позициям');
+  // в «Условиях поставки» — сроки по позициям, каждый своей строкой, плиткой во всю ширину
+  const conds=topTables(res.document).find(t=>textOf(t).includes('Условия поставки'));
+  assert.ok(conds, 'условия — одним блоком');
+  const tiles=topTables(partsOf(conds, 'w:tc')[0].replace(/^<w:tc>[\s\S]*?<\/w:tcPr>/, ''));
+  const perRow=tiles.map(t=>[...t.matchAll(/KPS_label/g)].length);
+  assert.deepStrictEqual(perRow, [1, 1], 'длинное условие и одно короткое — каждое во всю ширину');
+  const paras=t=>t.match(/<w:p>[\s\S]*?<\/w:p>/g).filter(x=>x.includes('KPS_condText'));
+  assert.strictEqual(paras(tiles[0]).length, LEAD.split('; ').length, 'срок каждой позиции — своей строкой');
+  for (const t of tiles) for (const p of paras(t)) assert.ok(p.includes('<w:suppressAutoHyphens/>'), 'текст условия — без переносов слов');
+  // два коротких условия — пополам, четыре — по два в ряд
+  const rowsOf=async values=>{ const s=hard(); s.conditions=values.map((v, i)=>({ label:'Условие '+(i+1), value:v }));
+    const doc=(await build(s, { design:true })).document, box=topTables(doc).find(t=>textOf(t).includes('Условия поставки'));
+    return topTables(partsOf(box, 'w:tc')[0].replace(/^<w:tc>[\s\S]*?<\/w:tcPr>/, '')).map(t=>[...t.matchAll(/KPS_label/g)].length); };
+  assert.deepStrictEqual(await rowsOf(['коротко', 'коротко']), [2], 'два — пополам');
+  assert.deepStrictEqual(await rowsOf(['а', 'б', 'в', 'г']), [2, 2], 'четыре — по два');
+  assert.deepStrictEqual(await rowsOf(['а', 'б', 'в', 'г', 'д']), [3, 2], 'пять — три и два');
+  // плитки параметров — числа с единицами, полными рядами по три (или одним рядом)
+  const values=styled(res.document, 'heroValue');
+  assert.ok(values.length && values.every(v=>NUMVAL.test(v)), 'плитки — только числа: '+values.join(' | '));
+  assert.ok(!values.some(v=>/кожух|Дизельный|^ДК$/.test(v)), 'текст — не в плитках');
+  // строка-сводка и пустое значение — не в КП, их части — на месте
+  assert.ok(!res.text.includes('Мотор-Пример / Генератор-Пример'), 'строка-сводка не печатается');
+  assert.ok(!res.text.includes('Гарантия, месяцев / моточасов'), 'строка без значения не печатается');
+  for (const part of ['Мотор-Пример', 'Генератор-Пример', 'Контроллер-Пример']) assert.ok(res.text.includes(part), part);
+});
+
+check('позиции подряд: заголовок позиции с её фото — одним блоком, разрыв листа — только по правилу «Каждая с нового листа»', async ()=>{
+  const state=hard();
+  const res=await build(state);
+  assert.ok(!res.document.includes('<w:pageBreakBefore/>'), 'по умолчанию позиции и контакты — без разрыва листа');
+  const tops=topTables(res.document), rels=res.rels;
+  for (const n of [1, 2, 3]) {
+    const block=tops.find(t=>textOf(t).includes(`Позиция ${n} из 4`));
+    const rid=(rels.match(new RegExp(`Id="([^"]+)"[^>]*Target="media/tile_i${n}\\.png"`)) || [])[1];
+    assert.ok(block && partsOf(block, 'w:tr').length === 1, `позиция ${n}: заголовок — в строке-блоке`);
+    if (rid) assert.ok(block.includes(`r:embed="${rid}"`), `позиция ${n}: фото — в том же блоке, что и заголовок`);
+    assert.ok(/<w:trPr><w:cantSplit\/>/.test(partsOf(block, 'w:tr')[0]), `позиция ${n}: блок не разрывается`);
+  }
+  const each=await build(hard(), { rules:{ ...SETTINGS.rules, posNewPage:true } });
+  assert.strictEqual((each.document.match(/<w:pageBreakBefore\/>/g) || []).length, 2, 'каждая крупная с нового листа — кроме первой');
+  // характеристики: заголовок держится с первыми specKeepRows строками, последние две — вместе, середина переносится
+  const long=topTables(res.document).flatMap(t=>[t, ...topTables(partsOf(t, 'w:tc').join(''))]).find(t=>textOf(partsOf(t, 'w:tr')[0] || '').startsWith('Основные') && partsOf(t, 'w:tr').length >= 9);
+  assert.ok(long, 'длинная таблица характеристик');
+  const keeps=partsOf(long, 'w:tr').map(row=>/<w:keepNext\/>/.test(row));
+  const k=SETTINGS.rules.specKeepRows, n=keeps.length;
+  assert.deepStrictEqual(keeps.slice(0, k), Array(k).fill(true), 'заголовок и первые строки — вместе');
+  assert.strictEqual(keeps[k+1], false, 'дальше таблица может перейти на следующий лист');
+  assert.deepStrictEqual(keeps.slice(n-2), [true, false], 'последние две строки — вместе');
+});
+
+check('совсем небольшие позиции — по две в ряд; одна без пары — во всю ширину', async ()=>{
+  const res=await build(SCENARIOS.nine());
+  const pairs=topTables(res.document).map(t=>(textOf(t).match(/Позиция \d из 9/g) || []).length);
+  assert.ok(pairs.filter(c=>c === 2).length >= 4, 'карточки парами: '+pairs.join(','));
+  assert.ok(pairs.filter(c=>c > 2).length === 0, 'не больше двух в ряду');
+  const total=pairs.reduce((a, b)=>a+b, 0);
+  assert.strictEqual(total, 9, 'все позиции на месте');
+});
+
+check('срок поставки на титуле: недели и рабочие дни сравниваются, нераспознанное — как есть', async ()=>{
+  const cover=async value=>{ const s=hard(); s.conditions[0].value=value; return textOf(coverOf((await build(s)).document).xml); };
+  has(await cover('Модель А — под заказ 6–8 недель; Модель Б — под заказ, 30 рабочих дней'), /Срок поставкипод заказ, до 8 недель/, 'недели');
+  has(await cover('Модель А — 10 календарных дней; Модель Б — в наличии'), /Срок поставкидо 10 календарных дней/, 'в наличии и календарные');
+  has(await cover('Модель А — под заказ, 30 рабочих дней; доставка — по согласованию'), /Срок поставкиМодель А — под заказ, 30 рабочих дней; доставка — по согласованию/, 'нераспознанное — как есть');
+});
+
+check('проверка в Word: титул на двух листах и почти пустые листы — «Пересобрать плотнее», плотнее — запас и фото', async ()=>{
+  const rules=SETTINGS.rules;
+  assert.ok(WordCheck.supports({ skel:SKEL }), 'шаблон раскладывает позиции подряд');
+  assert.ok(!WordCheck.supports({ skel:{ features:['discount'] } }), 'прежний шаблон — без проверки');
+  assert.deepStrictEqual(WordCheck.problems({ pages:8, cover:1, fill:[100, 90, 60, 80, 70, 95, 85, 10] }, rules), [], 'последний лист может быть неполным');
+  assert.deepStrictEqual(WordCheck.problems({ pages:10, cover:2, fill:[100, 6, 60, 80, 32, 95, 85, 76, 90, 54] }, rules),
+    ['титул занял 2 листа', 'почти пустые листы: 5 (32 %)'], 'КП владельца 30.10: титул и лист 5');
+  assert.ok(/data-a="denseKp"/.test(WordCheck.html(['титул занял 2 листа'], 0)), 'кнопка «Пересобрать плотнее»');
+  assert.ok(!/data-a="denseKp"/.test(WordCheck.html(['титул занял 2 листа'], WordCheck.DENSE_MAX)), 'плотнее некуда — без кнопки');
+  assert.ok(/Проверено в Word/.test(WordCheck.html([], 0)), 'всё в порядке');
+  // ступень плотности КП: больше запас внизу титула, ниже фото позиции
+  const heights=async dense=>{ const s=hard(); s.layoutDense=dense; const res=await build(s);
+    const rows=partsOf(topTables(coverOf(res.document).xml)[0], 'w:tr').map(row=>+row.match(/<w:trHeight w:val="(\d+)"/)[1]);
+    // фото позиции на её странице — самое крупное с её названием (миниатюры титула и карточки цены — мельче)
+    const photo=Math.max(...[...res.document.matchAll(/<wp:extent cx="\d+" cy="(\d+)"\/><wp:effectExtent[^>]*\/><wp:docPr id="\d+" name="ДГУ Пример-600 в кожухе"/g)].map(m=>+m[1]));
+    return { total:rows.reduce((a, b)=>a+b, 0), photo }; };
+  const [d0, d2]=[await heights(0), await heights(2)];
+  assert.ok(d2.total <= d0.total-2*567, `запас титула на 2 см больше: ${d0.total} → ${d2.total}`);
+  assert.ok(d2.photo && d0.photo && d2.photo < d0.photo, `фото позиции ниже: ${d0.photo} → ${d2.photo}`);
 });
 
 (async ()=>{

@@ -3,6 +3,7 @@ import { KpDocx } from './kp-docx.js';
 import { KpFile } from './kp-file.js';
 import { PdfExport } from './pdf-export.js';
 import { Templates } from './templates.js';
+import { WordCheck } from './word-check.js';
 import { PriceGuard } from '../kp/price-guard.js';
 import { FEAT } from '../../core/features.js';
 import { DealXlsx } from '../deal/deal-xlsx.js';
@@ -149,6 +150,7 @@ export class KpSave {
     KpState.persist();
     KpForm.render();
     this._done(pdf, isNew);
+    WordCheck.after(pack); // раскладка файла в Word сервера — в фоне, итог — под сообщением и в окне «КП сохранено»
   }
 
   // правки во время сохранения: сделку сменили в списке — правка; сделку назначил сервер (_meta) — нет, поэтому
@@ -341,7 +343,7 @@ export class KpSave {
     const failed = pdf.err
       ? `<div class="msg err">PDF не создан: ${esc(pdf.err)}<div class="row" style="justify-content:center;margin-top:6px"><button class="btn" type="button" data-a="printPdf">Печать → «Сохранить как PDF»</button></div></div>`
       : '';
-    box.innerHTML = `${DocImages.html()}КП № ${esc(S.number)} сохранено${pdf.ok ? ' (DOCX и PDF)' : ''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px">${this._buttons(remote, pdf.ok)}</div>${failed}`;
+    box.innerHTML = `${DocImages.html()}КП № ${esc(S.number)} сохранено${pdf.ok ? ' (DOCX и PDF)' : ''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px">${this._buttons(remote, pdf.ok)}</div>${failed}<div data-wordcheck></div>`;
     if (FEAT.on('saveDlg')) KpSaved.open({ pdfOk: pdf.ok, pdfErr: pdf.err, isNew }); // окно «КП сохранено»
   }
 }

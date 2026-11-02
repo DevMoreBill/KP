@@ -51,7 +51,7 @@ def ensure_templates() -> None:
             if os.path.isdir(src) and not os.path.exists(dst):
                 shutil.copytree(src, dst)
     for tid, folder in template_dirs().items():
-        for name in SHARED_FILES:
+        for name in dict.fromkeys(SHARED_FILES + tuple(OWN_FACTORY.get(tid, {}))):
             path, bundled = os.path.join(folder, name), _bundled(tid, name)
             if not bundled or os.path.normcase(bundled) == os.path.normcase(path):
                 continue
@@ -103,9 +103,13 @@ OLD_FACTORY = {
 
 
 # прежние заводские файлы шаблона со своим скелетом — только для его папки: копия такого шаблона без своего заводского
-# варианта получила бы скелет основного шаблона (DEFAULT_ID)
+# варианта получила бы скелет основного шаблона (DEFAULT_ID); настройки (template.json) — тоже, пока их не меняли
 OWN_FACTORY = {
-    'pnevmotekh_new': {'skeleton.js': ('db97a22a75af3fcebe3a8daacc0561aa',)},
+    'pnevmotekh_new': {
+        'skeleton.js': ('db97a22a75af3fcebe3a8daacc0561aa', '1dcd9f7820aa2a6f5b6a5fca9fdd82df'),
+        'template.json': ('d449ca4117bb09a6c7851b8dad9b9c6c',),
+        'editor.json': ('bd2adf2b31a117e48b67ae6588d06817',),
+    },
 }
 
 

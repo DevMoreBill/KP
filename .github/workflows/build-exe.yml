@@ -152,6 +152,19 @@ jobs:
           $toc = Get-ChildItem -Recurse -Path build -Filter 'xref-*.html' | Select-Object -First 1
           if ($toc -and -not (Select-String -Path $toc.FullName -Pattern 'sqlite3' -Quiet)) { throw 'В сборку не попал модуль sqlite3' }
 
+      # сценарии Word сервера (PDF и проверка раскладки КП) — тем же Windows PowerShell 5.1, что запускает программа:
+      # синтаксис без ошибок (Word на сервере сборки нет — сами сценарии выполняет сервер отдела)
+      - name: Сценарии Word (PowerShell) — разбор без ошибок
+        shell: powershell
+        run: |
+          python -c "import sys; sys.path.insert(0, 'app'); import pdf_convert, word_layout; open('ci_word_pdf.ps1', 'w', encoding='utf-8-sig').write(pdf_convert.WORD_PS); open('ci_word_layout.ps1', 'w', encoding='utf-8-sig').write(word_layout.WordLayout.SCRIPT)"
+          foreach ($f in @('ci_word_pdf.ps1', 'ci_word_layout.ps1')) {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f).Path, [ref]$null, [ref]$errs)
+            if ($errs.Count) { throw "Сценарий Word ${f}: $(($errs | ForEach-Object { $_.Message }) -join '; ')" }
+            Remove-Item -LiteralPath $f
+          }
+
       - name: LibreOffice для проверки сохранения КП в PDF
         if: matrix.arch == 'x64'
         shell: pwsh

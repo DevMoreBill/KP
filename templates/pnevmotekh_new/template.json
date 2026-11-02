@@ -47,12 +47,12 @@
     {
       "id": "equipment",
       "on": true,
-      "newPage": true
+      "newPage": false
     },
     {
       "id": "contacts",
       "on": true,
-      "newPage": true
+      "newPage": false
     }
   ],
   "header": {
