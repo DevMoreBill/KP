@@ -103,6 +103,7 @@ class AdminRights:
         rule(ADM + r'list/catalog$', 'goods'),
         rule(ADM + r'list/manager$', 'managers'),
         rule(ADM + r'list/client$', 'db-client'),
+        rule(ADM + r'dealrules$', 'db-client'),
         rule(ADM + r'list/supplier$', 'db-supplier'),
         rule(ADM + r'trash(/.*)?$', 'trash', write='delete'),
         rule(ADM + r'(moderation|pending(/.*)?)$', 'moderation'),

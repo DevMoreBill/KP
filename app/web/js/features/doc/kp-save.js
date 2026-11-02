@@ -33,6 +33,7 @@ import { KpSaved } from './kp-saved.js';
 import { Kit } from '../../core/kit.js';
 import { MgrLock } from '../kp/mgr-lock.js';
 import { Auth } from '../../core/auth.js';
+import { DealLockNote } from '../../core/deal-lock-note.js';
 
 /**
  * Сохранение КП: номер, файл Word по шаблону, состояние КП в журнал (с номером правки), каталог и клиент, файл на сервер,
@@ -41,6 +42,8 @@ import { Auth } from '../../core/auth.js';
 export class KpSave {
   static busy = false;
   static JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
+  /** Новой сделки нет — КП встало в незакрытую сделку клиента (ответ сервера на сохранение). */
+  static dealLock = null;
   static ERRORS = new Map([
     ['declined', 'Сохранение отменено.'],
     ['rate_limited', 'Окно сохранения уже открыто.'],
@@ -289,6 +292,7 @@ export class KpSave {
       validUntil: KpDate.validUntil() || undefined,
       plan: DealPlan.of(),
       dealId: S.dealId || undefined,
+      dealSeen: S._dealSeen || undefined,
       lines: KpLines.of(),
     };
   }
@@ -300,7 +304,8 @@ export class KpSave {
       headers: { ...this.JSON_HEADERS, ...KpGuard.headers() },
       body,
     });
-    if (result && result.deal) S.dealId = result.deal; // КП в сделке: следующее сохранение — в ту же сделку
+    if (result && result.deal) S.dealId = S._dealSeen = result.deal; // КП в сделке: следующее сохранение — в неё же
+    this.dealLock = (result && result.dealLock) || null; // новой сделки нет — КП в незакрытой сделке клиента
     // связь с Битрикс24: Excel экономики сделки собирается здесь (в браузере автора) и уходит в ленту сделки
     if (!result || !result.bx || !S.deal || !S.deal.touched || !DealDefaults.allowed()) return;
     const kpId = S.kpId;
@@ -343,7 +348,7 @@ export class KpSave {
     const failed = pdf.err
       ? `<div class="msg err">PDF не создан: ${esc(pdf.err)}<div class="row" style="justify-content:center;margin-top:6px"><button class="btn" type="button" data-a="printPdf">Печать → «Сохранить как PDF»</button></div></div>`
       : '';
-    box.innerHTML = `${DocImages.html()}КП № ${esc(S.number)} сохранено${pdf.ok ? ' (DOCX и PDF)' : ''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px">${this._buttons(remote, pdf.ok)}</div>${failed}<div data-wordcheck></div>`;
-    if (FEAT.on('saveDlg')) KpSaved.open({ pdfOk: pdf.ok, pdfErr: pdf.err, isNew }); // окно «КП сохранено»
+    box.innerHTML = `${DocImages.html()}КП № ${esc(S.number)} сохранено${pdf.ok ? ' (DOCX и PDF)' : ''}, каталог обновлён.<div class="row" style="justify-content:center;margin-top:8px">${this._buttons(remote, pdf.ok)}</div>${failed}${DealLockNote.saved(this.dealLock)}<div data-wordcheck></div>`;
+    if (FEAT.on('saveDlg')) KpSaved.open({ pdfOk: pdf.ok, pdfErr: pdf.err, isNew, dealLock: this.dealLock }); // окно «КП сохранено»
   }
 }

@@ -165,8 +165,13 @@ class AdminRecordsApi(AdminBase):
             ]
         else:  # контрагентов тысячи: ищем в базе, показываем первые 300
             found = store.clients_search(query_text, 300)
+            deals = self._deal_labels()
             rows = [
-                {'id': x['id'], 'title': x.get('name', ''), 'sub': 'ИНН {}'.format(x.get('inn', ''))}
+                {
+                    'id': x['id'],
+                    'title': x.get('name', ''),
+                    'sub': ' · '.join(part for part in ('ИНН {}'.format(x.get('inn', '')), deals.get(x['id'])) if part),
+                }
                 for x in found['items']
             ]
             return {'total': found['total'], 'items': rows}
@@ -177,6 +182,32 @@ class AdminRecordsApi(AdminBase):
                 if query_low in (item['title'] + ' ' + item['sub'] + ' ' + str(item['id'])).lower()
             ]
         return {'total': len(rows), 'items': rows if etype != 'catalog' else rows[:300]}
+
+    def _deal_labels(self) -> dict[str, str]:
+        """Клиенты-исключения правила «одна сделка на клиента» — подписью в списке клиентов."""
+        from deal_guard import ClientDealRules, DealGuard
+        from features import FeatureAccess
+
+        if not FeatureAccess(self.store).is_on(DealGuard.FEATURE):
+            return {}
+        return {cid: f'сделки по КП: {label}' for cid, label in ClientDealRules(self.store).labels().items()}
+
+    def deal_rules(self, method: str, actor_login) -> None:
+        """Карточка клиента → «Новые сделки по КП»: исключения из правила «одна сделка на клиента» (меняет администратор)."""
+        from deal_guard import ClientDealRules, DealGuard
+        from features import FEATURES, FeatureAccess
+
+        if not FeatureAccess(self.store).is_on(DealGuard.FEATURE):
+            name = FEATURES[DealGuard.FEATURE][1]
+            return self.err(403, f'Функция «{name}» выключена — «Параметры → Функции программы»')
+        rules = ClientDealRules(self.store)
+        if method == 'POST':
+            data = self.data()
+            cid = str(data.get('client') or '')[: ClientDealRules.ID_MAX]
+            before, after = rules.put(cid, data.get('mode'), actor_login or 'admin')
+            if before != after:
+                self.log('deal_rule', 'client', cid, before, after)
+        return self.ok({'items': rules.listing(), 'days': SrvVal.get(self.store, DealGuard.DAYS)})
 
     def delete(self, body) -> None:
         etype, ids = body.get('type'), body.get('ids') or []

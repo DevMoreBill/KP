@@ -220,8 +220,19 @@ export class JournalRow {
       row.locked || !FEAT.on('deal') ? '' : item(`data-je="${id}"`, 'Экономика сделки'),
       FEAT.on('versions') ? item(`data-jv="${id}" data-jn="${esc(row.number)}"`, 'Прежние версии КП') : '',
       KpTransferView.item(row.id),
+      this._relinkItem(id),
     ];
     return `<details class="jr-more" data-id="${id}"><summary class="btn" title="Другие действия с КП" aria-label="Другие действия с КП № ${esc(row.number)}">⋯</summary><div class="menu-l">${items.join('')}</div></details>`;
+  }
+
+  // «Перенести в другую сделку…» — окно кабинета (CabinetLink.relink)
+  static _relinkItem(id) {
+    if (!FEAT.on('kpRelink') || !FEAT.on('myDay')) return '';
+    return this._item(
+      `data-jdl="${id}"`,
+      'Перенести в другую сделку…',
+      'КП — в другую сделку этого клиента или найденную по номеру',
+    );
   }
 
   /**

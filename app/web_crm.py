@@ -21,6 +21,7 @@ from crm_exec import ExecBook, ExecPlan, ExecTasks, Sums
 from crm_funnels import DealFields, Funnels
 from crm_money import PayCalendar, PayReminder
 from deal_files import DealClosing, DealFiles
+from deal_guard import DealGuard, DealSeen, GuardPlan
 from deal_intake import DealIntake
 from deal_rules import ClientByInn, DealRegs
 from features import FeatureAccess, Viewer
@@ -327,17 +328,21 @@ class CrmController(Controller):
         return cls.bitrix_on(task['id'], 'task')
 
     @classmethod
-    def on_kp(cls, handler, kid: str) -> str | None:
-        """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую."""
+    def on_kp(cls, handler, kid: str) -> dict[str, Any]:
+        """КП сохранено — в сделку: выбранную в КП (своя или с правом на чужие), прежнюю или новую; новую — только по
+        правилу «одна сделка на клиента», иначе — в незакрытую сделку клиента. → {deal, dealLock}"""
         meta = TrackController._obj(store().kp_get(kid, 'meta'))
-        want: Any = str(meta.get('dealId') or '')[:40]
-        if want and want != 'new':
+        want: Any = DealSeen.want(meta, str(meta.get('dealId') or '')[:40], DealBook(store()).deal_of(kid))
+        if want and want != DealGuard.NEW:
             deal = DealBook(store()).get(want)
             uid, _name, everyone = cls.who(handler)
             want = want if deal and (everyone or deal.get('managerId') == uid) else None
-        return cls.safe(
-            lambda: cls.bitrix_on(DealBook(store()).on_kp(kid, meta, admin.actor(handler)[1], want or None))
-        )
+        guard = DealGuard(store())
+        plan = cls.safe(lambda: guard.plan(kid, meta, want or None)) or GuardPlan(want or None)
+        did = cls.safe(lambda: cls.bitrix_on(DealBook(store()).on_kp(kid, meta, admin.actor(handler)[1], plan.want)))
+        cls.safe(lambda: guard.done(plan, did))
+        lock = plan.lock.out() if plan.lock and did == plan.lock.deal else None
+        return {'deal': did, 'dealLock': lock}
 
     @staticmethod
     def who(handler) -> tuple:
@@ -468,7 +473,16 @@ class CrmController(Controller):
         inn = Inn.key(self.query.get('inn'))
         name = (self.query.get('name') or '').strip()[:300]
         kid = safe_id(self.query.get('kp')) if self.query.get('kp') else ''
-        cur = DealBook(store()).deal_of(kid) if kid and admin.kp_access(self.handler, store(), kid) else None
+        mine_kp = bool(kid) and admin.kp_access(self.handler, store(), kid)
+        cur = DealBook(store()).deal_of(kid) if mine_kp else None
+        meta = TrackController._obj(store().kp_get(kid, 'meta')) if mine_kp else {}
+        client = {
+            'clientInn': inn,
+            'client': name,
+            'clientId': str(self.query.get('client') or '')[:64],
+            'tender': {'number': str(self.query.get('tender') or '')[:100]},
+        }
+        guard = DealGuard(store()).check(client, DealGuard.manager_of(meta) or uid).out()
         mine = [uid] if not everyone else None
         items = CrmBoard(store()).pick(mine, inn, name) if inn or name else []
         if cur and cur not in [x['id'] for x in items]:
@@ -481,7 +495,15 @@ class CrmController(Controller):
                         for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')
                     },
                 )
-        return self.send_json({'items': items, 'current': cur or '', 'stages': Stages.all(store())})
+        return self.send_json(
+            {
+                'items': items,
+                'current': cur or '',
+                'currentKps': DealBook(store()).kp_count(cur) if cur else 0,
+                'stages': Stages.all(store()),
+                'guard': guard,
+            }
+        )
 
     @route(r'/api/crm/find', 'GET')  # единый поиск программы: сделки по словам (свои; руководитель — все)
     def find(self) -> Any:

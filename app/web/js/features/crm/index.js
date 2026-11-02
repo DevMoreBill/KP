@@ -12,6 +12,7 @@ import { DealCard } from './deal-card.js';
 import { DealNew } from './deal-new.js';
 import { DealKp } from './deal-kp.js';
 import { DealPick } from './deal-pick.js';
+import { KpRelink } from './kp-relink.js';
 import { DealExec } from './deal-exec.js';
 import { DealParts } from './deal-parts.js';
 import { DealNow } from './deal-now.js';
@@ -42,6 +43,7 @@ export const CRM = {
   DealNew,
   DealKp,
   DealPick,
+  KpRelink,
   DealExec,
   DealParts,
   DealNow,
@@ -69,6 +71,7 @@ CabinetLink.connect({
   deals: () => CrmData.deals(),
   closed: deal => CrmFunnel.closed(deal),
   stageLabel: deal => CrmFunnel.label(deal),
+  relink: (kpId, done) => KpRelink.open(kpId, done),
 });
 document.addEventListener(CrmFmt.REDRAW, () => Cabinet.redraw());
 // окно кабинета, «Итог звонка», карточка сделки и воронки доски — регистрацией (разделы кабинета, дела, КП сделки

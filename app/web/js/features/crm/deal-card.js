@@ -1,5 +1,4 @@
 import { DealLayout } from './deal-layout.js';
-import { KpRate } from './kp-rate.js';
 import { HelpLink } from '../../core/help-link.js';
 import { CrmData } from './crm-data.js';
 import { CrmFunnel } from './crm-funnel.js';
@@ -36,10 +35,11 @@ import { Api } from '../../core/net.js';
 import { Modal } from '../../core/modal.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { PhoneLayout } from '../../core/phone-layout.js';
-import { CrmFmt, DateChips } from '../../core/crm-fmt.js';
+import { DateChips } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CabState } from './cab-state.js';
 import { ShortName } from '../kp/short-name.js';
+import { KpRelink } from './kp-relink.js';
 
 /**
  * Карточка сделки — панель справа (на телефоне — весь экран): стадии, «О сделке», поля Битрикс24, следующий шаг и дела, КП,
@@ -167,6 +167,13 @@ export class DealCard {
     this.modal.d.querySelector('.dk-in')?.scrollTo(0, 0);
   }
 
+  // КП ушло в другую сделку: эта сделка удалена (опустела) — карточку закрыть, иначе обновить
+  static _relinked(result) {
+    this.changed = true;
+    if (result.dropped && result.from === (this.deal && this.deal.id)) this.close();
+    else this.reload();
+  }
+
   /** Обновить сделку с сервера (после изменения дела). */
   static async reload() {
     try {
@@ -242,7 +249,7 @@ export class DealCard {
   static _dealTab(deal) {
     const offers = deal.kps || [];
     const head = `<h4 class="dk-bh">КП по сделке${offers.length ? ` <b class="md-c">${offers.length}</b>` : ''}</h4>`;
-    return `${this._about(deal)}<section class="dk-blk dk-kps"><div class="dk-bhr">${head}${this._kpButtons()}</div>${this._kps(deal)}</section>${this._rare(deal)}`;
+    return `${this._about(deal)}<section class="dk-blk dk-kps"><div class="dk-bhr">${head}${DealKp.buttons()}</div>${DealKp.list(deal)}</section>${this._rare(deal)}`;
   }
 
   // значки панели шапки — линиями, одного размера и толщины
@@ -431,24 +438,6 @@ export class DealCard {
       ? ''
       : `<option value="${esc(deal.managerId)}" selected>${esc(deal.manager || '—')}</option>`;
     return `<label class="f"><span>Ответственный</span><select data-dkf="managerId">${options}${other}</select></label>`;
-  }
-
-  static _kps(deal) {
-    const rows = (deal.kps || []).map(offer => this._kpRow(offer)).join('');
-    return rows || '<p class="muted dk-nokp">КП ещё нет — «＋ Новое КП» справа.</p>';
-  }
-
-  static _kpButtons() {
-    return `<div class="dk-kb"><button class="btn sm" type="button" data-dknew>＋ Новое КП</button><button class="btn sm ghost" type="button" data-dklink title="КП этого клиента из журнала — в эту сделку">Добавить КП клиента</button></div>`;
-  }
-
-  static _kpRow(offer) {
-    const items = `${esc((offer.items || [])[0] || '')}${offer.positions > 1 ? ` и ещё ${offer.positions - 1}` : ''}`;
-    const valid = offer.validUntil ? ` · действует до ${esc(KpDate.ddmm(offer.validUntil))}` : '';
-    const status = FEAT.on('track')
-      ? `<span class="md-st"><span class="jst st-${esc(offer.status)}">${esc(KpTrack.STATUS[offer.status] || offer.status)}</span></span>`
-      : '';
-    return `<div class="md-r"><span class="md-n">№ ${esc(offer.number)}</span><div><b>${esc(KpDate.ddmm(offer.date))} · ${CrmFmt.rub(offer.sum)}</b><span class="muted">${items}${valid}</span>${KpRate.line(offer)}${status}</div><button class="btn sm" type="button" data-dko="${esc(offer.id)}">Открыть</button></div>`;
   }
 
   /**
@@ -748,6 +737,7 @@ export class DealCard {
       ['[data-dkdel]', () => DealRemove.ask(this.deal, () => this.close())],
       ['[data-dkpause], [data-dkunpause]', el => DealPause.act(el, this.deal, () => this.reload())],
       ['[data-dklink]', () => DealKp.link(this.deal, () => this.reload())],
+      ['[data-dkmv]', el => KpRelink.open(el.dataset.dkmv, result => this._relinked(result))],
       ['[data-cc]', el => ClientCard.open(JSON.parse(el.dataset.cc))],
     ];
     for (const [selector, run] of actions) {

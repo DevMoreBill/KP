@@ -12,11 +12,12 @@ export class CabinetLink {
     deals: () => [],
     closed: () => false,
     stageLabel: () => '',
+    relink: () => {},
   };
 
   /**
    * Кабинет подключает себя.
-   * @param {object} cabinet {open, openFreeDeals, openDeal, lastDeal, reloadDealOf, deals, closed, stageLabel}
+   * @param {object} cabinet {open, openFreeDeals, openDeal, lastDeal, reloadDealOf, deals, closed, stageLabel, relink}
    */
   static connect(cabinet) {
     this.cabinet = { ...this.cabinet, ...cabinet };
@@ -87,5 +88,14 @@ export class CabinetLink {
    */
   static stageLabel(deal) {
     return this.cabinet.stageLabel(deal);
+  }
+
+  /**
+   * Окно «Перенести КП в другую сделку».
+   * @param {string} kpId
+   * @param {Function} [done] после переноса
+   */
+  static relink(kpId, done) {
+    this.cabinet.relink(kpId, done);
   }
 }

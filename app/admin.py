@@ -909,6 +909,8 @@ class AdminApi(AdminFeedsApi, AdminSystemApi, AdminRecordsApi, AdminDataApi):
         acc = re.match(r'^list/(kp|catalog|manager|client|supplier)$', sub)
         if acc:
             return self.ok(self.listing(acc.group(1), query.get('q') or ''))
+        if sub == 'dealrules':  # одна сделка на клиента: исключения клиентов (deal_guard.ClientDealRules)
+            return self.deal_rules(method, actor_login)
         if sub == 'delete' and method == 'POST':
             return self.delete(self.data())
         acc = re.match(r'^kpfiles/([A-Za-z0-9_-]{1,64})/(\d{1,9})/delete$', sub)

@@ -92,6 +92,8 @@ FEATURES = {
     'updDelta': (True, 'Обновление «только изменения»'),
     'feedUpdate': (True, 'Обновить цены / остатки фида со списком изменений'),
     'wordCheck': (True, 'Проверка КП в Word после сохранения'),
+    'dealGuard': (True, 'Одна сделка на клиента'),
+    'kpRelink': (True, 'Перенести КП в другую сделку'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -118,6 +120,7 @@ NEEDS = dict.fromkeys(
         'rateDiff',
         'regAudit',
         'phoneToday',
+        'kpRelink',
     ),
     'myDay',
 )

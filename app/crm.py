@@ -484,9 +484,15 @@ class DealBook:
                 old_deal = self.get(old)
                 if old_deal:
                     self._log(old_deal, author, what='kpOut', kp=kid)
+                    self._emptied(conn, old_deal)
                     self._sync(conn, old_deal, author)
             conn.commit()
         return old
+
+    def _emptied(self, conn, deal: dict) -> None:
+        """КП ушло из сделки: сделка без КП — без суммы по КП (своя сумма менеджера остаётся)."""
+        if not deal.get('sumOwn') and not self._rows(conn, deal['id']):
+            deal['sum'] = 0
 
     def on_kp(self, kid: str, meta, author: str, want=None) -> str | None:
         """КП сохранено: в сделку want («new» — новую), прежнюю или новую по КП; пересчёт суммы и этапа → id."""
@@ -505,6 +511,7 @@ class DealBook:
                 )
                 if old:
                     self._log(old, author, what='kpOut', kp=kid)
+                    self._emptied(conn, old)
                     self._sync(conn, old, author)
                 self._sync(conn, self.get(did), author)
                 conn.commit()
@@ -512,7 +519,7 @@ class DealBook:
             if want and want not in ('new', cur) and self.get(want):
                 self.link(want, kid, author)
                 return want
-            if cur and not self.get(cur) and not self._in_trash(cur):
+            if cur and not self.get(cur) and not self.in_trash(cur):
                 cur = None  # сделку удалили навсегда — КП снова в работе: новая сделка
             did = cur or self._from_kp(
                 conn,
@@ -563,8 +570,44 @@ class DealBook:
         )
         return did
 
-    def _in_trash(self, did: str) -> bool:
+    def in_trash(self, did: str) -> bool:
+        """Сделка в корзине «Настроек» (вернётся вместе со своими КП)."""
         return bool(self.store.one("SELECT 1 FROM trash WHERE entity_type='deal' AND entity_id=?", (did,)))
+
+    def kp_count(self, did: str) -> int:
+        """Сколько КП в сделке (КП в корзине не считаются)."""
+        return int(
+            self.store.scalar(
+                'SELECT COUNT(*) FROM deal_kp l JOIN kp k ON k.id = l.kp_id WHERE l.deal_id=? AND k.meta IS NOT NULL',
+                (str(did),),
+            )
+            or 0
+        )
+
+    def kp_marks(self, ids: list[str]) -> dict[str, dict]:
+        """КП сделок (КП в корзине не считаются): когда последнее встало в сделку и номера закупок КП (обычное КП — '')
+        → {сделка: {'last': «ГГГГ-ММ-ДДTчч:мм:сс», 'tenders': {номер закупки}}}."""
+        ids = [str(did) for did in ids if did]
+        if not ids:
+            return {}
+        marks = ','.join('?' * len(ids))
+        rows = self.store.all(
+            'SELECT l.deal_id, l.added, k.meta FROM deal_kp l JOIN kp k ON k.id = l.kp_id '
+            f'WHERE l.deal_id IN ({marks}) AND k.meta IS NOT NULL',
+            tuple(ids),
+        )
+        out: dict[str, dict] = {}
+        for did, added, meta in rows:
+            mark = out.setdefault(did, {'last': '', 'tenders': set()})
+            mark['last'] = max(mark['last'], str(added or ''))
+            mark['tenders'].add(self.tender_of(_obj(meta)))
+        return out
+
+    @staticmethod
+    def tender_of(meta: dict) -> str:
+        """Номер закупки КП для тендера; обычное КП — ''."""
+        tender = meta.get('tender')
+        return str((tender.get('number') if isinstance(tender, dict) else '') or '').strip()
 
     def _kp_stage(self, funnel, status) -> str:
         """Стадия новой сделки по ходу КП: этап хода КП или ближайший ниже, у которого есть стадия воронки."""
@@ -1164,7 +1207,19 @@ class CrmBoard:
         return [
             {
                 k: deal.get(k)
-                for k in ('id', 'number', 'title', 'client', 'stage', 'sum', 'expected', 'updated', 'manager')
+                for k in (
+                    'id',
+                    'number',
+                    'title',
+                    'client',
+                    'stage',
+                    'sum',
+                    'expected',
+                    'updated',
+                    'manager',
+                    'managerId',
+                    'created',
+                )
             }
             for deal in rows
         ]

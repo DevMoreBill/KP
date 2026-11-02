@@ -300,6 +300,24 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 /* раздел «Клиент» КП: сделка */
 .dp-r{gap:8px;flex-wrap:wrap}
 .dp-r select{flex:1 1 280px;min-width:0;max-width:560px}
+.dp-note{margin:6px 0 0;font-size:12.5px;max-width:720px}
+
+/* «Перенести в другую сделку»: сделки клиента и найденные */
+@layer win{dialog.st-confirm.kr-dlg{width:min(600px,var(--win-w))}}
+.kr-now{margin:0 0 8px}
+.kr-l{display:grid;gap:4px;margin:0 0 8px}
+.kr-r{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.kr-r:has(input:checked){border-color:var(--accent);background:var(--accent-soft,transparent)}
+.kr-r input{margin-top:3px;flex:none}
+.kr-r>span{display:grid;gap:2px;min-width:0}
+.kr-r b{font-weight:600;overflow-wrap:anywhere}
+.kr-none{margin:0 0 6px}
+.kr-q{margin:6px 0}
+.kr-drop{display:flex;align-items:flex-start;gap:8px;margin:4px 0 8px;cursor:pointer}
+.kr-drop input{flex:none;margin-top:2px}
+.kt-dlg .ck{display:flex;align-items:center;gap:8px;width:auto;height:auto;flex:initial;place-items:initial;justify-content:flex-start;min-height:32px}
+.dk-kra{display:inline-flex;gap:6px;align-items:center;flex:none}
+@media (pointer:coarse){.dk-kmv{min-width:44px;min-height:44px}}
 
 @media (max-width:1100px){.cab-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}@layer win{dialog.st-confirm.deal-dlg:not(.dk-float){width:var(--dlg-w,min(760px,var(--win-w)))}}.dk-cols{grid-template-columns:minmax(0,1fr)}
   }

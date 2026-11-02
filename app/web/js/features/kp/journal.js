@@ -324,6 +324,7 @@ export class Journal {
     ['[data-jkf]', (ctx, button) => Journal._files(ctx, button)],
     ['[data-jdg]', (ctx, button) => DocLink.docs(button.dataset.jdg)],
     ['[data-jt]', (ctx, button) => KpTransferView.open(button.dataset.jt, () => Journal._load(ctx))],
+    ['[data-jdl]', (ctx, button) => CabinetLink.relink(button.dataset.jdl, () => Journal._load(ctx))],
     [
       '[data-jr]',
       (ctx, button) => {
@@ -391,6 +392,7 @@ export class Journal {
     delete S.number;
     delete S.createdAt;
     delete S._rev;
+    delete S._dealSeen; // новое КП: сделку с сервера ещё не получало
     S.date = today();
     ClientFields.clear(S);
     S.authorId = Managers.meId();

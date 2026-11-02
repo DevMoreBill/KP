@@ -166,6 +166,8 @@ class SrvVal:
         # кабинет: какие сделки показывать (app/crm.py, app/crm_time.py)
         'crm.closedDays': (120, 30, 730),
         'crm.timeDays': (180, 30, 730),
+        # кабинет: одна сделка на клиента (app/deal_guard.py), 0 — по сроку не ограничивать
+        'crm.dealLockDays': (10, 0, 365),
     }
     TTL = 5
     _cache: tuple[Any, float, dict] = (None, 0.0, {})

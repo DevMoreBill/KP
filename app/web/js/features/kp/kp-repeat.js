@@ -11,7 +11,7 @@ import { KpForm } from '../../core/kp-form.js';
 
 /** «Повторить КП» (журнал, карточка клиента): новое КП тому же клиенту, дата — сегодня, цены — как сейчас в каталоге. */
 export class KpRepeat {
-  static DROP = ['kpId', 'number', 'createdAt', '_rev', '_file', 'dealId'];
+  static DROP = ['kpId', 'number', 'createdAt', '_rev', '_file', 'dealId', '_dealSeen'];
 
   /**
    * Новое КП по сохранённому; изменения цен — окном.

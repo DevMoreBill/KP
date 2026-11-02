@@ -16,6 +16,7 @@ from bitrix import BitrixConf
 from clock import Clock
 from config import DOCS_DIR, DOCS_SHARE, MIME, BadRequest, docs_path, safe_dir, safe_file, safe_id, store, write_bytes
 from crm import DealBook, DealLinks
+from deal_guard import DealSeen
 from desktop import open_file, open_folder, show_in_folder
 from features import FeatureAccess
 from kp_files import KpFiles
@@ -169,15 +170,15 @@ class KpController(Controller):
                     {
                         'ok': True,
                         'rev': rev,
-                        'deal': CrmController.on_kp(self.handler, kid),
+                        **CrmController.on_kp(self.handler, kid),
                         'bx': BitrixConf(store()).enabled(),
                     }
                 )
             return self.send_json({'ok': True, 'rev': rev})
         v = store().kp_get(kid, field)
         if v and field == 'state':
-            v = with_rev(admin_access.kp_out(self.handler, 'state', v), store().rev_of('kp', kid)['rev'])
-            return self.send_json(v)
+            v = DealSeen.inject(admin_access.kp_out(self.handler, 'state', v), DealBook(store()).deal_of(kid))
+            return self.send_json(with_rev(v, store().rev_of('kp', kid)['rev']))
         if not v:
             raise NotFound()
         return self.send_json(admin_access.kp_out(self.handler, field, v))

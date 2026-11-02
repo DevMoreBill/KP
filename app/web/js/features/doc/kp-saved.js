@@ -11,6 +11,7 @@ import { esc } from '../../core/util.js';
 import { KpState, S } from '../../core/state.js';
 import { Api, Srv } from '../../core/net.js';
 import { Currency } from '../../core/currency.js';
+import { DealLockNote } from '../../core/deal-lock-note.js';
 
 /** Окно «КП сохранено»: следующие шаги в одном месте — файл, письмо клиенту, ход сделки, заготовка, новое КП. */
 export class KpSaved {
@@ -35,7 +36,7 @@ export class KpSaved {
 
   /**
    * Открыть окно.
-   * @param {{pdfOk: boolean, pdfErr: string, isNew: boolean}} result
+   * @param {{pdfOk: boolean, pdfErr: string, isNew: boolean, dealLock: (object|null)}} result
    */
   static open(result) {
     const totals = KpState.totals();
@@ -43,7 +44,7 @@ export class KpSaved {
       `<div class="dlg-h"><h3><span class="ks-ok" aria-hidden="true">✓</span> КП № ${esc(S.number)} ${result.isNew ? 'сохранено' : '— изменения сохранены'}</h3><button class="icon" type="button" data-x aria-label="Закрыть">✕</button></div>
       <p class="muted" style="margin:0 0 4px">${esc(S.client || '')} · ${KPGen.money(totals.sum)} ${esc(Currency.short(Currency.current()))} · ${S.items.length} поз.${result.pdfOk ? ' · DOCX и PDF' : ''}</p>
       ${result.pdfErr ? `<div class="msg err">PDF не создан: ${esc(result.pdfErr)} ${this._btn('data-a="printPdf"', 'Печать → «Сохранить как PDF»', 'sm')}</div>` : ''}
-      <div data-wordcheck></div>
+      ${DealLockNote.saved(result.dealLock)}<div data-wordcheck></div>
       <div class="ks-g">
         ${this._file(result)}
         ${this._client()}

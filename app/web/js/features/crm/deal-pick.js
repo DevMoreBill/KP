@@ -5,9 +5,14 @@ import { S } from '../../core/state.js';
 import { MyDay } from '../kp/my-day.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
-/** Раздел «Клиент» КП: в какую сделку попадёт КП (показывается, когда у клиента есть незакрытые сделки или КП уже в сделке). */
+import { DealLockNote } from '../../core/deal-lock-note.js';
+import { Tender } from '../../core/tender.js';
+/**
+ * Раздел «Клиент» КП: в какую сделку попадёт КП (показывается, когда у клиента есть незакрытые сделки или КП уже в
+ * сделке). Правило «одна сделка на клиента» (guard.lock с сервера) убирает «Новая сделка» и «Отдельная новая сделка».
+ */
 export class DealPick {
-  static state = { key: '', items: [], current: '', stages: [], busy: false };
+  static state = { key: '', items: [], current: '', stages: [], guard: null, busy: false };
 
   /**
    * Выбор сделки или пусто.
@@ -15,25 +20,60 @@ export class DealPick {
    */
   static html() {
     if (!MyDay.enabled() || !(S.client || S.clientInn)) return '';
-    const key = [String(S.clientInn || '').replace(/\D/g, ''), Str.norm(S.client), S.kpId || ''].join('|');
+    const key = [String(S.clientInn || '').replace(/\D/g, ''), Str.norm(S.client), S.kpId || '', Tender.number()].join(
+      '|',
+    );
     const state = this.state;
     if (state.key !== key) {
       if (!state.busy) this._load(key);
       return '';
     }
     if (!state.items.length) return '';
-    const picked = S.dealId || state.current || '';
+    const lock = this._lock();
+    const picked = this._picked(lock);
     return `<div class="csec deal-pick"><p class="sub">Сделка${UiKit.tip('<p>Все КП по одной задаче клиента (объект, закупка) собираются в одну сделку — в «Кабинете» видно сумму, стадию и дела по ней.</p><p>Выберите сделку, к которой относится это КП, или оставьте новую.</p>')}</p>
-      <div class="row dp-r"><select data-p="dealId" aria-label="Сделка для этого КП">${this._options(picked)}</select>${this._open(picked)}</div></div>`;
+      <div class="row dp-r"><select data-p="dealId" aria-label="Сделка для этого КП">${this._options(picked, lock)}</select>${this._open(picked)}</div>${this._note(lock)}</div>`;
   }
 
-  static _options(picked) {
+  /**
+   * Забыть загруженное: следующая отрисовка спросит сервер заново (КП перенесли в другую сделку).
+   */
+  static forget() {
+    this.state.key = '';
+  }
+
+  // новую сделку завести нельзя — сделка клиента, в которую встанет КП
+  static _lock() {
+    const guard = this.state.guard;
+    return guard && guard.lock ? guard.lock : null;
+  }
+
+  // КП перенесли в другую сделку, пока оно было открыто: виден сервер (сохранение прежнюю сделку не вернёт)
+  static _picked(lock) {
     const current = this.state.current;
-    const first = current ? '' : `<option value=""${picked ? '' : ' selected'}>Новая сделка</option>`;
-    const last = current
-      ? `<option value="new"${picked === 'new' ? ' selected' : ''}>Отдельная новая сделка</option>`
-      : '';
+    const moved = current && S._dealSeen && S.dealId === S._dealSeen && current !== S._dealSeen;
+    return (moved ? current : S.dealId) || current || (lock ? lock.deal : '');
+  }
+
+  static _options(picked, lock) {
+    const current = this.state.current;
+    const first = current || lock ? '' : `<option value=""${picked ? '' : ' selected'}>Новая сделка</option>`;
+    const last =
+      current && !lock
+        ? `<option value="new"${picked === 'new' ? ' selected' : ''}>Отдельная новая сделка</option>`
+        : '';
     return first + this.state.items.map(item => this._option(item, picked)).join('') + last;
+  }
+
+  static _note(lock) {
+    if (lock) {
+      const into = this.state.current === lock.deal ? 'КП в сделке' : 'КП встанет в сделку';
+      return `<p class="muted dp-note">${into} ${DealLockNote.deal(lock)}: ${esc(DealLockNote.why(lock))}. Отдельную сделку разрешает администратор («Настройки» → карточка клиента).</p>`;
+    }
+    const guard = this.state.guard;
+    return guard && guard.mode === 'once'
+      ? '<p class="muted dp-note">Администратор разрешил одну новую сделку по этому клиенту.</p>'
+      : '';
   }
 
   static _open(picked) {
@@ -52,12 +92,17 @@ export class DealPick {
     state.busy = true;
     const [inn, , offer] = key.split('|');
     try {
-      const found = await Api.request(
-        `/api/crm/pick?inn=${encodeURIComponent(inn)}&name=${encodeURIComponent(S.client || '')}&kp=${encodeURIComponent(offer)}`,
-      );
-      Object.assign(state, { items: found.items || [], current: found.current || '', stages: found.stages || [] });
+      const query = `inn=${encodeURIComponent(inn)}&name=${encodeURIComponent(S.client || '')}&kp=${encodeURIComponent(offer)}`;
+      const own = `client=${encodeURIComponent(S.clientId || '')}&tender=${encodeURIComponent(Tender.number())}`;
+      const found = await Api.request(`/api/crm/pick?${query}&${own}`);
+      Object.assign(state, {
+        items: found.items || [],
+        current: found.current || '',
+        stages: found.stages || [],
+        guard: found.guard || null,
+      });
     } catch {
-      Object.assign(state, { items: [], current: '' });
+      Object.assign(state, { items: [], current: '', guard: null });
     }
     state.key = key;
     state.busy = false;

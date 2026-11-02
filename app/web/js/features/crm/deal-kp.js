@@ -14,12 +14,50 @@ import { KpTabs } from '../kp/kp-tabs.js';
 import { KpForm } from '../../core/kp-form.js';
 import { KpDate } from '../../core/kp-date.js';
 import { ShortName } from '../kp/short-name.js';
+import { KpTrack } from '../kp/kp-track.js';
+import { FEAT } from '../../core/features.js';
+import { CrmFmt } from '../../core/crm-fmt.js';
+import { KpRate } from './kp-rate.js';
+import { KpRelink } from './kp-relink.js';
 
-/** КП сделки: открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из журнала — в сделку. */
+/**
+ * КП сделки: список в карточке, открыть, новое КП для сделки (клиент из сделки, КП сохранится в неё), КП клиента из
+ * журнала — в сделку, КП — в другую сделку (⇄).
+ */
 export class DealKp {
   /** Закрыть карточку сделки (подключает crm/index.js: КП сделки не подключает карточку — циклы import). */
   static closeCard = () => {};
   static HISTORY_LIMIT = 40;
+
+  /**
+   * КП сделки строками (карточка сделки → «КП по сделке»).
+   * @param {object} deal
+   * @returns {string}
+   */
+  static list(deal) {
+    const rows = (deal.kps || []).map(offer => this._offer(offer)).join('');
+    return rows || '<p class="muted dk-nokp">КП ещё нет — «＋ Новое КП» справа.</p>';
+  }
+
+  /**
+   * Кнопки над КП сделки.
+   * @returns {string}
+   */
+  static buttons() {
+    return `<div class="dk-kb"><button class="btn sm" type="button" data-dknew>＋ Новое КП</button><button class="btn sm ghost" type="button" data-dklink title="КП этого клиента из журнала — в эту сделку">Добавить КП клиента</button></div>`;
+  }
+
+  static _offer(offer) {
+    const items = `${esc((offer.items || [])[0] || '')}${offer.positions > 1 ? ` и ещё ${offer.positions - 1}` : ''}`;
+    const valid = offer.validUntil ? ` · действует до ${esc(KpDate.ddmm(offer.validUntil))}` : '';
+    const status = FEAT.on('track')
+      ? `<span class="md-st"><span class="jst st-${esc(offer.status)}">${esc(KpTrack.STATUS[offer.status] || offer.status)}</span></span>`
+      : '';
+    const move = KpRelink.enabled()
+      ? `<button class="btn sm ghost dk-kmv" type="button" data-dkmv="${esc(offer.id)}" title="Перенести КП в другую сделку" aria-label="Перенести КП № ${esc(offer.number)} в другую сделку">⇄</button>`
+      : '';
+    return `<div class="md-r"><span class="md-n">№ ${esc(offer.number)}</span><div><b>${esc(KpDate.ddmm(offer.date))} · ${CrmFmt.rub(offer.sum)}</b><span class="muted">${items}${valid}</span>${KpRate.line(offer)}${status}</div><span class="dk-kra">${move}<button class="btn sm" type="button" data-dko="${esc(offer.id)}">Открыть</button></span></div>`;
+  }
 
   // к КП — карточка сделки закрывается, кабинет остаётся своей вкладкой
   static _closeAll() {

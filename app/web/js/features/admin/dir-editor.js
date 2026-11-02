@@ -10,6 +10,8 @@ import { Api } from '../../core/net.js';
 import { UiKit } from '../../core/ui-kit.js';
 import { KpForm } from '../../core/kp-form.js';
 import { AdminState } from './admin-state.js';
+import { AdminApi } from '../../core/admin-api.js';
+import { FEAT } from '../../core/features.js';
 
 /** Значение по пути «a.b.0.c» в документе: прочитать, записать (недостающее создаётся — массив, если дальше номер). */
 export class DocPath {
@@ -153,6 +155,13 @@ export class DirEditor {
     save: '_save',
   };
   static SUPPLIER_ID = 24;
+  // «Новые сделки по КП» клиента (правило «одна сделка на клиента», сервер — deal_guard.ClientDealRules)
+  static DEAL_MODES = [
+    ['', 'По общему правилу'],
+    ['once', 'Можно одну новую сделку'],
+    ['always', 'Новые сделки — всегда'],
+    ['never', 'Запретить новые сделки'],
+  ];
 
   /**
    * Сравнимое написание производителя или позиции: строчные, ё → е, только буквы и цифры.
@@ -179,7 +188,20 @@ export class DirEditor {
     }
     const doc = JSON.parse(JSON.stringify(source || {}));
     if (type === 'supplier') this._supplierDefaults(doc);
-    AdminState.editing = { type, id: id || null, doc, msg: '' };
+    const deals = type === 'client' ? await this._dealRule(id) : null;
+    AdminState.editing = { type, id: id || null, doc, msg: '', deals };
+  }
+
+  // режим новых сделок клиента; функция выключена или не загрузилось — выбора нет
+  static async _dealRule(id) {
+    if (!FEAT.on('dealGuard')) return null;
+    try {
+      const reply = await AdminApi.get('dealrules');
+      const mode = ((reply.items || []).find(row => row.id === id) || {}).mode || '';
+      return { mode, was: mode, days: +reply.days || 0 };
+    } catch {
+      return null;
+    }
   }
 
   static async _load(type, id) {
@@ -223,7 +245,7 @@ export class DirEditor {
           `<div class="st-ed-sec"><p class="sub">${esc(title)}</p><div class="st-ed-g">${fields.map(field => this._field(doc, field)).join('')}</div></div>`,
       )
       .join('');
-    const extra = type === 'supplier' ? this._supplier(doc) : '';
+    const extra = type === 'supplier' ? this._supplier(doc) : this._deals(edit.deals);
     const title = edit.id ? esc(`${this.KIND[type]}: ${doc.name || ''}`) : this.NEW[type];
     const exportBtn =
       type === 'supplier' && edit.id && doc.name
@@ -233,6 +255,29 @@ export class DirEditor {
       ${exportBtn}<button class="btn" type="button" data-edx="cancel">Отмена</button><button class="btn primary" type="button" data-edx="save">Сохранить</button></div>
     ${edit.msg ? `<p class="msg err">${esc(edit.msg)}</p>` : ''}${sections}${extra}
     <div class="st-ed-f"><span class="sp"></span><button class="btn" type="button" data-edx="cancel">Отмена</button><button class="btn primary" type="button" data-edx="save">Сохранить</button></div>`;
+  }
+
+  static _deals(deals) {
+    if (!deals) return '';
+    const options = this.DEAL_MODES.map(
+      ([value, label]) => `<option value="${value}"${deals.mode === value ? ' selected' : ''}>${esc(label)}</option>`,
+    ).join('');
+    return `<div class="st-ed-sec"><div class="sub">Новые сделки по КП${UiKit.tip('Чтобы менеджер не заводил новую сделку к каждому КП, новое КП клиенту встаёт в его свежую незакрытую сделку. Здесь — исключение для этого клиента. Срок общего правила — «Параметры → Значения программы → Кабинет: одна сделка на клиента».')}</div>
+      <div class="st-ed-g"><label class="f wide"><span>Новая сделка из КП для этого клиента</span><select data-edm>${options}</select></label></div>
+      <p class="muted st-ed-dmh">${esc(this._dealHint(deals))}</p></div>`;
+  }
+
+  static _dealHint(deals) {
+    const days = deals.days
+      ? `если последнее КП в ней моложе ${deals.days} дн.`
+      : 'срок в «Значениях программы» — 0, по сроку не ограничено';
+    const hints = {
+      '': `Новое КП клиенту встаёт в незакрытую сделку того же менеджера, ${days}.`,
+      once: 'Следующее КП может завести свою сделку; после этого — снова общее правило.',
+      always: 'Клиент ведёт много задач сразу: КП без выбранной сделки заводит новую сделку.',
+      never: 'Пока у менеджера есть незакрытая сделка клиента, все его КП встают в неё — срок не важен.',
+    };
+    return hints[deals.mode] || '';
   }
 
   static _warehouse(doc, house, i) {
@@ -307,6 +352,12 @@ export class DirEditor {
 
   static _input(target) {
     const edit = AdminState.editing;
+    if (edit && edit.deals && target.dataset.edm !== undefined) {
+      edit.deals.mode = target.value;
+      const hint = target.closest('.st-ed-sec').querySelector('.st-ed-dmh');
+      if (hint) hint.textContent = this._dealHint(edit.deals);
+      return;
+    }
     if (!edit || !target.dataset.ef) return;
     DocPath.set(edit.doc, target.dataset.ef, target.value);
     const match = target.dataset.ef.match(this.WAREHOUSE_ADDR);
@@ -503,6 +554,8 @@ export class DirEditor {
     doc._replace = true; // удалённый здесь контакт удаляется
     const saved = await this._put(`/api/clients/${encodeURIComponent(id)}`, rev, doc);
     if (saved) ClientStore.keep([saved]);
+    const deals = edit.deals;
+    if (deals && deals.mode !== deals.was) await AdminApi.post('dealrules', { client: id, mode: deals.mode });
   }
 
   // склад по умолчанию — первый, с координатами — в «Откуда» логистики
