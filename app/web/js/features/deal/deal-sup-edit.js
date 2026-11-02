@@ -14,6 +14,7 @@ import { Auth } from '../../core/auth.js';
 export class DealSupEdit {
   static SAVE_MS = 1200;
   static ID_LEN = 24;
+  static ID_RE = /^[A-Za-z0-9_-]{1,64}$/; // код поставщика в справочнике — как в адресе сервера /api/suppliers/<код>
   static JSON_HEAD = { 'Content-Type': 'application/json; charset=utf-8' };
 
   /**
@@ -36,7 +37,9 @@ export class DealSupEdit {
   // поля справочника, которых нет в расчёте (реквизиты, склады, контакты, оборудование), — не трогаем; номер правки — чтобы
   // не затереть изменения коллеги
   static async _put(sup) {
-    const id = sup.dirId || `sup_${Uid.next()}${Uid.next()}`.slice(0, DealSupEdit.ID_LEN);
+    const id = DealSupEdit.ID_RE.test(sup.dirId || '')
+      ? sup.dirId
+      : `sup_${Uid.next()}${Uid.next()}`.slice(0, DealSupEdit.ID_LEN);
     const kpData = DealState.kpInputs();
     const makers = [
       ...new Set(
@@ -58,7 +61,7 @@ export class DealSupEdit {
     delete doc.updatedAt;
     try {
       const body = JSON.stringify(doc);
-      const saved = await Api.request(`/api/suppliers/${id}`, {
+      const saved = await Api.request(`/api/suppliers/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: DealSupEdit.JSON_HEAD,
         body,

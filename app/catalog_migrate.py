@@ -59,7 +59,7 @@ def _clean(v) -> float:
 
 def parse_num(text, unit) -> float | None:
     """Число из значения характеристики с учётом единиц: «800 л/мин» → 0,8 для поля в м³/мин."""
-    low = str(text or '').lower()
+    low = Num.ascii_digits(str(text or '').lower())
     if unit:
         regex = UNIT_RX.get(unit)
         if regex:
@@ -175,7 +175,7 @@ class CatDetect:
 
 
 def fill_from_name(doc, cat, attrs) -> None:
-    name = str(doc.get('name') or '')
+    name = Num.ascii_digits(str(doc.get('name') or ''))
     low = name.lower()
 
     def put(k, v) -> None:

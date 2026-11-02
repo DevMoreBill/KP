@@ -505,6 +505,35 @@ check('файл сервера без перехода (значок с экра
   assert.strictEqual(FileSave.nameOf(null, 'запасное.docx'), 'запасное.docx');
 });
 
+check('повторная проверка 02.11: «.» и «..» в пути запроса — отказ до отправки (браузер сократил бы путь — с токеном «Настроек» на чужой адрес); код поставщика из КП — только допустимый', async ()=>{
+  const { Api }=mod('core/net.js');
+  const { DealSupEdit }=mod('features/deal/deal-sup-edit.js');
+  const { DealState }=mod('features/deal/deal-state.js');
+  const { DealUi }=mod('features/deal/deal-ui.js');
+  const { KpState }=mod('core/state.js');
+  const sent=[];
+  const reply={ ok:true, status:200, headers:{ get:()=>'application/json' }, json:async ()=>({ id:'saved' }), text:async ()=>'' };
+  await swap([[globalThis, 'fetch', async url=>{ sent.push(url); return reply; }]], async ()=>{
+    for (const bad of ['/api/suppliers/../logistics', '/api/suppliers/%2e%2E/uitexts', '/api/x/./y', '/api/suppliers/.%2e/logistics/china']) {
+      await assert.rejects(Api.request(bad, { method:'PUT', body:'{}' }), /Недопустимый адрес/, bad);
+    }
+    assert.deepStrictEqual(sent, [], 'ни один запрос не ушёл');
+    await Api.request('/api/kp/1/docx?name=a/../b', { method:'GET' });
+    assert.deepStrictEqual(sent, ['/api/kp/1/docx?name=a/../b'], '«..» в параметрах запроса — не путь');
+  });
+  const paths=[];
+  await swap([[Api, 'request', async path=>{ paths.push(path); return { id:path.split('/').pop() }; }],
+    [DealState, 'kpInputs', ()=>({ items:[] })], [KpState, 'persist', ()=>{}]], async ()=>{
+    DealUi.sups=[];
+    const forged={ id:'s1', name:'Поставщик', dirId:'../logistics' };
+    await DealSupEdit._put(forged);
+    assert.match(paths[0], /^\/api\/suppliers\/sup_[A-Za-z0-9_-]+$/, 'подставленный код из КП — заменён новым');
+    assert.notStrictEqual(forged.dirId, '../logistics');
+    await DealSupEdit._put({ id:'s2', name:'Поставщик 2', dirId:'sup_abc-1' });
+    assert.strictEqual(paths[1], '/api/suppliers/sup_abc-1', 'настоящий код — как был');
+  });
+});
+
 (async ()=>{
   let passed=0;
   for (const [name, fn] of checks) {

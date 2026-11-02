@@ -2,6 +2,7 @@
 
 import math
 import re
+import unicodedata
 
 
 class Num:
@@ -10,6 +11,7 @@ class Num:
 
     SPACE = re.compile(r'\s+')
     FORMAT = re.compile(r'[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?', re.ASCII)
+    OTHER_DIGIT = re.compile(r'(?![0-9])\d')  # цифра другого алфавита: «３», «٣»
 
     @classmethod
     def parse(cls, value: object) -> float | None:
@@ -28,6 +30,12 @@ class Num:
         if number is None:
             raise ValueError(f'не число: {text!r}')
         return number
+
+    @classmethod
+    def ascii_digits(cls, text: str) -> str:
+        """Текст, где числа ищут регулярками с \\d (ТЗ, фиды): цифры других алфавитов — цифрами 0–9, иначе найденное
+        «３００» parse не прочтёт."""
+        return cls.OTHER_DIGIT.sub(lambda match: str(unicodedata.decimal(match.group(0))), text)
 
     @staticmethod
     def _finite(value: float) -> float | None:

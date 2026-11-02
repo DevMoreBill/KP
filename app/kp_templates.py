@@ -57,7 +57,7 @@ def ensure_templates() -> None:
                 continue
             if not os.path.isfile(path):
                 shutil.copyfile(bundled, path)
-            elif _norm_md5(path) in OLD_FACTORY.get(name, ()) and _norm_md5(path) != _norm_md5(bundled):
+            elif _norm_md5(path) in _old_factory(tid, name) and _norm_md5(path) != _norm_md5(bundled):
                 # заводской файл прошлой версии, который никто не правил, — обновляем (прежний — в историю)
                 _backup(folder, name)
                 shutil.copyfile(bundled, path)
@@ -100,6 +100,18 @@ OLD_FACTORY = {
         '6bd75a701b548be37edf656ce0b9eeb1',
     ),
 }
+
+
+# прежние заводские файлы шаблона со своим скелетом — только для его папки: копия такого шаблона без своего заводского
+# варианта получила бы скелет основного шаблона (DEFAULT_ID)
+OWN_FACTORY = {
+    'pnevmotekh_new': {'skeleton.js': ('db97a22a75af3fcebe3a8daacc0561aa',)},
+}
+
+
+def _old_factory(tid: str, name: str) -> tuple[str, ...]:
+    """Отпечатки прежних заводских вариантов файла для шаблона tid."""
+    return OLD_FACTORY.get(name, ()) + OWN_FACTORY.get(tid, {}).get(name, ())
 
 
 def _norm_md5(path: str) -> str:

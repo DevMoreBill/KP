@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from statistics import median
 from typing import Any
 
+from bitrix import BitrixTime
 from crm import DealBook, Stages
 from crm_funnels import Funnels
 from defaults import SrvVal
@@ -43,13 +44,15 @@ class DealTime:
 
     @staticmethod
     def _when(text: Any) -> datetime | None:
-        """Метка — местным временем сервера: из браузера (UTC, «…Z») переводится, метка сервера (без пояса) — как есть."""
+        """Метка — местным временем сервера: из браузера (UTC, «…Z») переводится, метка сервера (без пояса) — как есть;
+        непонятная или вне календаря (год 1 с поясом, до 1970 в Windows) — None."""
         raw = str(text or '').strip()
         try:
             when = datetime.fromisoformat(raw[:-1] + '+00:00' if raw.endswith('Z') else raw)
-        except ValueError:
+            # пояс сервера явно, как BitrixTime.local: astimezone() без него в Windows падает на датах до 1970
+            return when.astimezone(BitrixTime.zone()).replace(tzinfo=None) if when.tzinfo else when
+        except (ValueError, OverflowError, OSError):
             return None
-        return when.astimezone().replace(tzinfo=None) if when.tzinfo else when
 
     def _segments(self, deal: dict) -> list[tuple[str, float]]:
         """(стадия, дней на ней) по истории сделки; последняя незакрытая стадия — до сегодня."""

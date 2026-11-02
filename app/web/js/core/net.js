@@ -45,6 +45,8 @@ export class Api {
   static UNAUTHORIZED = 401;
   // проверки и предпросмотр — не сохранение: отметка «несохранённые изменения» в «Настройках» остаётся
   static NOT_SAVE = /\/(preview|test|check|pdf)\b|\/connections\b/;
+  // «.» и «..» в пути браузер сокращает: «/api/suppliers/../logistics» ушёл бы на другой адрес с токеном «Настроек»
+  static DOT_SEGMENT = /(?:^|\/)(?:\.|%2e){1,2}(?=\/|$)/i;
   /** запросов в пути: переключение КП ждёт, пока ответы допишут своё в то КП, которое их начало */
   static flying = 0;
 
@@ -64,6 +66,7 @@ export class Api {
   }
 
   static async _request(path, opts) {
+    if (this.DOT_SEGMENT.test(String(path).split(/[?#]/)[0])) throw new Error('Недопустимый адрес запроса');
     const headers = { ...(opts.headers || {}), ...this._signature() };
     if (AdminSession.csrf) headers['X-CSRF-Token'] = AdminSession.csrf;
     let reply;

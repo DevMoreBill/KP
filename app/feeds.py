@@ -642,6 +642,7 @@ def _sum_txt(k, v, u) -> str | None:
     """«5,5+5,5» кВт → «11 кВт (5,5+5,5)», «1,4х3» → «4,2 кВт (1,4 × 3)»: в параметр категории идёт общая мощность."""
     if not u or not re.search(r'мощност|производительн', k, re.I):
         return None
+    v = Num.ascii_digits(str(v))
     num_rx = r'(\d+(?:[.,]\d+)?)'
     match = re.match(r'^' + num_rx + r'(?:\s*\+\s*' + num_rx + r')+', v)
     if match and '+' in match.group(0):

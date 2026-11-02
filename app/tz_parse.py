@@ -38,7 +38,7 @@ class TzParse:
     LOW_WINS = ('tmin',)  # противоречие: здесь требовательнее меньшее значение (холоднее), в остальных — большее
 
     def __init__(self, text) -> None:
-        self.text = re.sub(r'[ \t\xa0]+', ' ', str(text or ''))
+        self.text = re.sub(r'[ \t\xa0]+', ' ', Num.ascii_digits(str(text or '')))
         self.low = self.text.lower()
         self.req: dict = {}
         self.found: list = []

@@ -904,7 +904,8 @@ function kpSkeleton(KP) {
       if (opts.length) rows.push([tc('', ind, { span: 4, mar: Z }), tc(p(r(txt('positionTotal', { n: i + 1 }), 'cardSub'), { line: 240 }), wname, { span: 2, bdr: B([4, HAIR]), mar: [70, 0, 0, 0] }),
         tc(p(r(money(itemTotal(it)), 'cardSub'), { jc: 'right', line: 240 }), wsum, { bdr: B([4, HAIR]), mar: [70, 0, 0, 0] })]);
       if (parts.length) {
-        const list = parts.map(x => x.name + ' — ' + (+x.qty || 1) * (+it.qty || 1) + NB + T.pcs).join('; ');
+        // состав одного изделия — как на титуле и в «Составе изделия» (количество позиции — в строке цены)
+        const list = parts.map(kitName).join(', ');
         rows.push([tc('', ind, { span: 4, mar: Z }), tc(p(r(T.kitInOffer, 'cardPartsHead') + r(list, 'cardParts'), { line: 252, hy: true }), wname + wsum, { span: 3, bdr: B([4, HAIR]), mar: [70, 0, 0, 0] })]);
       }
       const inner = tbl(rows, grid, { split: true }) + END;

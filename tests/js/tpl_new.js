@@ -223,6 +223,10 @@ check('четыре позиции и станция: «Состав предл�
   has(coverText, /Состав предложения/, 'титул');
   state.items.forEach(it=>assert.ok(coverText.includes(it.name.slice(0, 20)) || coverText.includes(it.name.split(' ').slice(0, 2).join(' ')), 'на титуле '+it.name));
   has(res.text, /В составе: /, 'части станции в карточке');
+  // «В составе» — состав одного изделия и на титуле, и в карточке (было: в карточке — умножено на количество позиций)
+  const two=SCENARIOS.station(); two.items[0].qty=2; two.items[0].kit.parts[0].qty=2;
+  const twoRes=await build(two);
+  assert.ok(!/ — 4\sшт\./.test(twoRes.text) && (twoRes.text.match(/В составе: Винтовой компрессор Пример ВК\W?220Т × 2/g) || []).length === 2, 'состав на одно изделие — на титуле и в карточке');
   has(res.text, /Состав изделия/, 'таблица состава станции');
   has(res.text, /Итого к оплате с НДС/, 'итог');
   // сумма: 100 000 × 0,95 + 200 000 × 2 + 300 000 + 1 800 000 = 2 595 000

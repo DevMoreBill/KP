@@ -74,6 +74,32 @@ class ParseTest(unittest.TestCase):
                 Num.of(bad)
 
 
+class OtherDigitsTest(unittest.TestCase):
+    """Цифры других алфавитов («３００», «٣٠٠») в тексте ТЗ и фидов: регулярки с \\d их находят, а Num.parse читает только
+    0–9 — разбор ТЗ отвечал 500 на весь документ, «Что загрузится…» фида — 422 (с 3.247.0; повторная проверка 02.11)."""
+
+    def test_ascii_digits(self):
+        self.assertEqual(Num.ascii_digits('Ресивер ３００ л, ٣٠٠ бар, ९'), 'Ресивер 300 л, 300 бар, 9')
+        self.assertEqual(Num.ascii_digits('1 234,5 кВт'), '1 234,5 кВт')
+        self.assertIsNone(Num.parse('３００'), 'само правило Num — только 0–9 (README 3.247.0)')
+
+    def test_tz(self):
+        from tz_parse import TzParse
+
+        req = TzParse.parse('Компрессорная станция. Ресивер ３００ л. Производительность １０ м³/мин, давление ８ бар.')['req']
+        self.assertEqual((req.get('flow'), req.get('pressure'), req.get('recvVol')), (10.0, 8.0, 300))
+
+    def test_feeds(self):
+        import catalog_migrate
+        import feeds
+
+        self.assertEqual(catalog_migrate.parse_num('８００ л/мин', 'м³/мин'), 0.8)
+        self.assertEqual(feeds._sum_txt('Мощность', '５,５+５,５', 'кВт'), '11 кВт (5,5+5,5)')
+        attrs: dict = {}
+        catalog_migrate.fill_from_name({'name': 'Ресивер ９００ л /１０ бар'}, 'receiver', attrs)
+        self.assertEqual((attrs.get('volume'), attrs.get('pressure')), (900, 10))
+
+
 class CallersTest(unittest.TestCase):
     """Места, где были копии, — тот же разбор."""
 

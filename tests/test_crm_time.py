@@ -63,6 +63,18 @@ class DealTimeTest(unittest.TestCase):
         self._kp(self._deal(now - timedelta(hours=1), []), 'kp-t2', browser(now - timedelta(hours=1, seconds=2)))
         self.assertEqual(DealTime(self.st).report()['firstKp'], {'median': 1.0, 'deals': 2})
 
+    def test_saved_at_out_of_range(self):
+        """Метка КП вне календаря (год 1 с поясом; в Windows — любая до 1970) не учитывается и не роняет отчёт отдела
+        (было: 500 OverflowError у «Где тратится время» всем руководителям; повторная проверка 02.11)."""
+        from crm_time import DealTime
+        now = datetime.now().replace(microsecond=0)
+        self._kp(self._deal(now - timedelta(days=3), []), 'kp-bad', '0001-01-01T00:00:00+14:00')
+        rep = DealTime(self.st).report()
+        self.assertEqual((rep['deals'], rep['firstKp']), (1, {'median': None, 'deals': 0}))
+        for bad in ('0001-01-01T00:00:00+14:00', '9999-12-31T23:59:59-12:00', 'не дата', ''):
+            with self.subTest(bad=bad):
+                self.assertIsNone(DealTime._when(bad))
+
     def test_stage_days(self):
         from crm_time import DealTime
         now = datetime.now()
