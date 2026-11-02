@@ -79,11 +79,16 @@ class BitrixDiff:
             'currency': currency,
             'manager': str(bx_deal.get('ASSIGNED_BY_ID') or ''),
         }
-        return [
+        diffs = [
             {'field': key, 'label': label, 'program': mine[key], 'bitrix': theirs[key]}
             for key, label in self.LABELS.items()
             if mine[key] not in ('', None) and str(mine[key]) != str(theirs[key])
         ]
+        return [self._named(diff) if diff['field'] == 'manager' else diff for diff in diffs]
+
+    def _named(self, diff: dict[str, Any]) -> dict[str, Any]:
+        """Ответственный — именами пользователей портала (номер пользователя администратору ни о чём не говорит)."""
+        return dict(diff, program=self.sync.user_name(diff['program']), bitrix=self.sync.user_name(diff['bitrix']))
 
     def align(self, did: str) -> None:
         """Отправить сделку в Битрикс по значениям программы (при следующем обмене)."""

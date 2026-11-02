@@ -2,7 +2,8 @@
 """Ответственный сделок и дел из программы в Битрикс24 3.272.1 (по снимку уведомлений владельца 02.11: «Новая сделка … не
 взята в работу. Ответственный — администратор портала»): crm.deal.add без ASSIGNED_BY_ID Битрикс отдаёт владельцу вебхука.
 Менеджер без пары в «Менеджерах» — пара по e-mail находится сама и запоминается; не нашлась — сделка не создаётся и ждёт
-в «Не отправлено» с причиной; дело — ответственному сделки. Подставной Битрикс (bitrix_fake.py), временная база."""
+в «Не отправлено» с причиной; дело — ответственному сделки. Сделки, вставшие на администратора до 3.272.1, переходят к
+менеджеру при следующем обмене по сделке или по «Выровнять» (3.272.2). Подставной Битрикс (bitrix_fake.py), временная база."""
 import json
 import unittest
 
@@ -81,6 +82,40 @@ class OwnerTest(SyncBase):
         res = self.push(did)
         self.assertEqual((res['sent'], res['failed']), (1, 0), res)
         self.assertEqual(list(self.fake.deals.values())[0]['ASSIGNED_BY_ID'], '7')
+
+    def old_admin_deal(self, kid):
+        """Сделка, созданная до 3.272.1: менеджер без пары — сделка всё равно уходила, ответственным вставал администратор
+        портала (1); потом у менеджера появился пользователь портала с тем же e-mail."""
+        from unittest import mock
+
+        from bitrix import BitrixSync
+        self.manager('m6', 'Сидорова Мария', 'sidorova@example.com')
+        did = self.kp(kid, authorId='m6', manager='Сидорова Мария')
+        with mock.patch.object(BitrixSync, '_owner_or_hold'):
+            self.push(did)
+        bid = next(iter(self.fake.deals))
+        self.assertEqual(self.fake.deals[bid]['ASSIGNED_BY_ID'], '1', 'как до 3.272.1 — администратор портала')
+        self.fake.users.append({'ID': '9', 'NAME': 'Мария', 'LAST_NAME': 'Сидорова', 'EMAIL': 'sidorova@example.com'})
+        return did, bid
+
+    def test_old_admin_deal_aligned(self):
+        """«Расхождения» показывают ответственных именами; «Выровнять» переводит сделку к менеджеру при обмене."""
+        from bitrix_diff import BitrixDiff
+        did, bid = self.old_admin_deal('26-0106')
+        [row] = BitrixDiff(self.st, self.sync()).report()['rows']
+        [diff] = [one for one in row['diffs'] if one['field'] == 'manager']
+        self.assertEqual((diff['program'], diff['bitrix']), ('Сидорова Мария', 'Портала Админ'))
+        BitrixDiff(self.st, self.sync()).align(did)
+        self.sync().run()
+        self.assertEqual(self.fake.deals[bid]['ASSIGNED_BY_ID'], '9')
+
+    def test_old_admin_deal_moves_on_next_change(self):
+        """Без «Выровнять»: следующая правка сделки в программе — ответственным становится менеджер."""
+        from crm import DealBook
+        did, bid = self.old_admin_deal('26-0107')
+        DealBook(self.st).update(did, {'stage': 'talks'}, 'тест')
+        self.push(did)
+        self.assertEqual(self.fake.deals[bid]['ASSIGNED_BY_ID'], '9')
 
 
 if __name__ == '__main__':

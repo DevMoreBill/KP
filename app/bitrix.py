@@ -1001,6 +1001,14 @@ class BitrixSync:
         """Пользователь Битрикса менеджера программы (None — не сопоставлен)."""
         return self._user_of(mid)
 
+    def user_name(self, uid: object) -> str:
+        """Имя пользователя портала для показа: «Фамилия Имя»; не найден среди активных — «пользователь N»."""
+        key = str(uid or '')
+        if not key:
+            return '—'
+        found = next((user['name'] for user in self._portal_people() if user['id'] == key), '')
+        return found or f'пользователь {key}'
+
     def bx_stage(self, deal: dict, cat) -> str:
         """Стадия Битрикса, в которой сделка должна стоять по программе."""
         return self._bx_stage(deal, cat)

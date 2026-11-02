@@ -203,6 +203,9 @@ class StubSync:
     def bx_user(self, mid):
         return {'m1': 7}.get(mid)
 
+    def user_name(self, uid):
+        return f'пользователь {uid}'
+
 
 class BitrixDiffTest(unittest.TestCase):
     def test_report_and_align(self):
