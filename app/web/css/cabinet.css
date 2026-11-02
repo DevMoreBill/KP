@@ -273,7 +273,7 @@ dialog.deal-dlg[open]{display:flex;flex-direction:column;animation:dk-in .18s ea
 .dk-stn{font-size:12.5px;padding-bottom:12px}
 .dk-why{margin:-4px 0 12px}
 .dk-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:14px;align-items:start}
-.dk-main,.dk-side{display:grid;gap:14px;min-width:0}
+.dk-main,.dk-side{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}
 .dk-f{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .dk-f .f em{font-style:normal;font-weight:400;font-size:12px}
 .dk-f .dk-wide{grid-column:1/-1}
@@ -634,7 +634,7 @@ html.mob .kb-add{min-width:44px;min-height:44px}
 .cab-tab .md-c.warn{background:var(--warn-bg);color:var(--warn-ink)}
 @media (max-width:760px){.dk-acts .btn,.dk-acts .icon{min-width:44px;min-height:44px}}
 .dkk-l{margin:0 0 10px;padding-left:18px;display:grid;gap:6px}
-.mob .dk-keys,.mob .dk-prn{display:none}
+.mob .dk-keys,.mob .dk-prn,.mob .dk-mrg{display:none}
 /* печать карточки сделки: только лист сделки */
 #dkPrint{display:none}
 @media print{
@@ -785,9 +785,6 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .dd-drop .muted{font-size:12.5px}
 .dd-none{margin:0;text-align:center;font-size:13px}
 @media (max-width:760px){
-  .dk-money{grid-template-columns:minmax(0,1fr)}
-  .dk-cl{grid-template-columns:minmax(0,1fr)}
-  .dk-pa{min-height:44px}
   .dd-drop{min-height:80px}
 }
 /* «Что сделать сейчас» одной строкой: вид, что сделать, когда, кнопки (3.192.1) */
@@ -832,7 +829,7 @@ dialog.deal-dlg header.dk-top input.dk-title:focus{border-color:var(--navy);back
 .dk-kps .empty{margin:4px 0}
 .dk-rare{margin-top:6px}
 .dk-rare>summary{min-height:30px}
-@media (max-width:760px){.dk-money{grid-template-columns:minmax(0,1fr)}.dk-due .f{flex:1 1 100%}.dk-due .dk-dchips{flex-basis:100%}.dk-ce{grid-column:1/-1}.dk-pa{min-height:44px}.dk-rare>summary{min-height:44px}}
+@media (max-width:760px){.dk-money{grid-template-columns:minmax(0,1fr)}.dk-cl{grid-template-columns:minmax(0,1fr)}.dk-pa{min-height:44px}.dk-due .f{flex:1 1 100%}.dk-due .dk-dchips{flex-basis:100%}.dk-ce{grid-column:1/-1}.dk-pa{min-height:44px}.dk-rare>summary{min-height:44px}}
 .dk-nokp{margin:2px 0;font-size:13px}
 /* доска сделок плотнее: узкие промежутки между стадиями, карточка в 3 строки (3.194.0) */
 .kb{gap:4px}
