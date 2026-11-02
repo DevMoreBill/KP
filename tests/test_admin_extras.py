@@ -191,8 +191,13 @@ class RegAuditTest(unittest.TestCase):
 
 class StubSync:
     def __init__(self, rows):
+        from bitrix_rules import BitrixRules
         self.rows = rows
         self.api = self
+        self.rules = BitrixRules({})  # правила обмена по умолчанию: сделки — в обе стороны
+
+    def sends(self, key):
+        return self.rules.allow(self.rules.field(key)['dir'], 'out')
 
     def list(self, method, params, limit=50):
         return [row for row in self.rows if row['ID'] in params['filter']['ID']]

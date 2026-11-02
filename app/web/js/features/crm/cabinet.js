@@ -30,6 +30,7 @@ import { BrowserNotify } from './browser-notify.js';
 import { Modal } from '../../core/modal.js';
 import { CabState } from './cab-state.js';
 import { StickyHead } from '../../core/sticky-head.js';
+import { TodayDupes } from './today-dupes.js';
 
 /**
  * Окно кабинета менеджера: почти весь экран, шапка в одну строку (приветствие, разделы, чей кабинет, «＋ Дело / Сделка / КП»),
@@ -117,6 +118,7 @@ export class Cabinet {
     const mine = CrmData.mine();
     if (FEAT.on('reminders') && mine) await Reminders.load();
     CabState.drafts = Drafts.enabled() && mine ? await Drafts.list() : [];
+    await TodayDupes.load();
   }
 
   static _announce() {

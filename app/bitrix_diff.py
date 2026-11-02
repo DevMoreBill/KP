@@ -1,9 +1,11 @@
-"""Расхождения с Битрикс24: сделки, у которых стадия, сумма или ответственный в программе и в Битриксе разные;
-«Выровнять» — отправить сделку в Битрикс по значениям программы (очередь обмена)."""
+"""Расхождения с Битрикс24: сделки, у которых стадия, сумма или ответственный в программе и в Битриксе разные (только
+поля, которые программа отправляет в Битрикс по правилам обмена); «Выровнять» и «Выровнять все» — отправить сделки в
+Битрикс по значениям программы (очередь обмена; при отправке программа главная — BitrixLinks.ALIGN)."""
 
+import re
 from typing import Any
 
-from bitrix import BitrixQueue, BitrixSync
+from bitrix import BitrixLinks, BitrixQueue, BitrixSync
 from crm import DealBook
 
 
@@ -15,6 +17,8 @@ class BitrixDiff:
     KOPECKS = 100
     LABELS = {'stage': 'стадия', 'sum': 'сумма', 'currency': 'валюта', 'manager': 'ответственный'}
     RUB = 'RUB'  # сумма сделки программы — в рублях
+    SENT_BY = {'stage': 'stage', 'sum': 'sum', 'currency': 'sum', 'manager': 'manager'}  # поле карты полей
+    ID_RE = re.compile(r'^d\d{1,9}$')
 
     def __init__(self, store, sync: BitrixSync | None = None) -> None:
         self.store = store
@@ -30,7 +34,7 @@ class BitrixDiff:
         rows = []
         for did, bx_id in links.items():
             deal, bx_deal = book.get(did), theirs.get(str(bx_id))
-            if not deal or not bx_deal:
+            if not deal or not bx_deal or not self.sync.rules.can('deal', 'out', deal.get('managerId')):
                 continue
             diffs = self._compare(deal, bx_deal)
             if diffs:
@@ -82,7 +86,7 @@ class BitrixDiff:
         diffs = [
             {'field': key, 'label': label, 'program': mine[key], 'bitrix': theirs[key]}
             for key, label in self.LABELS.items()
-            if mine[key] not in ('', None) and str(mine[key]) != str(theirs[key])
+            if mine[key] not in ('', None) and str(mine[key]) != str(theirs[key]) and self.sync.sends(self.SENT_BY[key])
         ]
         return [self._named(diff) if diff['field'] == 'manager' else diff for diff in diffs]
 
@@ -91,7 +95,22 @@ class BitrixDiff:
         return dict(diff, program=self.sync.user_name(diff['program']), bitrix=self.sync.user_name(diff['bitrix']))
 
     def align(self, did: str) -> None:
-        """Отправить сделку в Битрикс по значениям программы (при следующем обмене)."""
+        """Отправить сделку в Битрикс по значениям программы (при следующем обмене), даже если в Битриксе её правили
+        позже: при отправке значения программы — главные (BitrixLinks.ALIGN)."""
         if not DealBook(self.store).get(did):
             raise LookupError('Сделка не найдена')
+        BitrixLinks(self.store).mark('deal', did, **{BitrixLinks.ALIGN: True})
         BitrixQueue.touch(self.store, 'deal', did)
+
+    def align_all(self, ids: object) -> int:
+        """«Выровнять все»: сделки списка расхождений ids — по программе. ValueError — неверный список. → сколько в очереди."""
+        if not isinstance(ids, list) or not all(isinstance(did, str) and self.ID_RE.match(did) for did in ids):
+            raise ValueError('Неверный список сделок')
+        count = 0
+        for did in dict.fromkeys(ids[: self.LIMIT]):
+            try:
+                self.align(did)
+            except LookupError:
+                continue  # сделку удалили после проверки — выравнивать нечего
+            count += 1
+        return count

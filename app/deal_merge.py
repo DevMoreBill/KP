@@ -41,6 +41,10 @@ class MergedDeals:
             did, hops = known[did], hops + 1
         return did
 
+    def sources(self) -> list[str]:
+        """Все сделки, которые объединялись в другие."""
+        return list(self._all())
+
     def _all(self) -> dict[str, str]:
         found = self.store.kv_get(self.KEY) or {}
         return {str(key): str(value) for key, value in found.items()} if isinstance(found, dict) else {}
@@ -59,6 +63,7 @@ class MergeReport:
     talks: int = 0
     comments: int = 0
     bitrix_from: Any = ''  # номер сделки, чью сделку в Битрикс24 продолжает итоговая (у итоговой своей не было)
+    bitrix_left: list[str] = field(default_factory=list)  # объединённые, чьи сделки в Битрикс24 остались своими
 
     def add(self, number: Any, moved: dict[str, int]) -> None:
         """Сделка number объединена: сколько чего перешло."""
@@ -114,6 +119,8 @@ class DealMerge:
         for source in sources:
             self.book.remove(source['id'], author, f'объединена со сделкой № {report.number}')
         MergedDeals(self.store).put([source['id'] for source in sources], target['id'])
+        links = BitrixLinks(self.store)
+        report.bitrix_left = [source['id'] for source in sources if (links.get('deal', source['id']) or {}).get('bx')]
         return report
 
     def _deals(self, target_id: str, source_ids: list[str]) -> tuple[dict, list[dict]]:

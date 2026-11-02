@@ -71,11 +71,7 @@ export class TeamDupes {
    */
   static merge(el) {
     const group = ((this.data && this.data.groups) || [])[+el.dataset.tdmerge];
-    if (!group) return;
-    const head = group.deals.find(deal => deal.id === group.target) || group.deals[0];
-    const deal = { ...head, client: group.client, clientInn: group.inn, managerId: group.managerId };
-    const others = group.deals.filter(row => row.id !== head.id).map(row => row.id);
-    DealMerge.open(deal, () => this.retry(), others);
+    if (group) DealMerge.group(group, () => this.retry());
   }
 
   /**

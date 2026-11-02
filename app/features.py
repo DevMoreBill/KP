@@ -97,6 +97,9 @@ FEATURES = {
     'dealMerge': (True, 'Объединить сделки'),
     'dealDupes': (True, 'Дубли сделок в «Отделе»'),
     'dealNewWarn': (True, 'Предупреждение при «＋ Сделка»'),
+    'dealMergeBx': (True, 'Объединённые сделки — проигранными в Битрикс24'),
+    'bxDiffAll': (True, '«Выровнять все» в «Расхождениях с Битрикс24»'),
+    'todayDupes': (True, 'Дубли сделок на «Сегодня»'),
 }
 
 # функция работает только вместе с другой (как needs в app/web/js/core/features.js)
@@ -139,6 +142,9 @@ NEEDS.update(
         'asmAi': 'asmItem',
         'asmFiles': 'asmItem',
         'dealNewWarn': 'dealGuard',
+        'dealMergeBx': 'dealMerge',
+        'bxDiffAll': 'bxDiff',
+        'todayDupes': 'dealMerge',
         'carriers': 'deal',
         'sellerTax': 'deal',
         'reminders': 'track',
@@ -170,6 +176,7 @@ ROUTES = [
     (None, re.compile(r'^/api/crm/deal/d\d{1,9}/(remove|restore)$'), 'dealDelete'),
     ('POST', re.compile(r'^/api/crm/deal/d\d{1,9}/merge$'), 'dealMerge'),
     ('GET', re.compile(r'^/api/crm/dupes$'), 'dealDupes'),
+    ('GET', re.compile(r'^/api/crm/dupes/mine$'), 'todayDupes'),
     ('GET', re.compile(r'^/api/doctpl/(contract|spec)$'), 'docsGen'),
     ('GET', re.compile(r'^/api/crm/pay$'), 'payCalendar'),
     ('POST', re.compile(r'^/api/crm/deal/d\d{1,9}/remind$'), 'receivables'),

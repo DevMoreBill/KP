@@ -340,8 +340,14 @@ export class BitrixLog {
       panel.render();
     };
     panel.one('#bxDry').onclick = event => this._runDry(event.target);
+    const host = {
+      redraw: () => panel.render(),
+      keep: reply => {
+        if (reply && reply.on !== undefined) panel.state = reply;
+      },
+    };
     panel.all('[data-bxdiff]').forEach(button => {
-      button.onclick = event => BitrixDiffCard.click(event, () => panel.render());
+      button.onclick = event => BitrixDiffCard.click(event, host);
     });
     panel.all('[data-bxre]').forEach(button => {
       button.onclick = () => {

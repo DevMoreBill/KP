@@ -51,7 +51,7 @@ export class DealMerge {
       Toast.show(error.message || String(error));
       return;
     }
-    const view = { deal, items: pick.items, stages: pick.stages, found: [], marked: new Set(marked) };
+    const view = { deal, ...pick, found: [], marked: new Set(marked) };
     const modal = new Modal(this._html(view), 'dm-dlg');
     const search = new Debounce(this.SEARCH_WAIT);
     modal.d.addEventListener('click', event => {
@@ -66,11 +66,27 @@ export class DealMerge {
     };
   }
 
+  /**
+   * Окно объединения группы дублей («Отдел», «Сегодня»): в предложенную сделку, остальные сделки группы отмечены.
+   * @param {{target: string, client: string, inn: string, managerId: string, deals: object[]}} group
+   * @param {(result: object) => void} [done] после объединения
+   */
+  static group(group, done) {
+    const head = group.deals.find(deal => deal.id === group.target) || group.deals[0];
+    const deal = { ...head, client: group.client, clientInn: group.inn, managerId: group.managerId };
+    const others = group.deals.filter(row => row.id !== head.id).map(row => row.id);
+    this.open(deal, done, others);
+  }
+
   // незакрытые сделки клиента: менеджеру — свои, руководителю и администратору — всех
   static async _pick(deal) {
     const query = [`inn=${encodeURIComponent(deal.clientInn || '')}`, `name=${encodeURIComponent(deal.client || '')}`];
     const pick = await Api.request(`/api/crm/pick?${query.join('&')}`);
-    return { items: (pick.items || []).filter(item => item.id !== deal.id), stages: pick.stages || [] };
+    return {
+      items: (pick.items || []).filter(item => item.id !== deal.id),
+      stages: pick.stages || [],
+      bitrix: !!pick.bitrix,
+    };
   }
 
   static _html(view) {
@@ -83,8 +99,16 @@ export class DealMerge {
       <form><p class="sub">Другие незакрытые сделки клиента</p><div class="dm-l" role="group" aria-label="Сделки клиента">${rows}</div>
         <label class="f dm-q"><span>Другая сделка — номер, название или клиент</span><input type="search" name="q" placeholder="Например, 214 или Компрессор" autocomplete="off"></label>
         <div class="dm-l dm-found" role="group" aria-label="Найденные сделки"></div>
-        <p class="muted">Отмеченные сделки уйдут в корзину пустыми — отменить объединение нельзя. Сумма и стадия этой сделки пересчитаются по всем КП. В Битрикс24 сделки не удаляются.</p>
+        <p class="muted">Отмеченные сделки уйдут в корзину пустыми — отменить объединение нельзя. Сумма и стадия этой сделки пересчитаются по всем КП.${this._bitrix(view)}</p>
         <div class="row"><span class="sp"></span><button class="btn" type="button" data-x>Отмена</button><button class="btn primary" type="submit">Объединить</button></div></form>`;
+  }
+
+  // связь с Битрикс24: сделки отмеченных там закроются проигранными (или остаются — функция выключена)
+  static _bitrix(view) {
+    if (!view.bitrix) return '';
+    return FEAT.on('dealMergeBx')
+      ? ` В Битрикс24 лишние сделки закроются проигранными: «Объединена со сделкой № ${esc(view.deal.number)}».`
+      : ' В Битрикс24 сделки не удаляются.';
   }
 
   static _row(item, view) {

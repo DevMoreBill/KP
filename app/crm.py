@@ -484,6 +484,16 @@ class DealBook:
         self.store.trash_restore(row[0])
         return self._require(did)
 
+    def trashed(self, did: str) -> dict | None:
+        """Сделка в корзине (последнее удаление) — номер и ответственный для того, что с ней делается после удаления."""
+        row = self.store.one(
+            "SELECT data FROM trash WHERE entity_type='deal' AND entity_id=? ORDER BY id DESC LIMIT 1", (str(did),)
+        )
+        if not row:
+            return None
+        data = _obj(row[0])
+        return self._out(tuple(data.get(col.strip()) for col in self.COLS.split(',')))
+
     def deal_of(self, kid: str) -> str | None:
         row = self.store.one('SELECT deal_id FROM deal_kp WHERE kp_id=?', (kid,))
         return row[0] if row else None

@@ -13,6 +13,7 @@ import defaults
 import pdf_convert
 from bitrix import BitrixConf, BitrixQueue, BitrixSync, EconXlsx
 from bitrix_comms import BitrixComms, DealComms
+from bitrix_merged import MergedLose
 from bitrix_my import MyCompanies
 from config import BadRequest, safe_id, store
 from crm import CrmBoard, DealBook, KpFollowUp, Stages, TaskBook
@@ -513,6 +514,7 @@ class CrmController(Controller):
                 'currentKps': DealBook(store()).kp_count(cur) if cur else 0,
                 'stages': Stages.all(store()),
                 'guard': guard,
+                'bitrix': BitrixConf(store()).enabled(),
             }
         )
 
@@ -818,6 +820,7 @@ class CrmController(Controller):
         result = report.out()
         admin.log(self.handler, store(), 'merge_deal', 'deal', did, {'deals': result['merged']}, result)
         self.bitrix_on(did)
+        MergedLose.queue(store(), report.bitrix_left)
         return self.send_json(result)
 
     @route(r'/api/crm/dupes', 'GET')
@@ -828,6 +831,15 @@ class CrmController(Controller):
         except PermissionError as exc:
             raise Forbidden(str(exc)) from None
         return self.send_json({'groups': DealDupes(store()).groups(scope)})
+
+    @route(r'/api/crm/dupes/mine', 'GET')
+    def my_dupes(self) -> Any:
+        """«Сегодня»: дубли сделок открытого кабинета — свой или менеджера (весь отдел — «Отдел» → «Дубли сделок»)."""
+        try:
+            scope = self._scope(self.query.get('manager'))
+        except PermissionError as exc:
+            raise Forbidden(str(exc)) from None
+        return self.send_json({'groups': DealDupes(store()).groups(scope) if scope else []})
 
     @route(r'/api/crm/deal/(d\d{1,9})/restore', 'POST')
     def deal_restore(self, did: str) -> Any:

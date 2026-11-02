@@ -721,6 +721,8 @@ dialog.st-confirm.mv>*{flex-shrink:0}
 .bx-f:first-child{border-top:0}
 .bx-f>div{display:grid;gap:1px;flex:1;min-width:0;font-size:13.5px}
 .bx-f .btn{flex:none}
+.bx-dh{gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0}.bx-dh .muted{margin:0}.bx-dh .ok-t{font-size:13px;white-space:nowrap}
+.bx-dq{flex:none;font-size:13px;white-space:nowrap}
 /* выгрузка разделов базы: выбор категорий, производителей, поставщиков, фидов */
 .dt-k{border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:6px 0}
 .dt-k>summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center;gap:6px}

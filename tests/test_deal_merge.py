@@ -254,6 +254,28 @@ class RouteTest(unittest.TestCase):
         http.req('POST', '/api/admin/features', {'values': {'dealMerge': None, 'dealDupes': None}},
                  cookie=self.adm, headers=dict(self.adm_headers))
 
+    def test_3_today_dupes(self):
+        """«Сегодня» (3.274.0): свои дубли; кабинет коллеги — с правом; весь отдел — пусто («Отдел»); свой выключатель."""
+        http, adm = self.http, dict(cookie=self.adm, headers=dict(self.adm_headers))
+        ids = {self.new_deal('ООО «Зета»', '7700000111')['id'] for _ in range(2)}
+
+        def groups(query='', **who):
+            status, body, _ = http.req('GET', '/api/crm/dupes/mine' + query, **(who or {'cookie': self.mine}))
+            self.assertEqual(status, 200, body)
+            return [row for row in json.loads(body)['groups'] if row['inn'] == '7700000111']
+
+        [group] = groups()
+        self.assertEqual({row['id'] for row in group['deals']}, ids)
+        self.assertEqual(groups(cookie=self.theirs), [], 'у коллеги своих дублей этого клиента нет')
+        self.assertEqual(http.req('GET', '/api/crm/dupes/mine?manager=mgr-ivanova', cookie=self.theirs)[0], 403)
+        self.assertEqual(len(groups('?manager=mgr-ivanova', **adm)), 1, 'руководитель — в кабинете менеджера')
+        self.assertEqual(groups('?manager=all', **adm), [], 'весь отдел — «Отдел» → «Дубли сделок»')
+        http.req('POST', '/api/admin/features', {'values': {'dealDupes': {'on': False}}}, **adm)
+        self.assertEqual(len(groups()), 1, '«Дубли сделок в «Отделе»» выключены — на «Сегодня» есть')
+        http.req('POST', '/api/admin/features', {'values': {'dealDupes': None, 'todayDupes': {'on': False}}}, **adm)
+        self.assertEqual(http.req('GET', '/api/crm/dupes/mine', cookie=self.mine)[0], 403)
+        http.req('POST', '/api/admin/features', {'values': {'todayDupes': None}}, **adm)
+
 
 if __name__ == '__main__':
     unittest.main()

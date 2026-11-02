@@ -22,6 +22,7 @@ import { CrmFmt } from '../../core/crm-fmt.js';
 import { KpDate } from '../../core/kp-date.js';
 import { CabState } from './cab-state.js';
 import { DraftsWin } from '../kp/drafts-win.js';
+import { TodayDupes } from './today-dupes.js';
 
 /** «Сегодня»: плитки дня, «Что сделать» (дела и сделки, которым нужно действие), напоминания по КП; справа — неделя, месяц, воронка. */
 export class CabToday {
@@ -254,8 +255,8 @@ export class CabToday {
 
   static _todo() {
     const groups = this._now();
-    const count = groups.reduce((total, [, list]) => total + list.length, 0);
-    const rows = groups.map(group => this._group(...group)).join('');
+    const count = groups.reduce((total, [, list]) => total + list.length, 0) + TodayDupes.count();
+    const rows = groups.map(group => this._group(...group)).join('') + TodayDupes.html(this._show());
     const empty = count
       ? ''
       : '<p class="empty td-ok">✓ Всё сделано: дел на сегодня нет, у каждой сделки есть следующий шаг.</p>';
@@ -400,6 +401,7 @@ export class CabToday {
    * @returns {boolean}
    */
   static click(event) {
+    if (TodayDupes.click(event)) return true;
     const target = event.target;
     const actions = [
       [

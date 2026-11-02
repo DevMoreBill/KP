@@ -325,6 +325,7 @@ class BitrixLinks:
         return row[0] if row else None
 
     COMMENT = 'comment|{}|{}'
+    ALIGN = 'align'  # «Выровнять» (bitrix_diff): при следующей отправке значения программы — главные
 
     @classmethod
     def adopt(cls, conn, source: str, target: str, comments: dict[int, int]) -> bool:
@@ -350,6 +351,15 @@ class BitrixLinks:
             (kind, str(local), str(bx_id), json.dumps(sent or {}, ensure_ascii=False), Clock.now()),
         )
 
+    def mark(self, kind, local, **values) -> None:
+        """Дописать в согласованные значения связи (время синхронизации не меняется)."""
+        link = self.get(kind, local)
+        if link:
+            self.store.write(
+                'UPDATE bx_link SET sent=? WHERE kind=? AND local_id=?',
+                (json.dumps(dict(link['sent'], **values), ensure_ascii=False), kind, str(local)),
+            )
+
     def count(self, kind) -> int:
         return self.store.scalar('SELECT COUNT(*) FROM bx_link WHERE kind=?', (kind,))
 
@@ -361,6 +371,8 @@ class BitrixQueue:
     """Что отправить в Битрикс: (вид, id). Повтор с паузой; после 20 неудач — ждёт «Отправить снова» в «Настройках»."""
 
     MAX_TRIES = 20
+    MERGED = 'merged'  # сделка дубля после объединения сделок — проигранной в Битриксе (bitrix_merged)
+    KINDS = ('deal', 'task', MERGED)
     _quiet = threading.local()  # изменения, пришедшие из Битрикса, обратно не отправляются
 
     def __init__(self, store) -> None:
@@ -435,25 +447,34 @@ class BitrixQueue:
             'ORDER BY added DESC LIMIT ?',
             (limit,),
         ):
-            if kind == 'deal':
-                deal = DealBook(self.store).get(local) or {}
-                title = 'Сделка № {} «{}»'.format(
-                    deal.get('number') or local, deal.get('title') or deal.get('client') or ''
-                )
-            else:
-                task = TaskBook(self.store).get(int(local)) if str(local).isdigit() else None
-                title = f'Дело «{(task or {}).get("title") or local}»'
             out.append(
                 {
                     'kind': kind,
                     'id': local,
-                    'title': title,
+                    'title': self.title(kind, local),
                     'error': err or '',
                     'tries': tries or 0,
                     'added': added or '',
                 }
             )
         return out
+
+    def title(self, kind: str, local: str) -> str:
+        """Что за запись очереди — для «Не отправлено» и журнала обмена."""
+        titles = {'deal': self._deal_title, self.MERGED: self._merged_title}
+        return titles.get(kind, self._task_title)(local)
+
+    def _deal_title(self, local: str) -> str:
+        deal = DealBook(self.store).get(local) or {}
+        return 'Сделка № {} «{}»'.format(deal.get('number') or local, deal.get('title') or deal.get('client') or '')
+
+    def _merged_title(self, local: str) -> str:
+        deal = DealBook(self.store).trashed(local) or {}
+        return f'Сделка № {deal.get("number") or local} (объединена с другой) — закрыть проигранной'
+
+    def _task_title(self, local: str) -> str:
+        task = TaskBook(self.store).get(int(local)) if str(local).isdigit() else None
+        return f'Дело «{(task or {}).get("title") or local}»'
 
     def stats(self) -> dict:
         count, bad = self.store.one('SELECT COUNT(*), SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) FROM bx_queue')
@@ -830,35 +851,21 @@ class BitrixSync:
                 return res
             if push:
                 self._company_check()
+                self._merged_sweep()
             sched = self.rules.sched()
             for kind, local, tries in self.queue.due(sched['batch'], sched['tries']) if push else []:
                 try:
-                    if kind == 'deal':
-                        self.push_deal(local)
-                    elif kind == 'task':
-                        self.push_task(int(local))
+                    self._send(kind, local)
                     self.queue.done(kind, local)
                     res['sent'] += 1
                 except BitrixError as exc:
-                    self.queue.fail(kind, local, tries, exc)
-                    what = (
-                        (f'Сделка № {(DealBook(self.store).get(local) or {}).get("number") or local}')
-                        if kind == 'deal'
-                        else f'Дело {local}'
-                    )
-                    self.log.add(
-                        f'{what} не отправлена: {exc}' if kind == 'deal' else f'{what} не отправлено: {exc}',
-                        'error',
-                    )
+                    self._failed(kind, local, tries, exc)
                     res['failed'] += 1
                     if exc.code == 'NET':
                         res['error'] = str(exc)
                         return res
                 except Exception as exc:  # ошибка не связи (этап убрали из списка и т. п.) — запись не держит очередь
-                    self.queue.fail(kind, local, tries, exc)
-                    self.log.add(
-                        '{} {} не отправлено: {}'.format('Сделка' if kind == 'deal' else 'Дело', local, exc), 'error'
-                    )
+                    self._failed(kind, local, tries, exc)
                     res['failed'] += 1
             if pull:
                 try:
@@ -871,6 +878,30 @@ class BitrixSync:
             return res
         finally:
             self.LOCK.release()
+
+    def _send(self, kind: str, local: str) -> None:
+        """Запись очереди → Битрикс: сделка, дело или сделка дубля после объединения сделок (bitrix_merged)."""
+        from bitrix_merged import MergedLose
+
+        senders = {
+            'deal': self.push_deal,
+            'task': lambda one: self.push_task(int(one)),
+            BitrixQueue.MERGED: MergedLose(self).push,
+        }
+        sender = senders.get(kind)
+        if sender:
+            sender(local)
+
+    def _failed(self, kind: str, local: str, tries: int, exc: Exception) -> None:
+        """Запись не ушла: повтор с паузой и строка журнала обмена (что за запись и причина)."""
+        self.queue.fail(kind, local, tries, exc)
+        self.log.add(f'Не отправлено в Битрикс24 — {self.queue.title(kind, local)}: {exc}', 'error')
+
+    def _merged_sweep(self) -> None:
+        """Сделки, объединённые раньше (их сделки в Битриксе остались открытыми), — один раз в очередь закрытия."""
+        from bitrix_merged import MergedLose
+
+        MergedLose.sweep(self)
 
     def _company_check(self) -> None:
         """Раз в сутки — связанные компании не удалены в Битриксе (иначе сделки уходят к удалённой компании)."""
@@ -1028,6 +1059,10 @@ class BitrixSync:
             return '—'
         found = next((user['name'] for user in self._portal_people() if user['id'] == key), '')
         return found or f'пользователь {key}'
+
+    def sends(self, key: str) -> bool:
+        """Поле сделки key программа отправляет в Битрикс (по карте полей: «в обе стороны» или «в Битрикс»)."""
+        return self.rules.allow(self._field(key)['dir'], 'out')
 
     def bx_stage(self, deal: dict, cat) -> str:
         """Стадия Битрикса, в которой сделка должна стоять по программе."""
@@ -1337,9 +1372,9 @@ class BitrixSync:
                 bx_deal = self._move(deal, bid, bx_deal, moved)
             cat = str(bx_deal.get('CATEGORY_ID') or cat)
             ours['stage'] = self._bx_stage(deal, cat)
-            sent, upd, back = self._merge(
-                deal, ours, self._theirs(bx_deal), link['sent'], BitrixTime.local(bx_deal.get('DATE_MODIFY'))
-            )
+            theirs = self._theirs(bx_deal)
+            base = self._base(link['sent'], ours, theirs)
+            sent, upd, back = self._merge(deal, ours, theirs, base, BitrixTime.local(bx_deal.get('DATE_MODIFY')))
             sent.update(cat=cat, my=my_company or link['sent'].get('my') or '')
             for k, v in upd.items():
                 fields[self._bx_id(k)] = self.mirror.to_bx(k, v)
@@ -1510,6 +1545,17 @@ class BitrixSync:
             f'{names.get(k) or self._field(k)["label"]}: {show(k, (base or {}).get(k))} → {show(k, v)}'
             for k, v in vals.items()
         )
+
+    def _base(self, sent: dict, ours: dict, theirs: dict) -> dict:
+        """Согласованные значения для слияния. После «Выровнять» (BitrixLinks.ALIGN) расхождения считаются правкой
+        программы — уходят её значения (поля «только из Битрикса» по карте полей — по-прежнему из Битрикса)."""
+        base = dict(sent)
+        if not base.pop(BitrixLinks.ALIGN, None):
+            return base
+        for key in self._shared():
+            if (ours.get(key) or '') != (theirs.get(key) or ''):
+                base[key] = theirs.get(key) or ''
+        return base
 
     def _merge(self, deal, ours, theirs, base, their_at) -> tuple:
         """Общие поля по карте полей: главная сторона — по направлению поля и правилу «кто главный»."""
@@ -2493,6 +2539,15 @@ class BitrixDesk:
                 diff.align(did)
                 self.log_fn('edit_settings', 'deal', did, None, {'Битрикс24': 'выровнять по программе'})
                 return self.send({'ok': True})
+            if sub == 'bitrix/diff/align-all' and method == 'POST':
+                if not FeatureAccess(self.store).is_on('bxDiffAll'):
+                    return self.text(403, 'Функция «Выровнять все» выключена')
+                count = diff.align_all(self.body().get('deals'))
+                said = {'Битрикс24': 'выровнять все по программе', 'сделок': count}
+                self.log_fn('edit_settings', 'settings', 'bitrix', None, said)
+                return self.send({'ok': True, 'queued': count})
+        except ValueError as exc:
+            return self.text(400, str(exc))
         except (BitrixError, LookupError) as exc:
             return self.text(422, str(exc))
         return self.text(404, 'Нет такого действия')
@@ -2648,7 +2703,7 @@ class BitrixDesk:
         if sub == 'bitrix/resend' and method == 'POST':
             body = self.body()
             what = body.get('what')
-            if body.get('kind') in ('deal', 'task') and body.get('id'):  # «Повторить» у одной записи
+            if body.get('kind') in BitrixQueue.KINDS and body.get('id'):  # «Повторить» у одной записи
                 if not BitrixQueue(store).retry(body['kind'], str(body['id'])[:64]):
                     return self.text(404, 'Записи уже нет в очереди — она отправлена')
                 return self.send(dict(self.view(), result=BitrixSync(store, self.opener).run(Sides.SEND)))
